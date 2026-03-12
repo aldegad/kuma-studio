@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@source "../../../../packages";
+@source "../../../../web";
 
 :root {
   --bg: #edf2ea;

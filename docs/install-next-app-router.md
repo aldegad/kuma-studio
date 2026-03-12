@@ -29,6 +29,15 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
+If the host uses Tailwind CSS v4, point the scanner at Agent Picker's source too:
+
+```css
+@import "tailwindcss";
+@source "../node_modules/@agent-picker";
+```
+
+For a monorepo or local file-link, use the equivalent relative path to the cloned package source.
+
 ## Host Scripts
 
 Add daemon scripts at the host root so coding agents have a stable command surface:

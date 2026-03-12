@@ -37,6 +37,8 @@ Agent Picker no longer needs a project installer. The current host shape is:
 
 Detailed integration notes: [docs/install-next-app-router.md](./docs/install-next-app-router.md)
 
+If your host uses Tailwind CSS v4, remember to add an `@source` entry for Agent Picker so the overlay classes are included in the generated CSS.
+
 ## Repo Layout
 
 - `packages/picker/`: picker core provider and devtools overlay

@@ -2,17 +2,9 @@
   "version": 1,
   "meta": {
     "zoom": 1,
-    "revision": 0
+    "revision": 16,
+    "updatedAt": "2026-03-12T16:22:04Z",
+    "selectedStudyId": null
   },
-  "nodes": [
-    {
-      "id": "node-welcome-01",
-      "itemId": "draft-cards-welcomecard",
-      "title": "Welcome Card",
-      "viewport": "original",
-      "x": 120,
-      "y": 84,
-      "zIndex": 1
-    }
-  ]
+  "nodes": []
 }
