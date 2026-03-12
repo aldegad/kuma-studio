@@ -233,9 +233,7 @@ export const generatedAgentPickerPageImportItems: AgentPickerComponentItem[] = [
   updateHostPackageScripts(path.join(hostRoot, "package.json"), packageManager);
   updateRootPackageScripts(path.join(projectRoot, "package.json"), hostPath, packageManager);
   ensureGitIgnoreEntries(projectRoot, [
-    ".agent-picker/dev-selection.json",
-    "!.agent-picker/host.json",
-    ".agent-picker/scene.local.json",
+    ".agent-picker/",
     `${hostPath === "." ? "" : `${hostPath}/`}public/agent-picker/drafts`,
     `${hostPath === "." ? "" : `${hostPath}/`}public/agent-picker/page-imports`,
   ]);

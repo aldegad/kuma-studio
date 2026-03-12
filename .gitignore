@@ -7,5 +7,4 @@ example/next-host/.next
 example/next-host/node_modules
 example/next-host/public/agent-picker/drafts
 example/next-host/public/agent-picker/page-imports
-example/next-host/.agent-picker/dev-selection.json
-example/next-host/.agent-picker/scene.local.json
+example/next-host/.agent-picker/

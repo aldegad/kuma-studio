@@ -96,6 +96,16 @@ components/agent-picker/drafts
 
 Agent Picker generates the draft registry and mirrored public assets during `predev` and `prebuild`.
 
+## Git Ignore
+
+Treat `.agent-picker/` as local state and add it to your host `.gitignore`:
+
+```gitignore
+.agent-picker/
+```
+
+If you also mirror generated draft assets into your app's public folder, ignore those generated directories too.
+
 ## Compatibility Notes
 
 - `@agent-picker/react` still exists as a compatibility facade, but new work should import `@agent-picker/picker` and `@agent-picker/workspace` directly.

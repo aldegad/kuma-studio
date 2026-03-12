@@ -37,6 +37,7 @@ node ./vendor/agent-picker/tools/agent-pickerd/main.mjs serve --root .
 
 The default address is `http://127.0.0.1:4312`.
 State files live under the selected host root's `.agent-picker/` directory.
+For installed hosts, treat that directory as local state and add `.agent-picker/` to `.gitignore`.
 
 ## HTTP API
 

@@ -28,6 +28,7 @@ pnpm run agent-pickerd:serve
 Then open [http://127.0.0.1:3000/playground](http://127.0.0.1:3000/playground).
 
 The example host stores local state in `example/next-host/.agent-picker/`.
+Installed hosts should add `.agent-picker/` to `.gitignore`.
 
 ## Preferred Integration
 
