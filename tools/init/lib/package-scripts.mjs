@@ -54,7 +54,7 @@ export function updateHostPackageScripts(hostPackageJsonPath, packageManager) {
   }
 
   scripts["agent-picker:prepare"] =
-    "node ./vendor/agent-picker/scripts/generate-agent-picker-drafts.mjs && node ./vendor/agent-picker/scripts/generate-agent-picker-page-imports.mjs && node ./vendor/agent-picker/scripts/sync-agent-picker-scene.mjs";
+    "node ./vendor/agent-picker/scripts/generate-agent-picker-drafts.mjs && node ./vendor/agent-picker/scripts/sync-agent-picker-scene.mjs";
   scripts.predev = managedPredevScript;
   scripts.prebuild = managedPrebuildScript;
   scripts.dev = managedDevScript;

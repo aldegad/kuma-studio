@@ -7,7 +7,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
-  transpilePackages: ["@agent-picker/react", "@agent-picker/next"],
+  transpilePackages: [
+    "@agent-picker/picker",
+    "@agent-picker/workspace",
+    "@agent-picker/next",
+  ],
 };
 
 export default nextConfig;

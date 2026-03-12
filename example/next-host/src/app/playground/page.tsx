@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { AgentPickerWorkspace } from "@agent-picker/react";
+import { DraftWorkspace } from "@/components/agent-picker/DraftWorkspace";
 
 export const metadata: Metadata = {
   title: "Agent Picker Playground",
-  description: "Standalone playground for the bundled Agent Picker example host.",
+  description: "Standalone draft playground for the bundled Agent Picker example host.",
 };
 
 export default function PlaygroundPage() {
-  return <AgentPickerWorkspace />;
+  return <DraftWorkspace />;
 }

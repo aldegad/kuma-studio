@@ -1,8 +1,8 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
+import { AgentPickerProvider } from "@agent-picker/picker";
 import InternalAgentPickerApp from "../../../web/components/AgentPickerApp";
-import InternalAgentDomPicker from "../../../web/components/devtools/AgentDomPicker";
 import {
   createAgentPickerRegistry,
   mergeAgentPickerItems,
@@ -10,11 +10,10 @@ import {
 } from "./registry";
 import type { AgentPickerComponentItem } from "./types";
 
-interface AgentPickerProviderProps {
+interface AgentPickerWorkspaceProviderProps {
   children: React.ReactNode;
   items: AgentPickerComponentItem[];
   itemsById?: Map<string, AgentPickerComponentItem>;
-  showDevtoolsInDevelopment?: boolean;
 }
 
 interface AgentPickerWorkspaceProps {
@@ -40,9 +39,7 @@ function useResolvedRegistry(
 
   return useMemo(() => {
     if (items) {
-      return itemsById
-        ? { items, itemsById }
-        : createAgentPickerRegistry(items);
+      return itemsById ? { items, itemsById } : createAgentPickerRegistry(items);
     }
 
     if (context) {
@@ -50,31 +47,24 @@ function useResolvedRegistry(
     }
 
     throw new Error(
-      "AgentPickerWorkspace needs either AgentPickerProvider or explicit items.",
+      "AgentPickerWorkspace needs either AgentPickerWorkspaceProvider or explicit items.",
     );
   }, [context, items, itemsById]);
 }
 
-export function AgentPickerProvider({
+export function AgentPickerWorkspaceProvider({
   children,
   items,
   itemsById,
-  showDevtoolsInDevelopment = false,
-}: AgentPickerProviderProps) {
+}: AgentPickerWorkspaceProviderProps) {
   const value = useMemo(
-    () =>
-      itemsById
-        ? { items, itemsById }
-        : createAgentPickerRegistry(items),
+    () => (itemsById ? { items, itemsById } : createAgentPickerRegistry(items)),
     [items, itemsById],
   );
 
   return (
     <AgentPickerRegistryContext.Provider value={value}>
       {children}
-      {showDevtoolsInDevelopment && process.env.NODE_ENV === "development" ? (
-        <InternalAgentDomPicker />
-      ) : null}
     </AgentPickerRegistryContext.Provider>
   );
 }
@@ -92,11 +82,10 @@ export function AgentPickerProjectProvider({
   );
 
   return (
-    <AgentPickerProvider
-      items={items}
-      showDevtoolsInDevelopment={showDevtoolsInDevelopment}
-    >
-      {children}
+    <AgentPickerProvider showDevtoolsInDevelopment={showDevtoolsInDevelopment}>
+      <AgentPickerWorkspaceProvider items={items}>
+        {children}
+      </AgentPickerWorkspaceProvider>
     </AgentPickerProvider>
   );
 }
@@ -104,7 +93,9 @@ export function AgentPickerProjectProvider({
 export function useAgentPickerRegistry() {
   const context = useContext(AgentPickerRegistryContext);
   if (!context) {
-    throw new Error("useAgentPickerRegistry must be used inside AgentPickerProvider.");
+    throw new Error(
+      "useAgentPickerRegistry must be used inside AgentPickerWorkspaceProvider.",
+    );
   }
 
   return context;
@@ -122,8 +113,4 @@ export function AgentPickerWorkspace({
       itemsById={registry.itemsById}
     />
   );
-}
-
-export function AgentPickerDevtools() {
-  return <InternalAgentDomPicker />;
 }

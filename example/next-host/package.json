@@ -2,7 +2,7 @@
   "name": "@agent-picker/example-next-host",
   "private": true,
   "scripts": {
-    "agent-picker:prepare": "node ../../scripts/generate-agent-picker-drafts.mjs && node ../../scripts/generate-agent-picker-page-imports.mjs && node ../../scripts/sync-agent-picker-scene.mjs",
+    "agent-picker:prepare": "node ../../scripts/generate-agent-picker-drafts.mjs && node ../../scripts/sync-agent-picker-scene.mjs",
     "agent-picker:host-dev": "next dev --webpack",
     "predev": "node ../../scripts/run-package-script.mjs agent-picker:host-predev --optional && pnpm run agent-picker:prepare",
     "prebuild": "node ../../scripts/run-package-script.mjs agent-picker:host-prebuild --optional && pnpm run agent-picker:prepare",
@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@agent-picker/next": "workspace:*",
-    "@agent-picker/react": "workspace:*",
+    "@agent-picker/picker": "workspace:*",
+    "@agent-picker/workspace": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

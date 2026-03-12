@@ -1,1 +1,1 @@
-export * from "../../../web/lib/types";
+export * from "@agent-picker/workspace/types";

@@ -1,5 +1,5 @@
 {
-  "name": "@agent-picker/react",
+  "name": "@agent-picker/workspace",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,7 @@
     "./types": "./src/types.ts"
   },
   "dependencies": {
-    "@agent-picker/picker": "workspace:*",
-    "@agent-picker/workspace": "workspace:*"
+    "@agent-picker/picker": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",

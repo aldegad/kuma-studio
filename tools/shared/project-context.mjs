@@ -98,12 +98,6 @@ export function resolveHostPaths(cwd = process.cwd()) {
       "agent-picker",
       "generated-page-imports.ts",
     ),
-    projectRegistryPath: path.join(
-      codeRoot,
-      "lib",
-      "agent-picker",
-      "project-items.tsx",
-    ),
     publicScenePath: path.join(hostRoot, "public", "agent-picker", "scene.json"),
     publicPageImportsRoot: path.join(hostRoot, "public", "agent-picker", "page-imports"),
     scenePath: path.join(projectRoot, PRIMARY_STATE_DIR, "scene.json"),

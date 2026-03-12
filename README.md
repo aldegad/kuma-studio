@@ -1,29 +1,25 @@
 # Agent Picker
 
-Agent Picker is a local visual workspace for reviewing UI drafts, arranging them on a board, capturing DOM selections from a running app, and sharing agent progress through a lightweight daemon.
+Agent Picker is a package-first UI selection bridge for coding agents. The core picker mounts into your running app, captures DOM selections, and syncs shared agent notes through `agent-pickerd`. A separate workspace package powers the optional draft playground.
 
-It is organized as a small package workspace:
-- `@agent-picker/react`: provider, workspace UI, registry helpers
+## Packages
+
+- `@agent-picker/picker`: app-shell provider and devtools overlay
+- `@agent-picker/workspace`: draft board UI and workspace item types
 - `@agent-picker/next`: Next.js route exports for selection capture
 - `@agent-picker/server`: `agent-pickerd` CLI and daemon entrypoint
+- `@agent-picker/react`: compatibility re-export for older integrations
 
-The repository ships with a bundled Next.js example host and can also be vendored into a real product codebase.
+The repository ships with a bundled Next.js example host and can also be vendored into a product codebase.
 
 ## Quick Start
 
-Clone the repository and install dependencies:
-
 ```bash
 pnpm install
-```
-
-Run the example host in one terminal:
-
-```bash
 pnpm run dev
 ```
 
-Run the local daemon in another terminal:
+In another terminal:
 
 ```bash
 pnpm run agent-pickerd:serve
@@ -33,42 +29,44 @@ Then open [http://127.0.0.1:3000/playground](http://127.0.0.1:3000/playground).
 
 The example host stores local state in `example/next-host/.agent-picker/`.
 
-## Install Into an Existing Next.js Host
+## Preferred Integration
 
-The preferred integration model is:
+Keep the picker core and the draft workspace separate:
 
-- add `AgentPickerProvider` near your app shell
-- render `AgentPickerWorkspace` on your playground route
+- mount `AgentPickerProvider` near your app shell
+- render `AgentPickerWorkspace` only on your draft playground route
+- pass draft items into that route
 - re-export the selection route from `@agent-picker/next`
 - run `agent-pickerd`
 
-The bundled example host uses exactly that shape.
-
 ```tsx
-import { AgentPickerProjectProvider } from "@agent-picker/react";
-import { generatedAgentPickerDraftItems } from "@/lib/agent-picker/generated-drafts";
-import { generatedAgentPickerPageImportItems } from "@/lib/agent-picker/generated-page-imports";
-import { projectAgentPickerItems } from "@/lib/agent-picker/project-items";
+import { AgentPickerProvider } from "@agent-picker/picker";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <AgentPickerProjectProvider
-      draftItems={generatedAgentPickerDraftItems}
-      projectItems={projectAgentPickerItems}
-      pageImportItems={generatedAgentPickerPageImportItems}
-      showDevtoolsInDevelopment
-    >
+    <AgentPickerProvider showDevtoolsInDevelopment>
       {children}
-    </AgentPickerProjectProvider>
+    </AgentPickerProvider>
   );
 }
 ```
 
 ```tsx
-import { AgentPickerWorkspace } from "@agent-picker/react";
+"use client";
+
+import { AgentPickerWorkspace } from "@agent-picker/workspace";
+import { generatedAgentPickerDraftItems } from "@/lib/agent-picker/generated-drafts";
+
+export function DraftWorkspace() {
+  return <AgentPickerWorkspace items={generatedAgentPickerDraftItems} />;
+}
+```
+
+```tsx
+import { DraftWorkspace } from "@/components/agent-picker/DraftWorkspace";
 
 export default function PlaygroundPage() {
-  return <AgentPickerWorkspace />;
+  return <DraftWorkspace />;
 }
 ```
 
@@ -76,22 +74,16 @@ export default function PlaygroundPage() {
 export { dynamic, GET, POST } from "@agent-picker/next";
 ```
 
-If you want to vendor the repo into a host project, clone it into `vendor/agent-picker` and point your host at the package entrypoints there:
-
-```bash
-git clone https://github.com/aldegad/agent-picker.git vendor/agent-picker
-pnpm install
-pnpm run agent-pickerd:serve
-```
-
 Detailed integration notes: [docs/install-next-app-router.md](./docs/install-next-app-router.md)
 
 ## Repo Layout
 
-- `packages/react/`: provider, workspace component, and registry helpers
+- `packages/picker/`: picker core provider and devtools overlay
+- `packages/workspace/`: draft workspace UI and registry helpers
 - `packages/next/`: Next.js selection route exports
 - `packages/server/`: `agent-pickerd` package entrypoints
-- `web/`: shared Agent Picker UI, scene hooks, and devtools overlay
+- `packages/react/`: compatibility facade across picker and workspace
+- `web/`: shared UI primitives, scene hooks, and devtools internals
 - `tools/agent-pickerd/`: local state daemon and CLI
 - `tools/init/`: legacy vendored installer for supported app types
 - `scripts/`: draft generation, dev orchestration, and QA helpers

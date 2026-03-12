@@ -1,3 +1,2 @@
-export * from "./types";
-export * from "./registry";
-export * from "./context";
+export * from "@agent-picker/picker";
+export * from "@agent-picker/workspace";

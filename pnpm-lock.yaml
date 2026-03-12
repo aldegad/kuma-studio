@@ -26,9 +26,12 @@ importers:
       '@agent-picker/next':
         specifier: workspace:*
         version: link:../../packages/next
-      '@agent-picker/react':
+      '@agent-picker/picker':
         specifier: workspace:*
-        version: link:../../packages/react
+        version: link:../../packages/picker
+      '@agent-picker/workspace':
+        specifier: workspace:*
+        version: link:../../packages/workspace
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -81,9 +84,6 @@ importers:
 
   packages/next:
     dependencies:
-      '@agent-picker/react':
-        specifier: workspace:*
-        version: link:../react
       next:
         specifier: ^16.0.0
         version: 16.1.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -94,7 +94,7 @@ importers:
         specifier: ^19.0.0
         version: 19.2.4(react@19.2.4)
 
-  packages/react:
+  packages/picker:
     dependencies:
       react:
         specifier: ^19.0.0
@@ -103,7 +103,34 @@ importers:
         specifier: ^19.0.0
         version: 19.2.4(react@19.2.4)
 
+  packages/react:
+    dependencies:
+      '@agent-picker/picker':
+        specifier: workspace:*
+        version: link:../picker
+      '@agent-picker/workspace':
+        specifier: workspace:*
+        version: link:../workspace
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
+
   packages/server: {}
+
+  packages/workspace:
+    dependencies:
+      '@agent-picker/picker':
+        specifier: workspace:*
+        version: link:../picker
+      react:
+        specifier: ^19.0.0
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.4)
 
 packages:
 
