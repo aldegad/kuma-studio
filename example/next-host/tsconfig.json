@@ -21,6 +21,15 @@
     "paths": {
       "@/*": [
         "src/*"
+      ],
+      "@agent-picker/picker": [
+        "../../packages/picker/src/index.ts"
+      ],
+      "@agent-picker/design-lab": [
+        "../../packages/design-lab/src/index.ts"
+      ],
+      "@agent-picker/design-lab/*": [
+        "../../packages/design-lab/src/*"
       ]
     },
     "plugins": [

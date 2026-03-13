@@ -1,42 +1,85 @@
 # Install Into a Next.js App Router Host
 
-Agent Picker's current integration model is package-first. There is no installer step.
+Agent Picker's current integration model is repo-first. Vendor the repository into your host app, then point a few aliases at the vendored source.
 
-## Install the Packages
+## Put Agent Picker In Your Repo
 
-Use the package manager you prefer. For a published release, the npm form looks like this:
+The cleanest current setup is to keep Agent Picker under a stable folder such as:
 
-```bash
-npm install @agent-picker/picker @agent-picker/design-lab @agent-picker/server
+```text
+apps/web/vendor/agent-picker
 ```
 
-If you are testing from a local clone before publication, workspace-link or file-link the same packages instead.
+That can come from `git subtree`, a direct clone, or a copied folder inside your host repo.
+
+## tsconfig Aliases
+
+Point the host at the vendored source instead of installing internal packages:
+
+```json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@agent-picker/picker": [
+        "./vendor/agent-picker/packages/picker/src/index.ts"
+      ],
+      "@agent-picker/design-lab": [
+        "./vendor/agent-picker/packages/design-lab/src/index.ts"
+      ],
+      "@agent-picker/design-lab/*": [
+        "./vendor/agent-picker/packages/design-lab/src/*"
+      ]
+    }
+  }
+}
+```
+
+If your app uses `src/app`, adjust those paths to match your actual folder depth.
 
 ## Next Config
 
-The UI packages ship as source, so a Next.js host should transpile them:
+Next.js should also resolve those aliases at bundler time:
 
 ```ts
+import path from "node:path";
 import type { NextConfig } from "next";
 
+const agentPickerRoot = path.resolve(process.cwd(), "./vendor/agent-picker");
+
 const nextConfig: NextConfig = {
-  transpilePackages: [
-    "@agent-picker/picker",
-    "@agent-picker/design-lab",
-  ],
+  outputFileTracingRoot: path.resolve(agentPickerRoot, "..", "..", ".."),
+  webpack(config) {
+    config.resolve.alias = {
+      ...(config.resolve.alias ?? {}),
+      "@agent-picker/picker": path.join(agentPickerRoot, "packages/picker/src/index.ts"),
+      "@agent-picker/design-lab": path.join(
+        agentPickerRoot,
+        "packages/design-lab/src/index.ts",
+      ),
+      "@agent-picker/design-lab/registry": path.join(
+        agentPickerRoot,
+        "packages/design-lab/src/registry.ts",
+      ),
+      "@agent-picker/design-lab/types": path.join(
+        agentPickerRoot,
+        "packages/design-lab/src/types.ts",
+      ),
+    };
+
+    return config;
+  },
 };
 
 export default nextConfig;
 ```
 
-If the host uses Tailwind CSS v4, point the scanner at Agent Picker's source too:
+If the host uses Tailwind CSS v4, point the scanner at the vendored source too:
 
 ```css
 @import "tailwindcss";
-@source "../node_modules/@agent-picker";
+@source "../vendor/agent-picker";
 ```
-
-For a monorepo or local file-link, use the equivalent relative path to the cloned package source.
 
 ## Host Scripts
 
@@ -45,12 +88,12 @@ Add daemon scripts at the host root so coding agents have a stable command surfa
 ```json
 {
   "scripts": {
-    "agent-pickerd:serve": "agent-pickerd serve --root .",
-    "agent-pickerd:get-scene": "agent-pickerd get-scene --root .",
-    "agent-pickerd:get-selection": "agent-pickerd get-selection --root .",
-    "agent-pickerd:get-agent-note": "agent-pickerd get-agent-note --root .",
-    "agent-pickerd:set-agent-note": "agent-pickerd set-agent-note --root .",
-    "agent-pickerd:clear-agent-note": "agent-pickerd clear-agent-note --root ."
+    "agent-pickerd:serve": "node ./vendor/agent-picker/packages/server/src/cli.mjs serve --root .",
+    "agent-pickerd:get-scene": "node ./vendor/agent-picker/packages/server/src/cli.mjs get-scene --root .",
+    "agent-pickerd:get-selection": "node ./vendor/agent-picker/packages/server/src/cli.mjs get-selection --root .",
+    "agent-pickerd:get-agent-note": "node ./vendor/agent-picker/packages/server/src/cli.mjs get-agent-note --root .",
+    "agent-pickerd:set-agent-note": "node ./vendor/agent-picker/packages/server/src/cli.mjs set-agent-note --root .",
+    "agent-pickerd:clear-agent-note": "node ./vendor/agent-picker/packages/server/src/cli.mjs clear-agent-note --root ."
   }
 }
 ```
@@ -112,7 +155,7 @@ Keep the items inline if the route is small, or move them into a nearby `design-
 
 ## Daemon and Dev Server
 
-From the host project root:
+From the host project root, run the daemon and your usual dev server:
 
 ```bash
 npm run agent-pickerd:serve

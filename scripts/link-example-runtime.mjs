@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const exampleRoot = path.join(repoRoot, "example", "next-host");
-const runtimeSourceDir = path.join(exampleRoot, "node_modules");
+const runtimeSourceDir = path.join(repoRoot, "node_modules");
 const runtimeTargetDir = path.join(repoRoot, "web", "node_modules");
 
 function tryReadLinkTarget(targetPath) {
@@ -65,7 +65,7 @@ function removeLegacyPath(targetPath) {
 try {
   lstatSync(runtimeSourceDir);
 } catch {
-  process.stdout.write("agent-picker runtime link skipped: example node_modules not found\n");
+  process.stdout.write("agent-picker runtime link skipped: root node_modules not found\n");
   process.exit(0);
 }
 

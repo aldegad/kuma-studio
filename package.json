@@ -4,17 +4,22 @@
   "private": true,
   "description": "Local visual workspace and selection bridge for coding agents.",
   "license": "MIT",
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "npm@10.9.0",
+  "workspaces": [
+    "example/next-host"
+  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "postinstall": "node ./scripts/link-example-runtime.mjs",
     "setup:example": "node ./scripts/link-example-runtime.mjs",
-    "dev": "node ./scripts/link-example-runtime.mjs && pnpm --dir example/next-host dev",
-    "build": "node ./scripts/link-example-runtime.mjs && pnpm --dir example/next-host build",
-    "lint": "node ./scripts/link-example-runtime.mjs && pnpm --dir example/next-host lint",
-    "typecheck": "node ./scripts/link-example-runtime.mjs && pnpm --dir example/next-host typecheck",
+    "dev": "node ./scripts/dev-example.mjs",
+    "dev:web": "npm run dev --workspace=agent-picker-example-next-host",
+    "dev:daemon": "node ./packages/server/src/cli.mjs serve --root ./example/next-host",
+    "build": "node ./scripts/link-example-runtime.mjs && npm run build --workspace=agent-picker-example-next-host",
+    "lint": "node ./scripts/link-example-runtime.mjs && npm run lint --workspace=agent-picker-example-next-host",
+    "typecheck": "node ./scripts/link-example-runtime.mjs && npm run typecheck --workspace=agent-picker-example-next-host",
     "test": "vitest run --passWithNoTests",
     "agent-pickerd:serve": "node ./packages/server/src/cli.mjs serve --root ./example/next-host",
     "agent-pickerd:get-scene": "node ./packages/server/src/cli.mjs get-scene --root ./example/next-host",
@@ -24,6 +29,8 @@
     "agent-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"
   },
   "devDependencies": {
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "@types/node": "25.3.5",
     "typescript": "5.9.3",
     "vitest": "4.0.18"

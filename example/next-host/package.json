@@ -1,16 +1,14 @@
 {
-  "name": "@agent-picker/example-next-host",
+  "name": "agent-picker-example-next-host",
   "private": true,
   "scripts": {
     "build": "next build --webpack",
     "dev": "next dev --webpack",
-    "lint": "tsc --noEmit",
+    "lint": "next typegen && tsc --noEmit",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@agent-picker/design-lab": "workspace:*",
-    "@agent-picker/picker": "workspace:*",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

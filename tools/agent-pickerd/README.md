@@ -17,25 +17,31 @@ Agents update the same source of truth through the CLI or the shared state files
 In the standalone repository:
 
 ```bash
-pnpm run agent-pickerd:serve
+npm run dev
 ```
 
-That serves the bundled example host at `./example/next-host`.
+That starts both the bundled example host and the daemon with a matched URL/port configuration.
+
+If you want only the daemon:
+
+```bash
+npm run agent-pickerd:serve
+```
 
 Direct CLI usage from the standalone repository:
 
 ```bash
-pnpm exec agent-pickerd serve --root ./example/next-host
+node ./packages/server/src/cli.mjs serve --root ./example/next-host
 ```
 
-In an installed host project, add a root script or use the local package binary directly.
+In an installed host project, add a root script that points at the vendored CLI path.
 
 `package.json`:
 
 ```json
 {
   "scripts": {
-    "agent-pickerd:serve": "agent-pickerd serve --root ."
+    "agent-pickerd:serve": "node ./vendor/agent-picker/packages/server/src/cli.mjs serve --root ."
   }
 }
 ```
@@ -49,7 +55,7 @@ npm run agent-pickerd:serve
 Direct CLI usage from an installed host:
 
 ```bash
-npx agent-pickerd serve --root .
+node ./vendor/agent-picker/packages/server/src/cli.mjs serve --root .
 ```
 
 The default address is `http://127.0.0.1:4312`.
@@ -77,18 +83,18 @@ For installed hosts, treat that directory as local state and add `.agent-picker/
 Standalone repository:
 
 ```bash
-pnpm exec agent-pickerd get-scene --root ./example/next-host
-pnpm exec agent-pickerd get-selection --root ./example/next-host
-pnpm exec agent-pickerd get-agent-note --root ./example/next-host
-pnpm exec agent-pickerd set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
-pnpm exec agent-pickerd add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
+node ./packages/server/src/cli.mjs get-scene --root ./example/next-host
+node ./packages/server/src/cli.mjs get-selection --root ./example/next-host
+node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host
+node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
+node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```
 
 Installed host project:
 
 ```bash
-npx agent-pickerd get-scene --root .
-npx agent-pickerd get-selection --root .
-npx agent-pickerd get-agent-note --root .
-npx agent-pickerd set-agent-note --root . --author codex --status fixed --message "Updated the selected element."
+node ./vendor/agent-picker/packages/server/src/cli.mjs get-scene --root .
+node ./vendor/agent-picker/packages/server/src/cli.mjs get-selection --root .
+node ./vendor/agent-picker/packages/server/src/cli.mjs get-agent-note --root .
+node ./vendor/agent-picker/packages/server/src/cli.mjs set-agent-note --root . --author codex --status fixed --message "Updated the selected element."
 ```

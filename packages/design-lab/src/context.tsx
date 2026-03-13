@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
-import { AgentPickerProvider } from "@agent-picker/picker";
+import { AgentPickerProvider } from "../../picker/src";
 import InternalAgentPickerApp from "../../../web/components/AgentPickerApp";
 import {
   createAgentPickerRegistry,
