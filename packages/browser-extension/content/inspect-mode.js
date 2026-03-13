@@ -12,9 +12,12 @@ function stopInspectMode() {
   isInspecting = false;
   hoveredElement = null;
   hideOverlay();
+  setInspectSurfaceEnabled(false);
 
-  document.removeEventListener("mousemove", handleMouseMove, true);
-  document.removeEventListener("click", handleClick, true);
+  const surface = getInspectSurfaceElement();
+  surface.removeEventListener("mousemove", handleMouseMove);
+  surface.removeEventListener("mousedown", handleMouseDown);
+  surface.removeEventListener("click", handleClick);
   document.removeEventListener("keydown", handleKeyDown, true);
 }
 
@@ -26,9 +29,12 @@ function startInspectMode() {
   ensureUi();
   isInspecting = true;
   showToast("Inspect mode on. Click the target element or press Esc.", "info");
+  setInspectSurfaceEnabled(true);
 
-  document.addEventListener("mousemove", handleMouseMove, true);
-  document.addEventListener("click", handleClick, true);
+  const surface = getInspectSurfaceElement();
+  surface.addEventListener("mousemove", handleMouseMove);
+  surface.addEventListener("mousedown", handleMouseDown);
+  surface.addEventListener("click", handleClick);
   document.addEventListener("keydown", handleKeyDown, true);
 }
 
@@ -37,8 +43,17 @@ function handleMouseMove(event) {
     return;
   }
 
-  const target = document.elementFromPoint(event.clientX, event.clientY);
+  const target = getUnderlyingElementFromPoint(event.clientX, event.clientY);
   hoveredElement = updateOverlay(target) ? target : null;
+}
+
+function handleMouseDown(event) {
+  if (!isInspecting) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
 }
 
 function handleClick(event) {
@@ -46,7 +61,8 @@ function handleClick(event) {
     return;
   }
 
-  const target = getTargetElement(event.target) || hoveredElement;
+  const target =
+    getTargetElement(getUnderlyingElementFromPoint(event.clientX, event.clientY)) || hoveredElement;
   if (!target || isUiElement(target)) {
     return;
   }

@@ -1,4 +1,5 @@
 let rootElement = null;
+let shieldElement = null;
 let outlineElement = null;
 let labelElement = null;
 let toastElement = null;
@@ -20,6 +21,15 @@ function ensureUi() {
   rootElement.style.inset = "0";
   rootElement.style.pointerEvents = "none";
   rootElement.style.zIndex = "2147483646";
+
+  shieldElement = document.createElement("div");
+  shieldElement.setAttribute(UI_ATTRIBUTE, "true");
+  shieldElement.style.position = "fixed";
+  shieldElement.style.inset = "0";
+  shieldElement.style.display = "none";
+  shieldElement.style.pointerEvents = "none";
+  shieldElement.style.cursor = "crosshair";
+  shieldElement.style.background = "transparent";
 
   outlineElement = document.createElement("div");
   outlineElement.setAttribute(UI_ATTRIBUTE, "true");
@@ -64,8 +74,29 @@ function ensureUi() {
   toastElement.style.transform = "translateY(6px)";
   toastElement.style.transition = "opacity 120ms ease, transform 120ms ease";
 
-  rootElement.append(outlineElement, labelElement, toastElement);
+  rootElement.append(shieldElement, outlineElement, labelElement, toastElement);
   document.documentElement.appendChild(rootElement);
+}
+
+function getInspectSurfaceElement() {
+  ensureUi();
+  return shieldElement;
+}
+
+function setInspectSurfaceEnabled(enabled) {
+  ensureUi();
+  shieldElement.style.display = enabled ? "block" : "none";
+  shieldElement.style.pointerEvents = enabled ? "auto" : "none";
+}
+
+function getUnderlyingElementFromPoint(clientX, clientY) {
+  ensureUi();
+
+  const previousPointerEvents = shieldElement.style.pointerEvents;
+  shieldElement.style.pointerEvents = "none";
+  const element = document.elementFromPoint(clientX, clientY);
+  shieldElement.style.pointerEvents = previousPointerEvents;
+  return element;
 }
 
 function hideOverlay() {
