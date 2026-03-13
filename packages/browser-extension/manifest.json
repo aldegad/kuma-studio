@@ -25,7 +25,11 @@
         "<all_urls>"
       ],
       "js": [
-        "content-script.js"
+        "content/constants.js",
+        "content/page-context.js",
+        "content/overlay-ui.js",
+        "content/inspect-mode.js",
+        "content/bridge.js"
       ],
       "run_at": "document_idle"
     }
