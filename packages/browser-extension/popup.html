@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Picker Bridge</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <p class="eyebrow">Browser Extension MVP</p>
+        <h1>Agent Picker Bridge</h1>
+        <p class="copy">
+          Connect this tab to a local <code>agent-pickerd</code> daemon and
+          save the current page or a clicked element as the latest selection.
+        </p>
+      </header>
+
+      <section class="panel">
+        <label class="field">
+          <span>Daemon URL</span>
+          <input
+            id="daemon-url"
+            type="url"
+            spellcheck="false"
+            placeholder="http://127.0.0.1:4312"
+          />
+        </label>
+
+        <div class="button-row">
+          <button id="test-bridge" type="button" class="button button-secondary">
+            Test Bridge
+          </button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p class="section-title">Capture</p>
+        <div class="button-stack">
+          <button id="capture-page" type="button" class="button button-primary">
+            Capture Current Page
+          </button>
+          <button id="inspect-element" type="button" class="button button-secondary">
+            Pick Element On Page
+          </button>
+        </div>
+        <p class="hint">
+          Pick mode behaves like a lightweight inspector. After you click it,
+          hover the page and click the target element. Press <kbd>Esc</kbd> to
+          cancel.
+        </p>
+      </section>
+
+      <section class="panel panel-compact">
+        <p class="section-title">Status</p>
+        <p id="status" class="status status-idle">Idle.</p>
+        <p id="last-saved" class="last-saved"></p>
+      </section>
+    </main>
+
+    <script src="./popup.js"></script>
+  </body>
+</html>

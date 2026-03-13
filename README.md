@@ -4,6 +4,7 @@ Agent Picker is a repo-first UI selection bridge for coding agents. Clone or sub
 
 ## Domains
 
+- `packages/browser-extension/`: unpacked Chrome extension that bridges arbitrary pages into `agent-pickerd`
 - `packages/picker/`: app-shell provider and devtools overlay
 - `packages/design-lab/`: design-lab board UI and item types
 - `packages/server/`: `agent-pickerd` entrypoint shim
@@ -45,6 +46,7 @@ The picker sends selections straight to `agent-pickerd`, so you do not need a se
 ## Repo Layout
 
 - `packages/picker/`: picker-facing exports for host apps
+- `packages/browser-extension/`: optional browser extension bridge for arbitrary websites
 - `packages/design-lab/`: design-lab-facing exports for host apps
 - `packages/server/`: CLI shim kept close to the repo root
 - `web/`: internal implementation shared by those domains
@@ -82,6 +84,7 @@ Agent-specific guidance lives here:
 - [docs/install-next-app-router.md](./docs/install-next-app-router.md)
 - [docs/maintainers.md](./docs/maintainers.md)
 - [tools/agent-pickerd/README.md](./tools/agent-pickerd/README.md)
+- [packages/browser-extension/README.md](./packages/browser-extension/README.md)
 
 ## License
 
