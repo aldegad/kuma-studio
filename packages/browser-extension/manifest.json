@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Agent Picker Bridge",
   "version": "0.1.0",
-  "description": "Capture the current website into a local Agent Picker daemon.",
+  "description": "Inspect the current webpage and send element or area picks to a local Agent Picker daemon.",
   "permissions": [
     "activeTab",
     "scripting",
