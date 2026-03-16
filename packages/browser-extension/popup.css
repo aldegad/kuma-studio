@@ -44,8 +44,9 @@ body {
   gap: 8px;
   min-width: 0;
   padding: 9px 12px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--mint);
+  background: #edf9f4;
 }
 
 .connection-label,
@@ -76,31 +77,49 @@ body {
 }
 
 .connection-status[data-state="connected"] .connection-badge {
-  background: var(--mint);
+  background: #edf9f4;
+  border-color: #d7eee5;
 }
 
 .connection-status[data-state="checking"] .connection-badge {
-  background: #fff3dc;
+  background: #fff6e7;
+  border-color: #f2e2c1;
 }
 
 .connection-status[data-state="disconnected"] .connection-badge,
 .connection-status[data-state="error"] .connection-badge {
-  background: #ffe8e8;
+  background: #fff0f0;
+  border-color: #f2d8d8;
 }
 
 .connection-label {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 500;
+  color: var(--mint-strong);
   line-height: 1.2;
 }
 
 .connection-url {
+  margin-left: auto;
   max-width: 190px;
   color: var(--muted-soft);
   font-size: 11px;
   line-height: 1.35;
-  text-align: right;
+  text-align: left;
   overflow-wrap: anywhere;
+}
+
+.connection-status[data-state="connected"] .connection-label {
+  color: var(--mint-strong);
+}
+
+.connection-status[data-state="checking"] .connection-label {
+  color: #9a7b42;
+}
+
+.connection-status[data-state="disconnected"] .connection-label,
+.connection-status[data-state="error"] .connection-label {
+  color: #b06b6b;
 }
 
 .connection-form {
@@ -179,17 +198,19 @@ body {
 
 .button-ghost {
   padding: 9px 12px;
-  background: rgba(255, 255, 255, 0.78);
-  border-color: rgba(219, 229, 234, 0.9);
-  color: var(--muted);
+  background: #ffffff;
+  border-color: #d4dee4;
+  color: #65727e;
   font-size: 12px;
   font-weight: 600;
+  opacity: 0.58;
 }
 
 .button-ghost:hover {
-  background: rgba(255, 255, 255, 0.94);
-  border-color: #ccd8df;
-  color: #5e6b78;
+  background: #ffffff;
+  border-color: #c7d3da;
+  color: #55626e;
+  opacity: 0.9;
 }
 
 .micro-copy {
@@ -247,7 +268,7 @@ kbd {
 
 .prompt-shell > .button-ghost {
   position: absolute;
-  left: 12px;
+  right: 12px;
   bottom: 12px;
   z-index: 1;
   backdrop-filter: blur(6px);
