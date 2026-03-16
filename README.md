@@ -68,6 +68,21 @@ Agent-specific guidance lives here:
 - [CLAUDE.md](./CLAUDE.md)
 - [GEMINI.md](./GEMINI.md)
 
+## Codex Skill
+
+The repo-managed source of truth for the Codex skill lives in [skills/agent-picker/](./skills/agent-picker/).
+
+Install or update the local skill copy with:
+
+```bash
+npm run skill:install
+```
+
+This syncs the repo skill into `~/.codex/skills/agent-picker` unless `CODEX_HOME` points somewhere else.
+Once installed there, the skill is available from other projects on the same machine too.
+
+After you pull new changes, run the same command again to update the installed local copy.
+
 ## Common Commands
 
 - `npm run dev`: start the bundled example host and daemon together

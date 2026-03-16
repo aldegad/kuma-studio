@@ -21,6 +21,8 @@
     "lint": "node ./scripts/link-example-runtime.mjs && npm run lint --workspace=agent-picker-example-next-host",
     "typecheck": "node ./scripts/link-example-runtime.mjs && npm run typecheck --workspace=agent-picker-example-next-host",
     "test": "vitest run --passWithNoTests",
+    "skill:install": "node ./scripts/install-codex-skill.mjs",
+    "skill:update": "npm run skill:install",
     "agent-pickerd:serve": "node ./packages/server/src/cli.mjs serve --root ./example/next-host",
     "agent-pickerd:get-scene": "node ./packages/server/src/cli.mjs get-scene --root ./example/next-host",
     "agent-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection --root ./example/next-host",
