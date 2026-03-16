@@ -215,9 +215,7 @@ kbd {
   display: grid;
   gap: 10px;
   border-top: 1px solid var(--line);
-  padding: 14px 14px 0;
-  border-radius: 20px;
-  background: #fafbfc;
+  padding-top: 14px;
 }
 
 .prompt-panel > .button {
@@ -225,14 +223,18 @@ kbd {
 }
 
 .prompt-text {
-  min-height: 0;
+  width: 100%;
+  min-height: 82px;
   margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  padding: 12px 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: #fafbfc;
   color: #7b8794;
+  font: inherit;
   font-size: 12px;
   line-height: 1.55;
+  resize: none;
   white-space: pre-wrap;
 }
 

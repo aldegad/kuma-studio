@@ -39,7 +39,7 @@ function setLastSaved(message = "") {
 }
 
 function setRefactorPrompt(message) {
-  refactorPromptElement.textContent = message;
+  refactorPromptElement.value = message;
 }
 
 function setConnectionState({ state, label, url, showForm }) {
