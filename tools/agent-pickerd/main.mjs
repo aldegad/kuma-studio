@@ -2,7 +2,8 @@ import http from "node:http";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { AgentNoteStore, watchAgentNotes } from "./lib/agent-note-store.mjs";
+import { AgentNoteStore, DEFAULT_AGENT_NOTE_SESSION_ID, watchAgentNotes } from "./lib/agent-note-store.mjs";
+import { BrowserExtensionStatusStore } from "./lib/browser-extension-status-store.mjs";
 import { DevSelectionStore } from "./lib/dev-selection-store.mjs";
 import { encodeAgentNoteEvent, encodeSceneEvent, ensureSceneShape, normalizeViewport } from "./lib/scene-schema.mjs";
 import { SceneStore, watchSceneFile } from "./lib/scene-store.mjs";
@@ -15,6 +16,7 @@ Usage:
   node main.mjs get-scene [--root .]
   node main.mjs get-selection [--session-id session-01] [--root .]
   node main.mjs get-agent-note [--session-id session-01] [--root .]
+  node main.mjs get-extension-status [--root .]
   node main.mjs set-agent-note --author codex --status fixed --message "Updated the picked element." [--session-id session-01] [--selection-id selector-path] [--root .]
   node main.mjs clear-agent-note [--session-id session-01] [--root .]
   node main.mjs put-scene --file ./scene.json [--root .]
@@ -195,6 +197,7 @@ export function createServer({ host, port, root }) {
   });
   const selectionStore = new DevSelectionStore(root);
   const agentNoteStore = new AgentNoteStore(root);
+  const extensionStatusStore = new BrowserExtensionStatusStore(root);
 
   store.ensure();
   broker.publishScene(store.read(), "startup");
@@ -237,7 +240,7 @@ export function createServer({ host, port, root }) {
     }
 
     if (request.method === "GET" && url.pathname === "/agent-note") {
-      const sessionId = url.searchParams.get("sessionId") ?? selectionStore.readAll()?.latestSessionId ?? null;
+      const sessionId = resolveAgentNoteSessionId(root, url.searchParams.get("sessionId"), true);
       const note = sessionId ? agentNoteStore.readSession(sessionId) : null;
       if (!note) {
         sendNoContent(response);
@@ -245,6 +248,11 @@ export function createServer({ host, port, root }) {
       }
 
       sendJson(response, 200, note);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/extension-status") {
+      sendJson(response, 200, extensionStatusStore.readSummary());
       return;
     }
 
@@ -323,15 +331,22 @@ export function createServer({ host, port, root }) {
 
       if (request.method === "POST" && url.pathname === "/agent-note") {
         const payload = await readJsonBody(request);
-        const fallbackSessionId = payload?.sessionId ?? selectionStore.readAll()?.latestSessionId ?? null;
+        const fallbackSessionId = resolveAgentNoteSessionId(root, payload?.sessionId ?? null, true);
         const note = agentNoteStore.write(payload, { sessionId: fallbackSessionId });
         broker.publishAgentNote(note, "agent-note-write");
         sendJson(response, 200, note);
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/extension-status") {
+        const payload = await readJsonBody(request);
+        extensionStatusStore.write(payload);
+        sendJson(response, 200, extensionStatusStore.readSummary());
+        return;
+      }
+
       if (request.method === "DELETE" && url.pathname === "/agent-note") {
-        const sessionId = url.searchParams.get("sessionId") ?? selectionStore.readAll()?.latestSessionId ?? null;
+        const sessionId = resolveAgentNoteSessionId(root, url.searchParams.get("sessionId"), true);
         const note = sessionId ? agentNoteStore.deleteSession(sessionId) : null;
         if (!note) {
           sendNoContent(response);
@@ -431,6 +446,21 @@ function resolveSessionIdFromOptions(root, options) {
   return selectionStore.readAll()?.latestSessionId ?? null;
 }
 
+function resolveAgentNoteSessionId(root, sessionId, allowGlobalFallback = false) {
+  const explicitSessionId =
+    typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
+  if (explicitSessionId) {
+    return explicitSessionId;
+  }
+
+  const selectionStore = new DevSelectionStore(root);
+  return selectionStore.readAll()?.latestSessionId ?? (allowGlobalFallback ? DEFAULT_AGENT_NOTE_SESSION_ID : null);
+}
+
+function resolveAgentNoteSessionIdFromOptions(root, options, allowGlobalFallback = false) {
+  return resolveAgentNoteSessionId(root, readOptionalString(options, "session-id"), allowGlobalFallback);
+}
+
 function commandGetSelection(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const selectionStore = new DevSelectionStore(root);
@@ -441,17 +471,20 @@ function commandGetSelection(options) {
 
 function commandGetAgentNote(options) {
   const root = typeof options.root === "string" ? options.root : ".";
-  const sessionId = resolveSessionIdFromOptions(root, options);
+  const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
   const agentNoteStore = new AgentNoteStore(root);
   process.stdout.write(`${JSON.stringify(sessionId ? agentNoteStore.readSession(sessionId) : null, null, 2)}\n`);
 }
 
+function commandGetExtensionStatus(options) {
+  const root = typeof options.root === "string" ? options.root : ".";
+  const extensionStatusStore = new BrowserExtensionStatusStore(root);
+  process.stdout.write(`${JSON.stringify(extensionStatusStore.readSummary(), null, 2)}\n`);
+}
+
 function commandSetAgentNote(options) {
   const root = typeof options.root === "string" ? options.root : ".";
-  const sessionId = resolveSessionIdFromOptions(root, options);
-  if (!sessionId) {
-    throw new Error("Missing required option: --session-id (or save an Agent Picker selection first)");
-  }
+  const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
 
   const agentNoteStore = new AgentNoteStore(root);
   const note = agentNoteStore.write(
@@ -469,7 +502,7 @@ function commandSetAgentNote(options) {
 
 function commandClearAgentNote(options) {
   const root = typeof options.root === "string" ? options.root : ".";
-  const sessionId = resolveSessionIdFromOptions(root, options);
+  const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
   const agentNoteStore = new AgentNoteStore(root);
   process.stdout.write(`${JSON.stringify(sessionId ? agentNoteStore.deleteSession(sessionId) : null, null, 2)}\n`);
 }
@@ -541,6 +574,9 @@ export function main(argv = process.argv.slice(2)) {
       break;
     case "get-agent-note":
       commandGetAgentNote(options);
+      break;
+    case "get-extension-status":
+      commandGetExtensionStatus(options);
       break;
     case "set-agent-note":
       commandSetAgentNote(options);

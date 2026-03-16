@@ -206,13 +206,17 @@ function buildAreaSelectionRecord(rect) {
   };
 }
 
+function buildPageRecord() {
+  return {
+    url: window.location.href,
+    pathname: window.location.pathname,
+    title: document.title,
+  };
+}
+
 function buildPageContext(element) {
   return {
-    page: {
-      url: window.location.href,
-      pathname: window.location.pathname,
-      title: document.title,
-    },
+    page: buildPageRecord(),
     element: toSelectionElementRecord(element),
     viewport: getViewportMetrics(),
   };
@@ -220,11 +224,7 @@ function buildPageContext(element) {
 
 function buildAreaPageContext(rect) {
   return {
-    page: {
-      url: window.location.href,
-      pathname: window.location.pathname,
-      title: document.title,
-    },
+    page: buildPageRecord(),
     element: buildAreaSelectionRecord(rect),
     viewport: getViewportMetrics(),
   };

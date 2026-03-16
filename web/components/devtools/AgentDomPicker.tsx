@@ -4,9 +4,10 @@ import { toPng } from "html-to-image";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_AGENT_PICKER_NOTE_SESSION_ID,
+  fetchAgentPickerAgentNote,
   parseAgentPickerAgentNoteEvent,
   type AgentPickerAgentNoteRecord,
-  getAgentPickerAgentNoteEndpoint,
   getAgentPickerAgentNoteStatusLabel,
 } from "../../lib/devtools/agent-note";
 import {
@@ -1071,8 +1072,26 @@ function isPickerElement(element: Element | null) {
   );
 }
 
+function createAgentNoteKey(note: AgentPickerAgentNoteRecord | null) {
+  if (!note) {
+    return null;
+  }
+
+  return [
+    note.author,
+    note.status,
+    note.message,
+    note.updatedAt,
+    note.sessionId,
+    note.selectionId ?? "",
+  ].join("::");
+}
+
 export default function AgentDomPicker() {
-  const [agentNote, setAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
+  const [sessionAgentNote, setSessionAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
+  const [globalAgentNote, setGlobalAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
+  const [renderedAgentNote, setRenderedAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
+  const [isAgentNoteTransitionVisible, setIsAgentNoteTransitionVisible] = useState(false);
   const [dismissedAgentNoteKey, setDismissedAgentNoteKey] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -1095,6 +1114,7 @@ export default function AgentDomPicker() {
 
   const activePreview = hoveredPreview ?? selectedPreviews[selectedPreviews.length - 1] ?? null;
   const activeSessionId = sessionInfo?.id ?? null;
+  const agentNote = sessionAgentNote ?? globalAgentNote;
   const syncSavedTargets = useCallback((nextTargets: SavedSelectionTarget[]) => {
     selectedTargetsRef.current = nextTargets;
     selectedSnapshotMapRef.current = new Map(
@@ -1205,30 +1225,20 @@ export default function AgentDomPicker() {
     );
   }, []);
 
-  const syncAgentNote = useCallback(async (sessionId: string | null) => {
-    if (!sessionId) {
-      setAgentNote(null);
-      return;
-    }
+  const syncAgentNotes = useCallback(async (sessionId: string | null) => {
+    const sessionNotePromise = sessionId ? fetchAgentPickerAgentNote(sessionId).catch(() => null) : Promise.resolve(null);
+    const globalNotePromise =
+      sessionId === DEFAULT_AGENT_PICKER_NOTE_SESSION_ID
+        ? Promise.resolve(null)
+        : fetchAgentPickerAgentNote(DEFAULT_AGENT_PICKER_NOTE_SESSION_ID).catch(() => null);
 
-    try {
-      const response = await fetch(getAgentPickerAgentNoteEndpoint(sessionId), {
-        cache: "no-store",
-      });
+    const [nextSessionNote, nextGlobalNote] = await Promise.all([
+      sessionNotePromise,
+      globalNotePromise,
+    ]);
 
-      if (response.status === 204) {
-        setAgentNote(null);
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error("Failed to load agent note");
-      }
-
-      setAgentNote((await response.json()) as AgentPickerAgentNoteRecord);
-    } catch {
-      setAgentNote(null);
-    }
+    setSessionAgentNote(nextSessionNote);
+    setGlobalAgentNote(nextGlobalNote);
   }, []);
 
   const syncSelectionState = useCallback(
@@ -1291,14 +1301,10 @@ export default function AgentDomPicker() {
   }, [syncSelectionState]);
 
   useEffect(() => {
-    void syncAgentNote(activeSessionId);
-  }, [activeSessionId, syncAgentNote]);
+    void syncAgentNotes(activeSessionId);
+  }, [activeSessionId, syncAgentNotes]);
 
   useEffect(() => {
-    if (!activeSessionId || !isActive) {
-      return;
-    }
-
     if (typeof window === "undefined" || typeof window.EventSource === "undefined") {
       return;
     }
@@ -1306,11 +1312,17 @@ export default function AgentDomPicker() {
     const eventSource = createSceneEventSource();
     const handleAgentNoteEvent = (event: MessageEvent<string>) => {
       const payload = parseAgentPickerAgentNoteEvent(event.data);
-      if (!payload || payload.sessionId !== activeSessionId) {
+      if (!payload) {
         return;
       }
 
-      setAgentNote(payload.deleted ? null : payload.note);
+      if (payload.sessionId === activeSessionId) {
+        setSessionAgentNote(payload.deleted ? null : payload.note);
+      }
+
+      if (payload.sessionId === DEFAULT_AGENT_PICKER_NOTE_SESSION_ID) {
+        setGlobalAgentNote(payload.deleted ? null : payload.note);
+      }
     };
 
     eventSource.addEventListener("agent-note", handleAgentNoteEvent as EventListener);
@@ -1319,18 +1331,18 @@ export default function AgentDomPicker() {
       eventSource.removeEventListener("agent-note", handleAgentNoteEvent as EventListener);
       eventSource.close();
     };
-  }, [activeSessionId, isActive]);
+  }, [activeSessionId]);
 
   useEffect(() => {
     const handleWindowFocus = () => {
       void syncSelectionState().catch(() => {});
-      void syncAgentNote(activeSessionId);
+      void syncAgentNotes(activeSessionId).catch(() => {});
     };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         void syncSelectionState().catch(() => {});
-        void syncAgentNote(activeSessionId);
+        void syncAgentNotes(activeSessionId).catch(() => {});
       }
     };
 
@@ -1340,7 +1352,37 @@ export default function AgentDomPicker() {
       window.removeEventListener("focus", handleWindowFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeSessionId, syncAgentNote, syncSelectionState]);
+  }, [activeSessionId, syncAgentNotes, syncSelectionState]);
+
+  const activeAgentNoteKey = useMemo(() => createAgentNoteKey(agentNote), [agentNote]);
+  const isAgentNoteVisible = Boolean(agentNote && activeAgentNoteKey !== dismissedAgentNoteKey);
+
+  useEffect(() => {
+    if (agentNote && isAgentNoteVisible) {
+      setRenderedAgentNote(agentNote);
+      const frameId = window.requestAnimationFrame(() => {
+        setIsAgentNoteTransitionVisible(true);
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    setIsAgentNoteTransitionVisible(false);
+
+    if (!renderedAgentNote) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setRenderedAgentNote(null);
+    }, 280);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [agentNote, isAgentNoteVisible, renderedAgentNote]);
 
   useEffect(() => {
     const sessionId = sessionIdRef.current || getOrCreateSessionId();
@@ -1782,7 +1824,7 @@ export default function AgentDomPicker() {
     return "border-white/80 bg-white text-[#25C69C] shadow-[0_14px_30px_rgba(15,23,42,0.08)]";
   }, [isActive, selectedPreviews.length]);
   const agentNoteTone = useMemo(() => {
-    switch (agentNote?.status) {
+    switch (renderedAgentNote?.status) {
       case "fixed":
         return "border-[#25C69C]/40 bg-[#effcf7] text-[#16624f]";
       case "in_progress":
@@ -1792,13 +1834,13 @@ export default function AgentDomPicker() {
       default:
         return "border-[#bdd8ff] bg-[#f2f7ff] text-[#285ea8]";
     }
-  }, [agentNote?.status]);
+  }, [renderedAgentNote?.status]);
   const agentNoteTimeLabel = useMemo(() => {
-    if (!agentNote?.updatedAt) {
+    if (!renderedAgentNote?.updatedAt) {
       return null;
     }
 
-    const parsed = new Date(agentNote.updatedAt);
+    const parsed = new Date(renderedAgentNote.updatedAt);
     if (Number.isNaN(parsed.getTime())) {
       return null;
     }
@@ -1807,22 +1849,10 @@ export default function AgentDomPicker() {
       hour: "2-digit",
       minute: "2-digit",
     });
-  }, [agentNote?.updatedAt]);
+  }, [renderedAgentNote?.updatedAt]);
   const agentNoteKey = useMemo(() => {
-    if (!agentNote) {
-      return null;
-    }
-
-    return [
-      agentNote.author,
-      agentNote.status,
-      agentNote.message,
-      agentNote.updatedAt,
-      agentNote.sessionId,
-      agentNote.selectionId ?? "",
-    ].join("::");
-  }, [agentNote]);
-  const isAgentNoteVisible = Boolean(agentNote && agentNoteKey !== dismissedAgentNoteKey);
+    return createAgentNoteKey(renderedAgentNote);
+  }, [renderedAgentNote]);
   const spacingMessage = useMemo(() => {
     if (!activePreview) {
       return null;
@@ -1890,7 +1920,7 @@ export default function AgentDomPicker() {
     setDragSelectionRect(null);
     hoveredElementRef.current = null;
     syncSavedTargets([]);
-    setAgentNote(null);
+    setSessionAgentNote(null);
     if (typeof window !== "undefined") {
       clearStoredValues(
         window.sessionStorage,
@@ -2148,10 +2178,12 @@ export default function AgentDomPicker() {
         </>
       ) : null}
 
-      {position && agentNote && isAgentNoteVisible ? (
+      {position && renderedAgentNote ? (
         <div
           data-agent-picker-ui="true"
-          className={`pointer-events-none fixed z-[2147483002] max-w-[260px] rounded-[1rem] border px-3 py-2 text-[11px] shadow-[0_14px_32px_rgba(15,23,42,0.14)] ${agentNoteTone}`}
+          className={`pointer-events-none fixed z-[2147483002] max-w-[260px] rounded-[1rem] border px-3 py-2 text-[11px] shadow-[0_14px_32px_rgba(15,23,42,0.14)] transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] ${agentNoteTone} ${
+            isAgentNoteTransitionVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+          }`}
           style={{
             left: Math.max(12, position.x - 208),
             top: position.y > 112 ? position.y - 88 : position.y + 56,
@@ -2159,7 +2191,7 @@ export default function AgentDomPicker() {
         >
           <div className="flex items-center justify-between gap-3">
             <p className="font-semibold">
-              {agentNote.author} · {getAgentPickerAgentNoteStatusLabel(agentNote.status)}
+              {renderedAgentNote.author} · {getAgentPickerAgentNoteStatusLabel(renderedAgentNote.status)}
             </p>
             <div className="flex items-center gap-2">
               {agentNoteTimeLabel ? <p className="text-[10px] opacity-70">{agentNoteTimeLabel}</p> : null}
@@ -2173,7 +2205,7 @@ export default function AgentDomPicker() {
               </button>
             </div>
           </div>
-          <p className="mt-1 leading-5">{agentNote.message}</p>
+          <p className="mt-1 leading-5">{renderedAgentNote.message}</p>
         </div>
       ) : null}
 

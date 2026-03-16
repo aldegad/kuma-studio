@@ -2,6 +2,25 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void clearInspectState(tabId);
 });
 
+async function reportStoredExtensionHeartbeat(source, page = null) {
+  try {
+    await reportExtensionHeartbeat(await getStoredDaemonUrl(), {
+      source,
+      page,
+    });
+  } catch {
+    // Ignore daemon availability issues for passive status updates.
+  }
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  void reportStoredExtensionHeartbeat("runtime:on-installed");
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  void reportStoredExtensionHeartbeat("runtime:on-startup");
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void (async () => {
     try {
@@ -13,10 +32,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       switch (message?.type) {
         case "agent-picker:test-daemon":
           await fetchDaemonHealth(daemonUrl);
+          await reportStoredExtensionHeartbeat("popup:test-daemon");
           sendResponse({
             ok: true,
             message: `Bridge reachable at ${daemonUrl}.`,
           });
+          return;
+        case "agent-picker:page-ready":
+          await reportStoredExtensionHeartbeat("content-script:page-ready", message?.page ?? null);
+          sendResponse({ ok: true });
           return;
         case "agent-picker:capture-page":
           sendResponse(await handleCapturePage(daemonUrl, message));

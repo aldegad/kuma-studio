@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } fro
 import { basename, dirname, resolve } from "node:path";
 
 const VALID_STATUSES = new Set(["acknowledged", "in_progress", "fixed", "needs_reselect"]);
+export const DEFAULT_AGENT_NOTE_SESSION_ID = "global-note";
 
 function resolveStateDir(root) {
   const primaryPath = resolve(root, ".agent-picker");

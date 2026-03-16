@@ -1,6 +1,7 @@
 import { getAgentPickerDaemonUrl } from "../scene-daemon";
 
 export type AgentPickerAgentNoteStatus = "acknowledged" | "in_progress" | "fixed" | "needs_reselect";
+export const DEFAULT_AGENT_PICKER_NOTE_SESSION_ID = "global-note";
 
 export interface AgentPickerAgentNoteRecord {
   version: 1;
@@ -37,6 +38,22 @@ export function getAgentPickerAgentNoteEndpoint(sessionId?: string): string {
   }
 
   return endpoint.toString();
+}
+
+export async function fetchAgentPickerAgentNote(sessionId?: string) {
+  const response = await fetch(getAgentPickerAgentNoteEndpoint(sessionId), {
+    cache: "no-store",
+  });
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error("Failed to load agent note");
+  }
+
+  return (await response.json()) as AgentPickerAgentNoteRecord;
 }
 
 export function getAgentPickerAgentNoteStatusLabel(status: AgentPickerAgentNoteStatus) {

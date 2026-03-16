@@ -13,6 +13,39 @@ async function fetchDaemonHealth(daemonUrl) {
   return response.json();
 }
 
+function getExtensionManifestMetadata() {
+  const manifest = chrome.runtime.getManifest();
+
+  return {
+    extensionId: chrome.runtime.id || null,
+    extensionName: manifest?.name || "Agent Picker Bridge",
+    extensionVersion: manifest?.version || "0.0.0",
+    browserName: "chrome",
+  };
+}
+
+async function reportExtensionHeartbeat(daemonUrl, details = {}) {
+  const response = await fetch(`${daemonUrl}/extension-status`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...getExtensionManifestMetadata(),
+      source: details.source || "unknown",
+      page: details.page || null,
+      lastSeenAt: new Date().toISOString(),
+    }),
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to report extension status to ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
 function getSessionLabel(page) {
   try {
     const hostname = new URL(page.url).hostname;

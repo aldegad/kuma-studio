@@ -27,6 +27,7 @@
     "agent-pickerd:get-scene": "node ./packages/server/src/cli.mjs get-scene --root ./example/next-host",
     "agent-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection --root ./example/next-host",
     "agent-pickerd:get-agent-note": "node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host",
+    "agent-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host",
     "agent-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host",
     "agent-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"
   },

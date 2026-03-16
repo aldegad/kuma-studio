@@ -60,7 +60,10 @@ Agent Picker has a shared selection and note model so multiple coding agents can
 
 - latest selection: `npm run agent-pickerd:get-selection`
 - latest note: `npm run agent-pickerd:get-agent-note`
+- browser extension status: `npm run agent-pickerd:get-extension-status`
 - update note: `npm run agent-pickerd:set-agent-note -- --author codex --status in_progress --message "..."`
+
+If no saved selection exists yet, `set-agent-note` falls back to a shared global picker note instead of failing.
 
 Agent-specific guidance lives here:
 
@@ -93,6 +96,7 @@ After you pull new changes, run the same command again to update the installed l
 - `npm run typecheck`: typecheck the example host
 - `npm run test`: run daemon unit tests
 - `npm run agent-pickerd:serve`: start the local daemon for the example host
+- `npm run agent-pickerd:get-extension-status`: show the latest browser extension heartbeat seen by the daemon
 
 ## Docs
 

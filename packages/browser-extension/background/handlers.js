@@ -10,11 +10,23 @@ async function collectPageContext(tabId) {
   return response.pageContext;
 }
 
+async function reportExtensionHeartbeatSafely(daemonUrl, payload) {
+  try {
+    await reportExtensionHeartbeat(daemonUrl, payload);
+  } catch {
+    // Do not block the main capture flow on best-effort presence reporting.
+  }
+}
+
 async function handleCapturePage(daemonUrl, message) {
   const tab = await resolveTargetTab(message);
   const pageContext = await collectPageContext(tab.id);
   const screenshotDataUrl = await captureTabScreenshot(tab.windowId);
   const selection = await saveSelectionToDaemon(daemonUrl, pageContext, screenshotDataUrl);
+  await reportExtensionHeartbeatSafely(daemonUrl, {
+    source: "popup:capture-page",
+    page: pageContext.page,
+  });
 
   return {
     ok: true,
@@ -45,6 +57,11 @@ async function handleStartInspect(daemonUrl, message) {
     await clearInspectState(tab.id);
     throw new Error(response?.error || "Failed to arm inspect mode.");
   }
+
+  await reportExtensionHeartbeatSafely(daemonUrl, {
+    source: "popup:start-inspect",
+    page: createPageRecordFromTab(tab),
+  });
 
   return {
     ok: true,
@@ -78,6 +95,10 @@ async function handleInspectPicked(message, sender) {
     message.pageContext,
     screenshot,
   );
+  await reportExtensionHeartbeatSafely(inspectState.daemonUrl, {
+    source: "content-script:inspect-picked",
+    page: message.pageContext?.page,
+  });
 
   await clearInspectState(tabId);
   await notifyInspectResult(tabId, {
@@ -105,4 +126,23 @@ async function handleInspectFailure(message, sender, error) {
       // Ignore follow-up notification failures after an inspect error.
     }
   }
+}
+
+function createPageRecordFromTab(tab) {
+  const url = typeof tab?.url === "string" ? tab.url : null;
+  let pathname = null;
+
+  if (url) {
+    try {
+      pathname = new URL(url).pathname;
+    } catch {
+      pathname = null;
+    }
+  }
+
+  return {
+    url,
+    pathname,
+    title: typeof tab?.title === "string" && tab.title.trim() ? tab.title.trim() : null,
+  };
 }

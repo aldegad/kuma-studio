@@ -52,9 +52,16 @@ http://127.0.0.1:4312
 npm run agent-pickerd:get-selection
 ```
 
+To check whether the daemon has seen this extension recently, run:
+
+```bash
+npm run agent-pickerd:get-extension-status
+```
+
 ## Notes
 
 - browser-internal pages such as `chrome://...` will not accept the content script
 - screenshots are captured from the visible viewport, not the entire scrollable page
 - dragged area captures are cropped from the visible viewport screenshot before they are saved
 - the extension talks to the same daemon and state files as the embedded provider mode
+- extension status is heartbeat-based: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last heartbeat is stale
