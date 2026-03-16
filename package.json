@@ -21,7 +21,6 @@
     "lint": "node ./scripts/link-example-runtime.mjs && npm run lint --workspace=agent-picker-example-next-host",
     "typecheck": "node ./scripts/link-example-runtime.mjs && npm run typecheck --workspace=agent-picker-example-next-host",
     "test": "vitest run --passWithNoTests",
-    "extension:icons": "python3 ./scripts/build-extension-icons.py",
     "skill:install": "node ./scripts/install-codex-skill.mjs",
     "skill:update": "npm run skill:install",
     "agent-pickerd:serve": "node ./packages/server/src/cli.mjs serve --root ./example/next-host",
