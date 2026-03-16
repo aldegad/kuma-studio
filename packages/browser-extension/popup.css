@@ -25,17 +25,10 @@ body {
   color: var(--ink);
 }
 
-.shell {
+.popup {
   padding: 18px;
-}
-
-.surface {
   display: grid;
   gap: 14px;
-}
-
-.connection-card {
-  padding: 0;
 }
 
 .connection-status {
@@ -99,11 +92,7 @@ body {
   gap: 8px;
 }
 
-.field {
-  display: block;
-}
-
-.field input,
+.connection-form input,
 .prompt-text {
   width: 100%;
   border: 1px solid var(--line-strong);
@@ -113,12 +102,12 @@ body {
   font: inherit;
 }
 
-.field input {
+.connection-form input {
   padding: 11px 13px;
   font-size: 14px;
 }
 
-.field input:focus,
+.connection-form input:focus,
 .prompt-text:focus {
   outline: 2px solid rgba(32, 191, 143, 0.16);
   border-color: rgba(32, 191, 143, 0.5);
@@ -127,11 +116,6 @@ body {
 .action-stack {
   display: grid;
   gap: 10px;
-}
-
-.button-row {
-  display: flex;
-  justify-content: flex-end;
 }
 
 .button {
@@ -234,6 +218,10 @@ kbd {
   gap: 10px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
+}
+
+.prompt-panel > .button {
+  justify-self: end;
 }
 
 .prompt-text {

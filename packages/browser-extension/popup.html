@@ -7,53 +7,45 @@
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="surface">
-        <header class="connection-card">
-          <div class="connection-status">
-            <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
-            <div class="connection-copy">
-              <p id="connection-label" class="connection-label">Checking bridge...</p>
-              <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
-            </div>
-          </div>
-        </header>
+    <main class="popup">
+      <header class="connection-status">
+        <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+        <div class="connection-copy">
+          <p id="connection-label" class="connection-label">Checking bridge...</p>
+          <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
+        </div>
+      </header>
 
-        <section id="connection-form" class="connection-form is-hidden">
-          <label class="field">
-            <input
-              id="daemon-url"
-              type="url"
-              spellcheck="false"
-              placeholder="http://127.0.0.1:4312"
-            />
-          </label>
-          <button id="connect-daemon" type="button" class="button button-secondary">
-            Connect
-          </button>
-        </section>
+      <section id="connection-form" class="connection-form is-hidden">
+        <input
+          id="daemon-url"
+          type="url"
+          spellcheck="false"
+          placeholder="http://127.0.0.1:4312"
+        />
+        <button id="connect-daemon" type="button" class="button button-secondary">
+          Connect
+        </button>
+      </section>
 
-        <section class="action-stack">
-          <button id="capture-page" type="button" class="button button-primary">
-            Capture Current Page
-          </button>
-          <button id="inspect-element" type="button" class="button button-secondary">
-            Pick Element On Page
-          </button>
-        </section>
+      <section class="action-stack">
+        <button id="capture-page" type="button" class="button button-primary">
+          Capture Current Page
+        </button>
+        <button id="inspect-element" type="button" class="button button-secondary">
+          Pick Element On Page
+        </button>
+      </section>
 
-        <p class="micro-copy">Press <kbd>Esc</kbd> to cancel pick mode.</p>
-        <p id="feedback" class="feedback feedback-idle"></p>
-        <p id="last-saved" class="last-saved"></p>
+      <p class="micro-copy">Press <kbd>Esc</kbd> to cancel pick mode.</p>
+      <p id="feedback" class="feedback feedback-idle"></p>
+      <p id="last-saved" class="last-saved"></p>
 
-        <section class="prompt-panel">
-          <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
-          <div class="button-row">
-            <button id="copy-refactor-prompt" type="button" class="button button-ghost">
-              Copy Refactor Prompt
-            </button>
-          </div>
-        </section>
+      <section class="prompt-panel">
+        <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
+        <button id="copy-refactor-prompt" type="button" class="button button-ghost">
+          Copy Refactor Prompt
+        </button>
       </section>
     </main>
     <script src="./shared/runtime.js"></script>
