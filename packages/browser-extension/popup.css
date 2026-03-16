@@ -34,15 +34,30 @@ body {
 .connection-status {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
-  border-radius: 20px;
+}
+
+.connection-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 999px;
   background: var(--mint);
 }
 
+.connection-label,
+.feedback,
+.last-saved,
+.micro-copy {
+  margin: 0;
+}
+
 .status-dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
   flex: 0 0 auto;
 }
@@ -60,30 +75,32 @@ body {
   background: var(--error);
 }
 
-.connection-copy {
-  min-width: 0;
+.connection-status[data-state="connected"] .connection-badge {
+  background: var(--mint);
 }
 
-.connection-label,
-.connection-url,
-.feedback,
-.last-saved,
-.micro-copy {
-  margin: 0;
+.connection-status[data-state="checking"] .connection-badge {
+  background: #fff3dc;
+}
+
+.connection-status[data-state="disconnected"] .connection-badge,
+.connection-status[data-state="error"] .connection-badge {
+  background: #ffe8e8;
 }
 
 .connection-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .connection-url {
-  margin-top: 3px;
-  color: var(--muted);
+  max-width: 190px;
+  color: var(--muted-soft);
   font-size: 11px;
   line-height: 1.35;
-  word-break: break-all;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .connection-form {
@@ -107,8 +124,9 @@ body {
 }
 
 .connection-form input:focus {
-  outline: 2px solid rgba(32, 191, 143, 0.16);
+  outline: none;
   border-color: rgba(32, 191, 143, 0.5);
+  box-shadow: 0 0 0 4px rgba(32, 191, 143, 0.14);
 }
 
 .action-stack {
@@ -161,11 +179,17 @@ body {
 
 .button-ghost {
   padding: 9px 12px;
-  background: transparent;
-  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(219, 229, 234, 0.9);
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.button-ghost:hover {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: #ccd8df;
+  color: #5e6b78;
 }
 
 .micro-copy {
@@ -213,20 +237,27 @@ kbd {
 
 .prompt-panel {
   display: grid;
-  gap: 10px;
   border-top: 1px solid var(--line);
   padding-top: 14px;
 }
 
-.prompt-panel > .button {
-  justify-self: end;
+.prompt-shell {
+  position: relative;
+}
+
+.prompt-shell > .button-ghost {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 1;
+  backdrop-filter: blur(6px);
 }
 
 .prompt-text {
   width: 100%;
-  min-height: 82px;
+  min-height: 108px;
   margin: 0;
-  padding: 12px 13px;
+  padding: 14px 14px 48px;
   border: 1px solid var(--line-strong);
   border-radius: 18px;
   background: #fafbfc;
@@ -236,6 +267,12 @@ kbd {
   line-height: 1.55;
   resize: none;
   white-space: pre-wrap;
+}
+
+.prompt-text:focus {
+  outline: none;
+  border-color: rgba(32, 191, 143, 0.5);
+  box-shadow: 0 0 0 4px rgba(32, 191, 143, 0.14);
 }
 
 .is-hidden {

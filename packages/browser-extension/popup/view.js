@@ -5,6 +5,7 @@ const inspectElementButton = document.getElementById("inspect-element");
 const copyRefactorPromptButton = document.getElementById("copy-refactor-prompt");
 const refactorPromptElement = document.getElementById("refactor-prompt");
 const connectionFormElement = document.getElementById("connection-form");
+const connectionStatusElement = document.getElementById("connection-status");
 const connectionDotElement = document.getElementById("connection-dot");
 const connectionLabelElement = document.getElementById("connection-label");
 const connectionUrlElement = document.getElementById("connection-url");
@@ -43,6 +44,7 @@ function setRefactorPrompt(message) {
 }
 
 function setConnectionState({ state, label, url, showForm }) {
+  connectionStatusElement.dataset.state = state;
   connectionDotElement.className = `status-dot status-dot-${state}`;
   connectionLabelElement.textContent = label;
   connectionUrlElement.textContent = url;

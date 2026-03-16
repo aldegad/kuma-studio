@@ -8,12 +8,12 @@
   </head>
   <body>
     <main class="popup">
-      <header class="connection-status">
-        <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
-        <div class="connection-copy">
+      <header id="connection-status" class="connection-status">
+        <div class="connection-badge">
+          <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
           <p id="connection-label" class="connection-label">Checking bridge...</p>
-          <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
         </div>
+        <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
       </header>
 
       <section id="connection-form" class="connection-form is-hidden">
@@ -42,10 +42,12 @@
       <p id="last-saved" class="last-saved"></p>
 
       <section class="prompt-panel">
-        <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
-        <button id="copy-refactor-prompt" type="button" class="button button-ghost">
-          Copy Refactor Prompt
-        </button>
+        <div class="prompt-shell">
+          <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
+          <button id="copy-refactor-prompt" type="button" class="button button-ghost">
+            Copy Refactor Prompt
+          </button>
+        </div>
       </section>
     </main>
     <script src="./shared/runtime.js"></script>
