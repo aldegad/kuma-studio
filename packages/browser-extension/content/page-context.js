@@ -162,6 +162,50 @@ function getPageTargetElement() {
   return document.querySelector("main, [role='main']") || document.body || document.documentElement;
 }
 
+function getViewportMetrics() {
+  return {
+    width: window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0,
+    height: window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0,
+    devicePixelRatio: window.devicePixelRatio || 1,
+  };
+}
+
+function normalizeSelectionRect(rect) {
+  return {
+    x: Math.max(0, Math.round(rect.x)),
+    y: Math.max(0, Math.round(rect.y)),
+    width: Math.max(0, Math.round(rect.width)),
+    height: Math.max(0, Math.round(rect.height)),
+  };
+}
+
+function buildAreaSelectionRecord(rect) {
+  const normalizedRect = normalizeSelectionRect(rect);
+  const selector = `area:${normalizedRect.x},${normalizedRect.y},${normalizedRect.width},${normalizedRect.height}`;
+
+  return {
+    tagName: "area-selection",
+    id: null,
+    classNames: [],
+    role: null,
+    textPreview: "",
+    selector,
+    selectorPath: selector,
+    dataset: {},
+    rect: normalizedRect,
+    boxModel: {
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      padding: { top: 0, right: 0, bottom: 0, left: 0 },
+      border: { top: 0, right: 0, bottom: 0, left: 0 },
+      marginRect: normalizedRect,
+      paddingRect: normalizedRect,
+      contentRect: normalizedRect,
+    },
+    typography: null,
+    outerHTMLSnippet: "<!-- area selection -->",
+  };
+}
+
 function buildPageContext(element) {
   return {
     page: {
@@ -170,5 +214,18 @@ function buildPageContext(element) {
       title: document.title,
     },
     element: toSelectionElementRecord(element),
+    viewport: getViewportMetrics(),
+  };
+}
+
+function buildAreaPageContext(rect) {
+  return {
+    page: {
+      url: window.location.href,
+      pathname: window.location.pathname,
+      title: document.title,
+    },
+    element: buildAreaSelectionRecord(rect),
+    viewport: getViewportMetrics(),
   };
 }

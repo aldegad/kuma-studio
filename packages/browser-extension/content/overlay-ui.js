@@ -108,6 +108,15 @@ function hideOverlay() {
   }
 }
 
+function placeLabel(left, top, text) {
+  ensureUi();
+
+  labelElement.style.display = "block";
+  labelElement.textContent = text;
+  labelElement.style.left = `${Math.max(8, Math.min(left, window.innerWidth - 288))}px`;
+  labelElement.style.top = `${Math.max(8, Math.min(top, window.innerHeight - 42))}px`;
+}
+
 function showToast(message, tone) {
   ensureUi();
 
@@ -147,10 +156,27 @@ function updateOverlay(element) {
   outlineElement.style.top = `${rect.top}px`;
   outlineElement.style.width = `${rect.width}px`;
   outlineElement.style.height = `${rect.height}px`;
+  outlineElement.style.background = "rgba(37, 198, 156, 0.12)";
+  outlineElement.style.boxShadow = "0 0 0 1px rgba(37, 198, 156, 0.18)";
+  placeLabel(rect.left, rect.top - 30, `${element.tagName.toLowerCase()} ${createSelector(element)}`);
+  return true;
+}
 
-  labelElement.style.display = "block";
-  labelElement.textContent = `${element.tagName.toLowerCase()} ${createSelector(element)}`;
-  labelElement.style.left = `${Math.max(8, rect.left)}px`;
-  labelElement.style.top = `${Math.max(8, rect.top - 30)}px`;
+function updateAreaOverlay(rect) {
+  ensureUi();
+
+  if (!rect || rect.width < 2 || rect.height < 2) {
+    hideOverlay();
+    return false;
+  }
+
+  outlineElement.style.display = "block";
+  outlineElement.style.left = `${rect.x}px`;
+  outlineElement.style.top = `${rect.y}px`;
+  outlineElement.style.width = `${rect.width}px`;
+  outlineElement.style.height = `${rect.height}px`;
+  outlineElement.style.background = "rgba(37, 198, 156, 0.14)";
+  outlineElement.style.boxShadow = "0 0 0 1px rgba(37, 198, 156, 0.18)";
+  placeLabel(rect.x, rect.y - 30, `area ${Math.round(rect.width)} x ${Math.round(rect.height)}`);
   return true;
 }

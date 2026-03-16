@@ -23,6 +23,16 @@ async function handleCapturePage(daemonUrl, message) {
   };
 }
 
+async function captureInspectScreenshot(windowId, message) {
+  const screenshotDataUrl = await captureTabScreenshot(windowId);
+
+  if (!message.captureRect) {
+    return screenshotDataUrl;
+  }
+
+  return cropTabScreenshot(screenshotDataUrl, message.captureRect, message.pageContext?.viewport);
+}
+
 async function handleStartInspect(daemonUrl, message) {
   const tab = await resolveTargetTab(message);
   await setInspectState(tab.id, daemonUrl);
@@ -62,11 +72,11 @@ async function handleInspectPicked(message, sender) {
     throw new Error("Inspect mode is no longer active for this tab.");
   }
 
-  const screenshotDataUrl = await captureTabScreenshot(windowId);
+  const screenshot = await captureInspectScreenshot(windowId, message);
   const selection = await saveSelectionToDaemon(
     inspectState.daemonUrl,
     message.pageContext,
-    screenshotDataUrl,
+    screenshot,
   );
 
   await clearInspectState(tabId);

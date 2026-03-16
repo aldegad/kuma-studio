@@ -103,8 +103,8 @@ capturePageButton.addEventListener("click", async () => {
 inspectElementButton.addEventListener("click", async () => {
   const ok = await runAction(
     "agent-picker:start-inspect",
-    "Inspect mode armed. Click the page element you want to save.",
-    "Inspect mode armed. Click the target element in the page.",
+    "Inspect mode armed. Click an element or drag an area in the page.",
+    "Inspect mode armed. Click the target element or drag the area you want to save.",
   );
 
   if (ok) {

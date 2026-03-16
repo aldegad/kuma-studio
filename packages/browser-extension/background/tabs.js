@@ -33,6 +33,87 @@ async function captureTabScreenshot(windowId) {
   return chrome.tabs.captureVisibleTab(windowId, { format: "png" });
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeViewportRect(rect) {
+  const candidate = rect && typeof rect === "object" ? rect : {};
+
+  return {
+    x: typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : 0,
+    y: typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : 0,
+    width: typeof candidate.width === "number" && Number.isFinite(candidate.width) ? candidate.width : 0,
+    height: typeof candidate.height === "number" && Number.isFinite(candidate.height) ? candidate.height : 0,
+  };
+}
+
+function base64FromBytes(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+
+  return btoa(binary);
+}
+
+async function cropTabScreenshot(screenshotDataUrl, rect, viewport) {
+  const normalizedRect = normalizeViewportRect(rect);
+  const viewportWidth = Number(viewport?.width) || 0;
+  const viewportHeight = Number(viewport?.height) || 0;
+
+  if (normalizedRect.width < 1 || normalizedRect.height < 1) {
+    throw new Error("The dragged area is too small to capture.");
+  }
+
+  if (viewportWidth < 1 || viewportHeight < 1) {
+    throw new Error("Missing viewport metrics for the dragged capture.");
+  }
+
+  const response = await fetch(screenshotDataUrl);
+  const blob = await response.blob();
+  const bitmap = await createImageBitmap(blob);
+
+  try {
+    const scaleX = bitmap.width / viewportWidth;
+    const scaleY = bitmap.height / viewportHeight;
+    const sourceX = clamp(Math.round(normalizedRect.x * scaleX), 0, Math.max(0, bitmap.width - 1));
+    const sourceY = clamp(Math.round(normalizedRect.y * scaleY), 0, Math.max(0, bitmap.height - 1));
+    const sourceWidth = clamp(
+      Math.round(normalizedRect.width * scaleX),
+      1,
+      Math.max(1, bitmap.width - sourceX),
+    );
+    const sourceHeight = clamp(
+      Math.round(normalizedRect.height * scaleY),
+      1,
+      Math.max(1, bitmap.height - sourceY),
+    );
+    const canvas = new OffscreenCanvas(sourceWidth, sourceHeight);
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Failed to create a canvas for dragged capture.");
+    }
+
+    context.drawImage(bitmap, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight);
+
+    const croppedBlob = await canvas.convertToBlob({ type: "image/png" });
+    const croppedBytes = new Uint8Array(await croppedBlob.arrayBuffer());
+
+    return {
+      dataUrl: `data:image/png;base64,${base64FromBytes(croppedBytes)}`,
+      mimeType: "image/png",
+      width: sourceWidth,
+      height: sourceHeight,
+    };
+  } finally {
+    bitmap.close();
+  }
+}
+
 async function enableInspectBadge(tabId) {
   await chrome.action.setBadgeBackgroundColor({
     tabId,

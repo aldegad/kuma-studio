@@ -22,19 +22,36 @@ function getSessionLabel(page) {
   }
 }
 
-function createSelectionPayload(pageContext, screenshotDataUrl) {
+function createSnapshotPayload(screenshot, capturedAt) {
+  if (!screenshot) {
+    return null;
+  }
+
+  if (typeof screenshot === "string") {
+    return {
+      dataUrl: screenshot,
+      mimeType: "image/png",
+      width: 0,
+      height: 0,
+      capturedAt,
+    };
+  }
+
+  return {
+    dataUrl: screenshot.dataUrl,
+    mimeType: screenshot.mimeType || "image/png",
+    width: screenshot.width || 0,
+    height: screenshot.height || 0,
+    capturedAt: screenshot.capturedAt || capturedAt,
+  };
+}
+
+function createSelectionPayload(pageContext, screenshot) {
   const capturedAt = new Date().toISOString();
+  const snapshot = createSnapshotPayload(screenshot, capturedAt);
   const element = {
     ...pageContext.element,
-    snapshot: screenshotDataUrl
-      ? {
-          dataUrl: screenshotDataUrl,
-          mimeType: "image/png",
-          width: 0,
-          height: 0,
-          capturedAt,
-        }
-      : null,
+    snapshot,
   };
 
   return {
@@ -52,13 +69,13 @@ function createSelectionPayload(pageContext, screenshotDataUrl) {
   };
 }
 
-async function saveSelectionToDaemon(daemonUrl, pageContext, screenshotDataUrl) {
+async function saveSelectionToDaemon(daemonUrl, pageContext, screenshot) {
   const response = await fetch(`${daemonUrl}/dev-selection`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(createSelectionPayload(pageContext, screenshotDataUrl)),
+    body: JSON.stringify(createSelectionPayload(pageContext, screenshot)),
   });
 
   if (!response.ok) {
