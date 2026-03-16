@@ -92,8 +92,7 @@ body {
   gap: 8px;
 }
 
-.connection-form input,
-.prompt-text {
+.connection-form input {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 18px;
@@ -107,8 +106,7 @@ body {
   font-size: 14px;
 }
 
-.connection-form input:focus,
-.prompt-text:focus {
+.connection-form input:focus {
   outline: 2px solid rgba(32, 191, 143, 0.16);
   border-color: rgba(32, 191, 143, 0.5);
 }
@@ -216,8 +214,10 @@ kbd {
 .prompt-panel {
   display: grid;
   gap: 10px;
-  padding-top: 14px;
   border-top: 1px solid var(--line);
+  padding: 14px 14px 0;
+  border-radius: 20px;
+  background: #fafbfc;
 }
 
 .prompt-panel > .button {
@@ -225,13 +225,15 @@ kbd {
 }
 
 .prompt-text {
-  min-height: 74px;
-  padding: 12px 13px;
-  resize: none;
-  background: #fafbfc;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #7b8794;
   font-size: 12px;
   line-height: 1.55;
+  white-space: pre-wrap;
 }
 
 .is-hidden {
