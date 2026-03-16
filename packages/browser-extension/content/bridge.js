@@ -1,3 +1,7 @@
+function getInteractiveApi() {
+  return globalThis.AgentPickerExtensionInteractive ?? null;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   switch (message?.type) {
     case "agent-picker:collect-page":
@@ -7,11 +11,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       });
       return false;
     case "agent-picker:start-inspect":
-      startInspectMode();
+      if (!getInteractiveApi()?.startInspectMode) {
+        sendResponse({
+          ok: false,
+          error: "The Agent Picker inspect tools are not loaded for this page yet.",
+        });
+        return false;
+      }
+
+      getInteractiveApi().startInspectMode();
       sendResponse({ ok: true });
       return false;
     case "agent-picker:inspect-result":
-      showToast(
+      getInteractiveApi()?.showToast?.(
         message.message || (message.ok ? "Element saved." : "Failed to save the picked element."),
         message.ok ? "info" : "error",
       );

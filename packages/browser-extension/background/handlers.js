@@ -47,6 +47,7 @@ async function captureInspectScreenshot(windowId, message) {
 
 async function handleStartInspect(daemonUrl, message) {
   const tab = await resolveTargetTab(message);
+  await ensureInteractiveAgentPicker(tab.id);
   await setInspectState(tab.id, daemonUrl);
   await enableInspectBadge(tab.id);
 

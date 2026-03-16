@@ -13,6 +13,10 @@ pages into a local `agent-pickerd` daemon.
 This MVP does not try to map DOM nodes back to app source code or React
 components. It is meant to prove the bridge model on real websites first.
 
+The extension keeps a lightweight bootstrap content script on regular pages so
+the daemon can see the current tab context, and loads the heavier inspect UI
+only when you explicitly start picking from the popup.
+
 ## Load It In Chrome
 
 1. start a local daemon
