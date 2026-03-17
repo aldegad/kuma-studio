@@ -77,7 +77,15 @@ function describeElementForCommand(element) {
 }
 
 function getCommandCandidates() {
-  return Array.from(document.querySelectorAll(COMMAND_INTERACTIVE_SELECTOR)).filter(isVisibleElement);
+  return getCommandCandidatesWithinRoot(document.body || document.documentElement);
+}
+
+function getCommandCandidatesWithinRoot(root) {
+  if (!(root instanceof Element)) {
+    return [];
+  }
+
+  return Array.from(root.querySelectorAll(COMMAND_INTERACTIVE_SELECTOR)).filter(isVisibleElement);
 }
 
 function getAccessibleText(element) {
@@ -214,30 +222,103 @@ function findElementBySelector(selector) {
 }
 
 function findElementByText(text) {
+  return findElementByTextWithConstraints(text, {}, document.body || document.documentElement);
+}
+
+function normalizeRole(value) {
+  return normalizeText(value).toLowerCase() || null;
+}
+
+function matchesRequestedRole(element, requestedRole) {
+  const normalizedRole = normalizeRole(requestedRole);
+  if (!normalizedRole) {
+    return true;
+  }
+
+  return normalizeRole(element.getAttribute("role")) === normalizedRole || element.tagName.toLowerCase() === normalizedRole;
+}
+
+function resolveWithinRoot(command) {
+  const documentRoot = document.body || document.documentElement;
+  const withinText = normalizeText(command?.within);
+
+  if (!withinText) {
+    return documentRoot;
+  }
+
+  const anchor = findElementByTextWithinRoot(withinText, documentRoot);
+  if (!(anchor instanceof Element)) {
+    throw new Error(`Failed to find a visible container matching "${command.within}".`);
+  }
+
+  return (
+    anchor.closest(
+      "[role='dialog'], [role='tabpanel'], [role='tablist'], [role='group'], fieldset, form, section, article, main, nav, aside, label, div",
+    ) ??
+    anchor.parentElement ??
+    documentRoot
+  );
+}
+
+function selectNthMatch(matches, command, description) {
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const nth = command?.nth;
+  if (nth == null) {
+    return matches[0]?.element ?? null;
+  }
+
+  if (!Number.isInteger(nth) || nth < 1) {
+    throw new Error(`${description} requires a positive integer --nth value.`);
+  }
+
+  if (matches.length < nth) {
+    throw new Error(`Only found ${matches.length} matching ${description}. Requested --nth ${nth}.`);
+  }
+
+  return matches[nth - 1].element;
+}
+
+function findElementByTextWithConstraints(text, command, root = document.body || document.documentElement) {
   const normalizedNeedle = normalizeText(text);
   if (!normalizedNeedle) {
     return null;
   }
 
-  const candidates = getCommandCandidates().map((element) => ({
-    element,
-    text: getAccessibleText(element),
-  }));
+  const exactText = command?.exactText === true;
+  const candidates = getCommandCandidatesWithinRoot(root)
+    .filter((element) => matchesRequestedRole(element, command?.role))
+    .map((element) => {
+      const candidateText = getAccessibleText(element);
+      return {
+        element,
+        text: candidateText,
+        score: exactText ? Number(candidateText === normalizedNeedle) : scoreTextMatch(candidateText, normalizedNeedle),
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.text.length - right.text.length);
 
-  return (
-    candidates.find((entry) => entry.text === normalizedNeedle)?.element ??
-    candidates.find((entry) => entry.text.includes(normalizedNeedle))?.element ??
-    null
-  );
+  return selectNthMatch(candidates, command, "browser-click target");
 }
 
 function resolveCommandTarget(command, options = {}) {
-  const selectorTarget = findElementBySelector(command?.selectorPath) ?? findElementBySelector(command?.selector);
+  const scopeRoot = resolveWithinRoot(command);
+  const selectorTarget =
+    findElementBySelectorWithinRoot(command?.selectorPath, scopeRoot) ??
+    findElementBySelectorWithinRoot(command?.selector, scopeRoot) ??
+    findElementBySelector(command?.selectorPath) ??
+    findElementBySelector(command?.selector);
   if (selectorTarget) {
+    if (!matchesRequestedRole(selectorTarget, command?.role)) {
+      throw new Error(`The matched selector target does not satisfy the requested role "${command.role}".`);
+    }
     return selectorTarget;
   }
 
-  const textTarget = findElementByText(command?.text);
+  const textTarget = findElementByTextWithConstraints(command?.text, command, scopeRoot);
   if (textTarget) {
     return textTarget;
   }
@@ -352,6 +433,33 @@ function dispatchClickSequence(target, clientX, clientY) {
   dispatchMouseEvent(target, "pointerup", clientX, clientY);
   dispatchMouseEvent(target, "mouseup", clientX, clientY);
   dispatchMouseEvent(target, "click", clientX, clientY);
+}
+
+function readClickOutcome(target) {
+  const page = buildPageRecord();
+  return {
+    page,
+    ariaSelected: target.getAttribute?.("aria-selected") ?? null,
+    dataState: target.getAttribute?.("data-state") ?? null,
+    open: target.hasAttribute?.("open") ?? false,
+  };
+}
+
+function shouldUseSemanticClickFallback(target, before, after) {
+  const isTabLike =
+    normalizeRole(target.getAttribute?.("role")) === "tab" || Boolean(target.getAttribute?.("aria-controls"));
+
+  if (!isTabLike) {
+    return false;
+  }
+
+  return (
+    before.page?.url === after.page?.url &&
+    before.page?.pathname === after.page?.pathname &&
+    before.ariaSelected === after.ariaSelected &&
+    before.dataState === after.dataState &&
+    before.open === after.open
+  );
 }
 
 function getPointTarget(command) {
@@ -495,12 +603,24 @@ async function executeClickCommand(command) {
   }
 
   focusElement(target);
+  const before = readClickOutcome(target);
+  const rect = target.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const centerY = rect.top + rect.height / 2;
+  let fallbackUsed = false;
 
   if (target instanceof HTMLElement) {
     target.click();
   } else {
-    const rect = target.getBoundingClientRect();
-    dispatchClickSequence(target, rect.left + rect.width / 2, rect.top + rect.height / 2);
+    dispatchClickSequence(target, centerX, centerY);
+  }
+
+  await waitForDelay(Math.min(150, Math.max(50, Math.round((command?.postActionDelayMs ?? 400) / 2))));
+
+  const afterPrimaryClick = readClickOutcome(target);
+  if (shouldUseSemanticClickFallback(target, before, afterPrimaryClick)) {
+    dispatchClickSequence(target, centerX, centerY);
+    fallbackUsed = true;
   }
 
   await waitForPostActionDelay(command, 400);
@@ -508,6 +628,7 @@ async function executeClickCommand(command) {
   return {
     page: buildPageRecord(),
     clickedElement: describeElementForCommand(target),
+    fallbackUsed,
   };
 }
 
@@ -725,15 +846,38 @@ async function executeWaitForDialogCloseCommand(command) {
 
 function serializeQueryResult(element) {
   const record = describeElementForCommand(element);
+  const textContent = normalizeText(element.textContent).slice(0, 400) || null;
+  const ariaSelected = element.getAttribute("aria-selected");
+  const ariaInvalid = element.getAttribute("aria-invalid");
+  const displayValue =
+    element instanceof HTMLSelectElement
+      ? normalizeText(
+          Array.from(element.selectedOptions)
+            .map((option) => option.textContent)
+            .join(" "),
+        ) || null
+      : record.valuePreview ?? record.value ?? null;
   return {
     label: record.label,
     tagName: record.tagName,
     role: record.role,
     selector: record.selector,
     selectorPath: record.selectorPath,
+    value: record.value,
+    displayValue,
+    valuePreview: record.valuePreview,
+    checked: record.checked,
+    selectedValue: record.selectedValue,
+    selectedValues: record.selectedValues,
     required: record.required,
     placeholder: record.placeholder,
-    valuePreview: record.valuePreview,
+    disabled: record.disabled,
+    readOnly: record.readOnly,
+    inputType: record.inputType,
+    ariaSelected: ariaSelected == null ? null : ariaSelected === "true",
+    ariaInvalid: ariaInvalid == null ? null : ariaInvalid === "true",
+    visible: isVisibleElement(element),
+    textContent,
     rect: record.rect,
   };
 }
@@ -786,6 +930,12 @@ function queryNearbyInput(scope, text) {
   return target ? [target] : [];
 }
 
+function queryInputByLabel(scope, text) {
+  const root = getQueryableRoot(scope);
+  const target = findBestFillableByLabel(text, root);
+  return target ? [target] : [];
+}
+
 async function executeQueryDomCommand(command) {
   const kind = normalizeText(command?.kind).toLowerCase();
   const scope = command?.scope === "dialog" ? "dialog" : "page";
@@ -804,6 +954,14 @@ async function executeQueryDomCommand(command) {
         throw new Error('browser-query-dom --kind nearby-input requires --text.');
       }
       elements = queryNearbyInput(scope, text);
+      break;
+    }
+    case "input-by-label": {
+      const text = normalizeText(command?.text);
+      if (!text) {
+        throw new Error('browser-query-dom --kind input-by-label requires --text.');
+      }
+      elements = queryInputByLabel(scope, text);
       break;
     }
     default:

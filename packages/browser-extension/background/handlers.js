@@ -428,25 +428,24 @@ async function executeBrowserCommand(tab, command) {
     case "query-dom":
       return sendAgentCommandToTab(tab.id, command);
     case "screenshot": {
-      if (tab.active !== true) {
-        throw new Error("Visible-tab screenshots require the target tab to be active in its Chrome window.");
-      }
-
-      const targetWindow = await chrome.windows.get(tab.windowId);
-      if (targetWindow.focused !== true) {
-        throw new Error("Visible-tab screenshots require the target Chrome window to be focused.");
-      }
-
       const pageContext = await collectPageContext(tab.id);
-      const dataUrl = await captureTabScreenshot(tab.windowId);
+      const capture = await captureTargetTabScreenshot(tab, {
+        focusTabFirst: command?.focusTabFirst !== false,
+      });
       return {
         page: pageContext.page,
         screenshot: {
-          dataUrl,
+          dataUrl: capture.dataUrl,
           mimeType: "image/png",
           width: 0,
           height: 0,
           capturedAt: new Date().toISOString(),
+        },
+        capture: {
+          tabId: capture.tabId,
+          windowId: capture.windowId,
+          focused: capture.focused,
+          active: capture.active,
         },
       };
     }

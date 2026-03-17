@@ -11,6 +11,7 @@
     "tabs"
   ],
   "host_permissions": [
+    "<all_urls>",
     "http://127.0.0.1/*",
     "http://localhost/*",
     "ws://127.0.0.1/*",

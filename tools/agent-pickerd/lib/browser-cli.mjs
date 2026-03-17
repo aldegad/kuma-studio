@@ -255,9 +255,17 @@ export async function commandBrowserClick(options) {
   const selector = readOptionalString(options, "selector");
   const selectorPath = readOptionalString(options, "selector-path");
   const text = readOptionalString(options, "text");
+  const role = readOptionalString(options, "role");
+  const within = readOptionalString(options, "within");
+  const nth = readNumber(options, "nth", null);
+  const exactText = options["exact-text"] === true;
 
   if (!selector && !selectorPath && !text) {
     throw new Error("browser-click requires --selector, --selector-path, or --text.");
+  }
+
+  if (nth != null && (!Number.isInteger(nth) || nth < 1)) {
+    throw new Error("browser-click --nth must be a positive integer.");
   }
 
   const result = await enqueueBrowserCommand(options, {
@@ -265,6 +273,10 @@ export async function commandBrowserClick(options) {
     selector,
     selectorPath,
     text,
+    role,
+    within,
+    nth,
+    exactText,
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 400),
   });
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
@@ -393,8 +405,8 @@ export async function commandBrowserQueryDom(options) {
     throw new Error("browser-query-dom requires --kind.");
   }
 
-  if (kind === "nearby-input" && !text) {
-    throw new Error('browser-query-dom --kind nearby-input requires --text.');
+  if ((kind === "nearby-input" || kind === "input-by-label") && !text) {
+    throw new Error(`browser-query-dom --kind ${kind} requires --text.`);
   }
 
   const result = await enqueueBrowserCommand(options, {
@@ -410,8 +422,10 @@ export async function commandBrowserScreenshot(options) {
   const file = requireString(options, "file");
   const result = await enqueueBrowserCommand(options, {
     type: "screenshot",
+    focusTabFirst: options["focus-tab-first"] !== false,
   });
   const screenshot = result.result?.screenshot ?? null;
+  const capture = result.result?.capture ?? null;
 
   if (!screenshot?.dataUrl) {
     throw new Error("The browser screenshot result did not include image data.");
@@ -426,6 +440,10 @@ export async function commandBrowserScreenshot(options) {
         width: screenshot.width ?? 0,
         height: screenshot.height ?? 0,
         capturedAt: screenshot.capturedAt ?? null,
+        capturedTabId: capture?.tabId ?? null,
+        capturedWindowId: capture?.windowId ?? null,
+        focused: capture?.focused ?? null,
+        active: capture?.active ?? null,
       },
       null,
       2,

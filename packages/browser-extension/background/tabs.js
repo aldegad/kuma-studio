@@ -82,6 +82,70 @@ async function captureTabScreenshot(windowId) {
   return chrome.tabs.captureVisibleTab(windowId, { format: "png" });
 }
 
+function waitForDelay(ms) {
+  return new Promise((resolvePromise) => {
+    setTimeout(resolvePromise, ms);
+  });
+}
+
+async function focusTargetTab(tab) {
+  if (!isResolvableTab(tab)) {
+    throw new Error("Failed to focus the target browser tab before taking a screenshot.");
+  }
+
+  await chrome.windows.update(tab.windowId, { focused: true });
+  const activatedTab = await chrome.tabs.update(tab.id, { active: true });
+  return activatedTab?.id ? activatedTab : chrome.tabs.get(tab.id);
+}
+
+async function waitForFocusedTargetTab(tab, attempts = 5, delayMs = 100) {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const [targetWindow, refreshedTab] = await Promise.all([
+      chrome.windows.get(tab.windowId),
+      chrome.tabs.get(tab.id),
+    ]);
+
+    if (targetWindow.focused === true && refreshedTab.active === true) {
+      return {
+        tab: refreshedTab,
+        window: targetWindow,
+      };
+    }
+
+    if (attempt < attempts - 1) {
+      await waitForDelay(delayMs);
+    }
+  }
+
+  return {
+    tab: await chrome.tabs.get(tab.id),
+    window: await chrome.windows.get(tab.windowId),
+  };
+}
+
+async function captureTargetTabScreenshot(tab, { focusTabFirst = true } = {}) {
+  const targetTab = focusTabFirst ? await focusTargetTab(tab) : tab;
+  const focusedTarget = await waitForFocusedTargetTab(targetTab);
+  const confirmedTab = focusedTarget.tab;
+  const targetWindow = focusedTarget.window;
+
+  if (confirmedTab.active !== true) {
+    throw new Error("Failed to activate the target tab before taking a screenshot.");
+  }
+
+  if (targetWindow.focused !== true) {
+    throw new Error("Failed to focus the target Chrome window before taking a screenshot.");
+  }
+
+  return {
+    dataUrl: await captureTabScreenshot(confirmedTab.windowId),
+    tabId: confirmedTab.id,
+    windowId: confirmedTab.windowId,
+    focused: targetWindow.focused === true,
+    active: confirmedTab.active === true,
+  };
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }

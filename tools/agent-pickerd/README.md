@@ -132,15 +132,15 @@ node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
 node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.com"
-node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting.com" --text "다음"
+node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting.com" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
-node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
+node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
 node ./packages/server/src/cli.mjs browser-wait-for-selector --url-contains "facebook.com" --selector ".toast-success"
-node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind nearby-input --text "사이트 URL" --scope dialog
+node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind input-by-label --text "사이트 URL" --scope dialog
 node ./packages/server/src/cli.mjs browser-screenshot --url-contains "ddalkkakposting.com" --file ./tmp/current-tab.png
 node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```

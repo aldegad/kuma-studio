@@ -83,14 +83,14 @@ open and use the daemon CLI with an explicit tab target:
 node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs browser-context --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
-node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "API 개별 연동"
+node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role tab --exact-text --text "API 개별 연동"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
-node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
+node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
-node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind nearby-input --text "사이트 URL" --scope dialog
+node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind input-by-label --text "사이트 URL" --scope dialog
 node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers.portone.io" --file ./tmp/portone.png
 ```
 

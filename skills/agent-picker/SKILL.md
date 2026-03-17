@@ -45,16 +45,23 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 4. Use the narrowest targeted browser command that answers the question.
    - `npm run agent-pickerd:browser-context -- --url-contains "example.com"`
    - `npm run agent-pickerd:browser-dom -- --url-contains "example.com"`
-   - `npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"`
+   - `npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"`
    - `npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"`
    - `npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab`
    - `npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360`
    - `npm run agent-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog`
-   - `npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind nearby-input --text "Site URL" --scope dialog`
+   - `npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind input-by-label --text "Site URL" --scope dialog`
    - `npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png`
 5. Remember the current limitation.
    - DOM reads and clicks can target background tabs.
-   - Visible-tab screenshots still require the target tab to be the active focused tab in Chrome.
+   - Screenshots will focus the requested target tab first, so prefer `--tab-id` or a precise URL target before capturing.
+
+## Browser write safety
+
+- Never infer success from a click alone.
+- After any write action, verify the persisted state with a direct readback.
+- Prefer selector, role, and label targeting over text-only clicks when duplicate text may exist.
+- Use point clicks only after semantic targeting fails.
 
 ## Note statuses
 

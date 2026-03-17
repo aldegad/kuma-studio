@@ -17,12 +17,12 @@ npm run agent-pickerd:get-agent-note
 npm run agent-pickerd:get-browser-session
 npm run agent-pickerd:browser-context -- --url-contains "example.com"
 npm run agent-pickerd:browser-dom -- --url-contains "example.com"
-npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"
+npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
 npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
 npm run agent-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
-npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind nearby-input --text "Site URL" --scope dialog
+npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind input-by-label --text "Site URL" --scope dialog
 npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
@@ -39,7 +39,7 @@ npm run agent-pickerd:get-agent-note
 npm run agent-pickerd:get-browser-session
 npm run agent-pickerd:browser-context -- --url-contains "example.com"
 npm run agent-pickerd:browser-dom -- --url-contains "example.com"
-npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"
+npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
 npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
