@@ -1,14 +1,23 @@
-import http from "node:http";
-import { writeFileSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { AgentNoteStore, DEFAULT_AGENT_NOTE_SESSION_ID, watchAgentNotes } from "./lib/agent-note-store.mjs";
-import { BrowserSessionStore } from "./lib/browser-session-store.mjs";
+
+import { AgentNoteStore } from "./lib/agent-note-store.mjs";
+import {
+  commandBrowserClick,
+  commandBrowserContext,
+  commandBrowserDom,
+  commandBrowserScreenshot,
+  commandGetBrowserSession,
+} from "./lib/browser-cli.mjs";
+import { parseFlags, readNumber, readOptionalString, requireString } from "./lib/cli-options.mjs";
+export { createServer } from "./lib/server.mjs";
+import { createServer } from "./lib/server.mjs";
 import { BrowserExtensionStatusStore } from "./lib/browser-extension-status-store.mjs";
 import { DevSelectionStore } from "./lib/dev-selection-store.mjs";
-import { encodeAgentNoteEvent, encodeSceneEvent, ensureSceneShape, normalizeViewport } from "./lib/scene-schema.mjs";
-import { SceneStore, watchSceneFile } from "./lib/scene-store.mjs";
+import { normalizeViewport } from "./lib/scene-schema.mjs";
+import { SceneStore } from "./lib/scene-store.mjs";
+import { resolveAgentNoteSessionId } from "./lib/session-resolvers.mjs";
 
 function printUsage() {
   process.stdout.write(`agent-pickerd
@@ -33,441 +42,8 @@ Usage:
 `);
 }
 
-function parseFlags(argv) {
-  const options = {};
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (!token.startsWith("--")) continue;
-
-    const key = token.slice(2);
-    const nextToken = argv[index + 1];
-    if (!nextToken || nextToken.startsWith("--")) {
-      options[key] = true;
-      continue;
-    }
-
-    options[key] = nextToken;
-    index += 1;
-  }
-
-  return options;
-}
-
-function requireString(options, key) {
-  const value = options[key];
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`Missing required option: --${key}`);
-  }
-  return value;
-}
-
-function readNumber(options, key, fallback = undefined) {
-  const raw = options[key];
-  if (raw == null) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) {
-    throw new Error(`Invalid number for --${key}`);
-  }
-  return value;
-}
-
-function readOptionalString(options, key) {
-  const value = options[key];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function createJsonHeaders(statusCode, payload) {
-  const body = Buffer.from(JSON.stringify(payload), "utf8");
-  return {
-    statusCode,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, PUT, POST, PATCH, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-      "Content-Type": "application/json; charset=utf-8",
-      "Content-Length": String(body.length),
-    },
-    body,
-  };
-}
-
-function sendJson(response, statusCode, payload) {
-  const { headers, body } = createJsonHeaders(statusCode, payload);
-  response.writeHead(statusCode, headers);
-  response.end(body);
-}
-
-function sendNoContent(response) {
-  response.writeHead(204, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-  });
-  response.end();
-}
-
-function sendBinary(response, statusCode, body, contentType) {
-  response.writeHead(statusCode, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Cache-Control": "no-store",
-    "Content-Length": String(body.length),
-    "Content-Type": contentType,
-  });
-  response.end(body);
-}
-
-function readJsonBody(request) {
-  return new Promise((resolveBody, reject) => {
-    const chunks = [];
-
-    request.on("data", (chunk) => {
-      chunks.push(chunk);
-    });
-
-    request.on("end", () => {
-      try {
-        const raw = chunks.length > 0 ? Buffer.concat(chunks).toString("utf8") : "{}";
-        resolveBody(JSON.parse(raw || "{}"));
-      } catch {
-        reject(new Error("Invalid JSON body"));
-      }
-    });
-
-    request.on("error", reject);
-  });
-}
-
-class SceneEventBroker {
-  constructor() {
-    this.listeners = new Map();
-    this.nextListenerId = 1;
-    this.lastSignature = "";
-    this.lastAgentNoteSignatures = new Map();
-  }
-
-  subscribe(response) {
-    const listenerId = this.nextListenerId;
-    this.nextListenerId += 1;
-    this.listeners.set(listenerId, response);
-    return listenerId;
-  }
-
-  unsubscribe(listenerId) {
-    this.listeners.delete(listenerId);
-  }
-
-  publish(message) {
-    for (const [listenerId, response] of this.listeners.entries()) {
-      try {
-        response.write(message);
-      } catch {
-        this.listeners.delete(listenerId);
-      }
-    }
-  }
-
-  publishScene(scene, source) {
-    const normalized = ensureSceneShape(scene);
-    const signature = JSON.stringify(normalized);
-    if (signature === this.lastSignature) return;
-
-    this.lastSignature = signature;
-    const message = encodeSceneEvent(normalized, source);
-    this.publish(message);
-  }
-
-  publishAgentNote(note, source, deleted = false) {
-    const sessionId = typeof note?.sessionId === "string" ? note.sessionId : null;
-    if (!sessionId) {
-      return;
-    }
-
-    const signature = deleted ? "__deleted__" : JSON.stringify(note);
-    if (this.lastAgentNoteSignatures.get(sessionId) === signature) {
-      return;
-    }
-
-    this.lastAgentNoteSignatures.set(sessionId, signature);
-    this.publish(encodeAgentNoteEvent(note, source, deleted));
-  }
-}
-
-export function createServer({ host, port, root }) {
-  const broker = new SceneEventBroker();
-  const store = new SceneStore(root, {
-    onChange(scene, source) {
-      broker.publishScene(scene, source);
-    },
-  });
-  const selectionStore = new DevSelectionStore(root);
-  const agentNoteStore = new AgentNoteStore(root);
-  const extensionStatusStore = new BrowserExtensionStatusStore(root);
-  const browserSessionStore = new BrowserSessionStore();
-
-  store.ensure();
-  broker.publishScene(store.read(), "startup");
-
-  const stopWatching = watchSceneFile(store, (scene, source) => {
-    broker.publishScene(scene, source);
-  });
-  const stopWatchingAgentNotes = watchAgentNotes(agentNoteStore, (note, source, deleted) => {
-    broker.publishAgentNote(note, source, deleted);
-  });
-
-  const server = http.createServer(async (request, response) => {
-    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
-
-    if (request.method === "OPTIONS") {
-      sendNoContent(response);
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/health") {
-      sendJson(response, 200, { ok: true });
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/scene") {
-      sendJson(response, 200, store.read());
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/dev-selection") {
-      const sessionId = url.searchParams.get("sessionId");
-      const selection = sessionId ? selectionStore.readSession(sessionId) : selectionStore.readAll();
-      if (!selection) {
-        sendNoContent(response);
-        return;
-      }
-
-      sendJson(response, 200, selection);
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/agent-note") {
-      const sessionId = resolveAgentNoteSessionId(root, url.searchParams.get("sessionId"), true);
-      const note = sessionId ? agentNoteStore.readSession(sessionId) : null;
-      if (!note) {
-        sendNoContent(response);
-        return;
-      }
-
-      sendJson(response, 200, note);
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/extension-status") {
-      sendJson(response, 200, extensionStatusStore.readSummary());
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/browser-session") {
-      sendJson(response, 200, browserSessionStore.readSummary());
-      return;
-    }
-
-    const assetMatch = url.pathname.match(/^\/dev-selection\/assets\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9][a-zA-Z0-9._-]{0,128})$/);
-    if (request.method === "GET" && assetMatch) {
-      const asset = selectionStore.readAsset(assetMatch[1], assetMatch[2]);
-      if (!asset) {
-        sendNoContent(response);
-        return;
-      }
-
-      sendBinary(response, 200, asset.body, asset.mimeType);
-      return;
-    }
-
-    if (request.method === "GET" && url.pathname === "/events") {
-      response.writeHead(200, {
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        "Content-Type": "text/event-stream",
-        "X-Accel-Buffering": "no",
-      });
-      response.write("retry: 1000\n\n");
-      response.write(encodeSceneEvent(store.read(), "initial"));
-
-      const listenerId = broker.subscribe(response);
-      const keepAlive = setInterval(() => {
-        try {
-          response.write(": keepalive\n\n");
-        } catch {
-          clearInterval(keepAlive);
-          broker.unsubscribe(listenerId);
-        }
-      }, 20_000);
-
-      const close = () => {
-        clearInterval(keepAlive);
-        broker.unsubscribe(listenerId);
-      };
-
-      request.on("close", close);
-      response.on("close", close);
-      return;
-    }
-
-    try {
-      if (request.method === "DELETE" && url.pathname === "/dev-selection") {
-        selectionStore.clearAll();
-        sendNoContent(response);
-        return;
-      }
-
-      if (request.method === "DELETE" && url.pathname === "/dev-selection/session") {
-        const sessionId = url.searchParams.get("sessionId");
-        const selection = selectionStore.deleteSession(sessionId);
-        const deletedNote = agentNoteStore.deleteSession(sessionId);
-        if (!selection) {
-          sendNoContent(response);
-          return;
-        }
-
-        if (deletedNote) {
-          broker.publishAgentNote(deletedNote, "selection-session-delete", true);
-        }
-
-        sendJson(response, 200, selection);
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/dev-selection") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, selectionStore.write(payload));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/agent-note") {
-        const payload = await readJsonBody(request);
-        const fallbackSessionId = resolveAgentNoteSessionId(root, payload?.sessionId ?? null, true);
-        const note = agentNoteStore.write(payload, { sessionId: fallbackSessionId });
-        broker.publishAgentNote(note, "agent-note-write");
-        sendJson(response, 200, note);
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/extension-status") {
-        const payload = await readJsonBody(request);
-        extensionStatusStore.write(payload);
-        sendJson(response, 200, extensionStatusStore.readSummary());
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/browser-session/heartbeat") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, browserSessionStore.heartbeat(payload));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/browser-session/commands") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, browserSessionStore.enqueueCommand(payload));
-        return;
-      }
-
-      if (request.method === "GET" && url.pathname === "/browser-session/commands/next") {
-        const command = browserSessionStore.claimNextCommand({
-          tabId: url.searchParams.get("tabId") ? Number(url.searchParams.get("tabId")) : null,
-          url: url.searchParams.get("url"),
-          visible: url.searchParams.get("visible") === "true",
-          focused: url.searchParams.get("focused") === "true",
-        });
-        if (!command) {
-          sendNoContent(response);
-          return;
-        }
-
-        sendJson(response, 200, command);
-        return;
-      }
-
-      const browserCommandMatch = url.pathname.match(/^\/browser-session\/commands\/([^/]+)$/);
-      if (browserCommandMatch && request.method === "GET") {
-        const command = browserSessionStore.readCommand(browserCommandMatch[1]);
-        if (!command) {
-          sendNoContent(response);
-          return;
-        }
-
-        sendJson(response, 200, command);
-        return;
-      }
-
-      const browserCommandResultMatch = url.pathname.match(
-        /^\/browser-session\/commands\/([^/]+)\/result$/,
-      );
-      if (browserCommandResultMatch && request.method === "POST") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, browserSessionStore.completeCommand(browserCommandResultMatch[1], payload));
-        return;
-      }
-
-      if (request.method === "DELETE" && url.pathname === "/agent-note") {
-        const sessionId = resolveAgentNoteSessionId(root, url.searchParams.get("sessionId"), true);
-        const note = sessionId ? agentNoteStore.deleteSession(sessionId) : null;
-        if (!note) {
-          sendNoContent(response);
-          return;
-        }
-
-        broker.publishAgentNote(note, "agent-note-delete", true);
-        sendJson(response, 200, note);
-        return;
-      }
-
-      if (request.method === "PUT" && url.pathname === "/scene") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, store.write(payload));
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/scene/nodes") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, store.addNode(payload));
-        return;
-      }
-
-      if (request.method === "PATCH" && url.pathname === "/scene/meta") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, store.updateMeta(payload));
-        return;
-      }
-
-      const nodeMatch = url.pathname.match(/^\/scene\/nodes\/(.+)$/);
-      if (nodeMatch && request.method === "PATCH") {
-        const payload = await readJsonBody(request);
-        sendJson(response, 200, store.updateNode(nodeMatch[1], payload));
-        return;
-      }
-
-      if (nodeMatch && request.method === "DELETE") {
-        sendJson(response, 200, store.removeNode(nodeMatch[1]));
-        return;
-      }
-    } catch (error) {
-      if (String(error?.message ?? "").startsWith("Node not found:")) {
-        sendJson(response, 404, { error: error.message });
-        return;
-      }
-
-      sendJson(response, 400, { error: error instanceof Error ? error.message : "Request failed" });
-      return;
-    }
-
-    sendJson(response, 404, { error: "Not found" });
-  });
-
-  server.on("close", () => {
-    stopWatching();
-    stopWatchingAgentNotes();
-  });
-
-  return { server, store };
+function resolveAgentNoteSessionIdFromOptions(root, options, allowGlobalFallback = false) {
+  return resolveAgentNoteSessionId(root, readOptionalString(options, "session-id"), allowGlobalFallback);
 }
 
 function commandServe(options) {
@@ -498,31 +74,6 @@ function commandGetScene(options) {
   process.stdout.write(`${JSON.stringify(store.read(), null, 2)}\n`);
 }
 
-function resolveSessionIdFromOptions(root, options) {
-  const explicitSessionId = readOptionalString(options, "session-id");
-  if (explicitSessionId) {
-    return explicitSessionId;
-  }
-
-  const selectionStore = new DevSelectionStore(root);
-  return selectionStore.readAll()?.latestSessionId ?? null;
-}
-
-function resolveAgentNoteSessionId(root, sessionId, allowGlobalFallback = false) {
-  const explicitSessionId =
-    typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : null;
-  if (explicitSessionId) {
-    return explicitSessionId;
-  }
-
-  const selectionStore = new DevSelectionStore(root);
-  return selectionStore.readAll()?.latestSessionId ?? (allowGlobalFallback ? DEFAULT_AGENT_NOTE_SESSION_ID : null);
-}
-
-function resolveAgentNoteSessionIdFromOptions(root, options, allowGlobalFallback = false) {
-  return resolveAgentNoteSessionId(root, readOptionalString(options, "session-id"), allowGlobalFallback);
-}
-
 function commandGetSelection(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const selectionStore = new DevSelectionStore(root);
@@ -544,168 +95,9 @@ function commandGetExtensionStatus(options) {
   process.stdout.write(`${JSON.stringify(extensionStatusStore.readSummary(), null, 2)}\n`);
 }
 
-function normalizeDaemonUrl(rawValue) {
-  const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
-  return (trimmed || "http://127.0.0.1:4312").replace(/\/+$/, "");
-}
-
-function readCommandTargetOptions(options) {
-  const tabId = readNumber(options, "tab-id", null);
-  const targetUrl = readOptionalString(options, "url");
-  const targetUrlContains = readOptionalString(options, "url-contains");
-
-  return {
-    targetTabId: Number.isInteger(tabId) ? tabId : null,
-    targetUrl,
-    targetUrlContains,
-  };
-}
-
-async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {
-  const response = await fetch(endpoint, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
-
-  if (allowNoContent && response.status === 204) {
-    return null;
-  }
-
-  if (!response.ok) {
-    const responseText = await response.text();
-    throw new Error(responseText || `Request failed with status ${response.status}.`);
-  }
-
-  return response.json();
-}
-
-function getDaemonUrlFromOptions(options) {
-  return normalizeDaemonUrl(options["daemon-url"]);
-}
-
-async function commandGetBrowserSession(options) {
-  const daemonUrl = getDaemonUrlFromOptions(options);
-  const session = await fetchJson(`${daemonUrl}/browser-session`, {
-    method: "GET",
-    headers: {},
-  });
-  process.stdout.write(`${JSON.stringify(session, null, 2)}\n`);
-}
-
-async function enqueueBrowserCommand(options, payload) {
-  const daemonUrl = getDaemonUrlFromOptions(options);
-  const timeoutMs = readNumber(options, "timeout-ms", 15_000);
-  const pollIntervalMs = 250;
-  const startedAt = Date.now();
-  const command = await fetchJson(`${daemonUrl}/browser-session/commands`, {
-    method: "POST",
-    body: JSON.stringify({
-      ...payload,
-      ...readCommandTargetOptions(options),
-      timeoutMs,
-    }),
-  });
-
-  while (Date.now() - startedAt <= timeoutMs) {
-    const result = await fetchJson(`${daemonUrl}/browser-session/commands/${command.id}`, {
-      method: "GET",
-      headers: {},
-    });
-
-    if (result?.status === "completed" || result?.status === "failed") {
-      if (result.status === "failed") {
-        throw new Error(result.error || "Browser command failed.");
-      }
-
-      return result;
-    }
-
-    await new Promise((resolvePromise) => {
-      setTimeout(resolvePromise, pollIntervalMs);
-    });
-  }
-
-  throw new Error(
-    `Timed out waiting for the browser command result after ${timeoutMs}ms. Keep the target tab active and focused so the extension can poll commands.`,
-  );
-}
-
-async function commandBrowserContext(options) {
-  const result = await enqueueBrowserCommand(options, {
-    type: "context",
-  });
-  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
-}
-
-async function commandBrowserDom(options) {
-  const result = await enqueueBrowserCommand(options, {
-    type: "dom",
-  });
-  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
-}
-
-async function commandBrowserClick(options) {
-  const selector = readOptionalString(options, "selector");
-  const selectorPath = readOptionalString(options, "selector-path");
-  const text = readOptionalString(options, "text");
-
-  if (!selector && !selectorPath && !text) {
-    throw new Error("browser-click requires --selector, --selector-path, or --text.");
-  }
-
-  const result = await enqueueBrowserCommand(options, {
-    type: "click",
-    selector,
-    selectorPath,
-    text,
-    postActionDelayMs: readNumber(options, "post-action-delay-ms", 400),
-  });
-  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
-}
-
-function writeScreenshotFile(filePath, dataUrl) {
-  const match = typeof dataUrl === "string" ? dataUrl.match(/^data:([^;]+);base64,(.+)$/) : null;
-  if (!match) {
-    throw new Error("The browser screenshot result did not include a PNG data URL.");
-  }
-
-  writeFileSync(resolve(filePath), Buffer.from(match[2], "base64"));
-}
-
-async function commandBrowserScreenshot(options) {
-  const file = requireString(options, "file");
-  const result = await enqueueBrowserCommand(options, {
-    type: "screenshot",
-  });
-  const screenshot = result.result?.screenshot ?? null;
-
-  if (!screenshot?.dataUrl) {
-    throw new Error("The browser screenshot result did not include image data.");
-  }
-
-  writeScreenshotFile(file, screenshot.dataUrl);
-  process.stdout.write(
-    `${JSON.stringify(
-      {
-        file: resolve(file),
-        page: result.result?.page ?? null,
-        width: screenshot.width ?? 0,
-        height: screenshot.height ?? 0,
-        capturedAt: screenshot.capturedAt ?? null,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-}
-
 function commandSetAgentNote(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
-
   const agentNoteStore = new AgentNoteStore(root);
   const note = agentNoteStore.write(
     {
@@ -738,17 +130,21 @@ function commandPutScene(options) {
 function commandAddNode(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const store = new SceneStore(root);
-  const node = {
-    id: requireString(options, "id"),
-    itemId: requireString(options, "item-id"),
-    title: requireString(options, "title"),
-    viewport: normalizeViewport(requireString(options, "viewport")),
-    x: readNumber(options, "x", 0),
-    y: readNumber(options, "y", 0),
-    zIndex: readNumber(options, "z-index", 1),
-  };
-
-  process.stdout.write(`${JSON.stringify(store.addNode(node), null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify(
+      store.addNode({
+        id: requireString(options, "id"),
+        itemId: requireString(options, "item-id"),
+        title: requireString(options, "title"),
+        viewport: normalizeViewport(requireString(options, "viewport")),
+        x: readNumber(options, "x", 0),
+        y: readNumber(options, "y", 0),
+        zIndex: readNumber(options, "z-index", 1),
+      }),
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 function commandMoveNode(options) {
@@ -785,52 +181,52 @@ export async function main(argv = process.argv.slice(2)) {
   switch (command) {
     case "serve":
       commandServe(options);
-      break;
+      return;
     case "get-scene":
       commandGetScene(options);
-      break;
+      return;
     case "get-selection":
       commandGetSelection(options);
-      break;
+      return;
     case "get-agent-note":
       commandGetAgentNote(options);
-      break;
+      return;
     case "get-extension-status":
       commandGetExtensionStatus(options);
-      break;
+      return;
     case "get-browser-session":
       await commandGetBrowserSession(options);
-      break;
+      return;
     case "set-agent-note":
       commandSetAgentNote(options);
-      break;
+      return;
     case "clear-agent-note":
       commandClearAgentNote(options);
-      break;
+      return;
     case "browser-context":
       await commandBrowserContext(options);
-      break;
+      return;
     case "browser-dom":
       await commandBrowserDom(options);
-      break;
+      return;
     case "browser-click":
       await commandBrowserClick(options);
-      break;
+      return;
     case "browser-screenshot":
       await commandBrowserScreenshot(options);
-      break;
+      return;
     case "put-scene":
       commandPutScene(options);
-      break;
+      return;
     case "add-node":
       commandAddNode(options);
-      break;
+      return;
     case "move-node":
       commandMoveNode(options);
-      break;
+      return;
     case "remove-node":
       commandRemoveNode(options);
-      break;
+      return;
     default:
       printUsage();
       process.exitCode = 1;
