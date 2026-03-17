@@ -66,6 +66,14 @@ function sanitizeCommandPayload(candidate) {
   const targetTabId = Number(candidate.targetTabId);
   const x = Number(candidate.x);
   const y = Number(candidate.y);
+  const hasTarget =
+    Number.isInteger(targetTabId) ||
+    (typeof targetUrl === "string" && targetUrl.length > 0) ||
+    (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
+
+  if (!hasTarget) {
+    throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
+  }
 
   return {
     type,

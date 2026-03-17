@@ -3,6 +3,8 @@
 ## Command surface
 
 Use the narrowest stable command surface available in the current project.
+Agent Picker state now lives under `~/.codex/agent-picker/` by default, or under `$CODEX_HOME/agent-picker/` when `CODEX_HOME` is set. `AGENT_PICKER_STATE_HOME` overrides both.
+When installed with `npm run skill:install`, the unpacked Chrome extension is copied to `~/.codex/extensions/agent-picker-browser-extension`, or to `$CODEX_HOME/extensions/agent-picker-browser-extension` when `CODEX_HOME` is set.
 
 ### Installed host project
 
@@ -13,13 +15,13 @@ npm run agent-pickerd:serve
 npm run agent-pickerd:get-selection
 npm run agent-pickerd:get-agent-note
 npm run agent-pickerd:get-browser-session
-npm run agent-pickerd:browser-context
-npm run agent-pickerd:browser-dom
-npm run agent-pickerd:browser-click -- --text "Next"
-npm run agent-pickerd:browser-click-point -- --x 420 --y 360
-npm run agent-pickerd:browser-fill -- --value "https://example.com/privacy"
-npm run agent-pickerd:browser-key -- --key Tab
-npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png
+npm run agent-pickerd:browser-context -- --url-contains "example.com"
+npm run agent-pickerd:browser-dom -- --url-contains "example.com"
+npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"
+npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
+npm run agent-pickerd:browser-fill -- --url-contains "example.com" --value "https://example.com/privacy"
+npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
+npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
 ```
@@ -33,13 +35,13 @@ npm run agent-pickerd:serve
 npm run agent-pickerd:get-selection
 npm run agent-pickerd:get-agent-note
 npm run agent-pickerd:get-browser-session
-npm run agent-pickerd:browser-context
-npm run agent-pickerd:browser-dom
-npm run agent-pickerd:browser-click -- --text "Next"
-npm run agent-pickerd:browser-click-point -- --x 420 --y 360
-npm run agent-pickerd:browser-fill -- --value "https://example.com/privacy"
-npm run agent-pickerd:browser-key -- --key Tab
-npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png
+npm run agent-pickerd:browser-context -- --url-contains "example.com"
+npm run agent-pickerd:browser-dom -- --url-contains "example.com"
+npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"
+npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
+npm run agent-pickerd:browser-fill -- --url-contains "example.com" --value "https://example.com/privacy"
+npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
+npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
 ```
@@ -56,7 +58,7 @@ Use these before relying on the Chrome extension bridge:
 
 ## Browser command targeting
 
-- Omit targeting flags to use the active focused tab.
+- Always provide `--tab-id`, `--url`, or `--url-contains`.
 - Use `--tab-id <id>` when you know the exact Chrome tab id.
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
@@ -69,13 +71,13 @@ Use these before relying on the Chrome extension bridge:
 
 ## Shared state layout
 
-Treat these as shared coordination files:
+Treat these as shared coordination files under the Agent Picker state home:
 
-- `.agent-picker/dev-selection.json`: latest saved selection
-- `.agent-picker/dev-selections.json`: session index
-- `.agent-picker/dev-selections/<session-id>.json`: saved session payload
-- `.agent-picker/dev-selection-assets/<session-id>/...`: snapshots
-- `.agent-picker/agent-notes/<session-id>.json`: shared agent notes
+- `dev-selection.json`: latest saved selection
+- `dev-selections.json`: session index
+- `dev-selections/<session-id>.json`: saved session payload
+- `dev-selection-assets/<session-id>/...`: snapshots
+- `agent-notes/<session-id>.json`: shared agent notes
 
 ## What to inspect in a selection
 

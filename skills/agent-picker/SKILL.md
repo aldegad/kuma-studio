@@ -1,11 +1,13 @@
 ---
 name: agent-picker
-description: Read the latest Agent Picker selection, screenshot, shared note state, and browser bridge status before working on picked UI or browser-driven investigation. Use when a repo exposes `agent-pickerd:*` scripts, when the user mentions Agent Picker, a picked element, a saved selection, browser extension control, tab inspection, DOM reads, clicks, screenshots, or shorthand like "check pick 1", and when work should start from `.agent-picker/` shared coordination state.
+description: Read the latest Agent Picker selection, screenshot, shared note state, and browser bridge status before working on picked UI or browser-driven investigation. Use when a repo exposes `agent-pickerd:*` scripts, when the user mentions Agent Picker, a picked element, a saved selection, browser extension control, tab inspection, DOM reads, clicks, screenshots, or shorthand like "check pick 1", and when work should start from the shared Agent Picker state home.
 ---
 
 # Agent Picker
 
 Use Agent Picker as a shared coordination workflow, not a private scratchpad.
+
+After `npm run skill:install`, the unpacked Chrome extension is also available at `~/.codex/extensions/agent-picker-browser-extension` unless `CODEX_HOME` overrides that base path.
 
 ## Core workflow
 
@@ -38,14 +40,14 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 3. Prefer targeted tab commands when the user may switch away from the page.
    - Use `--tab-id`, `--url`, or `--url-contains` for background-tab DOM reads and clicks.
    - When `get-browser-session` reports more than one live tab, prefer `--tab-id` from that summary instead of relying on the current active tab.
-4. Use the narrowest browser command that answers the question.
-   - `npm run agent-pickerd:browser-context`
-   - `npm run agent-pickerd:browser-dom`
-   - `npm run agent-pickerd:browser-click -- --text "Next"`
-   - `npm run agent-pickerd:browser-fill -- --value "https://example.com/privacy"`
-   - `npm run agent-pickerd:browser-key -- --key Tab`
-   - `npm run agent-pickerd:browser-click-point -- --x 420 --y 360`
-   - `npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png`
+4. Use the narrowest targeted browser command that answers the question.
+   - `npm run agent-pickerd:browser-context -- --url-contains "example.com"`
+   - `npm run agent-pickerd:browser-dom -- --url-contains "example.com"`
+   - `npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"`
+   - `npm run agent-pickerd:browser-fill -- --url-contains "example.com" --value "https://example.com/privacy"`
+   - `npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab`
+   - `npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360`
+   - `npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png`
 5. Remember the current limitation.
    - DOM reads and clicks can target background tabs.
    - Visible-tab screenshots still require the target tab to be the active focused tab in Chrome.
@@ -59,7 +61,7 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 
 ## Selection hygiene
 
-- Treat `.agent-picker/dev-selection.json` and `.agent-picker/agent-notes/*.json` as shared state.
+- Treat `~/.codex/agent-picker/` or `$CODEX_HOME/agent-picker/` as shared state unless `AGENT_PICKER_STATE_HOME` overrides it.
 - Do not clear notes unless they would mislead the next agent.
 - Prefer `needs_reselect` over guessing when the saved element no longer matches the current UI.
 
@@ -67,6 +69,6 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 
 Read [references/commands.md](references/commands.md) when you need:
 - standalone vs installed-host command examples
-- the `.agent-picker/` file layout
+- the shared Agent Picker state layout
 - what fields to inspect inside the saved selection payload
 - examples of when reselection is required

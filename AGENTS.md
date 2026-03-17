@@ -4,7 +4,7 @@
 
 - In the standalone Agent Picker repository, root scripts target `example/next-host`.
 - In an installed host project, prefer host root scripts that wrap `agent-pickerd`.
-- Treat `.agent-picker/dev-selection.json` and `.agent-picker/agent-notes/*.json` as shared coordination state, not private scratch space.
+- Treat the shared Agent Picker state home, usually `~/.codex/agent-picker/`, as shared coordination state, not private scratch space.
 
 ## Agent Picker First
 

@@ -1,11 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { resolveAgentPickerStateDir } from "./state-home.mjs";
 
 export const EXTENSION_STATUS_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
-
-function resolveStateDir(root) {
-  return resolve(root, ".agent-picker");
-}
 
 function sanitizeString(value, maxLength = 240) {
   if (typeof value !== "string") {
@@ -150,7 +147,7 @@ function buildSummary(status, now = Date.now(), staleAfterMs = EXTENSION_STATUS_
 export class BrowserExtensionStatusStore {
   constructor(root) {
     this.root = resolve(root);
-    this.statusPath = resolve(resolveStateDir(this.root), "browser-extension-status.json");
+    this.statusPath = resolve(resolveAgentPickerStateDir(), "browser-extension-status.json");
   }
 
   ensureDirectory() {

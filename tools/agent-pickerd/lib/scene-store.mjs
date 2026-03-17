@@ -1,21 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, watchFile, unwatchFile, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, watchFile, unwatchFile, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createEmptyScene, currentTimestamp, ensureSceneShape } from "./scene-schema.mjs";
-
-function resolveStateDir(root) {
-  const primaryPath = resolve(root, ".agent-picker");
-
-  if (existsSync(primaryPath) || existsSync(resolve(primaryPath, "scene.json"))) {
-    return primaryPath;
-  }
-
-  return primaryPath;
-}
+import { resolveAgentPickerStateDir } from "./state-home.mjs";
 
 export class SceneStore {
   constructor(root, options = {}) {
     this.root = resolve(root);
-    this.scenePath = resolve(resolveStateDir(this.root), "scene.json");
+    this.scenePath = resolve(resolveAgentPickerStateDir(), "scene.json");
     this.onChange = options.onChange ?? null;
   }
 

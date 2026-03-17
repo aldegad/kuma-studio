@@ -1,18 +1,9 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
+import { resolveAgentPickerStateDir } from "./state-home.mjs";
 
 const VALID_STATUSES = new Set(["acknowledged", "in_progress", "fixed", "needs_reselect"]);
 export const DEFAULT_AGENT_NOTE_SESSION_ID = "global-note";
-
-function resolveStateDir(root) {
-  const primaryPath = resolve(root, ".agent-picker");
-
-  if (existsSync(primaryPath) || existsSync(resolve(primaryPath, "agent-notes"))) {
-    return primaryPath;
-  }
-
-  return primaryPath;
-}
 
 function sanitizeSessionId(value) {
   if (typeof value !== "string") {
@@ -95,7 +86,7 @@ function normalizeAgentNote(note, defaults = {}) {
 export class AgentNoteStore {
   constructor(root) {
     this.root = resolve(root);
-    this.notesDir = resolve(resolveStateDir(this.root), "agent-notes");
+    this.notesDir = resolve(resolveAgentPickerStateDir(), "agent-notes");
   }
 
   ensureDirectory() {

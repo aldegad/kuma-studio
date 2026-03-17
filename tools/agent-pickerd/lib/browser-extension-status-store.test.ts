@@ -32,6 +32,7 @@ describe("BrowserExtensionStatusStore", () => {
   const tempRoots: string[] = [];
 
   afterEach(() => {
+    delete process.env.AGENT_PICKER_STATE_HOME;
     for (const root of tempRoots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
     }
@@ -42,6 +43,7 @@ describe("BrowserExtensionStatusStore", () => {
     const { BrowserExtensionStatusStore } = (await import("./browser-extension-status-store.mjs")) as BrowserExtensionStatusStoreModule;
     const root = mkdtempSync(path.join(tmpdir(), "browser-extension-status-store-"));
     tempRoots.push(root);
+    process.env.AGENT_PICKER_STATE_HOME = path.join(root, "state");
 
     const store = new BrowserExtensionStatusStore(root);
     const summary = store.readSummary();
@@ -57,6 +59,7 @@ describe("BrowserExtensionStatusStore", () => {
     const { BrowserExtensionStatusStore } = (await import("./browser-extension-status-store.mjs")) as BrowserExtensionStatusStoreModule;
     const root = mkdtempSync(path.join(tmpdir(), "browser-extension-status-store-"));
     tempRoots.push(root);
+    process.env.AGENT_PICKER_STATE_HOME = path.join(root, "state");
 
     const store = new BrowserExtensionStatusStore(root);
     const initial = store.write({

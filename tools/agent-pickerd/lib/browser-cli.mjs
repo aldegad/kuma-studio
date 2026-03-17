@@ -24,6 +24,15 @@ function readCommandTargetOptions(options) {
   };
 }
 
+function requireCommandTarget(options) {
+  const targets = readCommandTargetOptions(options);
+  if (!targets.targetTabId && !targets.targetUrl && !targets.targetUrlContains) {
+    throw new Error("Browser commands require --tab-id, --url, or --url-contains.");
+  }
+
+  return targets;
+}
+
 async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {
   const response = await fetch(endpoint, {
     ...init,
@@ -50,11 +59,12 @@ async function enqueueBrowserCommand(options, payload) {
   const timeoutMs = readNumber(options, "timeout-ms", 15_000);
   const pollIntervalMs = 250;
   const startedAt = Date.now();
+  const targets = requireCommandTarget(options);
   const command = await fetchJson(`${daemonUrl}/browser-session/commands`, {
     method: "POST",
     body: JSON.stringify({
       ...payload,
-      ...readCommandTargetOptions(options),
+      ...targets,
       timeoutMs,
     }),
   });

@@ -3,10 +3,10 @@
 `agent-pickerd` is Agent Picker's local state daemon.
 
 It is responsible for:
-- reading and writing `.agent-picker/scene.json`
-- reading and writing saved selections under `.agent-picker/dev-selection*.json`
-- storing selection snapshots under `.agent-picker/dev-selection-assets/`
-- storing per-session agent notes under `.agent-picker/agent-notes/`
+- reading and writing `scene.json`
+- reading and writing saved selections under `dev-selection*.json`
+- storing selection snapshots under `dev-selection-assets/`
+- storing per-session agent notes under `agent-notes/`
 - falling back to a shared global picker note when a note is posted before any selection exists
 - validating scene payloads
 - watching files and publishing SSE updates
@@ -64,7 +64,7 @@ node ./vendor/agent-picker/packages/server/src/cli.mjs serve --root .
 ```
 
 The default address is `http://127.0.0.1:4312`.
-State files live under the selected host root's `.agent-picker/` directory.
+State files live under `~/.codex/agent-picker/` by default, or under `$CODEX_HOME/agent-picker/` when `CODEX_HOME` is set. You can override the location with `AGENT_PICKER_STATE_HOME`.
 That directory currently includes:
 
 - `scene.json`
@@ -75,7 +75,7 @@ That directory currently includes:
 - `agent-notes/<session-id>.json` for shared per-session agent notes
 - `browser-extension-status.json` for the latest browser extension heartbeat
 
-For installed hosts, treat that directory as local state and add `.agent-picker/` to `.gitignore`.
+`--root` is still accepted for host-relative CLI compatibility, but runtime state now lives in the shared Agent Picker state home.
 
 ## HTTP API
 
@@ -115,15 +115,15 @@ node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host
 node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host
 node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
-node ./packages/server/src/cli.mjs browser-context
-node ./packages/server/src/cli.mjs browser-dom
-node ./packages/server/src/cli.mjs browser-click --text "다음"
+node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
+node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.com"
+node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting.com" --text "다음"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
-node ./packages/server/src/cli.mjs browser-screenshot --file ./tmp/current-tab.png
+node ./packages/server/src/cli.mjs browser-screenshot --url-contains "ddalkkakposting.com" --file ./tmp/current-tab.png
 node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```
 
@@ -140,7 +140,7 @@ node ./vendor/agent-picker/packages/server/src/cli.mjs set-agent-note --root . -
 
 For browser commands:
 
-- omit targeting flags to use the currently focused visible tab
+- always provide `--tab-id`, `--url`, or `--url-contains`
 - use `--tab-id` for a specific tab when you know the Chrome tab id
 - use `--url` for an exact tab URL match
 - use `--url-contains` for a looser match when the URL has changing query params

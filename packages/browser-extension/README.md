@@ -7,8 +7,7 @@ pages into a local `agent-pickerd` daemon.
 
 - saves the current page as the latest Agent Picker selection
 - offers a lightweight inspect mode so you can click a single element or drag a viewport area on any site
-- captures a visible-tab screenshot and stores it through the existing
-  `.agent-picker/dev-selection*` flow
+- captures a visible-tab screenshot and stores it through the shared Agent Picker state flow
 
 This MVP does not try to map DOM nodes back to app source code or React
 components. It is meant to prove the bridge model on real websites first.
@@ -35,11 +34,14 @@ the page to be the currently focused tab.
 2. open `chrome://extensions`
 3. enable `Developer mode`
 4. click `Load unpacked`
-5. choose this folder:
+5. choose one of these folders:
 
 ```text
 packages/browser-extension
+~/.codex/extensions/agent-picker-browser-extension
 ```
+
+If you installed Agent Picker with `npm run skill:install`, prefer the `~/.codex/extensions/agent-picker-browser-extension` copy so Chrome can keep using a stable global path.
 
 ## Start The Bridge
 
@@ -75,19 +77,19 @@ npm run agent-pickerd:get-extension-status
 ```
 
 To inspect or control the active tab from a local agent, keep the target page
-focused and use the daemon CLI:
+open and use the daemon CLI with an explicit tab target:
 
 ```bash
 node ./packages/server/src/cli.mjs get-browser-session
-node ./packages/server/src/cli.mjs browser-context
-node ./packages/server/src/cli.mjs browser-dom
-node ./packages/server/src/cli.mjs browser-click --text "API 개별 연동"
+node ./packages/server/src/cli.mjs browser-context --url-contains "developers.portone.io"
+node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
+node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "API 개별 연동"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
-node ./packages/server/src/cli.mjs browser-screenshot --file ./tmp/portone.png
+node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers.portone.io" --file ./tmp/portone.png
 ```
 
 ## Notes

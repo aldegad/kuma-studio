@@ -50,7 +50,7 @@ export default function HomePage() {
 
             <p className="mt-5 max-w-[56ch] text-base leading-8 text-slate-600 sm:text-lg">
               This example is for the picker first. Select real UI on the page, let the daemon save
-              the context into <code className="rounded bg-emerald-900/[0.06] px-1.5 py-0.5 text-[13px] text-emerald-950">.agent-picker</code>,
+              the context into <code className="rounded bg-emerald-900/[0.06] px-1.5 py-0.5 text-[13px] text-emerald-950">~/.codex/agent-picker</code>,
               and open the design lab only when you want board-style comparison.
             </p>
 

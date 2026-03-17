@@ -22,7 +22,7 @@ npm run dev
 
 Then open the printed web URL and append `/design-lab`. If `3000` is free, it will usually be [http://127.0.0.1:3000/design-lab](http://127.0.0.1:3000/design-lab).
 
-The example host stores local state in `example/next-host/.agent-picker/`.
+Agent Picker stores shared runtime state in `~/.codex/agent-picker/` by default, or in `$CODEX_HOME/agent-picker/` when `CODEX_HOME` is set.
 
 ## Install Into Your App
 
@@ -75,14 +75,21 @@ Agent-specific guidance lives here:
 
 The repo-managed source of truth for the Codex skill lives in [skills/agent-picker/](./skills/agent-picker/).
 
-Install or update the local skill copy with:
+Install or update the local skill and bundled browser extension with:
 
 ```bash
 npm run skill:install
 ```
 
-This syncs the repo skill into `~/.codex/skills/agent-picker` unless `CODEX_HOME` points somewhere else.
-Once installed there, the skill is available from other projects on the same machine too.
+This syncs:
+
+- the skill into `~/.codex/skills/agent-picker`
+- the Chrome extension into `~/.codex/extensions/agent-picker-browser-extension`
+
+If `CODEX_HOME` is set, both paths move under that directory instead.
+Once installed there, the skill and extension are available from other projects on the same machine too.
+
+In Chrome, use `Load unpacked` and point it at `~/.codex/extensions/agent-picker-browser-extension`.
 
 After you pull new changes, run the same command again to update the installed local copy.
 

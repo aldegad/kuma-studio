@@ -194,8 +194,9 @@ npm run agent-pickerd:set-agent-note -- --author codex --status in_progress --me
 
 ## Git Ignore
 
-Treat `.agent-picker/` as local state and add it to your host `.gitignore`:
+Agent Picker now stores shared runtime state in `~/.codex/agent-picker/` by default, or in `$CODEX_HOME/agent-picker/` when `CODEX_HOME` is set. You only need `.gitignore` coverage if you override `AGENT_PICKER_STATE_HOME` into your repo:
 
 ```gitignore
+# Only if AGENT_PICKER_STATE_HOME points inside this repo:
 .agent-picker/
 ```

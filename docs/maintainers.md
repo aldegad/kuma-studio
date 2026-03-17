@@ -35,7 +35,7 @@ git log --oneline --decorate -n 5
 - run `npm run lint`
 - run `npm run test`
 - run `npm run build`
-- review the example design-lab items and local `.agent-picker/scene.json` if board behavior changed
+- review the example design-lab items and shared `~/.codex/agent-picker/scene.json` if board behavior changed
 - confirm `.github/workflows/secret-scan.yml` is still present
 
 ## Example Host Boundaries

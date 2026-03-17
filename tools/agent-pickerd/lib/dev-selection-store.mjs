@@ -1,19 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-
-function resolveStateDir(root) {
-  const primaryPath = resolve(root, ".agent-picker");
-
-  if (
-    existsSync(primaryPath) ||
-    existsSync(resolve(primaryPath, "dev-selection.json")) ||
-    existsSync(resolve(primaryPath, "dev-selections.json"))
-  ) {
-    return primaryPath;
-  }
-
-  return primaryPath;
-}
+import { resolveAgentPickerStateDir } from "./state-home.mjs";
 
 function normalizeRect(rect) {
   const candidate = rect && typeof rect === "object" ? rect : {};
@@ -257,7 +244,7 @@ function normalizeDevSelection(record, sessionDefaults = {}) {
 export class DevSelectionStore {
   constructor(root) {
     this.root = resolve(root);
-    this.stateDir = resolveStateDir(this.root);
+    this.stateDir = resolveAgentPickerStateDir();
     this.selectionPath = resolve(this.stateDir, "dev-selection.json");
     this.selectionDir = resolve(this.stateDir, "dev-selections");
     this.collectionPath = resolve(this.stateDir, "dev-selections.json");

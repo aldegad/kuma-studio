@@ -73,6 +73,7 @@ describe("DevSelectionStore snapshots", () => {
   const tempRoots: string[] = [];
 
   afterEach(() => {
+    delete process.env.AGENT_PICKER_STATE_HOME;
     for (const root of tempRoots.splice(0)) {
       rmSync(root, { recursive: true, force: true });
     }
@@ -83,6 +84,8 @@ describe("DevSelectionStore snapshots", () => {
     const { DevSelectionStore } = (await import("./dev-selection-store.mjs")) as DevSelectionStoreModule;
     const root = mkdtempSync(path.join(tmpdir(), "dev-selection-store-"));
     tempRoots.push(root);
+    const stateHome = path.join(root, "state");
+    process.env.AGENT_PICKER_STATE_HOME = stateHome;
 
     const store = new DevSelectionStore(root);
     const saved = store.write(createSelectionRecord("session_01"));
@@ -92,7 +95,7 @@ describe("DevSelectionStore snapshots", () => {
     );
     expect(
       existsSync(
-        path.join(root, ".agent-picker", "dev-selection-assets", "session_01", "selection-01.png"),
+        path.join(stateHome, "dev-selection-assets", "session_01", "selection-01.png"),
       ),
     ).toBe(true);
 
@@ -106,6 +109,8 @@ describe("DevSelectionStore snapshots", () => {
     const { DevSelectionStore } = (await import("./dev-selection-store.mjs")) as DevSelectionStoreModule;
     const root = mkdtempSync(path.join(tmpdir(), "dev-selection-store-"));
     tempRoots.push(root);
+    const stateHome = path.join(root, "state");
+    process.env.AGENT_PICKER_STATE_HOME = stateHome;
 
     const store = new DevSelectionStore(root);
     store.write(createSelectionRecord("session_02"));
@@ -113,7 +118,7 @@ describe("DevSelectionStore snapshots", () => {
 
     expect(
       existsSync(
-        path.join(root, ".agent-picker", "dev-selection-assets", "session_02", "selection-01.png"),
+        path.join(stateHome, "dev-selection-assets", "session_02", "selection-01.png"),
       ),
     ).toBe(false);
   });

@@ -83,6 +83,7 @@ describe("BrowserSessionStore", () => {
       type: "click",
       selector: "button.primary",
       postActionDelayMs: 300,
+      targetTabId: 1,
     });
 
     expect(command.status).toBe("pending");
@@ -155,16 +156,29 @@ describe("BrowserSessionStore", () => {
       type: "fill",
       value: "https://ddalkkakposting.com/privacy",
       selector: "input[name='privacy']",
+      targetUrlContains: "ddalkkakposting.com",
     });
     const pointCommand = store.enqueueCommand({
       type: "click-point",
       x: 180.7,
       y: 220.4,
+      targetTabId: 9,
     });
 
     expect(fillCommand.value).toBe("https://ddalkkakposting.com/privacy");
     expect(fillCommand.selector).toBe("input[name='privacy']");
     expect(pointCommand.x).toBe(181);
     expect(pointCommand.y).toBe(220);
+  });
+
+  it("rejects untargeted browser commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+
+    expect(() =>
+      store.enqueueCommand({
+        type: "dom",
+      }),
+    ).toThrow("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
   });
 });
