@@ -8,12 +8,61 @@ async function queryActiveTab() {
   return tab;
 }
 
+function isResolvableTab(tab) {
+  return Boolean(tab?.id && tab?.windowId && typeof tab?.url === "string" && tab.url);
+}
+
+function rankResolvedTabs(left, right) {
+  return (
+    Number(right.active === true) - Number(left.active === true) ||
+    Number(right.highlighted === true) - Number(left.highlighted === true) ||
+    Number((right.lastAccessed ?? 0) > (left.lastAccessed ?? 0)) -
+      Number((right.lastAccessed ?? 0) < (left.lastAccessed ?? 0)) ||
+    Number(right.id ?? 0) - Number(left.id ?? 0)
+  );
+}
+
+async function queryMatchingTabs(predicate) {
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter((tab) => isResolvableTab(tab) && predicate(tab)).sort(rankResolvedTabs);
+}
+
 async function resolveTargetTab(message) {
   if (typeof message?.tabId === "number") {
     const tab = await chrome.tabs.get(message.tabId);
     if (tab?.id && tab.windowId && tab.url) {
       return tab;
     }
+  }
+
+  const targetUrl =
+    typeof message?.url === "string"
+      ? message.url.trim()
+      : typeof message?.targetUrl === "string"
+        ? message.targetUrl.trim()
+        : "";
+  if (targetUrl) {
+    const matchingTabs = await queryMatchingTabs((tab) => tab.url === targetUrl);
+    if (matchingTabs[0]) {
+      return matchingTabs[0];
+    }
+
+    throw new Error(`No browser tab matches the requested URL: ${targetUrl}`);
+  }
+
+  const targetUrlContains =
+    typeof message?.urlContains === "string"
+      ? message.urlContains.trim()
+      : typeof message?.targetUrlContains === "string"
+        ? message.targetUrlContains.trim()
+        : "";
+  if (targetUrlContains) {
+    const matchingTabs = await queryMatchingTabs((tab) => tab.url.includes(targetUrlContains));
+    if (matchingTabs[0]) {
+      return matchingTabs[0];
+    }
+
+    throw new Error(`No browser tab matches the requested URL fragment: ${targetUrlContains}`);
   }
 
   return queryActiveTab();

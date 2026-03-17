@@ -1,5 +1,19 @@
 let isPollingBrowserCommands = false;
 const knownBrowserTabs = new Map();
+const BROWSER_COMMAND_CAPABILITIES = [
+  "context",
+  "dom",
+  "click",
+  "click-point",
+  "fill",
+  "key",
+  "screenshot",
+  "wait-for-text",
+  "wait-for-text-disappear",
+  "wait-for-selector",
+  "wait-for-dialog-close",
+  "query-dom",
+];
 
 async function collectPageContext(tabId) {
   const response = await sendMessageToTab(tabId, {
@@ -64,6 +78,111 @@ function upsertKnownBrowserTab(sender, message) {
   return claimant;
 }
 
+async function upsertKnownBrowserTabFromTab(tab, overrides = {}) {
+  if (!tab?.id || !tab.windowId || !tab.url) {
+    return null;
+  }
+
+  let focused = overrides.focused;
+  if (typeof focused !== "boolean") {
+    try {
+      const targetWindow = await chrome.windows.get(tab.windowId);
+      focused = targetWindow.focused === true && tab.active === true;
+    } catch {
+      focused = false;
+    }
+  }
+
+  const claimant = {
+    tabId: tab.id,
+    windowId: tab.windowId,
+    url: tab.url,
+    visible: typeof overrides.visible === "boolean" ? overrides.visible : tab.active === true,
+    focused,
+    lastSeenAt: new Date().toISOString(),
+  };
+
+  knownBrowserTabs.set(tab.id, claimant);
+  return claimant;
+}
+
+async function publishPagePresence(daemonUrl, payload) {
+  const { tab, page, source, visible, focused } = payload ?? {};
+  if (!tab?.id || !tab.windowId) {
+    return {
+      ok: false,
+      transportMode: await ensureDaemonTransport(daemonUrl),
+      claimant: null,
+    };
+  }
+
+  const claimant = await upsertKnownBrowserTabFromTab(tab, { visible, focused });
+  const transportMode = await ensureDaemonTransport(daemonUrl);
+
+  if (transportMode === "legacy-poll") {
+    await reportExtensionHeartbeatSafely(daemonUrl, {
+      source,
+      page,
+    });
+    await reportBrowserSessionHeartbeatSafely(daemonUrl, {
+      source,
+      page,
+      activeTabId: tab.id,
+      visible: claimant?.visible === true,
+      focused: claimant?.focused === true,
+    });
+    return {
+      ok: true,
+      transportMode,
+      claimant,
+    };
+  }
+
+  sendDaemonSocketMessage({
+    type: "presence.update",
+    source,
+    page,
+    activeTabId: tab.id,
+    visible: claimant?.visible === true,
+    focused: claimant?.focused === true,
+    capabilities: BROWSER_COMMAND_CAPABILITIES,
+    lastSeenAt: claimant?.lastSeenAt ?? new Date().toISOString(),
+  });
+
+  return {
+    ok: true,
+    transportMode,
+    claimant,
+  };
+}
+
+async function probeCurrentPageReadiness(daemonUrl, message) {
+  try {
+    const tab = await resolveTargetTab(message);
+    const pageContext = await collectPageContext(tab.id);
+    const presence = await publishPagePresence(daemonUrl, {
+      source: "popup:current-page-probe",
+      tab,
+      page: pageContext.page,
+    });
+
+    return {
+      ready: true,
+      page: pageContext.page,
+      tabId: tab.id,
+      transportMode: presence.transportMode,
+      message: "Current page is ready for Agent Picker commands.",
+    };
+  } catch (error) {
+    return {
+      ready: false,
+      page: null,
+      tabId: typeof message?.tabId === "number" ? message.tabId : null,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 function listKnownBrowserTabs(primaryClaimant = null) {
   const ordered = [...knownBrowserTabs.values()].sort((left, right) => {
     return (
@@ -101,34 +220,40 @@ async function executeClaimedBrowserCommand(daemonUrl, claimant, command) {
   }
 }
 
-async function handleSocketCommandRequest(message) {
+async function handleSocketCommandRequest(daemonUrl, message) {
   const requestId = typeof message?.requestId === "string" ? message.requestId : null;
   const command = message?.command;
-  const resolvedTargetTabId = Number.isInteger(command?.resolvedTargetTabId) ? command.resolvedTargetTabId : null;
 
   if (!requestId) {
     throw new Error("Missing requestId for the browser socket command.");
   }
 
-  if (!resolvedTargetTabId) {
-    sendDaemonSocketMessage({
-      type: "command.error",
-      requestId,
-      error: "The browser socket command did not include a resolved target tab.",
-    });
-    return;
-  }
-
   try {
-    const tab = await chrome.tabs.get(resolvedTargetTabId);
-    const result = await executeBrowserCommand(tab, command);
+    const tab = await resolveTargetTab({
+      tabId: Number.isInteger(command?.resolvedTargetTabId) ? command.resolvedTargetTabId : command?.targetTabId,
+      url: command?.targetUrl,
+      urlContains: command?.targetUrlContains,
+    });
+    const resolvedCommand = {
+      ...command,
+      resolvedTargetTabId: tab.id,
+    };
+    const page = createPageRecordFromTab(tab);
+    await publishPagePresence(daemonUrl, {
+      source: "websocket:command-target",
+      tab,
+      page,
+    });
+    const result = await executeBrowserCommand(tab, resolvedCommand);
     sendDaemonSocketMessage({
       type: "command.result",
       requestId,
       result,
     });
   } catch (error) {
-    knownBrowserTabs.delete(resolvedTargetTabId);
+    if (Number.isInteger(command?.resolvedTargetTabId)) {
+      knownBrowserTabs.delete(command.resolvedTargetTabId);
+    }
     sendDaemonSocketMessage({
       type: "command.error",
       requestId,
@@ -347,55 +472,26 @@ async function handlePageHeartbeat(daemonUrl, message, sender) {
       ? "content-script:page-ready"
       : "content-script:page-heartbeat";
   const primaryClaimant = upsertKnownBrowserTab(sender, message);
-  const transportMode = await ensureDaemonTransport(daemonUrl);
+  const presence = await publishPagePresence(daemonUrl, {
+    source,
+    tab: sender.tab,
+    page,
+    visible: message?.visibilityState === "visible",
+    focused: message?.hasFocus === true,
+  });
 
-  if (transportMode === "legacy-poll") {
-    await reportExtensionHeartbeatSafely(daemonUrl, {
-      source,
-      page,
-    });
-    await reportBrowserSessionHeartbeatSafely(daemonUrl, {
-      source,
-      page,
-      activeTabId: tabId,
-      visible: message?.visibilityState === "visible",
-      focused: message?.hasFocus === true,
-    });
+  if (presence.transportMode === "legacy-poll") {
     const polledCommand = await pollQueuedBrowserCommands(daemonUrl, primaryClaimant);
     return {
       ok: true,
       polledCommand,
-      transportMode,
+      transportMode: presence.transportMode,
     };
   }
-
-  sendDaemonSocketMessage({
-    type: "presence.update",
-    source,
-    page,
-    activeTabId: tabId,
-    visible: primaryClaimant?.visible === true,
-    focused: primaryClaimant?.focused === true,
-    capabilities: [
-      "context",
-      "dom",
-      "click",
-      "click-point",
-      "fill",
-      "key",
-      "screenshot",
-      "wait-for-text",
-      "wait-for-text-disappear",
-      "wait-for-selector",
-      "wait-for-dialog-close",
-      "query-dom",
-    ],
-    lastSeenAt: new Date().toISOString(),
-  });
   return {
     ok: true,
     polledCommand: false,
-    transportMode,
+    transportMode: presence.transportMode,
   };
 }
 

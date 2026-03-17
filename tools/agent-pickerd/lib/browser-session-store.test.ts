@@ -181,6 +181,87 @@ describe("BrowserSessionStore", () => {
     expect(store.readSummary().connected).toBe(false);
   });
 
+  it("can dispatch targeted websocket commands through a single browser connection without cached live presence", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello(
+      "browser-1",
+      {
+        type: "hello",
+        role: "browser",
+        extensionId: "ext-1",
+      },
+      browserSend,
+    );
+    store.registerHello(
+      "controller-1",
+      {
+        type: "hello",
+        role: "controller",
+      },
+      controllerSend,
+    );
+
+    const dispatched = store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-03",
+      command: {
+        type: "context",
+        targetUrlContains: "admin.portone.io",
+      },
+    });
+
+    expect(dispatched.requestId).toBe("browser-command-test-03");
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-03",
+        command: expect.objectContaining({
+          type: "context",
+          targetUrlContains: "admin.portone.io",
+          targetTabId: null,
+          resolvedTargetTabId: null,
+        }),
+      }),
+    );
+  });
+
+  it("does not coerce null tab ids into zero for url-targeted commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-04",
+      command: {
+        type: "context",
+        targetTabId: null,
+        resolvedTargetTabId: null,
+        targetUrlContains: "admin.portone.io",
+      },
+    });
+
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-04",
+        command: expect.objectContaining({
+          targetTabId: null,
+          resolvedTargetTabId: null,
+          targetUrlContains: "admin.portone.io",
+        }),
+      }),
+    );
+  });
+
   it("keeps the legacy polling queue available for explicit fallback mode", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();

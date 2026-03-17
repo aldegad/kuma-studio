@@ -186,7 +186,8 @@ function buildBrowserSessionResponse(sessionSummary, extensionSummary, browserTr
   if (browserTransportMode === "websocket" && extensionSummary?.detected) {
     return {
       ...merged,
-      message: "The Agent Picker extension was seen, but no live page presence is available yet. Keep the target tab open and refresh it if needed.",
+      message:
+        "The Agent Picker bridge is connected, but no live page presence is cached yet. Direct tab-targeted commands can still be attempted.",
     };
   }
 

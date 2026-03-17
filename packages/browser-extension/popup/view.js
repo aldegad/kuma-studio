@@ -9,15 +9,20 @@ const connectionStatusElement = document.getElementById("connection-status");
 const connectionDotElement = document.getElementById("connection-dot");
 const connectionLabelElement = document.getElementById("connection-label");
 const connectionUrlElement = document.getElementById("connection-url");
+const pageStatusElement = document.getElementById("page-status");
+const pageStatusDotElement = document.getElementById("page-status-dot");
+const pageStatusLabelElement = document.getElementById("page-status-label");
+const pageStatusMetaElement = document.getElementById("page-status-meta");
 const feedbackElement = document.getElementById("feedback");
 const lastSavedElement = document.getElementById("last-saved");
 let isBusy = false;
 let isConnected = false;
+let isCurrentPageReady = false;
 
 function syncButtonState() {
   connectDaemonButton.disabled = isBusy;
-  capturePageButton.disabled = isBusy || !isConnected;
-  inspectElementButton.disabled = isBusy || !isConnected;
+  capturePageButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
+  inspectElementButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
 }
 
 function setBusyState(busyState) {
@@ -25,8 +30,9 @@ function setBusyState(busyState) {
   syncButtonState();
 }
 
-function setActionAvailability(connectedState) {
+function setActionAvailability(connectedState, currentPageReadyState = false) {
   isConnected = connectedState;
+  isCurrentPageReady = currentPageReadyState;
   syncButtonState();
 }
 
@@ -43,13 +49,17 @@ function setRefactorPrompt(message) {
   refactorPromptElement.value = message;
 }
 
-function setConnectionState({ state, label, url, showForm }) {
+function setConnectionState({ state, label, url, showForm, pageState = "checking", pageLabel = "", pageMeta = "" }) {
   connectionStatusElement.dataset.state = state;
   connectionDotElement.className = `status-dot status-dot-${state}`;
   connectionLabelElement.textContent = label;
   connectionUrlElement.textContent = url;
   connectionFormElement.classList.toggle("is-hidden", !showForm);
-  setActionAvailability(state === "connected");
+  pageStatusElement.dataset.state = pageState;
+  pageStatusDotElement.className = `status-dot status-dot-${pageState === "ready" ? "connected" : pageState === "checking" ? "checking" : "error"}`;
+  pageStatusLabelElement.textContent = pageLabel;
+  pageStatusMetaElement.textContent = pageMeta;
+  setActionAvailability(state === "connected", pageState === "ready");
 }
 
 function updateSavedSelectionLabel(result) {

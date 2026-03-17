@@ -206,7 +206,7 @@ function openDaemonSocket(daemonUrl) {
           });
           return;
         case "command.request":
-          await handleSocketCommandRequest(message);
+          await handleSocketCommandRequest(daemonUrl, message);
           return;
         default:
           return;

@@ -63,6 +63,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             transportMode === "websocket"
               ? await waitForDaemonSocketReady()
               : getDaemonSocketDiagnostics();
+          const pageProbe =
+            transportMode === "websocket" && diagnostics.socketConnected === true
+              ? await probeCurrentPageReadiness(daemonUrl, message)
+              : { ready: false, page: null, tabId: message?.tabId ?? null, message: "Current page readiness was not checked." };
           if (transportMode === "websocket" && diagnostics.socketConnected !== true) {
             sendResponse({
               ok: false,
@@ -71,6 +75,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               socketConnected: diagnostics.socketConnected === true,
               socketStatus: diagnostics.socketStatus,
               lastSocketError: diagnostics.lastSocketError,
+              currentPageReady: false,
+              currentPage: null,
+              currentPageTabId: message?.tabId ?? null,
+              currentPageMessage: "The current page cannot be checked until the WebSocket bridge connects.",
               message: diagnostics.lastSocketError || "Daemon health check passed, but the WebSocket bridge did not connect.",
             });
             return;
@@ -82,10 +90,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             socketConnected: diagnostics.socketConnected === true || transportMode === "legacy-poll",
             socketStatus: diagnostics.socketStatus,
             lastSocketError: diagnostics.lastSocketError,
+            currentPageReady: pageProbe.ready === true,
+            currentPage: pageProbe.page ?? null,
+            currentPageTabId: pageProbe.tabId ?? message?.tabId ?? null,
+            currentPageMessage: pageProbe.message,
             message:
               transportMode === "legacy-poll"
                 ? `Bridge reachable at ${daemonUrl} using legacy polling mode.`
-                : `Bridge reachable at ${daemonUrl} and WebSocket connected.`,
+                : pageProbe.ready === true
+                  ? `Bridge reachable at ${daemonUrl}, WebSocket connected, and the current page is ready.`
+                  : `Bridge reachable at ${daemonUrl}, but the current page is not ready for Agent Picker commands.`,
           });
           return;
         case "agent-picker:page-ready":

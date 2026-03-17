@@ -152,4 +152,80 @@ describe("agent-pickerd websocket control plane", () => {
     controllerSocket.close();
     await new Promise((resolvePromise) => server.close(resolvePromise));
   });
+
+  it("forwards targeted commands to a single browser connection even without cached live presence", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "agent-pickerd-socket-"));
+    tempRoots.push(root);
+    process.env.AGENT_PICKER_STATE_HOME = path.join(root, "state");
+
+    const { createServer } = await import("./server.mjs");
+    const { server } = createServer({
+      host: "127.0.0.1",
+      port: 0,
+      root,
+    });
+
+    await new Promise((resolvePromise) => {
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : null;
+    const browserSocket = new WebSocket(`ws://127.0.0.1:${port}/browser-session/socket`);
+    const controllerSocket = new WebSocket(`ws://127.0.0.1:${port}/browser-session/socket`);
+
+    await Promise.all([waitForOpen(browserSocket), waitForOpen(controllerSocket)]);
+
+    browserSocket.send(
+      JSON.stringify({
+        type: "hello",
+        role: "browser",
+        extensionId: "dnoppcchjalcholnhliibpjbdfhaklmo",
+        extensionName: "Agent Picker Bridge",
+      }),
+    );
+    controllerSocket.send(
+      JSON.stringify({
+        type: "hello",
+        role: "controller",
+      }),
+    );
+
+    await Promise.all([waitForMessage(browserSocket), waitForMessage(controllerSocket)]);
+
+    controllerSocket.send(
+      JSON.stringify({
+        type: "command.request",
+        requestId: "browser-command-test-0004",
+        command: {
+          type: "context",
+          targetUrlContains: "admin.portone.io",
+        },
+      }),
+    );
+
+    const accepted = await waitForMessage(controllerSocket);
+    expect(accepted).toEqual(
+      expect.objectContaining({
+        type: "command.accepted",
+        requestId: "browser-command-test-0004",
+      }),
+    );
+
+    const commandRequest = await waitForMessage(browserSocket);
+    expect(commandRequest).toEqual(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-0004",
+        command: expect.objectContaining({
+          targetUrlContains: "admin.portone.io",
+          resolvedTargetTabId: null,
+        }),
+      }),
+    );
+
+    browserSocket.close();
+    controllerSocket.close();
+    await new Promise((resolvePromise) => server.close(resolvePromise));
+  });
 });

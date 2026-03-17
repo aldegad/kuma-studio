@@ -1,6 +1,22 @@
 const REFACTOR_PROMPT =
   "Please refactor this by clearly separating responsibilities, untangling any spaghetti code, and removing dead code and unnecessary fallbacks. If possible, keep each file under 500 lines.";
 
+function formatCurrentPageMeta(result) {
+  if (result?.currentPage?.title) {
+    return result.currentPage.title;
+  }
+
+  if (result?.currentPage?.url) {
+    return result.currentPage.url;
+  }
+
+  if (typeof result?.currentPageMessage === "string") {
+    return result.currentPageMessage;
+  }
+
+  return "";
+}
+
 async function sendBridgeMessage(type, daemonUrl = daemonUrlInput.value) {
   const savedDaemonUrl = await writeDaemonUrl(daemonUrl);
   return chrome.runtime.sendMessage({
@@ -17,6 +33,9 @@ async function refreshConnectionState(showFailure = false) {
     label: "Checking bridge...",
     url: daemonUrl,
     showForm: false,
+    pageState: "checking",
+    pageLabel: "Checking current page...",
+    pageMeta: "",
   });
 
   try {
@@ -29,6 +48,9 @@ async function refreshConnectionState(showFailure = false) {
         label: bridgeLabel,
         url: daemonUrl,
         showForm: true,
+        pageState: "unavailable",
+        pageLabel: "Current page unavailable",
+        pageMeta: error,
       });
 
       if (showFailure) {
@@ -42,13 +64,21 @@ async function refreshConnectionState(showFailure = false) {
 
     setConnectionState({
       state: "connected",
-      label: result?.browserTransport === "legacy-poll" ? "Connected (legacy)" : "Connected",
+      label: result?.browserTransport === "legacy-poll" ? "Bridge connected (legacy)" : "Bridge connected",
       url: daemonUrl,
       showForm: false,
+      pageState: result?.currentPageReady === true ? "ready" : "unavailable",
+      pageLabel: result?.currentPageReady === true ? "Current page ready" : "Current page unavailable",
+      pageMeta: formatCurrentPageMeta(result),
     });
 
     if (showFailure) {
-      setFeedback("Bridge connected.", "success");
+      setFeedback(
+        result?.currentPageReady === true
+          ? "Bridge connected and the current page is ready."
+          : "Bridge connected, but the current page is not ready for Agent Picker commands.",
+        result?.currentPageReady === true ? "success" : "error",
+      );
     }
 
     return true;
@@ -58,6 +88,9 @@ async function refreshConnectionState(showFailure = false) {
       label: "Bridge offline",
       url: daemonUrl,
       showForm: true,
+      pageState: "unavailable",
+      pageLabel: "Current page unavailable",
+      pageMeta: "The bridge is offline, so the current page could not be checked.",
     });
 
     if (showFailure) {

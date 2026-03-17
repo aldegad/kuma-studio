@@ -18,6 +18,19 @@ function sanitizeString(value, maxLength = 256) {
   return trimmed.slice(0, maxLength);
 }
 
+function sanitizeOptionalInteger(value) {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
 function sanitizeRole(value) {
   return value === "browser" || value === "controller" ? value : null;
 }
@@ -75,8 +88,8 @@ function sanitizeCommandPayload(candidate) {
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
   const timeoutMs = Number(candidate.timeoutMs);
-  const targetTabId = Number(candidate.targetTabId);
-  const resolvedTargetTabId = Number(candidate.resolvedTargetTabId);
+  const targetTabId = sanitizeOptionalInteger(candidate.targetTabId);
+  const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
   const x = Number(candidate.x);
   const y = Number(candidate.y);
   const hasTarget =
@@ -100,8 +113,8 @@ function sanitizeCommandPayload(candidate) {
     scope,
     targetUrl,
     targetUrlContains,
-    targetTabId: Number.isInteger(targetTabId) ? targetTabId : null,
-    resolvedTargetTabId: Number.isInteger(resolvedTargetTabId) ? resolvedTargetTabId : null,
+    targetTabId,
+    resolvedTargetTabId,
     x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : null,
     y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
     shiftKey: candidate.shiftKey === true,
@@ -220,6 +233,14 @@ function compareSessions(a, b) {
     Number(b?.visible === true) - Number(a?.visible === true) ||
     toTimestamp(b?.lastSeenAt) - toTimestamp(a?.lastSeenAt) ||
     Number(b?.tabId ?? -1) - Number(a?.tabId ?? -1)
+  );
+}
+
+function compareConnections(a, b) {
+  return (
+    toTimestamp(b?.lastSeenAt) - toTimestamp(a?.lastSeenAt) ||
+    toTimestamp(b?.updatedAt) - toTimestamp(a?.updatedAt) ||
+    String(b?.connectionId ?? "").localeCompare(String(a?.connectionId ?? ""))
   );
 }
 
@@ -419,24 +440,28 @@ export class BrowserSessionStore {
 
     const envelope = sanitizeCommandEnvelope(payload);
     const targetSession = this.findMatchingSession(envelope.command);
-    if (!targetSession?.connectionId || !Number.isInteger(targetSession.tabId)) {
-      throw new Error("No active browser session matches the requested tab target.");
-    }
-
-    const browserConnection = this.browserConnections.get(targetSession.connectionId);
+    const browserConnection =
+      (targetSession?.connectionId ? this.browserConnections.get(targetSession.connectionId) : null) ??
+      this.findFallbackBrowserConnection();
     if (!browserConnection) {
-      throw new Error("The matched browser connection is no longer available.");
+      if (this.browserConnections.size > 1) {
+        throw new Error(
+          "No live browser session matches the requested tab target, and multiple browser bridges are connected. Refresh the target page and try again.",
+        );
+      }
+
+      throw new Error("No active browser connection is available.");
     }
 
     const command = {
       ...envelope.command,
-      resolvedTargetTabId: targetSession.tabId,
+      resolvedTargetTabId: Number.isInteger(targetSession?.tabId) ? targetSession.tabId : envelope.command.resolvedTargetTabId,
     };
 
     this.inFlightCommands.set(envelope.requestId, {
       requestId: envelope.requestId,
       controllerConnectionId: connectionId,
-      browserConnectionId: targetSession.connectionId,
+      browserConnectionId: browserConnection.connectionId,
       createdAt: nowIso(),
       command,
     });
@@ -666,6 +691,14 @@ export class BrowserSessionStore {
     );
 
     return matching.sort(compareSessions)[0] ?? null;
+  }
+
+  findFallbackBrowserConnection() {
+    if (this.browserConnections.size !== 1) {
+      return null;
+    }
+
+    return [...this.browserConnections.values()].sort(compareConnections)[0] ?? null;
   }
 
   completeBrowserEnvelope(connectionId, requestId, envelope) {

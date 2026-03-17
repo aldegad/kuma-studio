@@ -16,6 +16,14 @@
         <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
       </header>
 
+      <section id="page-status" class="page-status" data-state="checking">
+        <span id="page-status-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+        <div class="page-status-copy">
+          <p id="page-status-label" class="page-status-label">Checking current page...</p>
+          <p id="page-status-meta" class="page-status-meta"></p>
+        </div>
+      </section>
+
       <section id="connection-form" class="connection-form is-hidden">
         <input
           id="daemon-url"
