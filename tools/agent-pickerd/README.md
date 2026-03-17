@@ -11,6 +11,7 @@ It is responsible for:
 - validating scene payloads
 - watching files and publishing SSE updates
 - exposing selection and agent note endpoints
+- brokering active browser-session heartbeats and agent commands for the Chrome extension
 - providing a CLI for agents and local tooling
 
 The UI reads and writes the scene through the daemon's HTTP/SSE endpoints.
@@ -82,6 +83,7 @@ For installed hosts, treat that directory as local state and add `.agent-picker/
 - `GET /scene`
 - `PATCH /scene/meta`
 - `GET /agent-note`
+- `GET /browser-session`
 - `GET /extension-status`
 - `GET /events`
 - `PUT /scene`
@@ -94,6 +96,11 @@ For installed hosts, treat that directory as local state and add `.agent-picker/
 - `DELETE /dev-selection`
 - `DELETE /dev-selection/session?sessionId=...`
 - `POST /agent-note`
+- `POST /browser-session/heartbeat`
+- `POST /browser-session/commands`
+- `GET /browser-session/commands/next`
+- `GET /browser-session/commands/:id`
+- `POST /browser-session/commands/:id/result`
 - `POST /extension-status`
 - `DELETE /agent-note`
 
@@ -106,7 +113,14 @@ node ./packages/server/src/cli.mjs get-scene --root ./example/next-host
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host
 node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host
 node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host
+node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
+node ./packages/server/src/cli.mjs browser-context
+node ./packages/server/src/cli.mjs browser-dom
+node ./packages/server/src/cli.mjs browser-click --text "다음"
+node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
+node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
+node ./packages/server/src/cli.mjs browser-screenshot --file ./tmp/current-tab.png
 node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```
 
@@ -117,5 +131,14 @@ node ./vendor/agent-picker/packages/server/src/cli.mjs get-scene --root .
 node ./vendor/agent-picker/packages/server/src/cli.mjs get-selection --root .
 node ./vendor/agent-picker/packages/server/src/cli.mjs get-agent-note --root .
 node ./vendor/agent-picker/packages/server/src/cli.mjs get-extension-status --root .
+node ./vendor/agent-picker/packages/server/src/cli.mjs get-browser-session
 node ./vendor/agent-picker/packages/server/src/cli.mjs set-agent-note --root . --author codex --status fixed --message "Updated the selected element."
 ```
+
+For browser commands:
+
+- omit targeting flags to use the currently focused visible tab
+- use `--tab-id` for a specific tab when you know the Chrome tab id
+- use `--url` for an exact tab URL match
+- use `--url-contains` for a looser match when the URL has changing query params
+- visible-tab screenshots still require the page to be the active focused tab in Chrome

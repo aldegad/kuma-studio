@@ -1,8 +1,10 @@
 import http from "node:http";
+import { writeFileSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { AgentNoteStore, DEFAULT_AGENT_NOTE_SESSION_ID, watchAgentNotes } from "./lib/agent-note-store.mjs";
+import { BrowserSessionStore } from "./lib/browser-session-store.mjs";
 import { BrowserExtensionStatusStore } from "./lib/browser-extension-status-store.mjs";
 import { DevSelectionStore } from "./lib/dev-selection-store.mjs";
 import { encodeAgentNoteEvent, encodeSceneEvent, ensureSceneShape, normalizeViewport } from "./lib/scene-schema.mjs";
@@ -17,8 +19,13 @@ Usage:
   node main.mjs get-selection [--session-id session-01] [--root .]
   node main.mjs get-agent-note [--session-id session-01] [--root .]
   node main.mjs get-extension-status [--root .]
+  node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
   node main.mjs set-agent-note --author codex --status fixed --message "Updated the picked element." [--session-id session-01] [--selection-id selector-path] [--root .]
   node main.mjs clear-agent-note [--session-id session-01] [--root .]
+  node main.mjs browser-context [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-dom [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-screenshot --file ./tmp/browser.png [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs put-scene --file ./scene.json [--root .]
   node main.mjs add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   node main.mjs move-node --id node-01 --x 120 --y 80 [--root .]
@@ -198,6 +205,7 @@ export function createServer({ host, port, root }) {
   const selectionStore = new DevSelectionStore(root);
   const agentNoteStore = new AgentNoteStore(root);
   const extensionStatusStore = new BrowserExtensionStatusStore(root);
+  const browserSessionStore = new BrowserSessionStore();
 
   store.ensure();
   broker.publishScene(store.read(), "startup");
@@ -253,6 +261,11 @@ export function createServer({ host, port, root }) {
 
     if (request.method === "GET" && url.pathname === "/extension-status") {
       sendJson(response, 200, extensionStatusStore.readSummary());
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/browser-session") {
+      sendJson(response, 200, browserSessionStore.readSummary());
       return;
     }
 
@@ -342,6 +355,55 @@ export function createServer({ host, port, root }) {
         const payload = await readJsonBody(request);
         extensionStatusStore.write(payload);
         sendJson(response, 200, extensionStatusStore.readSummary());
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/browser-session/heartbeat") {
+        const payload = await readJsonBody(request);
+        sendJson(response, 200, browserSessionStore.heartbeat(payload));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/browser-session/commands") {
+        const payload = await readJsonBody(request);
+        sendJson(response, 200, browserSessionStore.enqueueCommand(payload));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/browser-session/commands/next") {
+        const command = browserSessionStore.claimNextCommand({
+          tabId: url.searchParams.get("tabId") ? Number(url.searchParams.get("tabId")) : null,
+          url: url.searchParams.get("url"),
+          visible: url.searchParams.get("visible") === "true",
+          focused: url.searchParams.get("focused") === "true",
+        });
+        if (!command) {
+          sendNoContent(response);
+          return;
+        }
+
+        sendJson(response, 200, command);
+        return;
+      }
+
+      const browserCommandMatch = url.pathname.match(/^\/browser-session\/commands\/([^/]+)$/);
+      if (browserCommandMatch && request.method === "GET") {
+        const command = browserSessionStore.readCommand(browserCommandMatch[1]);
+        if (!command) {
+          sendNoContent(response);
+          return;
+        }
+
+        sendJson(response, 200, command);
+        return;
+      }
+
+      const browserCommandResultMatch = url.pathname.match(
+        /^\/browser-session\/commands\/([^/]+)\/result$/,
+      );
+      if (browserCommandResultMatch && request.method === "POST") {
+        const payload = await readJsonBody(request);
+        sendJson(response, 200, browserSessionStore.completeCommand(browserCommandResultMatch[1], payload));
         return;
       }
 
@@ -482,6 +544,164 @@ function commandGetExtensionStatus(options) {
   process.stdout.write(`${JSON.stringify(extensionStatusStore.readSummary(), null, 2)}\n`);
 }
 
+function normalizeDaemonUrl(rawValue) {
+  const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
+  return (trimmed || "http://127.0.0.1:4312").replace(/\/+$/, "");
+}
+
+function readCommandTargetOptions(options) {
+  const tabId = readNumber(options, "tab-id", null);
+  const targetUrl = readOptionalString(options, "url");
+  const targetUrlContains = readOptionalString(options, "url-contains");
+
+  return {
+    targetTabId: Number.isInteger(tabId) ? tabId : null,
+    targetUrl,
+    targetUrlContains,
+  };
+}
+
+async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {
+  const response = await fetch(endpoint, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+
+  if (allowNoContent && response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Request failed with status ${response.status}.`);
+  }
+
+  return response.json();
+}
+
+function getDaemonUrlFromOptions(options) {
+  return normalizeDaemonUrl(options["daemon-url"]);
+}
+
+async function commandGetBrowserSession(options) {
+  const daemonUrl = getDaemonUrlFromOptions(options);
+  const session = await fetchJson(`${daemonUrl}/browser-session`, {
+    method: "GET",
+    headers: {},
+  });
+  process.stdout.write(`${JSON.stringify(session, null, 2)}\n`);
+}
+
+async function enqueueBrowserCommand(options, payload) {
+  const daemonUrl = getDaemonUrlFromOptions(options);
+  const timeoutMs = readNumber(options, "timeout-ms", 15_000);
+  const pollIntervalMs = 250;
+  const startedAt = Date.now();
+  const command = await fetchJson(`${daemonUrl}/browser-session/commands`, {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      ...readCommandTargetOptions(options),
+      timeoutMs,
+    }),
+  });
+
+  while (Date.now() - startedAt <= timeoutMs) {
+    const result = await fetchJson(`${daemonUrl}/browser-session/commands/${command.id}`, {
+      method: "GET",
+      headers: {},
+    });
+
+    if (result?.status === "completed" || result?.status === "failed") {
+      if (result.status === "failed") {
+        throw new Error(result.error || "Browser command failed.");
+      }
+
+      return result;
+    }
+
+    await new Promise((resolvePromise) => {
+      setTimeout(resolvePromise, pollIntervalMs);
+    });
+  }
+
+  throw new Error(
+    `Timed out waiting for the browser command result after ${timeoutMs}ms. Keep the target tab active and focused so the extension can poll commands.`,
+  );
+}
+
+async function commandBrowserContext(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "context",
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+async function commandBrowserDom(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "dom",
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+async function commandBrowserClick(options) {
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const text = readOptionalString(options, "text");
+
+  if (!selector && !selectorPath && !text) {
+    throw new Error("browser-click requires --selector, --selector-path, or --text.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "click",
+    selector,
+    selectorPath,
+    text,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 400),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+function writeScreenshotFile(filePath, dataUrl) {
+  const match = typeof dataUrl === "string" ? dataUrl.match(/^data:([^;]+);base64,(.+)$/) : null;
+  if (!match) {
+    throw new Error("The browser screenshot result did not include a PNG data URL.");
+  }
+
+  writeFileSync(resolve(filePath), Buffer.from(match[2], "base64"));
+}
+
+async function commandBrowserScreenshot(options) {
+  const file = requireString(options, "file");
+  const result = await enqueueBrowserCommand(options, {
+    type: "screenshot",
+  });
+  const screenshot = result.result?.screenshot ?? null;
+
+  if (!screenshot?.dataUrl) {
+    throw new Error("The browser screenshot result did not include image data.");
+  }
+
+  writeScreenshotFile(file, screenshot.dataUrl);
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        file: resolve(file),
+        page: result.result?.page ?? null,
+        width: screenshot.width ?? 0,
+        height: screenshot.height ?? 0,
+        capturedAt: screenshot.capturedAt ?? null,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+}
+
 function commandSetAgentNote(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
@@ -552,7 +772,7 @@ function commandRemoveNode(options) {
   process.stdout.write(`${JSON.stringify(store.removeNode(requireString(options, "id")), null, 2)}\n`);
 }
 
-export function main(argv = process.argv.slice(2)) {
+export async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv;
 
   if (!command || command === "--help" || command === "-h") {
@@ -578,11 +798,26 @@ export function main(argv = process.argv.slice(2)) {
     case "get-extension-status":
       commandGetExtensionStatus(options);
       break;
+    case "get-browser-session":
+      await commandGetBrowserSession(options);
+      break;
     case "set-agent-note":
       commandSetAgentNote(options);
       break;
     case "clear-agent-note":
       commandClearAgentNote(options);
+      break;
+    case "browser-context":
+      await commandBrowserContext(options);
+      break;
+    case "browser-dom":
+      await commandBrowserDom(options);
+      break;
+    case "browser-click":
+      await commandBrowserClick(options);
+      break;
+    case "browser-screenshot":
+      await commandBrowserScreenshot(options);
       break;
     case "put-scene":
       commandPutScene(options);
@@ -607,5 +842,8 @@ const isDirectExecution =
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 
 if (isDirectExecution) {
-  main();
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  });
 }

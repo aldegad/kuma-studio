@@ -1,3 +1,5 @@
+let isPollingBrowserCommands = false;
+
 async function collectPageContext(tabId) {
   const response = await sendMessageToTab(tabId, {
     type: "agent-picker:collect-page",
@@ -10,11 +12,32 @@ async function collectPageContext(tabId) {
   return response.pageContext;
 }
 
+async function sendAgentCommandToTab(tabId, command) {
+  const response = await sendMessageToTab(tabId, {
+    type: "agent-picker:browser-command",
+    command,
+  });
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "The active tab rejected the browser command.");
+  }
+
+  return response.result ?? null;
+}
+
 async function reportExtensionHeartbeatSafely(daemonUrl, payload) {
   try {
     await reportExtensionHeartbeat(daemonUrl, payload);
   } catch {
     // Do not block the main capture flow on best-effort presence reporting.
+  }
+}
+
+async function reportBrowserSessionHeartbeatSafely(daemonUrl, payload) {
+  try {
+    await reportBrowserSessionHeartbeat(daemonUrl, payload);
+  } catch {
+    // Do not block command polling on best-effort session heartbeats.
   }
 }
 
@@ -126,6 +149,106 @@ async function handleInspectFailure(message, sender, error) {
     } catch {
       // Ignore follow-up notification failures after an inspect error.
     }
+  }
+}
+
+async function executeBrowserCommand(tab, command) {
+  switch (command?.type) {
+    case "context":
+      return {
+        pageContext: await collectPageContext(tab.id),
+      };
+    case "dom":
+    case "click":
+      return sendAgentCommandToTab(tab.id, command);
+    case "screenshot": {
+      const pageContext = await collectPageContext(tab.id);
+      const dataUrl = await captureTabScreenshot(tab.windowId);
+      return {
+        page: pageContext.page,
+        screenshot: {
+          dataUrl,
+          mimeType: "image/png",
+          width: 0,
+          height: 0,
+          capturedAt: new Date().toISOString(),
+        },
+      };
+    }
+    default:
+      throw new Error(`Unsupported Agent Picker browser command: ${String(command?.type)}`);
+  }
+}
+
+async function handlePageHeartbeat(daemonUrl, message, sender) {
+  const tabId = sender.tab?.id;
+  const windowId = sender.tab?.windowId;
+
+  if (!tabId || !windowId) {
+    return {
+      ok: true,
+      polledCommand: false,
+    };
+  }
+
+  const page = message?.page ?? createPageRecordFromTab(sender.tab);
+  const source =
+    message?.type === "agent-picker:page-ready"
+      ? "content-script:page-ready"
+      : "content-script:page-heartbeat";
+
+  await reportExtensionHeartbeatSafely(daemonUrl, {
+    source,
+    page,
+  });
+  await reportBrowserSessionHeartbeatSafely(daemonUrl, {
+    source,
+    page,
+    activeTabId: tabId,
+  });
+
+  if (isPollingBrowserCommands) {
+    return {
+      ok: true,
+      polledCommand: false,
+    };
+  }
+
+  isPollingBrowserCommands = true;
+
+  try {
+    const command = await claimNextBrowserCommand(daemonUrl, {
+      tabId,
+      url: page?.url ?? null,
+      visible: message?.visibilityState === "visible",
+      focused: message?.hasFocus === true,
+    });
+    if (!command) {
+      return {
+        ok: true,
+        polledCommand: false,
+      };
+    }
+
+    try {
+      const result = await executeBrowserCommand(sender.tab, command);
+      await reportBrowserCommandResult(daemonUrl, command.id, {
+        ok: true,
+        result,
+      });
+    } catch (error) {
+      await reportBrowserCommandResult(daemonUrl, command.id, {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return {
+      ok: true,
+      polledCommand: true,
+    };
+  } finally {
+    isPollingBrowserCommands = false;
   }
 }
 

@@ -46,6 +46,75 @@ async function reportExtensionHeartbeat(daemonUrl, details = {}) {
   return response.json();
 }
 
+async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
+  const response = await fetch(`${daemonUrl}/browser-session/heartbeat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      ...getExtensionManifestMetadata(),
+      source: details.source || "unknown",
+      page: details.page || null,
+      activeTabId: Number.isInteger(details.activeTabId) ? details.activeTabId : null,
+      capabilities: ["context", "dom", "click", "screenshot"],
+      lastSeenAt: new Date().toISOString(),
+    }),
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to report browser session heartbeat to ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
+async function claimNextBrowserCommand(daemonUrl, claimant = {}) {
+  const endpoint = new URL(`${daemonUrl}/browser-session/commands/next`);
+  if (Number.isInteger(claimant.tabId)) {
+    endpoint.searchParams.set("tabId", String(claimant.tabId));
+  }
+  if (typeof claimant.url === "string" && claimant.url.trim()) {
+    endpoint.searchParams.set("url", claimant.url.trim());
+  }
+  endpoint.searchParams.set("visible", claimant.visible === true ? "true" : "false");
+  endpoint.searchParams.set("focused", claimant.focused === true ? "true" : "false");
+
+  const response = await fetch(endpoint, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to read the next browser command from ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
+async function reportBrowserCommandResult(daemonUrl, commandId, payload) {
+  const response = await fetch(`${daemonUrl}/browser-session/commands/${commandId}/result`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to report the browser command result for ${commandId}.`);
+  }
+
+  return response.json();
+}
+
 function getSessionLabel(page) {
   try {
     const hostname = new URL(page.url).hostname;

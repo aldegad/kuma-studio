@@ -38,6 +38,7 @@
       "js": [
         "content/constants.js",
         "content/page-context.js",
+        "content/agent-actions.js",
         "content/bridge.js"
       ],
       "run_at": "document_idle"

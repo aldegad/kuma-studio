@@ -13,12 +13,26 @@ async function reportStoredExtensionHeartbeat(source, page = null) {
   }
 }
 
+async function reportStoredBrowserSessionHeartbeat(source, page = null) {
+  try {
+    await reportBrowserSessionHeartbeat(await getStoredDaemonUrl(), {
+      source,
+      page,
+      activeTabId: null,
+    });
+  } catch {
+    // Ignore daemon availability issues for passive session updates.
+  }
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   void reportStoredExtensionHeartbeat("runtime:on-installed");
+  void reportStoredBrowserSessionHeartbeat("runtime:on-installed");
 });
 
 chrome.runtime.onStartup.addListener(() => {
   void reportStoredExtensionHeartbeat("runtime:on-startup");
+  void reportStoredBrowserSessionHeartbeat("runtime:on-startup");
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -39,8 +53,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
           return;
         case "agent-picker:page-ready":
-          await reportStoredExtensionHeartbeat("content-script:page-ready", message?.page ?? null);
-          sendResponse({ ok: true });
+          sendResponse(await handlePageHeartbeat(daemonUrl, message, sender));
+          return;
+        case "agent-picker:page-heartbeat":
+          sendResponse(await handlePageHeartbeat(daemonUrl, message, sender));
           return;
         case "agent-picker:capture-page":
           sendResponse(await handleCapturePage(daemonUrl, message));

@@ -12,6 +12,11 @@ Prefer host-root wrapper scripts:
 npm run agent-pickerd:serve
 npm run agent-pickerd:get-selection
 npm run agent-pickerd:get-agent-note
+npm run agent-pickerd:get-browser-session
+npm run agent-pickerd:browser-context
+npm run agent-pickerd:browser-dom
+npm run agent-pickerd:browser-click -- --text "Next"
+npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
 ```
@@ -24,9 +29,32 @@ Use the repo-root scripts, which target `example/next-host`:
 npm run agent-pickerd:serve
 npm run agent-pickerd:get-selection
 npm run agent-pickerd:get-agent-note
+npm run agent-pickerd:get-browser-session
+npm run agent-pickerd:browser-context
+npm run agent-pickerd:browser-dom
+npm run agent-pickerd:browser-click -- --text "Next"
+npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
 ```
+
+## Browser bridge checks
+
+Use these before relying on the Chrome extension bridge:
+
+- `npm run agent-pickerd:get-browser-session`
+- If the response is missing, stale, or from the wrong project, start the correct daemon and repoint the extension popup to that daemon URL.
+- After extension code changes, reload the unpacked extension in `chrome://extensions`.
+- After changing the daemon URL in the popup, refresh the target page once so the content script reconnects.
+
+## Browser command targeting
+
+- Omit targeting flags to use the active focused tab.
+- Use `--tab-id <id>` when you know the exact Chrome tab id.
+- Use `--url <full-url>` for an exact match.
+- Use `--url-contains <partial-url>` when query params or hashes are unstable.
+- Background tabs can answer `browser-context`, `browser-dom`, and `browser-click`.
+- `browser-screenshot` still requires the target tab to be active and focused.
 
 ## Shared state layout
 

@@ -28,6 +28,11 @@
     "agent-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection --root ./example/next-host",
     "agent-pickerd:get-agent-note": "node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host",
     "agent-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host",
+    "agent-pickerd:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
+    "agent-pickerd:browser-context": "node ./packages/server/src/cli.mjs browser-context",
+    "agent-pickerd:browser-dom": "node ./packages/server/src/cli.mjs browser-dom",
+    "agent-pickerd:browser-click": "node ./packages/server/src/cli.mjs browser-click",
+    "agent-pickerd:browser-screenshot": "node ./packages/server/src/cli.mjs browser-screenshot",
     "agent-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host",
     "agent-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"
   },
