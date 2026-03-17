@@ -57,22 +57,29 @@ function sanitizeCommandPayload(candidate) {
   const selector = sanitizeString(candidate.selector, 1_200);
   const selectorPath = sanitizeString(candidate.selectorPath, 2_000);
   const text = sanitizeString(candidate.text, 512);
-  const file = sanitizeString(candidate.file, 2_000);
+  const value = typeof candidate.value === "string" ? candidate.value.slice(0, 4_000) : null;
+  const key = sanitizeString(candidate.key, 64);
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
   const timeoutMs = Number(candidate.timeoutMs);
   const targetTabId = Number(candidate.targetTabId);
+  const x = Number(candidate.x);
+  const y = Number(candidate.y);
 
   return {
     type,
     selector,
     selectorPath,
     text,
-    file,
+    value,
+    key,
     targetUrl,
     targetUrlContains,
     targetTabId: Number.isInteger(targetTabId) ? targetTabId : null,
+    x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : null,
+    y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
+    shiftKey: candidate.shiftKey === true,
     postActionDelayMs:
       Number.isFinite(postActionDelayMs) && postActionDelayMs >= 0
         ? Math.min(10_000, Math.round(postActionDelayMs))
@@ -220,10 +227,14 @@ export class BrowserSessionStore {
       selector: sanitized.selector,
       selectorPath: sanitized.selectorPath,
       text: sanitized.text,
-      file: sanitized.file,
+      value: sanitized.value,
+      key: sanitized.key,
       targetTabId: sanitized.targetTabId,
       targetUrl: sanitized.targetUrl,
       targetUrlContains: sanitized.targetUrlContains,
+      x: sanitized.x,
+      y: sanitized.y,
+      shiftKey: sanitized.shiftKey,
       postActionDelayMs: sanitized.postActionDelayMs,
       timeoutMs: sanitized.timeoutMs,
       result: null,

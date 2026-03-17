@@ -100,4 +100,25 @@ describe("BrowserSessionStore", () => {
       })?.id,
     ).toBe(byTab.id);
   });
+
+  it("stores fill and click-point command payloads for later execution", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+
+    const fillCommand = store.enqueueCommand({
+      type: "fill",
+      value: "https://ddalkkakposting.com/privacy",
+      selector: "input[name='privacy']",
+    });
+    const pointCommand = store.enqueueCommand({
+      type: "click-point",
+      x: 180.7,
+      y: 220.4,
+    });
+
+    expect(fillCommand.value).toBe("https://ddalkkakposting.com/privacy");
+    expect(fillCommand.selector).toBe("input[name='privacy']");
+    expect(pointCommand.x).toBe(181);
+    expect(pointCommand.y).toBe(220);
+  });
 });

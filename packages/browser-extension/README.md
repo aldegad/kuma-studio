@@ -22,6 +22,7 @@ It now also exposes a lightweight active-tab control loop for local agents:
 - heartbeat the active tab into the daemon while the page stays focused
 - return page context and a DOM snapshot of visible interactive elements
 - click a target by selector, selector path, or visible text
+- click a viewport coordinate, fill focused or targeted form fields, and send basic keys
 - capture a visible-tab screenshot to a file through the CLI
 
 It can also target a non-active tab for DOM reads and clicks when you specify
@@ -83,6 +84,9 @@ node ./packages/server/src/cli.mjs browser-dom
 node ./packages/server/src/cli.mjs browser-click --text "API 개별 연동"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
+node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
+node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --value "https://ddalkkakposting.com/privacy"
+node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-screenshot --file ./tmp/portone.png
 ```
 
@@ -94,4 +98,5 @@ node ./packages/server/src/cli.mjs browser-screenshot --file ./tmp/portone.png
 - the extension talks to the same daemon and state files as the embedded provider mode
 - extension status is heartbeat-based: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last heartbeat is stale
 - targeted DOM and click commands can run against background tabs, but they are still heartbeat-based, so the target tab needs to stay open with the content script loaded
+- targeted `browser-fill`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
 - screenshots still require the target page to be the visible focused tab in Chrome

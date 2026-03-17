@@ -40,6 +40,9 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
    - `npm run agent-pickerd:browser-context`
    - `npm run agent-pickerd:browser-dom`
    - `npm run agent-pickerd:browser-click -- --text "Next"`
+   - `npm run agent-pickerd:browser-fill -- --value "https://example.com/privacy"`
+   - `npm run agent-pickerd:browser-key -- --key Tab`
+   - `npm run agent-pickerd:browser-click-point -- --x 420 --y 360`
    - `npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png`
 5. Remember the current limitation.
    - DOM reads and clicks can target background tabs.

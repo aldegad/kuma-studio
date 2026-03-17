@@ -134,6 +134,66 @@ export async function commandBrowserClick(options) {
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }
 
+export async function commandBrowserClickPoint(options) {
+  const x = readNumber(options, "x", null);
+  const y = readNumber(options, "y", null);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error("browser-click-point requires --x and --y.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "click-point",
+    x,
+    y,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 400),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserFill(options) {
+  const value = typeof options.value === "string" ? options.value : null;
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const text = readOptionalString(options, "text");
+
+  if (value == null) {
+    throw new Error("browser-fill requires --value.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "fill",
+    value,
+    selector,
+    selectorPath,
+    text,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserKey(options) {
+  const key = readOptionalString(options, "key");
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const text = readOptionalString(options, "text");
+
+  if (!key) {
+    throw new Error("browser-key requires --key.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "key",
+    key,
+    selector,
+    selectorPath,
+    text,
+    shiftKey: options["shift"] === true,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
 export async function commandBrowserScreenshot(options) {
   const file = requireString(options, "file");
   const result = await enqueueBrowserCommand(options, {

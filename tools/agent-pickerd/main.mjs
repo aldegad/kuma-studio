@@ -5,8 +5,11 @@ import { pathToFileURL } from "node:url";
 import { AgentNoteStore } from "./lib/agent-note-store.mjs";
 import {
   commandBrowserClick,
+  commandBrowserClickPoint,
   commandBrowserContext,
   commandBrowserDom,
+  commandBrowserFill,
+  commandBrowserKey,
   commandBrowserScreenshot,
   commandGetBrowserSession,
 } from "./lib/browser-cli.mjs";
@@ -34,6 +37,9 @@ Usage:
   node main.mjs browser-context [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-click-point --x 120 --y 240 [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-key --key Tab [--shift] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] [--tab-id 123] [--url "https://example.com/page"] [--url-contains "example.com"] [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-screenshot --file ./tmp/browser.png [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs put-scene --file ./scene.json [--root .]
   node main.mjs add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
@@ -211,6 +217,15 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-click":
       await commandBrowserClick(options);
+      return;
+    case "browser-click-point":
+      await commandBrowserClickPoint(options);
+      return;
+    case "browser-fill":
+      await commandBrowserFill(options);
+      return;
+    case "browser-key":
+      await commandBrowserKey(options);
       return;
     case "browser-screenshot":
       await commandBrowserScreenshot(options);

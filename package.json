@@ -32,6 +32,9 @@
     "agent-pickerd:browser-context": "node ./packages/server/src/cli.mjs browser-context",
     "agent-pickerd:browser-dom": "node ./packages/server/src/cli.mjs browser-dom",
     "agent-pickerd:browser-click": "node ./packages/server/src/cli.mjs browser-click",
+    "agent-pickerd:browser-click-point": "node ./packages/server/src/cli.mjs browser-click-point",
+    "agent-pickerd:browser-fill": "node ./packages/server/src/cli.mjs browser-fill",
+    "agent-pickerd:browser-key": "node ./packages/server/src/cli.mjs browser-key",
     "agent-pickerd:browser-screenshot": "node ./packages/server/src/cli.mjs browser-screenshot",
     "agent-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host",
     "agent-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"

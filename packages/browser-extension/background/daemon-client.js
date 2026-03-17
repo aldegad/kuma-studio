@@ -57,7 +57,7 @@ async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
       source: details.source || "unknown",
       page: details.page || null,
       activeTabId: Number.isInteger(details.activeTabId) ? details.activeTabId : null,
-      capabilities: ["context", "dom", "click", "screenshot"],
+      capabilities: ["context", "dom", "click", "click-point", "fill", "key", "screenshot"],
       lastSeenAt: new Date().toISOString(),
     }),
   });

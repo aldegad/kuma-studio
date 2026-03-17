@@ -120,6 +120,9 @@ node ./packages/server/src/cli.mjs browser-dom
 node ./packages/server/src/cli.mjs browser-click --text "다음"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
+node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
+node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --value "https://ddalkkakposting.com/privacy"
+node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-screenshot --file ./tmp/current-tab.png
 node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```
@@ -141,4 +144,7 @@ For browser commands:
 - use `--tab-id` for a specific tab when you know the Chrome tab id
 - use `--url` for an exact tab URL match
 - use `--url-contains` for a looser match when the URL has changing query params
+- use `browser-fill` to set the exact value of a focused or targeted form field
+- use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`
+- use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
 - visible-tab screenshots still require the page to be the active focused tab in Chrome

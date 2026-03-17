@@ -16,6 +16,9 @@ npm run agent-pickerd:get-browser-session
 npm run agent-pickerd:browser-context
 npm run agent-pickerd:browser-dom
 npm run agent-pickerd:browser-click -- --text "Next"
+npm run agent-pickerd:browser-click-point -- --x 420 --y 360
+npm run agent-pickerd:browser-fill -- --value "https://example.com/privacy"
+npm run agent-pickerd:browser-key -- --key Tab
 npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
@@ -33,6 +36,9 @@ npm run agent-pickerd:get-browser-session
 npm run agent-pickerd:browser-context
 npm run agent-pickerd:browser-dom
 npm run agent-pickerd:browser-click -- --text "Next"
+npm run agent-pickerd:browser-click-point -- --x 420 --y 360
+npm run agent-pickerd:browser-fill -- --value "https://example.com/privacy"
+npm run agent-pickerd:browser-key -- --key Tab
 npm run agent-pickerd:browser-screenshot -- --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
@@ -54,6 +60,10 @@ Use these before relying on the Chrome extension bridge:
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
 - Background tabs can answer `browser-context`, `browser-dom`, and `browser-click`.
+- Background tabs can also answer `browser-fill`, `browser-key`, and `browser-click-point`.
+- Use `browser-fill` to set an exact value in a focused or targeted field.
+- Use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`.
+- Use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable.
 - `browser-screenshot` still requires the target tab to be active and focused.
 
 ## Shared state layout

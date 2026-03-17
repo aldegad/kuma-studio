@@ -160,6 +160,9 @@ async function executeBrowserCommand(tab, command) {
       };
     case "dom":
     case "click":
+    case "click-point":
+    case "fill":
+    case "key":
       return sendAgentCommandToTab(tab.id, command);
     case "screenshot": {
       const pageContext = await collectPageContext(tab.id);
