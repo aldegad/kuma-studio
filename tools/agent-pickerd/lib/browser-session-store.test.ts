@@ -20,13 +20,59 @@ describe("BrowserSessionStore", () => {
         title: "PortOne Docs",
       },
       activeTabId: 42,
+      visible: true,
+      focused: true,
       capabilities: ["context", "click", "dom"],
     });
 
     expect(summary.connected).toBe(true);
     expect(summary.page?.title).toBe("PortOne Docs");
     expect(summary.activeTabId).toBe(42);
+    expect(summary.focused).toBe(true);
+    expect(summary.visible).toBe(true);
     expect(summary.capabilities).toEqual(["context", "click", "dom"]);
+  });
+
+  it("keeps separate fresh sessions per tab and prefers the focused one", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+
+    store.heartbeat({
+      extensionId: "ext-1",
+      extensionName: "Agent Picker Bridge",
+      extensionVersion: "0.1.0",
+      browserName: "chrome",
+      page: {
+        url: "https://ddalkkakposting.com/posts/example/review",
+        pathname: "/posts/example/review",
+        title: "Review",
+      },
+      activeTabId: 10,
+      visible: false,
+      focused: false,
+      capabilities: ["context"],
+    });
+    const summary = store.heartbeat({
+      extensionId: "ext-1",
+      extensionName: "Agent Picker Bridge",
+      extensionVersion: "0.1.0",
+      browserName: "chrome",
+      page: {
+        url: "https://developers.facebook.com/apps/2249298185899082/settings/basic/",
+        pathname: "/apps/2249298185899082/settings/basic/",
+        title: "Meta Settings",
+      },
+      activeTabId: 11,
+      visible: true,
+      focused: true,
+      capabilities: ["context", "fill"],
+    });
+
+    expect(summary.connected).toBe(true);
+    expect(summary.activeTabId).toBe(11);
+    expect(summary.page?.title).toBe("Meta Settings");
+    expect(summary.tabCount).toBe(2);
+    expect(summary.tabs).toHaveLength(2);
   });
 
   it("queues, claims, and completes browser commands", async () => {

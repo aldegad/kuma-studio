@@ -103,6 +103,28 @@ function cloneValue(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
 }
 
+function toTimestamp(value) {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isFreshSession(session) {
+  if (!session?.lastSeenAt) {
+    return false;
+  }
+
+  return Date.now() - toTimestamp(session.lastSeenAt) <= STALE_AFTER_MS;
+}
+
+function compareSessions(a, b) {
+  return (
+    Number(b?.focused === true) - Number(a?.focused === true) ||
+    Number(b?.visible === true) - Number(a?.visible === true) ||
+    toTimestamp(b?.lastSeenAt) - toTimestamp(a?.lastSeenAt) ||
+    Number(b?.tabId ?? -1) - Number(a?.tabId ?? -1)
+  );
+}
+
 function createDisconnectedSummary() {
   return {
     connected: false,
@@ -116,6 +138,10 @@ function createDisconnectedSummary() {
     activeTabId: null,
     page: null,
     capabilities: [],
+    visible: false,
+    focused: false,
+    tabCount: 0,
+    tabs: [],
     pendingCommandCount: 0,
     claimedCommandCount: 0,
     message:
@@ -154,7 +180,8 @@ function doesCommandMatchClaimant(command, claimant = {}) {
 
 export class BrowserSessionStore {
   constructor() {
-    this.session = null;
+    this.metadata = null;
+    this.sessions = new Map();
     this.commands = new Map();
     this.commandOrder = [];
   }
@@ -162,56 +189,97 @@ export class BrowserSessionStore {
   heartbeat(payload) {
     const receivedAt = nowIso();
     const page = sanitizePage(payload?.page);
-    const nextSession = {
+    const metadata = {
       extensionId: sanitizeString(payload?.extensionId, 128),
       extensionName: sanitizeString(payload?.extensionName, 128),
       extensionVersion: sanitizeString(payload?.extensionVersion, 64),
       browserName: sanitizeString(payload?.browserName, 64) ?? "chrome",
-      source: sanitizeString(payload?.source, 128),
-      lastSeenAt: sanitizeString(payload?.lastSeenAt, 64) ?? receivedAt,
-      activeTabId: Number.isInteger(payload?.activeTabId) ? payload.activeTabId : null,
-      page,
-      capabilities: sanitizeCapabilities(payload?.capabilities),
       updatedAt: receivedAt,
     };
+    const lastSeenAt = sanitizeString(payload?.lastSeenAt, 64) ?? receivedAt;
+    const tabId = Number.isInteger(payload?.activeTabId) ? payload.activeTabId : null;
 
-    this.session = nextSession;
+    this.metadata = metadata;
+
+    if (tabId != null || page) {
+      const sessionKey = tabId != null ? `tab:${tabId}` : `page:${page?.url ?? receivedAt}`;
+      this.sessions.set(sessionKey, {
+        ...metadata,
+        source: sanitizeString(payload?.source, 128),
+        lastSeenAt,
+        tabId,
+        page,
+        capabilities: sanitizeCapabilities(payload?.capabilities),
+        visible: payload?.visible === true,
+        focused: payload?.focused === true,
+      });
+    }
+
     return this.readSummary();
   }
 
   readSummary() {
-    if (!this.session) {
+    const sessions = [...this.sessions.values()];
+    const freshSessions = sessions.filter(isFreshSession).sort(compareSessions);
+    const primarySession = freshSessions[0] ?? null;
+
+    if (!primarySession && !this.metadata) {
       return createDisconnectedSummary();
     }
 
-    const lastSeenAt = sanitizeString(this.session.lastSeenAt, 64) ?? this.session.updatedAt;
+    const referenceSession =
+      primarySession ??
+      sessions.sort(compareSessions)[0] ?? {
+        ...this.metadata,
+        lastSeenAt: this.metadata?.updatedAt ?? null,
+        tabId: null,
+        page: null,
+        capabilities: [],
+        visible: false,
+        focused: false,
+      };
+    const lastSeenAt = sanitizeString(referenceSession.lastSeenAt, 64) ?? referenceSession.updatedAt;
     const lastSeenMs = lastSeenAt ? Date.parse(lastSeenAt) : Number.NaN;
     const lastSeenAgoMs = Number.isFinite(lastSeenMs) ? Math.max(0, Date.now() - lastSeenMs) : null;
-    const stale = lastSeenAgoMs == null ? true : lastSeenAgoMs > STALE_AFTER_MS;
+    const stale = !primarySession;
     const pendingCommandCount = this.commandOrder.filter(
       (commandId) => this.commands.get(commandId)?.status === "pending",
     ).length;
     const claimedCommandCount = this.commandOrder.filter(
       (commandId) => this.commands.get(commandId)?.status === "claimed",
     ).length;
+    const tabSummaries = freshSessions.map((session) => ({
+      tabId: session.tabId,
+      page: cloneValue(session.page),
+      lastSeenAt: session.lastSeenAt,
+      visible: session.visible === true,
+      focused: session.focused === true,
+    }));
 
     return {
-      connected: !stale,
+      connected: !stale && !!primarySession,
       stale,
       lastSeenAt,
       lastSeenAgoMs,
-      extensionId: this.session.extensionId,
-      extensionName: this.session.extensionName,
-      extensionVersion: this.session.extensionVersion,
-      browserName: this.session.browserName,
-      activeTabId: this.session.activeTabId,
-      page: cloneValue(this.session.page),
-      capabilities: [...this.session.capabilities],
+      extensionId: referenceSession.extensionId,
+      extensionName: referenceSession.extensionName,
+      extensionVersion: referenceSession.extensionVersion,
+      browserName: referenceSession.browserName,
+      activeTabId: referenceSession.tabId,
+      page: cloneValue(referenceSession.page),
+      capabilities: [...(referenceSession.capabilities ?? [])],
+      visible: referenceSession.visible === true,
+      focused: referenceSession.focused === true,
+      tabCount: freshSessions.length,
+      tabs: tabSummaries,
       pendingCommandCount,
       claimedCommandCount,
-      message: !stale
-        ? "Active Agent Picker browser session is ready."
-        : "The last Agent Picker browser session heartbeat is stale. Refocus the target tab to resume command polling.",
+      message:
+        !stale && primarySession
+          ? freshSessions.length > 1
+            ? "Active Agent Picker browser sessions are ready across multiple tabs."
+            : "Active Agent Picker browser session is ready."
+          : "The last Agent Picker browser session heartbeat is stale. Refocus the target tab to resume command polling.",
     };
   }
 

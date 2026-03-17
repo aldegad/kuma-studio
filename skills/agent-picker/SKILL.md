@@ -30,12 +30,14 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 
 1. Check the browser bridge session first.
    - Default command: `npm run agent-pickerd:get-browser-session`
+   - Read `activeTabId`, `tabCount`, and `tabs[]` when multiple Chrome windows or tabs are open.
 2. If the session is missing or stale, fix the bridge before continuing.
    - Start the current daemon for this repo or host.
    - Reload the Chrome extension after extension code changes.
    - In the extension popup, point the daemon URL at the currently running daemon.
 3. Prefer targeted tab commands when the user may switch away from the page.
    - Use `--tab-id`, `--url`, or `--url-contains` for background-tab DOM reads and clicks.
+   - When `get-browser-session` reports more than one live tab, prefer `--tab-id` from that summary instead of relying on the current active tab.
 4. Use the narrowest browser command that answers the question.
    - `npm run agent-pickerd:browser-context`
    - `npm run agent-pickerd:browser-dom`

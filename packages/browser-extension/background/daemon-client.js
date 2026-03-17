@@ -57,6 +57,8 @@ async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
       source: details.source || "unknown",
       page: details.page || null,
       activeTabId: Number.isInteger(details.activeTabId) ? details.activeTabId : null,
+      visible: details.visible === true,
+      focused: details.focused === true,
       capabilities: ["context", "dom", "click", "click-point", "fill", "key", "screenshot"],
       lastSeenAt: new Date().toISOString(),
     }),

@@ -1,4 +1,5 @@
 let isPollingBrowserCommands = false;
+const knownBrowserTabs = new Map();
 
 async function collectPageContext(tabId) {
   const response = await sendMessageToTab(tabId, {
@@ -38,6 +39,102 @@ async function reportBrowserSessionHeartbeatSafely(daemonUrl, payload) {
     await reportBrowserSessionHeartbeat(daemonUrl, payload);
   } catch {
     // Do not block command polling on best-effort session heartbeats.
+  }
+}
+
+function upsertKnownBrowserTab(sender, message) {
+  const tabId = sender.tab?.id;
+  const windowId = sender.tab?.windowId;
+  const page = message?.page ?? createPageRecordFromTab(sender.tab);
+
+  if (!tabId || !windowId || !page?.url) {
+    return null;
+  }
+
+  const claimant = {
+    tabId,
+    windowId,
+    url: page.url,
+    visible: message?.visibilityState === "visible",
+    focused: message?.hasFocus === true,
+    lastSeenAt: new Date().toISOString(),
+  };
+
+  knownBrowserTabs.set(tabId, claimant);
+  return claimant;
+}
+
+function listKnownBrowserTabs(primaryClaimant = null) {
+  const ordered = [...knownBrowserTabs.values()].sort((left, right) => {
+    return (
+      Number(right.focused === true) - Number(left.focused === true) ||
+      Number(right.visible === true) - Number(left.visible === true) ||
+      Date.parse(right.lastSeenAt || 0) - Date.parse(left.lastSeenAt || 0) ||
+      right.tabId - left.tabId
+    );
+  });
+
+  if (!primaryClaimant) {
+    return ordered;
+  }
+
+  return [
+    primaryClaimant,
+    ...ordered.filter((entry) => entry.tabId !== primaryClaimant.tabId),
+  ];
+}
+
+async function executeClaimedBrowserCommand(daemonUrl, claimant, command) {
+  try {
+    const tab = await chrome.tabs.get(claimant.tabId);
+    const result = await executeBrowserCommand(tab, command);
+    await reportBrowserCommandResult(daemonUrl, command.id, {
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    knownBrowserTabs.delete(claimant.tabId);
+    await reportBrowserCommandResult(daemonUrl, command.id, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function pollQueuedBrowserCommands(daemonUrl, primaryClaimant = null) {
+  if (isPollingBrowserCommands) {
+    return false;
+  }
+
+  isPollingBrowserCommands = true;
+
+  try {
+    let polledCommand = false;
+
+    for (let attempts = 0; attempts < 25; attempts += 1) {
+      const claimants = listKnownBrowserTabs(primaryClaimant);
+      let matchedCommand = false;
+
+      for (const claimant of claimants) {
+        const command = await claimNextBrowserCommand(daemonUrl, claimant);
+        if (!command) {
+          continue;
+        }
+
+        matchedCommand = true;
+        polledCommand = true;
+        await executeClaimedBrowserCommand(daemonUrl, claimant, command);
+        break;
+      }
+
+      if (!matchedCommand) {
+        break;
+      }
+    }
+
+    return polledCommand;
+  } finally {
+    isPollingBrowserCommands = false;
   }
 }
 
@@ -208,51 +305,15 @@ async function handlePageHeartbeat(daemonUrl, message, sender) {
     source,
     page,
     activeTabId: tabId,
+    visible: message?.visibilityState === "visible",
+    focused: message?.hasFocus === true,
   });
-
-  if (isPollingBrowserCommands) {
-    return {
-      ok: true,
-      polledCommand: false,
-    };
-  }
-
-  isPollingBrowserCommands = true;
-
-  try {
-    const command = await claimNextBrowserCommand(daemonUrl, {
-      tabId,
-      url: page?.url ?? null,
-      visible: message?.visibilityState === "visible",
-      focused: message?.hasFocus === true,
-    });
-    if (!command) {
-      return {
-        ok: true,
-        polledCommand: false,
-      };
-    }
-
-    try {
-      const result = await executeBrowserCommand(sender.tab, command);
-      await reportBrowserCommandResult(daemonUrl, command.id, {
-        ok: true,
-        result,
-      });
-    } catch (error) {
-      await reportBrowserCommandResult(daemonUrl, command.id, {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    return {
-      ok: true,
-      polledCommand: true,
-    };
-  } finally {
-    isPollingBrowserCommands = false;
-  }
+  const primaryClaimant = upsertKnownBrowserTab(sender, message);
+  const polledCommand = await pollQueuedBrowserCommands(daemonUrl, primaryClaimant);
+  return {
+    ok: true,
+    polledCommand,
+  };
 }
 
 function createPageRecordFromTab(tab) {
