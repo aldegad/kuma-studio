@@ -1,6 +1,8 @@
 import http from "node:http";
+import { WebSocketServer } from "ws";
 
 import { AgentNoteStore, watchAgentNotes } from "./agent-note-store.mjs";
+import { getBrowserTransportModeFromEnv } from "./browser-transport.mjs";
 import { BrowserSessionStore } from "./browser-session-store.mjs";
 import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mjs";
 import { DevSelectionStore } from "./dev-selection-store.mjs";
@@ -138,8 +140,62 @@ function isNodeNotFoundError(error) {
   return String(error?.message ?? "").startsWith("Node not found:");
 }
 
+function readSocketJson(raw) {
+  const text = typeof raw === "string" ? raw : Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw ?? "");
+  return JSON.parse(text || "{}");
+}
+
+function sendSocketJson(socket, payload) {
+  if (socket.readyState !== 1) {
+    return;
+  }
+
+  socket.send(JSON.stringify(payload));
+}
+
+function buildBrowserSessionResponse(sessionSummary, extensionSummary, browserTransportMode) {
+  const socketConnected = extensionSummary?.socketConnected === true;
+  const lastSocketError = extensionSummary?.lastSocketError ?? null;
+  const lastSocketErrorAt = extensionSummary?.lastSocketErrorAt ?? null;
+  const merged = {
+    ...sessionSummary,
+    browserTransport: browserTransportMode,
+    socketConnected,
+    lastSocketError,
+    lastSocketErrorAt,
+  };
+
+  if (sessionSummary.connected) {
+    return merged;
+  }
+
+  if (browserTransportMode === "websocket" && lastSocketError) {
+    return {
+      ...merged,
+      message: `The Agent Picker WebSocket bridge is not connected: ${lastSocketError}`,
+    };
+  }
+
+  if (browserTransportMode === "websocket" && extensionSummary?.detected && socketConnected !== true) {
+    return {
+      ...merged,
+      message: "The Agent Picker extension was detected, but the WebSocket bridge is not connected.",
+    };
+  }
+
+  if (browserTransportMode === "websocket" && extensionSummary?.detected) {
+    return {
+      ...merged,
+      message: "The Agent Picker extension was seen, but no live page presence is available yet. Keep the target tab open and refresh it if needed.",
+    };
+  }
+
+  return merged;
+}
+
 export function createServer({ host, port, root }) {
   const broker = new SceneEventBroker();
+  const browserTransportMode = getBrowserTransportModeFromEnv();
   const store = new SceneStore(root, {
     onChange(scene, source) {
       broker.publishScene(scene, source);
@@ -159,6 +215,151 @@ export function createServer({ host, port, root }) {
   const stopWatchingAgentNotes = watchAgentNotes(agentNoteStore, (note, source, deleted) => {
     broker.publishAgentNote(note, source, deleted);
   });
+  const socketServer = new WebSocketServer({ noServer: true });
+  const socketStates = new Map();
+  let nextSocketId = 1;
+  const pingInterval = setInterval(() => {
+    for (const state of socketStates.values()) {
+      if (state.awaitingPong) {
+        try {
+          state.socket.close();
+        } catch {
+          // Ignore close races while cleaning up stale sockets.
+        }
+        continue;
+      }
+
+      state.awaitingPong = true;
+      sendSocketJson(state.socket, { type: "ping", sentAt: new Date().toISOString() });
+    }
+  }, 10_000);
+
+  function disconnectSocket(connectionId) {
+    socketStates.delete(connectionId);
+    browserSessionStore.disconnect(connectionId);
+  }
+
+  socketServer.on("connection", (socket) => {
+    const connectionId = `socket-${nextSocketId++}`;
+    socketStates.set(connectionId, {
+      socket,
+      awaitingPong: false,
+      role: null,
+    });
+
+    socket.on("message", (rawMessage) => {
+      let message = null;
+      try {
+        message = readSocketJson(rawMessage);
+        switch (message?.type) {
+          case "hello": {
+            const record = browserSessionStore.registerHello(connectionId, message, (payload) => {
+              sendSocketJson(socket, payload);
+            });
+            const state = socketStates.get(connectionId);
+            if (state) {
+              state.role = record.role;
+            }
+            if (record.role === "browser" && record.extensionId) {
+              try {
+                extensionStatusStore.write({
+                  extensionId: record.extensionId,
+                  extensionName: record.extensionName,
+                  extensionVersion: record.extensionVersion,
+                  browserName: record.browserName,
+                  browserTransport: "websocket",
+                  socketConnected: true,
+                  lastSocketError: null,
+                  lastSocketErrorAt: null,
+                  source: "websocket:hello",
+                  lastSeenAt: record.lastSeenAt,
+                });
+              } catch {
+                // Ignore invalid metadata payloads so the socket can still finish the hello handshake.
+              }
+            }
+            sendSocketJson(socket, {
+              type: "hello",
+              ok: true,
+              role: record.role,
+              browserTransport: browserTransportMode,
+            });
+            return;
+          }
+          case "presence.update": {
+            const update = browserSessionStore.recordBrowserPresence(connectionId, message);
+            extensionStatusStore.write(update.extensionStatus);
+            return;
+          }
+          case "command.request":
+            browserSessionStore.dispatchControllerCommand(connectionId, message);
+            return;
+          case "command.result":
+            browserSessionStore.completeBrowserCommand(connectionId, message);
+            return;
+          case "command.error":
+            browserSessionStore.failBrowserCommand(connectionId, message);
+            return;
+          case "ping":
+            sendSocketJson(socket, { type: "pong", sentAt: new Date().toISOString() });
+            return;
+          case "pong": {
+            const state = socketStates.get(connectionId);
+            if (state) {
+              state.awaitingPong = false;
+            }
+            return;
+          }
+          default:
+            throw new Error(`Unknown browser socket message type: ${String(message?.type)}`);
+        }
+      } catch (error) {
+        if (message?.type === "command.request" && typeof message?.requestId === "string") {
+          sendSocketJson(socket, {
+            type: "command.error",
+            requestId: message.requestId,
+            error: error instanceof Error ? error.message : "Browser command request failed.",
+          });
+          return;
+        }
+
+        sendSocketJson(socket, {
+          type: "command.error",
+          error: error instanceof Error ? error.message : "Browser socket request failed.",
+        });
+      }
+    });
+
+    socket.on("close", () => {
+      const state = socketStates.get(connectionId);
+      const summary = extensionStatusStore.readSummary();
+      if (state?.role === "browser" && summary.detected) {
+        extensionStatusStore.write({
+          extensionId: summary.extensionId,
+          browserTransport: browserTransportMode,
+          socketConnected: false,
+          source: "websocket:close",
+          lastSeenAt: new Date().toISOString(),
+        });
+      }
+      disconnectSocket(connectionId);
+    });
+
+    socket.on("error", () => {
+      const state = socketStates.get(connectionId);
+      const summary = extensionStatusStore.readSummary();
+      if (state?.role === "browser" && summary.detected) {
+        extensionStatusStore.write({
+          extensionId: summary.extensionId,
+          browserTransport: browserTransportMode,
+          socketConnected: false,
+          source: "websocket:error",
+          lastSeenAt: new Date().toISOString(),
+        });
+      }
+      disconnectSocket(connectionId);
+    });
+  });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
@@ -169,7 +370,7 @@ export function createServer({ host, port, root }) {
     }
 
     if (request.method === "GET" && url.pathname === "/health") {
-      sendJson(response, 200, { ok: true });
+      sendJson(response, 200, { ok: true, browserTransport: browserTransportMode });
       return;
     }
 
@@ -208,7 +409,15 @@ export function createServer({ host, port, root }) {
     }
 
     if (request.method === "GET" && url.pathname === "/browser-session") {
-      sendJson(response, 200, browserSessionStore.readSummary());
+      sendJson(
+        response,
+        200,
+        buildBrowserSessionResponse(
+          browserSessionStore.readSummary(),
+          extensionStatusStore.readSummary(),
+          browserTransportMode,
+        ),
+      );
       return;
     }
 
@@ -300,16 +509,28 @@ export function createServer({ host, port, root }) {
       }
 
       if (request.method === "POST" && url.pathname === "/browser-session/heartbeat") {
+        if (browserTransportMode !== "legacy-poll") {
+          sendJson(response, 410, { error: "Legacy browser polling transport is disabled." });
+          return;
+        }
         sendJson(response, 200, browserSessionStore.heartbeat(await readJsonBody(request)));
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/browser-session/commands") {
+        if (browserTransportMode !== "legacy-poll") {
+          sendJson(response, 410, { error: "Legacy browser polling transport is disabled." });
+          return;
+        }
         sendJson(response, 200, browserSessionStore.enqueueCommand(await readJsonBody(request)));
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/browser-session/commands/next") {
+        if (browserTransportMode !== "legacy-poll") {
+          sendJson(response, 410, { error: "Legacy browser polling transport is disabled." });
+          return;
+        }
         const command = browserSessionStore.claimNextCommand(parseBrowserCommandClaim(url.searchParams));
         if (!command) {
           sendNoContent(response);
@@ -322,6 +543,10 @@ export function createServer({ host, port, root }) {
 
       const browserCommandMatch = url.pathname.match(/^\/browser-session\/commands\/([^/]+)$/);
       if (browserCommandMatch && request.method === "GET") {
+        if (browserTransportMode !== "legacy-poll") {
+          sendJson(response, 410, { error: "Legacy browser polling transport is disabled." });
+          return;
+        }
         const command = browserSessionStore.readCommand(browserCommandMatch[1]);
         if (!command) {
           sendNoContent(response);
@@ -334,6 +559,10 @@ export function createServer({ host, port, root }) {
 
       const browserCommandResultMatch = url.pathname.match(/^\/browser-session\/commands\/([^/]+)\/result$/);
       if (browserCommandResultMatch && request.method === "POST") {
+        if (browserTransportMode !== "legacy-poll") {
+          sendJson(response, 410, { error: "Legacy browser polling transport is disabled." });
+          return;
+        }
         sendJson(
           response,
           200,
@@ -393,9 +622,23 @@ export function createServer({ host, port, root }) {
     sendJson(response, 404, { error: "Not found" });
   });
 
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
+    if (url.pathname !== "/browser-session/socket" || browserTransportMode !== "websocket") {
+      socket.destroy();
+      return;
+    }
+
+    socketServer.handleUpgrade(request, socket, head, (websocket) => {
+      socketServer.emit("connection", websocket, request);
+    });
+  });
+
   server.on("close", () => {
     stopWatching();
     stopWatchingAgentNotes();
+    clearInterval(pingInterval);
+    socketServer.close();
   });
 
   return { server, store };

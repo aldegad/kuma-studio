@@ -90,6 +90,22 @@ function normalizeExtensionStatus(status, defaults = {}) {
     extensionName: sanitizeString(candidate.extensionName, 120) ?? sanitizeString(defaults.extensionName, 120) ?? "Agent Picker Bridge",
     extensionVersion: sanitizeString(candidate.extensionVersion, 32) ?? sanitizeString(defaults.extensionVersion, 32) ?? "0.0.0",
     browserName: sanitizeString(candidate.browserName, 32) ?? sanitizeString(defaults.browserName, 32) ?? "chrome",
+    browserTransport:
+      sanitizeString(candidate.browserTransport, 32) ?? sanitizeString(defaults.browserTransport, 32) ?? "unknown",
+    socketConnected:
+      typeof candidate.socketConnected === "boolean"
+        ? candidate.socketConnected
+        : typeof defaults.socketConnected === "boolean"
+          ? defaults.socketConnected
+          : false,
+    lastSocketError:
+      candidate.lastSocketError === null
+        ? null
+        : sanitizeString(candidate.lastSocketError, 512) ?? sanitizeString(defaults.lastSocketError, 512),
+    lastSocketErrorAt:
+      candidate.lastSocketErrorAt === null
+        ? null
+        : normalizeTimestamp(candidate.lastSocketErrorAt, defaults.lastSocketErrorAt ?? null),
     firstSeenAt: normalizeTimestamp(defaults.firstSeenAt, normalizeTimestamp(candidate.firstSeenAt, now)),
     lastSeenAt: normalizeTimestamp(candidate.lastSeenAt, now),
     lastSource: sanitizeSource(candidate.lastSource ?? candidate.source) ?? sanitizeSource(defaults.lastSource) ?? "unknown",
@@ -112,10 +128,14 @@ function buildSummary(status, now = Date.now(), staleAfterMs = EXTENSION_STATUS_
       extensionName: null,
       extensionVersion: null,
       browserName: null,
+      browserTransport: "unknown",
+      socketConnected: false,
+      lastSocketError: null,
+      lastSocketErrorAt: null,
       lastSource: null,
       lastPage: null,
       message:
-        "No Agent Picker browser extension heartbeat has been reported yet. Open a regular website tab or the extension popup after loading the unpacked extension.",
+        "No Agent Picker browser extension presence has been reported yet. Open a regular website tab or the extension popup after loading the unpacked extension.",
     };
   }
 
@@ -136,10 +156,14 @@ function buildSummary(status, now = Date.now(), staleAfterMs = EXTENSION_STATUS_
     extensionName: status.extensionName,
     extensionVersion: status.extensionVersion,
     browserName: status.browserName,
+    browserTransport: status.browserTransport,
+    socketConnected: status.socketConnected === true,
+    lastSocketError: status.lastSocketError ?? null,
+    lastSocketErrorAt: status.lastSocketErrorAt ?? null,
     lastSource: status.lastSource,
     lastPage: status.lastPage,
     message: active
-      ? `Agent Picker browser extension heartbeat seen ${formatAge(lastSeenAgoMs)}.`
+      ? `Agent Picker browser extension presence seen ${formatAge(lastSeenAgoMs)}.`
       : `Agent Picker browser extension was last seen ${formatAge(lastSeenAgoMs)}.`,
   };
 }

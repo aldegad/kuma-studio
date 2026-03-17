@@ -16,9 +16,9 @@ The extension keeps a lightweight bootstrap content script on regular pages so
 the daemon can see the current tab context, and loads the heavier inspect UI
 only when you explicitly start picking from the popup.
 
-It now also exposes a lightweight active-tab control loop for local agents:
+It now also exposes a WebSocket-backed browser control bridge for local agents:
 
-- heartbeat the active tab into the daemon while the page stays focused
+- stream live tab presence into the daemon while the page stays open
 - return page context and a DOM snapshot of visible interactive elements
 - click a target by selector, selector path, or visible text
 - click a viewport coordinate, fill focused or targeted form fields, and send basic keys
@@ -87,8 +87,10 @@ node ./packages/server/src/cli.mjs browser-click --url-contains "developers.port
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
-node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --value "https://ddalkkakposting.com/privacy"
+node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
+node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
+node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind nearby-input --text "사이트 URL" --scope dialog
 node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers.portone.io" --file ./tmp/portone.png
 ```
 
@@ -98,7 +100,10 @@ node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers
 - screenshots are captured from the visible viewport, not the entire scrollable page
 - dragged area captures are cropped from the visible viewport screenshot before they are saved
 - the extension talks to the same daemon and state files as the embedded provider mode
-- extension status is heartbeat-based: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last heartbeat is stale
-- targeted DOM and click commands can run against background tabs, but they are still heartbeat-based, so the target tab needs to stay open with the content script loaded
+- selection saves still use the daemon's HTTP endpoints, but browser control uses the daemon's WebSocket endpoint at `/browser-session/socket`
+- extension status remains best-effort presence data: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last status becomes stale
+- the popup `Test Bridge` action now separates daemon health from WebSocket readiness so startup errors are easier to diagnose
+- targeted DOM and click commands can run against background tabs as long as the tab stays open with the content script loaded
 - targeted `browser-fill`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
 - screenshots still require the target page to be the visible focused tab in Chrome
+- the legacy HTTP polling transport is no longer the default path; it is kept only as an internal debug escape hatch behind `AGENT_PICKER_TRANSPORT=legacy-poll`

@@ -11,7 +11,7 @@ It is responsible for:
 - validating scene payloads
 - watching files and publishing SSE updates
 - exposing selection and agent note endpoints
-- brokering active browser-session heartbeats and agent commands for the Chrome extension
+- brokering live browser-session presence and browser control commands for the Chrome extension
 - providing a CLI for agents and local tooling
 
 The UI reads and writes the scene through the daemon's HTTP/SSE endpoints.
@@ -73,7 +73,7 @@ That directory currently includes:
 - `dev-selections/<session-id>.json` for each saved selection session
 - `dev-selection-assets/<session-id>/...` for saved snapshots
 - `agent-notes/<session-id>.json` for shared per-session agent notes
-- `browser-extension-status.json` for the latest browser extension heartbeat
+- `browser-extension-status.json` for the latest browser extension presence/status snapshot
 
 `--root` is still accepted for host-relative CLI compatibility, but runtime state now lives in the shared Agent Picker state home.
 
@@ -96,13 +96,28 @@ That directory currently includes:
 - `DELETE /dev-selection`
 - `DELETE /dev-selection/session?sessionId=...`
 - `POST /agent-note`
-- `POST /browser-session/heartbeat`
-- `POST /browser-session/commands`
-- `GET /browser-session/commands/next`
-- `GET /browser-session/commands/:id`
-- `POST /browser-session/commands/:id/result`
 - `POST /extension-status`
 - `DELETE /agent-note`
+
+## WebSocket API
+
+- `WS /browser-session/socket`
+
+`/health` now reports the active browser transport mode as `browserTransport`.
+The default is `websocket`.
+
+Browser control commands such as `browser-context`, `browser-dom`, `browser-click`,
+`browser-fill`, `browser-key`, `browser-click-point`, and `browser-screenshot`
+use the WebSocket control plane by default.
+
+The older HTTP command queue endpoints still exist only as an internal escape
+hatch when you explicitly set:
+
+```bash
+AGENT_PICKER_TRANSPORT=legacy-poll
+```
+
+Without that env flag, the deprecated HTTP browser queue endpoints return `410`.
 
 ## CLI examples
 
@@ -121,8 +136,11 @@ node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
-node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --value "https://ddalkkakposting.com/privacy"
+node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
+node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
+node ./packages/server/src/cli.mjs browser-wait-for-selector --url-contains "facebook.com" --selector ".toast-success"
+node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind nearby-input --text "사이트 URL" --scope dialog
 node ./packages/server/src/cli.mjs browser-screenshot --url-contains "ddalkkakposting.com" --file ./tmp/current-tab.png
 node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```
@@ -144,7 +162,10 @@ For browser commands:
 - use `--tab-id` for a specific tab when you know the Chrome tab id
 - use `--url` for an exact tab URL match
 - use `--url-contains` for a looser match when the URL has changing query params
-- use `browser-fill` to set the exact value of a focused or targeted form field
+- browser control is routed over the daemon's WebSocket control plane, not the old HTTP polling queue
+- use `browser-fill --label "..."` when the form field is easier to target by label than by selector
+- use `browser-wait-for-text`, `browser-wait-for-text-disappear`, `browser-wait-for-selector`, and `browser-wait-for-dialog-close` to confirm save flows
+- use `browser-query-dom` for structured questions such as required fields, nearby inputs, or all textareas
 - use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`
 - use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
 - visible-tab screenshots still require the page to be the active focused tab in Chrome

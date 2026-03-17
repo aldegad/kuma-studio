@@ -22,12 +22,27 @@ async function refreshConnectionState(showFailure = false) {
   try {
     const result = await sendBridgeMessage("agent-picker:test-daemon", daemonUrl);
     if (!result?.ok) {
-      throw new Error(result?.error || "The bridge did not return a result.");
+      const error = result?.error || result?.message || "The bridge did not return a result.";
+      const bridgeLabel = result?.healthOk ? "Daemon reachable, socket failed" : "Bridge offline";
+      setConnectionState({
+        state: "disconnected",
+        label: bridgeLabel,
+        url: daemonUrl,
+        showForm: true,
+      });
+
+      if (showFailure) {
+        setFeedback(error, "error");
+      } else {
+        setFeedback("", "idle");
+      }
+
+      return false;
     }
 
     setConnectionState({
       state: "connected",
-      label: "Connected",
+      label: result?.browserTransport === "legacy-poll" ? "Connected (legacy)" : "Connected",
       url: daemonUrl,
       showForm: false,
     });

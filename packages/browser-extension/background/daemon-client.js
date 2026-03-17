@@ -34,6 +34,14 @@ async function reportExtensionHeartbeat(daemonUrl, details = {}) {
       ...getExtensionManifestMetadata(),
       source: details.source || "unknown",
       page: details.page || null,
+      browserTransport: typeof details.browserTransport === "string" ? details.browserTransport : undefined,
+      socketConnected: typeof details.socketConnected === "boolean" ? details.socketConnected : undefined,
+      lastSocketError:
+        typeof details.lastSocketError === "string" || details.lastSocketError === null ? details.lastSocketError : undefined,
+      lastSocketErrorAt:
+        typeof details.lastSocketErrorAt === "string" || details.lastSocketErrorAt === null
+          ? details.lastSocketErrorAt
+          : undefined,
       lastSeenAt: new Date().toISOString(),
     }),
   });
@@ -59,7 +67,20 @@ async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
       activeTabId: Number.isInteger(details.activeTabId) ? details.activeTabId : null,
       visible: details.visible === true,
       focused: details.focused === true,
-      capabilities: ["context", "dom", "click", "click-point", "fill", "key", "screenshot"],
+      capabilities: [
+        "context",
+        "dom",
+        "click",
+        "click-point",
+        "fill",
+        "key",
+        "screenshot",
+        "wait-for-text",
+        "wait-for-text-disappear",
+        "wait-for-selector",
+        "wait-for-dialog-close",
+        "query-dom",
+      ],
       lastSeenAt: new Date().toISOString(),
     }),
   });

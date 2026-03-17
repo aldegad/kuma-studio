@@ -10,7 +10,12 @@ import {
   commandBrowserDom,
   commandBrowserFill,
   commandBrowserKey,
+  commandBrowserQueryDom,
   commandBrowserScreenshot,
+  commandBrowserWaitForDialogClose,
+  commandBrowserWaitForSelector,
+  commandBrowserWaitForText,
+  commandBrowserWaitForTextDisappear,
   commandGetBrowserSession,
 } from "./lib/browser-cli.mjs";
 import { parseFlags, readNumber, readOptionalString, requireString } from "./lib/cli-options.mjs";
@@ -38,9 +43,14 @@ Usage:
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-click-point --x 120 --y 240 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
-  node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-key --key Tab [--shift] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-screenshot --file ./tmp/browser.png (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-wait-for-text --text "Saved" (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-wait-for-text-disappear --text "Saving..." (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-wait-for-selector [--selector ".toast-success"] [--selector-path "body > div:nth-of-type(4)"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-wait-for-dialog-close (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-query-dom --kind required-fields (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--text "Site URL"] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs put-scene --file ./scene.json [--root .]
   node main.mjs add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   node main.mjs move-node --id node-01 --x 120 --y 80 [--root .]
@@ -229,6 +239,21 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-screenshot":
       await commandBrowserScreenshot(options);
+      return;
+    case "browser-wait-for-text":
+      await commandBrowserWaitForText(options);
+      return;
+    case "browser-wait-for-text-disappear":
+      await commandBrowserWaitForTextDisappear(options);
+      return;
+    case "browser-wait-for-selector":
+      await commandBrowserWaitForSelector(options);
+      return;
+    case "browser-wait-for-dialog-close":
+      await commandBrowserWaitForDialogClose(options);
+      return;
+    case "browser-query-dom":
+      await commandBrowserQueryDom(options);
       return;
     case "put-scene":
       commandPutScene(options);

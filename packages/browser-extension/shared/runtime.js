@@ -8,6 +8,12 @@ const AgentPickerExtensionShared = (() => {
     return (trimmed || DEFAULT_DAEMON_URL).replace(/\/+$/, "");
   }
 
+  function createDaemonSocketUrl(rawValue) {
+    const endpoint = new URL(`${normalizeDaemonUrl(rawValue)}/browser-session/socket`);
+    endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    return endpoint.toString();
+  }
+
   function createSessionId() {
     if (typeof crypto?.randomUUID === "function") {
       return `browser-${crypto.randomUUID()}`;
@@ -20,6 +26,7 @@ const AgentPickerExtensionShared = (() => {
     DAEMON_STORAGE_KEY,
     DEFAULT_DAEMON_URL,
     INSPECT_KEY_PREFIX,
+    createDaemonSocketUrl,
     createSessionId,
     normalizeDaemonUrl,
   };

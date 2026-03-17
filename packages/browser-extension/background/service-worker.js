@@ -26,13 +26,25 @@ async function reportStoredBrowserSessionHeartbeat(source, page = null) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  void reportStoredExtensionHeartbeat("runtime:on-installed");
-  void reportStoredBrowserSessionHeartbeat("runtime:on-installed");
+  void (async () => {
+    const daemonUrl = await getStoredDaemonUrl();
+    const transportMode = await ensureDaemonTransport(daemonUrl, { force: true });
+    if (transportMode === "legacy-poll") {
+      await reportStoredExtensionHeartbeat("runtime:on-installed");
+      await reportStoredBrowserSessionHeartbeat("runtime:on-installed");
+    }
+  })();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void reportStoredExtensionHeartbeat("runtime:on-startup");
-  void reportStoredBrowserSessionHeartbeat("runtime:on-startup");
+  void (async () => {
+    const daemonUrl = await getStoredDaemonUrl();
+    const transportMode = await ensureDaemonTransport(daemonUrl, { force: true });
+    if (transportMode === "legacy-poll") {
+      await reportStoredExtensionHeartbeat("runtime:on-startup");
+      await reportStoredBrowserSessionHeartbeat("runtime:on-startup");
+    }
+  })();
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -45,11 +57,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       switch (message?.type) {
         case "agent-picker:test-daemon":
-          await fetchDaemonHealth(daemonUrl);
-          await reportStoredExtensionHeartbeat("popup:test-daemon");
+          const health = await fetchDaemonHealth(daemonUrl);
+          const transportMode = await ensureDaemonTransport(daemonUrl, { force: true });
+          const diagnostics =
+            transportMode === "websocket"
+              ? await waitForDaemonSocketReady()
+              : getDaemonSocketDiagnostics();
+          if (transportMode === "websocket" && diagnostics.socketConnected !== true) {
+            sendResponse({
+              ok: false,
+              healthOk: true,
+              browserTransport: health?.browserTransport ?? transportMode,
+              socketConnected: diagnostics.socketConnected === true,
+              socketStatus: diagnostics.socketStatus,
+              lastSocketError: diagnostics.lastSocketError,
+              message: diagnostics.lastSocketError || "Daemon health check passed, but the WebSocket bridge did not connect.",
+            });
+            return;
+          }
           sendResponse({
             ok: true,
-            message: `Bridge reachable at ${daemonUrl}.`,
+            healthOk: true,
+            browserTransport: health?.browserTransport ?? transportMode,
+            socketConnected: diagnostics.socketConnected === true || transportMode === "legacy-poll",
+            socketStatus: diagnostics.socketStatus,
+            lastSocketError: diagnostics.lastSocketError,
+            message:
+              transportMode === "legacy-poll"
+                ? `Bridge reachable at ${daemonUrl} using legacy polling mode.`
+                : `Bridge reachable at ${daemonUrl} and WebSocket connected.`,
           });
           return;
         case "agent-picker:page-ready":

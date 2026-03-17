@@ -21,6 +21,7 @@ After `npm run skill:install`, the unpacked Chrome extension is also available a
      `npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."`
 4. Interpret the selection.
    - Read the page URL/title, selected element metadata, and snapshot reference.
+   - Prefer values you can verify from the repo, the current page, the saved selection, or `browser-*` commands before asking the user for them.
    - If the user references `pick 1`, `selection 2`, or similar, map the number to `elements[]` using 1-based indexing.
 5. Work from that saved context.
    - Update the shared note as progress changes.
@@ -37,6 +38,7 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
    - Start the current daemon for this repo or host.
    - Reload the Chrome extension after extension code changes.
    - In the extension popup, point the daemon URL at the currently running daemon.
+   - Browser control is WebSocket-based by default. Only use `AGENT_PICKER_TRANSPORT=legacy-poll` when you are intentionally debugging the deprecated transport.
 3. Prefer targeted tab commands when the user may switch away from the page.
    - Use `--tab-id`, `--url`, or `--url-contains` for background-tab DOM reads and clicks.
    - When `get-browser-session` reports more than one live tab, prefer `--tab-id` from that summary instead of relying on the current active tab.
@@ -44,9 +46,11 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
    - `npm run agent-pickerd:browser-context -- --url-contains "example.com"`
    - `npm run agent-pickerd:browser-dom -- --url-contains "example.com"`
    - `npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"`
-   - `npm run agent-pickerd:browser-fill -- --url-contains "example.com" --value "https://example.com/privacy"`
+   - `npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"`
    - `npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab`
    - `npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360`
+   - `npm run agent-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog`
+   - `npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind nearby-input --text "Site URL" --scope dialog`
    - `npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png`
 5. Remember the current limitation.
    - DOM reads and clicks can target background tabs.

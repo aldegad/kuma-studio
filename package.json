@@ -36,14 +36,22 @@
     "agent-pickerd:browser-fill": "node ./packages/server/src/cli.mjs browser-fill",
     "agent-pickerd:browser-key": "node ./packages/server/src/cli.mjs browser-key",
     "agent-pickerd:browser-screenshot": "node ./packages/server/src/cli.mjs browser-screenshot",
+    "agent-pickerd:browser-wait-for-text": "node ./packages/server/src/cli.mjs browser-wait-for-text",
+    "agent-pickerd:browser-wait-for-text-disappear": "node ./packages/server/src/cli.mjs browser-wait-for-text-disappear",
+    "agent-pickerd:browser-wait-for-selector": "node ./packages/server/src/cli.mjs browser-wait-for-selector",
+    "agent-pickerd:browser-wait-for-dialog-close": "node ./packages/server/src/cli.mjs browser-wait-for-dialog-close",
+    "agent-pickerd:browser-query-dom": "node ./packages/server/src/cli.mjs browser-query-dom",
     "agent-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host",
     "agent-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"
   },
   "devDependencies": {
+    "@types/node": "25.3.5",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@types/node": "25.3.5",
     "typescript": "5.9.3",
     "vitest": "4.0.18"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
   }
 }

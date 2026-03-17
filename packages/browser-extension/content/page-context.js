@@ -71,12 +71,168 @@ function getTextPreview(element) {
   return (element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 160);
 }
 
+function normalizePreviewText(value, maxLength = 240) {
+  return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
 function getDataset(element) {
   return Object.fromEntries(
     Array.from(element.attributes)
       .filter((attribute) => attribute.name.startsWith("data-"))
       .map((attribute) => [attribute.name, attribute.value]),
   );
+}
+
+function getTextByIdReferences(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+
+  return value
+    .split(/\s+/)
+    .map((id) => document.getElementById(id))
+    .filter((element) => element instanceof Element)
+    .map((element) => normalizePreviewText(element.textContent, 160))
+    .filter(Boolean);
+}
+
+function getAssociatedLabelTexts(element) {
+  const labels = new Set();
+  const pushText = (value) => {
+    const text = normalizePreviewText(value, 160);
+    if (text) {
+      labels.add(text);
+    }
+  };
+
+  if (element instanceof Element) {
+    pushText(element.getAttribute("aria-label"));
+    for (const text of getTextByIdReferences(element.getAttribute("aria-labelledby"))) {
+      pushText(text);
+    }
+  }
+
+  if ("labels" in element && Array.isArray(Array.from(element.labels ?? []))) {
+    for (const label of Array.from(element.labels ?? [])) {
+      pushText(label?.textContent);
+    }
+  }
+
+  const wrappingLabel = element.closest?.("label");
+  if (wrappingLabel) {
+    pushText(wrappingLabel.textContent);
+  }
+
+  let current = element.parentElement;
+  for (let depth = 0; depth < 3 && current; depth += 1) {
+    for (const candidate of Array.from(current.querySelectorAll("label, legend"))) {
+      if (!(candidate instanceof Element) || candidate.contains(element)) {
+        continue;
+      }
+
+      pushText(candidate.textContent);
+    }
+
+    current = current.parentElement;
+  }
+
+  return [...labels];
+}
+
+function getPrimaryLabel(element) {
+  return getAssociatedLabelTexts(element)[0] ?? null;
+}
+
+function getValuePreview(value) {
+  const text = typeof value === "string" ? value : value == null ? "" : String(value);
+  const normalized = normalizePreviewText(text, 240);
+  return normalized || null;
+}
+
+function getElementState(element) {
+  const baseState = {
+    label: getPrimaryLabel(element),
+    value: null,
+    valuePreview: null,
+    checked: null,
+    selectedValue: null,
+    selectedValues: [],
+    placeholder: null,
+    required: false,
+    disabled: false,
+    readOnly: false,
+    multiple: false,
+    inputType: null,
+  };
+
+  if (!(element instanceof Element)) {
+    return baseState;
+  }
+
+  if (element instanceof HTMLInputElement) {
+    const inputType = normalizePreviewText(element.type || "text", 32) || "text";
+    const isSensitiveInput = inputType === "password" || inputType === "file";
+    const value = isSensitiveInput ? null : element.value;
+
+    return {
+      ...baseState,
+      value,
+      valuePreview: isSensitiveInput ? null : getValuePreview(element.value),
+      checked: ["checkbox", "radio"].includes(inputType) ? element.checked : null,
+      placeholder: normalizePreviewText(element.placeholder, 160) || null,
+      required: element.required,
+      disabled: element.disabled,
+      readOnly: element.readOnly,
+      inputType,
+    };
+  }
+
+  if (element instanceof HTMLTextAreaElement) {
+    return {
+      ...baseState,
+      value: element.value,
+      valuePreview: getValuePreview(element.value),
+      placeholder: normalizePreviewText(element.placeholder, 160) || null,
+      required: element.required,
+      disabled: element.disabled,
+      readOnly: element.readOnly,
+      inputType: "textarea",
+    };
+  }
+
+  if (element instanceof HTMLSelectElement) {
+    const selectedValues = Array.from(element.selectedOptions)
+      .map((option) => option?.value)
+      .filter((value) => typeof value === "string");
+    const selectedValue = selectedValues[0] ?? null;
+
+    return {
+      ...baseState,
+      value: selectedValue,
+      valuePreview: getValuePreview(selectedValue),
+      selectedValue,
+      selectedValues,
+      required: element.required,
+      disabled: element.disabled,
+      readOnly: false,
+      multiple: element.multiple,
+      inputType: "select",
+    };
+  }
+
+  if (element instanceof HTMLElement && element.isContentEditable) {
+    const value = element.textContent || "";
+    return {
+      ...baseState,
+      value,
+      valuePreview: getValuePreview(value),
+      disabled: element.getAttribute("aria-disabled") === "true",
+      readOnly: element.getAttribute("aria-readonly") === "true",
+      inputType: "contenteditable",
+    };
+  }
+
+  return baseState;
 }
 
 function createSelector(element) {
@@ -142,12 +298,25 @@ function getTypography(element) {
 
 function toSelectionElementRecord(element) {
   const rect = getRect(element);
+  const state = getElementState(element);
   return {
     tagName: element.tagName.toLowerCase(),
     id: element.id || null,
     classNames: Array.from(element.classList).filter(Boolean),
     role: element.getAttribute("role"),
+    label: state.label,
     textPreview: getTextPreview(element),
+    value: state.value,
+    valuePreview: state.valuePreview,
+    checked: state.checked,
+    selectedValue: state.selectedValue,
+    selectedValues: state.selectedValues,
+    placeholder: state.placeholder,
+    required: state.required,
+    disabled: state.disabled,
+    readOnly: state.readOnly,
+    multiple: state.multiple,
+    inputType: state.inputType,
     selector: createSelector(element),
     selectorPath: createSelectorPath(element),
     dataset: getDataset(element),

@@ -13,7 +13,17 @@ interface DevSelectionStoreModule {
     readAsset(sessionId: string, fileName: string): { body: Uint8Array; mimeType: string } | null;
     deleteSession(sessionId: string): unknown;
     write(record: unknown): {
+      element: {
+        label?: string | null;
+        value?: string | null;
+        valuePreview?: string | null;
+        required?: boolean;
+      };
       elements: Array<{
+        label?: string | null;
+        value?: string | null;
+        valuePreview?: string | null;
+        required?: boolean;
         snapshot?: {
           assetUrl: string;
         } | null;
@@ -42,7 +52,19 @@ function createSelectionRecord(sessionId: string) {
       id: "card",
       classNames: ["hero-card"],
       role: null,
+      label: "Site URL",
       textPreview: "Hero card",
+      value: "https://example.com/privacy",
+      valuePreview: "https://example.com/privacy",
+      checked: null,
+      selectedValue: null,
+      selectedValues: [],
+      placeholder: "https://example.com/privacy",
+      required: true,
+      disabled: false,
+      readOnly: false,
+      multiple: false,
+      inputType: "url",
       selector: "#card",
       selectorPath: "main > div:nth-of-type(1)",
       dataset: {},
@@ -93,6 +115,9 @@ describe("DevSelectionStore snapshots", () => {
     expect(saved.elements[0].snapshot?.assetUrl).toBe(
       "/dev-selection/assets/session_01/selection-01.png",
     );
+    expect(saved.element.label).toBe("Site URL");
+    expect(saved.element.valuePreview).toBe("https://example.com/privacy");
+    expect(saved.element.required).toBe(true);
     expect(
       existsSync(
         path.join(stateHome, "dev-selection-assets", "session_01", "selection-01.png"),

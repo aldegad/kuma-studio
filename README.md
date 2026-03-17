@@ -1,6 +1,6 @@
 # Agent Picker
 
-Agent Picker is a repo-first UI selection bridge for coding agents. Clone or subtree this repository into your app, wire a small set of `tsconfig` aliases, and mount the provider to capture DOM selections directly in the host app, sync shared agent notes through `agent-pickerd`, and optionally render a design lab for comparing UI pieces.
+Agent Picker is a repo-first UI selection bridge for coding agents. Clone or subtree this repository into your app, wire a small set of `tsconfig` aliases, and mount the provider to capture DOM selections directly in the host app, sync shared agent notes through `agent-pickerd`, and optionally render a design lab for comparing UI pieces. Its Chrome extension bridge now uses a WebSocket-based browser control plane by default, while scene sync and saved-selection flows stay on HTTP/SSE.
 
 ## Domains
 
@@ -23,6 +23,7 @@ npm run dev
 Then open the printed web URL and append `/design-lab`. If `3000` is free, it will usually be [http://127.0.0.1:3000/design-lab](http://127.0.0.1:3000/design-lab).
 
 Agent Picker stores shared runtime state in `~/.codex/agent-picker/` by default, or in `$CODEX_HOME/agent-picker/` when `CODEX_HOME` is set.
+Browser control commands such as `browser-context` and `browser-click` run over the daemon's WebSocket control plane by default. The old HTTP polling transport is kept only as a temporary debug fallback behind `AGENT_PICKER_TRANSPORT=legacy-poll`.
 
 ## Install Into Your App
 
@@ -103,7 +104,7 @@ After you pull new changes, run the same command again to update the installed l
 - `npm run typecheck`: typecheck the example host
 - `npm run test`: run daemon unit tests
 - `npm run agent-pickerd:serve`: start the local daemon for the example host
-- `npm run agent-pickerd:get-extension-status`: show the latest browser extension heartbeat seen by the daemon
+- `npm run agent-pickerd:get-extension-status`: show the latest browser extension presence/status seen by the daemon
 
 ## Docs
 

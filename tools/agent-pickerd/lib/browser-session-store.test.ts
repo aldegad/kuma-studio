@@ -1,19 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 describe("BrowserSessionStore", () => {
-  it("tracks the latest heartbeat summary", async () => {
+  it("tracks websocket browser presence in the session summary", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();
 
-    const before = store.readSummary();
-    expect(before.connected).toBe(false);
-    expect(before.capabilities).toEqual([]);
+    store.registerHello(
+      "browser-1",
+      {
+        type: "hello",
+        role: "browser",
+        extensionId: "ext-1",
+        extensionName: "Agent Picker Bridge",
+        extensionVersion: "0.1.0",
+        browserName: "chrome",
+      },
+      vi.fn(),
+    );
 
-    const summary = store.heartbeat({
-      extensionId: "ext-1",
-      extensionName: "Agent Picker Bridge",
-      extensionVersion: "0.1.0",
-      browserName: "chrome",
+    const update = store.recordBrowserPresence("browser-1", {
+      type: "presence.update",
+      source: "content-script:page-heartbeat",
       page: {
         url: "https://developers.portone.io/opi/ko/integration/start/v2/readme?v=v2",
         pathname: "/opi/ko/integration/start/v2/readme",
@@ -23,152 +30,178 @@ describe("BrowserSessionStore", () => {
       visible: true,
       focused: true,
       capabilities: ["context", "click", "dom"],
+      lastSeenAt: new Date().toISOString(),
     });
 
-    expect(summary.connected).toBe(true);
-    expect(summary.page?.title).toBe("PortOne Docs");
-    expect(summary.activeTabId).toBe(42);
-    expect(summary.focused).toBe(true);
-    expect(summary.visible).toBe(true);
-    expect(summary.capabilities).toEqual(["context", "click", "dom"]);
+    expect(update.summary.connected).toBe(true);
+    expect(update.summary.page?.title).toBe("PortOne Docs");
+    expect(update.summary.activeTabId).toBe(42);
+    expect(update.summary.focused).toBe(true);
+    expect(update.summary.visible).toBe(true);
+    expect(update.summary.capabilities).toEqual(["context", "click", "dom"]);
+    expect(update.extensionStatus.source).toBe("content-script:page-heartbeat");
+    expect(update.extensionStatus.browserTransport).toBe("websocket");
+    expect(update.extensionStatus.socketConnected).toBe(true);
   });
 
-  it("keeps separate fresh sessions per tab and prefers the focused one", async () => {
+  it("routes targeted websocket commands to the matching browser and forwards the result", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
 
-    store.heartbeat({
-      extensionId: "ext-1",
-      extensionName: "Agent Picker Bridge",
-      extensionVersion: "0.1.0",
-      browserName: "chrome",
-      page: {
-        url: "https://ddalkkakposting.com/posts/example/review",
-        pathname: "/posts/example/review",
-        title: "Review",
+    store.registerHello(
+      "browser-1",
+      {
+        type: "hello",
+        role: "browser",
+        extensionId: "ext-1",
       },
-      activeTabId: 10,
+      browserSend,
+    );
+    store.recordBrowserPresence("browser-1", {
+      type: "presence.update",
+      source: "content-script:page-heartbeat",
+      page: {
+        url: "https://developers.portone.io/guide",
+        pathname: "/guide",
+        title: "Guide",
+      },
+      activeTabId: 77,
       visible: false,
       focused: false,
-      capabilities: ["context"],
+      capabilities: ["dom"],
+      lastSeenAt: new Date().toISOString(),
     });
-    const summary = store.heartbeat({
-      extensionId: "ext-1",
-      extensionName: "Agent Picker Bridge",
-      extensionVersion: "0.1.0",
-      browserName: "chrome",
-      page: {
-        url: "https://developers.facebook.com/apps/2249298185899082/settings/basic/",
-        pathname: "/apps/2249298185899082/settings/basic/",
-        title: "Meta Settings",
+
+    store.registerHello(
+      "controller-1",
+      {
+        type: "hello",
+        role: "controller",
       },
-      activeTabId: 11,
-      visible: true,
-      focused: true,
-      capabilities: ["context", "fill"],
+      controllerSend,
+    );
+
+    const dispatched = store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-01",
+      command: {
+        type: "dom",
+        targetUrlContains: "portone.io",
+      },
     });
 
-    expect(summary.connected).toBe(true);
-    expect(summary.activeTabId).toBe(11);
-    expect(summary.page?.title).toBe("Meta Settings");
-    expect(summary.tabCount).toBe(2);
-    expect(summary.tabs).toHaveLength(2);
-  });
+    expect(dispatched.requestId).toBe("browser-command-test-01");
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-01",
+        command: expect.objectContaining({
+          resolvedTargetTabId: 77,
+        }),
+      }),
+    );
+    expect(controllerSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.accepted",
+        requestId: "browser-command-test-01",
+      }),
+    );
 
-  it("queues, claims, and completes browser commands", async () => {
-    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
-    const store = new BrowserSessionStore();
-
-    const command = store.enqueueCommand({
-      type: "click",
-      selector: "button.primary",
-      postActionDelayMs: 300,
-      targetTabId: 1,
-    });
-
-    expect(command.status).toBe("pending");
-    expect(command.selector).toBe("button.primary");
-
-    const claimed = store.claimNextCommand({
-      tabId: 1,
-      url: "https://example.com",
-      visible: true,
-      focused: true,
-    });
-    expect(claimed?.id).toBe(command.id);
-    expect(claimed?.status).toBe("claimed");
-
-    const completed = store.completeCommand(command.id, {
-      ok: true,
+    store.completeBrowserCommand("browser-1", {
+      type: "command.result",
+      requestId: "browser-command-test-01",
       result: {
-        page: {
-          title: "Updated Page",
+        pageContext: {
+          page: {
+            title: "Updated Page",
+          },
         },
       },
     });
 
-    expect(completed.status).toBe("completed");
-    expect(completed.result).toEqual({
+    expect(controllerSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "command.result",
+        requestId: "browser-command-test-01",
+        result: {
+          pageContext: {
+            page: {
+              title: "Updated Page",
+            },
+          },
+        },
+      }),
+    );
+  });
+
+  it("fails in-flight websocket commands when the browser disconnects", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.recordBrowserPresence("browser-1", {
+      type: "presence.update",
+      source: "content-script:page-heartbeat",
       page: {
-        title: "Updated Page",
+        url: "https://example.com/background",
+        pathname: "/background",
+        title: "Background",
+      },
+      activeTabId: 55,
+      visible: true,
+      focused: true,
+      capabilities: ["click"],
+      lastSeenAt: new Date().toISOString(),
+    });
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-02",
+      command: {
+        type: "click",
+        targetTabId: 55,
+        text: "Continue",
       },
     });
+
+    store.disconnect("browser-1");
+
+    expect(controllerSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "command.error",
+        requestId: "browser-command-test-02",
+        error: expect.stringContaining("disconnected"),
+      }),
+    );
+    expect(store.readSummary().connected).toBe(false);
   });
 
-  it("matches targeted commands to background tabs by url or tab id", async () => {
+  it("keeps the legacy polling queue available for explicit fallback mode", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();
 
-    const byUrl = store.enqueueCommand({
-      type: "click",
-      text: "Continue",
-      targetUrlContains: "developers.portone.io",
-    });
-    const byTab = store.enqueueCommand({
-      type: "dom",
-      targetTabId: 77,
-    });
-
-    expect(
-      store.claimNextCommand({
-        tabId: 55,
-        url: "https://developers.portone.io/opi/ko/integration/start/v2/readme?v=v2",
-        visible: false,
-        focused: false,
-      })?.id,
-    ).toBe(byUrl.id);
-
-    expect(
-      store.claimNextCommand({
-        tabId: 77,
-        url: "https://example.com/background",
-        visible: false,
-        focused: false,
-      })?.id,
-    ).toBe(byTab.id);
-  });
-
-  it("stores fill and click-point command payloads for later execution", async () => {
-    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
-    const store = new BrowserSessionStore();
-
-    const fillCommand = store.enqueueCommand({
+    const command = store.enqueueCommand({
       type: "fill",
       value: "https://ddalkkakposting.com/privacy",
       selector: "input[name='privacy']",
       targetUrlContains: "ddalkkakposting.com",
     });
-    const pointCommand = store.enqueueCommand({
-      type: "click-point",
-      x: 180.7,
-      y: 220.4,
-      targetTabId: 9,
-    });
 
-    expect(fillCommand.value).toBe("https://ddalkkakposting.com/privacy");
-    expect(fillCommand.selector).toBe("input[name='privacy']");
-    expect(pointCommand.x).toBe(181);
-    expect(pointCommand.y).toBe(220);
+    expect(command.status).toBe("pending");
+    expect(command.selector).toBe("input[name='privacy']");
+
+    const claimed = store.claimNextCommand({
+      tabId: 9,
+      url: "https://ddalkkakposting.com/settings",
+      visible: true,
+      focused: true,
+    });
+    expect(claimed?.id).toBe(command.id);
   });
 
   it("rejects untargeted browser commands", async () => {

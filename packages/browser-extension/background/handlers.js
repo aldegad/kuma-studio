@@ -38,7 +38,7 @@ async function reportBrowserSessionHeartbeatSafely(daemonUrl, payload) {
   try {
     await reportBrowserSessionHeartbeat(daemonUrl, payload);
   } catch {
-    // Do not block command polling on best-effort session heartbeats.
+    // Do not block legacy command polling on best-effort session heartbeats.
   }
 }
 
@@ -96,6 +96,42 @@ async function executeClaimedBrowserCommand(daemonUrl, claimant, command) {
     knownBrowserTabs.delete(claimant.tabId);
     await reportBrowserCommandResult(daemonUrl, command.id, {
       ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function handleSocketCommandRequest(message) {
+  const requestId = typeof message?.requestId === "string" ? message.requestId : null;
+  const command = message?.command;
+  const resolvedTargetTabId = Number.isInteger(command?.resolvedTargetTabId) ? command.resolvedTargetTabId : null;
+
+  if (!requestId) {
+    throw new Error("Missing requestId for the browser socket command.");
+  }
+
+  if (!resolvedTargetTabId) {
+    sendDaemonSocketMessage({
+      type: "command.error",
+      requestId,
+      error: "The browser socket command did not include a resolved target tab.",
+    });
+    return;
+  }
+
+  try {
+    const tab = await chrome.tabs.get(resolvedTargetTabId);
+    const result = await executeBrowserCommand(tab, command);
+    sendDaemonSocketMessage({
+      type: "command.result",
+      requestId,
+      result,
+    });
+  } catch (error) {
+    knownBrowserTabs.delete(resolvedTargetTabId);
+    sendDaemonSocketMessage({
+      type: "command.error",
+      requestId,
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -260,8 +296,22 @@ async function executeBrowserCommand(tab, command) {
     case "click-point":
     case "fill":
     case "key":
+    case "wait-for-text":
+    case "wait-for-text-disappear":
+    case "wait-for-selector":
+    case "wait-for-dialog-close":
+    case "query-dom":
       return sendAgentCommandToTab(tab.id, command);
     case "screenshot": {
+      if (tab.active !== true) {
+        throw new Error("Visible-tab screenshots require the target tab to be active in its Chrome window.");
+      }
+
+      const targetWindow = await chrome.windows.get(tab.windowId);
+      if (targetWindow.focused !== true) {
+        throw new Error("Visible-tab screenshots require the target Chrome window to be focused.");
+      }
+
       const pageContext = await collectPageContext(tab.id);
       const dataUrl = await captureTabScreenshot(tab.windowId);
       return {
@@ -296,23 +346,56 @@ async function handlePageHeartbeat(daemonUrl, message, sender) {
     message?.type === "agent-picker:page-ready"
       ? "content-script:page-ready"
       : "content-script:page-heartbeat";
+  const primaryClaimant = upsertKnownBrowserTab(sender, message);
+  const transportMode = await ensureDaemonTransport(daemonUrl);
 
-  await reportExtensionHeartbeatSafely(daemonUrl, {
-    source,
-    page,
-  });
-  await reportBrowserSessionHeartbeatSafely(daemonUrl, {
+  if (transportMode === "legacy-poll") {
+    await reportExtensionHeartbeatSafely(daemonUrl, {
+      source,
+      page,
+    });
+    await reportBrowserSessionHeartbeatSafely(daemonUrl, {
+      source,
+      page,
+      activeTabId: tabId,
+      visible: message?.visibilityState === "visible",
+      focused: message?.hasFocus === true,
+    });
+    const polledCommand = await pollQueuedBrowserCommands(daemonUrl, primaryClaimant);
+    return {
+      ok: true,
+      polledCommand,
+      transportMode,
+    };
+  }
+
+  sendDaemonSocketMessage({
+    type: "presence.update",
     source,
     page,
     activeTabId: tabId,
-    visible: message?.visibilityState === "visible",
-    focused: message?.hasFocus === true,
+    visible: primaryClaimant?.visible === true,
+    focused: primaryClaimant?.focused === true,
+    capabilities: [
+      "context",
+      "dom",
+      "click",
+      "click-point",
+      "fill",
+      "key",
+      "screenshot",
+      "wait-for-text",
+      "wait-for-text-disappear",
+      "wait-for-selector",
+      "wait-for-dialog-close",
+      "query-dom",
+    ],
+    lastSeenAt: new Date().toISOString(),
   });
-  const primaryClaimant = upsertKnownBrowserTab(sender, message);
-  const polledCommand = await pollQueuedBrowserCommands(daemonUrl, primaryClaimant);
   return {
     ok: true,
-    polledCommand,
+    polledCommand: false,
+    transportMode,
   };
 }
 

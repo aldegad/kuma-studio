@@ -19,8 +19,10 @@ npm run agent-pickerd:browser-context -- --url-contains "example.com"
 npm run agent-pickerd:browser-dom -- --url-contains "example.com"
 npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
-npm run agent-pickerd:browser-fill -- --url-contains "example.com" --value "https://example.com/privacy"
+npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
+npm run agent-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
+npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind nearby-input --text "Site URL" --scope dialog
 npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
@@ -39,8 +41,10 @@ npm run agent-pickerd:browser-context -- --url-contains "example.com"
 npm run agent-pickerd:browser-dom -- --url-contains "example.com"
 npm run agent-pickerd:browser-click -- --url-contains "example.com" --text "Next"
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
-npm run agent-pickerd:browser-fill -- --url-contains "example.com" --value "https://example.com/privacy"
+npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
+npm run agent-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
+npm run agent-pickerd:browser-query-dom -- --url-contains "example.com" --kind nearby-input --text "Site URL" --scope dialog
 npm run agent-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run agent-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run agent-pickerd:clear-agent-note
@@ -51,6 +55,7 @@ npm run agent-pickerd:clear-agent-note
 Use these before relying on the Chrome extension bridge:
 
 - `npm run agent-pickerd:get-browser-session`
+- Browser control uses the daemon WebSocket endpoint by default. Treat `AGENT_PICKER_TRANSPORT=legacy-poll` as a temporary debug-only escape hatch, not the normal setup.
 - If the response is missing, stale, or from the wrong project, start the correct daemon and repoint the extension popup to that daemon URL.
 - If the response reports `tabCount > 1`, inspect `tabs[]` and pick the right `activeTabId` or explicit `tabId` before sending browser commands.
 - After extension code changes, reload the unpacked extension in `chrome://extensions`.
@@ -62,9 +67,12 @@ Use these before relying on the Chrome extension bridge:
 - Use `--tab-id <id>` when you know the exact Chrome tab id.
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
+- The CLI still uses the same `browser-*` commands, but they are now transported over WebSocket instead of the deprecated HTTP polling queue.
 - Background tabs can answer `browser-context`, `browser-dom`, and `browser-click`.
 - Background tabs can also answer `browser-fill`, `browser-key`, and `browser-click-point`.
-- Use `browser-fill` to set an exact value in a focused or targeted field.
+- Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
+- Use the wait commands to verify save states instead of guessing from click timing alone.
+- Use `browser-query-dom` when a long DOM snapshot is too noisy and you need nearby or required field results.
 - Use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`.
 - Use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable.
 - `browser-screenshot` still requires the target tab to be active and focused.

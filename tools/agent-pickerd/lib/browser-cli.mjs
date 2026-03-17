@@ -1,12 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { WebSocket } from "ws";
 
+import {
+  createBrowserSessionSocketUrl,
+  normalizeDaemonUrl,
+  resolveBrowserTransportMode,
+} from "./browser-transport.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";
-
-function normalizeDaemonUrl(rawValue) {
-  const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
-  return (trimmed || "http://127.0.0.1:4312").replace(/\/+$/, "");
-}
 
 function getDaemonUrlFromOptions(options) {
   return normalizeDaemonUrl(options["daemon-url"]);
@@ -33,6 +35,10 @@ function requireCommandTarget(options) {
   return targets;
 }
 
+function createRequestId() {
+  return `browser-command-${randomUUID()}`;
+}
+
 async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {
   const response = await fetch(endpoint, {
     ...init,
@@ -54,8 +60,7 @@ async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {
   return response.json();
 }
 
-async function enqueueBrowserCommand(options, payload) {
-  const daemonUrl = getDaemonUrlFromOptions(options);
+async function enqueueLegacyBrowserCommand(daemonUrl, options, payload) {
   const timeoutMs = readNumber(options, "timeout-ms", 15_000);
   const pollIntervalMs = 250;
   const startedAt = Date.now();
@@ -89,8 +94,129 @@ async function enqueueBrowserCommand(options, payload) {
   }
 
   throw new Error(
-    `Timed out waiting for the browser command result after ${timeoutMs}ms. Keep the target tab active and focused so the extension can poll commands.`,
+    `Timed out waiting for the browser command result after ${timeoutMs}ms. Keep the target tab active and focused so the extension can execute the command.`,
   );
+}
+
+function connectWebSocket(url) {
+  return new Promise((resolveConnection, rejectConnection) => {
+    const socket = new WebSocket(url);
+    const cleanup = () => {
+      socket.removeAllListeners("open");
+      socket.removeAllListeners("error");
+    };
+
+    socket.once("open", () => {
+      cleanup();
+      resolveConnection(socket);
+    });
+
+    socket.once("error", (error) => {
+      cleanup();
+      rejectConnection(error);
+    });
+  });
+}
+
+async function enqueueWebSocketBrowserCommand(daemonUrl, options, payload) {
+  const timeoutMs = readNumber(options, "timeout-ms", 15_000);
+  const targets = requireCommandTarget(options);
+  const requestId = createRequestId();
+  const socket = await connectWebSocket(createBrowserSessionSocketUrl(daemonUrl));
+
+  return new Promise((resolveCommand, rejectCommand) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.close();
+      rejectCommand(
+        new Error(
+          `Timed out waiting for the browser command result after ${timeoutMs}ms. Keep the target tab open with the extension connected.`,
+        ),
+      );
+    }, timeoutMs);
+
+    function settle(handler, value) {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timer);
+      try {
+        socket.close();
+      } catch {
+        // Ignore close races after the command settled.
+      }
+      handler(value);
+    }
+
+    socket.on("message", (rawMessage) => {
+      let message = null;
+      try {
+        message = JSON.parse(rawMessage.toString("utf8"));
+      } catch {
+        return;
+      }
+
+      switch (message?.type) {
+        case "ping":
+          socket.send(JSON.stringify({ type: "pong", sentAt: new Date().toISOString() }));
+          return;
+        case "command.result":
+          if (message.requestId === requestId) {
+            settle(resolveCommand, { result: message.result ?? null });
+          }
+          return;
+        case "command.error":
+          if (!message.requestId || message.requestId === requestId) {
+            settle(rejectCommand, new Error(message.error || "Browser command failed."));
+          }
+          return;
+        default:
+          return;
+      }
+    });
+
+    socket.on("error", (error) => {
+      settle(rejectCommand, error instanceof Error ? error : new Error(String(error)));
+    });
+
+    socket.on("close", () => {
+      if (!settled) {
+        settle(rejectCommand, new Error("Browser control socket closed before the command completed."));
+      }
+    });
+
+    socket.send(
+      JSON.stringify({
+        type: "hello",
+        role: "controller",
+      }),
+    );
+    socket.send(
+      JSON.stringify({
+        type: "command.request",
+        requestId,
+        command: {
+          ...payload,
+          ...targets,
+          timeoutMs,
+        },
+      }),
+    );
+  });
+}
+
+async function enqueueBrowserCommand(options, payload) {
+  const daemonUrl = getDaemonUrlFromOptions(options);
+  const transportMode = await resolveBrowserTransportMode(daemonUrl);
+  if (transportMode === "legacy-poll") {
+    return enqueueLegacyBrowserCommand(daemonUrl, options, payload);
+  }
+
+  return enqueueWebSocketBrowserCommand(daemonUrl, options, payload);
 }
 
 function writeScreenshotFile(filePath, dataUrl) {
@@ -165,6 +291,7 @@ export async function commandBrowserFill(options) {
   const value = typeof options.value === "string" ? options.value : null;
   const selector = readOptionalString(options, "selector");
   const selectorPath = readOptionalString(options, "selector-path");
+  const label = readOptionalString(options, "label");
   const text = readOptionalString(options, "text");
 
   if (value == null) {
@@ -176,6 +303,7 @@ export async function commandBrowserFill(options) {
     value,
     selector,
     selectorPath,
+    label,
     text,
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
   });
@@ -200,6 +328,80 @@ export async function commandBrowserKey(options) {
     text,
     shiftKey: options["shift"] === true,
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserWaitForText(options) {
+  const text = readOptionalString(options, "text");
+  if (!text) {
+    throw new Error("browser-wait-for-text requires --text.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "wait-for-text",
+    text,
+    scope: readOptionalString(options, "scope"),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserWaitForTextDisappear(options) {
+  const text = readOptionalString(options, "text");
+  if (!text) {
+    throw new Error("browser-wait-for-text-disappear requires --text.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "wait-for-text-disappear",
+    text,
+    scope: readOptionalString(options, "scope"),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserWaitForSelector(options) {
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+
+  if (!selector && !selectorPath) {
+    throw new Error("browser-wait-for-selector requires --selector or --selector-path.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "wait-for-selector",
+    selector,
+    selectorPath,
+    scope: readOptionalString(options, "scope"),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserWaitForDialogClose(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "wait-for-dialog-close",
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserQueryDom(options) {
+  const kind = readOptionalString(options, "kind");
+  const text = readOptionalString(options, "text");
+  const scope = readOptionalString(options, "scope");
+
+  if (!kind) {
+    throw new Error("browser-query-dom requires --kind.");
+  }
+
+  if (kind === "nearby-input" && !text) {
+    throw new Error('browser-query-dom --kind nearby-input requires --text.');
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "query-dom",
+    kind,
+    text,
+    scope,
   });
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }

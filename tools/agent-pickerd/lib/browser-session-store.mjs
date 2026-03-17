@@ -18,6 +18,10 @@ function sanitizeString(value, maxLength = 256) {
   return trimmed.slice(0, maxLength);
 }
 
+function sanitizeRole(value) {
+  return value === "browser" || value === "controller" ? value : null;
+}
+
 function sanitizePage(candidate) {
   if (!candidate || typeof candidate !== "object") {
     return null;
@@ -44,6 +48,11 @@ function sanitizeCapabilities(candidate) {
   ).slice(0, MAX_CAPABILITIES);
 }
 
+function sanitizeRequestId(value) {
+  const candidate = sanitizeString(value, 128);
+  return candidate && /^[a-zA-Z0-9:_-]{6,128}$/.test(candidate) ? candidate : null;
+}
+
 function sanitizeCommandPayload(candidate) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Browser command payload must be an object.");
@@ -56,14 +65,18 @@ function sanitizeCommandPayload(candidate) {
 
   const selector = sanitizeString(candidate.selector, 1_200);
   const selectorPath = sanitizeString(candidate.selectorPath, 2_000);
+  const label = sanitizeString(candidate.label, 512);
   const text = sanitizeString(candidate.text, 512);
   const value = typeof candidate.value === "string" ? candidate.value.slice(0, 4_000) : null;
   const key = sanitizeString(candidate.key, 64);
+  const kind = sanitizeString(candidate.kind, 64);
+  const scope = sanitizeString(candidate.scope, 32);
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
   const timeoutMs = Number(candidate.timeoutMs);
   const targetTabId = Number(candidate.targetTabId);
+  const resolvedTargetTabId = Number(candidate.resolvedTargetTabId);
   const x = Number(candidate.x);
   const y = Number(candidate.y);
   const hasTarget =
@@ -79,12 +92,16 @@ function sanitizeCommandPayload(candidate) {
     type,
     selector,
     selectorPath,
+    label,
     text,
     value,
     key,
+    kind,
+    scope,
     targetUrl,
     targetUrlContains,
     targetTabId: Number.isInteger(targetTabId) ? targetTabId : null,
+    resolvedTargetTabId: Number.isInteger(resolvedTargetTabId) ? resolvedTargetTabId : null,
     x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : null,
     y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
     shiftKey: candidate.shiftKey === true,
@@ -97,6 +114,79 @@ function sanitizeCommandPayload(candidate) {
         ? Math.min(120_000, Math.round(timeoutMs))
         : null,
   };
+}
+
+function sanitizeHelloPayload(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new Error("Browser socket hello payload must be an object.");
+  }
+
+  const role = sanitizeRole(candidate.role);
+  if (!role) {
+    throw new Error("Browser socket hello role is required.");
+  }
+
+  return {
+    role,
+    extensionId: sanitizeString(candidate.extensionId, 128),
+    extensionName: sanitizeString(candidate.extensionName, 128),
+    extensionVersion: sanitizeString(candidate.extensionVersion, 64),
+    browserName: sanitizeString(candidate.browserName, 64) ?? "chrome",
+  };
+}
+
+function sanitizePresencePayload(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new Error("Browser socket presence payload must be an object.");
+  }
+
+  const lastSeenAt = sanitizeString(candidate.lastSeenAt, 64) ?? nowIso();
+  const tabId = Number.isInteger(candidate.activeTabId) ? candidate.activeTabId : null;
+
+  return {
+    source: sanitizeString(candidate.source, 128) ?? "websocket:presence",
+    page: sanitizePage(candidate.page),
+    activeTabId: tabId,
+    visible: candidate.visible === true,
+    focused: candidate.focused === true,
+    capabilities: sanitizeCapabilities(candidate.capabilities),
+    lastSeenAt,
+  };
+}
+
+function sanitizeCommandEnvelope(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new Error("Browser socket command request must be an object.");
+  }
+
+  const requestId = sanitizeRequestId(candidate.requestId) ?? createCommandId();
+  const command = sanitizeCommandPayload(candidate.command ?? candidate);
+
+  return {
+    requestId,
+    command,
+  };
+}
+
+function sanitizeCommandResultPayload(candidate, ok) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new Error("Browser socket command result must be an object.");
+  }
+
+  const requestId = sanitizeRequestId(candidate.requestId);
+  if (!requestId) {
+    throw new Error("Browser socket command result requestId is required.");
+  }
+
+  return ok
+    ? {
+        requestId,
+        result: cloneValue(candidate.result ?? null),
+      }
+    : {
+        requestId,
+        error: sanitizeString(candidate.error, MAX_TEXT_LENGTH) ?? "Browser command failed.",
+      };
 }
 
 function createCommandId() {
@@ -153,7 +243,7 @@ function createDisconnectedSummary() {
     pendingCommandCount: 0,
     claimedCommandCount: 0,
     message:
-      "No active Agent Picker browser session is available. Keep the target page open in the active tab with the extension loaded.",
+      "No active Agent Picker browser session is available. Keep the target page open with the extension loaded.",
   };
 }
 
@@ -186,12 +276,22 @@ function doesCommandMatchClaimant(command, claimant = {}) {
   return claimantVisible && claimantFocused;
 }
 
+function createSocketEnvelope(type, extra = {}) {
+  return {
+    type,
+    ...extra,
+  };
+}
+
 export class BrowserSessionStore {
   constructor() {
     this.metadata = null;
     this.sessions = new Map();
     this.commands = new Map();
     this.commandOrder = [];
+    this.browserConnections = new Map();
+    this.controllerConnections = new Map();
+    this.inFlightCommands = new Map();
   }
 
   heartbeat(payload) {
@@ -213,6 +313,7 @@ export class BrowserSessionStore {
       const sessionKey = tabId != null ? `tab:${tabId}` : `page:${page?.url ?? receivedAt}`;
       this.sessions.set(sessionKey, {
         ...metadata,
+        connectionId: null,
         source: sanitizeString(payload?.source, 128),
         lastSeenAt,
         tabId,
@@ -224,6 +325,188 @@ export class BrowserSessionStore {
     }
 
     return this.readSummary();
+  }
+
+  registerHello(connectionId, payload, send) {
+    const hello = sanitizeHelloPayload(payload);
+    const record = {
+      connectionId,
+      send,
+      role: hello.role,
+      extensionId: hello.extensionId,
+      extensionName: hello.extensionName ?? "Agent Picker Bridge",
+      extensionVersion: hello.extensionVersion ?? "0.0.0",
+      browserName: hello.browserName ?? "chrome",
+      updatedAt: nowIso(),
+      lastSeenAt: nowIso(),
+    };
+
+    if (hello.role === "browser") {
+      this.browserConnections.set(connectionId, record);
+      this.metadata = {
+        extensionId: record.extensionId,
+        extensionName: record.extensionName,
+        extensionVersion: record.extensionVersion,
+        browserName: record.browserName,
+        updatedAt: record.updatedAt,
+      };
+    } else {
+      this.controllerConnections.set(connectionId, record);
+    }
+
+    return cloneValue(record);
+  }
+
+  recordBrowserPresence(connectionId, payload) {
+    const connection = this.browserConnections.get(connectionId);
+    if (!connection) {
+      throw new Error("Browser presence requires an active browser hello.");
+    }
+
+    const presence = sanitizePresencePayload(payload);
+    const sessionKey =
+      presence.activeTabId != null ? `tab:${presence.activeTabId}` : `page:${presence.page?.url ?? connectionId}`;
+
+    connection.updatedAt = nowIso();
+    connection.lastSeenAt = presence.lastSeenAt;
+    this.metadata = {
+      extensionId: connection.extensionId,
+      extensionName: connection.extensionName,
+      extensionVersion: connection.extensionVersion,
+      browserName: connection.browserName,
+      updatedAt: connection.updatedAt,
+    };
+
+    this.sessions.set(sessionKey, {
+      connectionId,
+      extensionId: connection.extensionId,
+      extensionName: connection.extensionName,
+      extensionVersion: connection.extensionVersion,
+      browserName: connection.browserName,
+      updatedAt: connection.updatedAt,
+      source: presence.source,
+      lastSeenAt: presence.lastSeenAt,
+      tabId: presence.activeTabId,
+      page: presence.page,
+      capabilities: presence.capabilities,
+      visible: presence.visible,
+      focused: presence.focused,
+    });
+
+    return {
+      summary: this.readSummary(),
+        extensionStatus: {
+          extensionId: connection.extensionId,
+          extensionName: connection.extensionName,
+          extensionVersion: connection.extensionVersion,
+          browserName: connection.browserName,
+          browserTransport: "websocket",
+          socketConnected: true,
+          lastSocketError: null,
+          lastSocketErrorAt: null,
+          source: presence.source,
+          page: presence.page,
+          lastSeenAt: presence.lastSeenAt,
+      },
+    };
+  }
+
+  dispatchControllerCommand(connectionId, payload) {
+    const controller = this.controllerConnections.get(connectionId);
+    if (!controller) {
+      throw new Error("Browser command requests require a controller hello.");
+    }
+
+    const envelope = sanitizeCommandEnvelope(payload);
+    const targetSession = this.findMatchingSession(envelope.command);
+    if (!targetSession?.connectionId || !Number.isInteger(targetSession.tabId)) {
+      throw new Error("No active browser session matches the requested tab target.");
+    }
+
+    const browserConnection = this.browserConnections.get(targetSession.connectionId);
+    if (!browserConnection) {
+      throw new Error("The matched browser connection is no longer available.");
+    }
+
+    const command = {
+      ...envelope.command,
+      resolvedTargetTabId: targetSession.tabId,
+    };
+
+    this.inFlightCommands.set(envelope.requestId, {
+      requestId: envelope.requestId,
+      controllerConnectionId: connectionId,
+      browserConnectionId: targetSession.connectionId,
+      createdAt: nowIso(),
+      command,
+    });
+
+    controller.send(
+      createSocketEnvelope("command.accepted", {
+        requestId: envelope.requestId,
+      }),
+    );
+    browserConnection.send(
+      createSocketEnvelope("command.request", {
+        requestId: envelope.requestId,
+        command,
+      }),
+    );
+
+    return {
+      requestId: envelope.requestId,
+      command,
+    };
+  }
+
+  completeBrowserCommand(connectionId, payload) {
+    const result = sanitizeCommandResultPayload(payload, true);
+    return this.completeBrowserEnvelope(connectionId, result.requestId, {
+      type: "command.result",
+      requestId: result.requestId,
+      result: result.result,
+    });
+  }
+
+  failBrowserCommand(connectionId, payload) {
+    const result = sanitizeCommandResultPayload(payload, false);
+    return this.completeBrowserEnvelope(connectionId, result.requestId, {
+      type: "command.error",
+      requestId: result.requestId,
+      error: result.error,
+    });
+  }
+
+  disconnect(connectionId) {
+    this.controllerConnections.delete(connectionId);
+
+    if (this.browserConnections.delete(connectionId)) {
+      for (const [sessionKey, session] of [...this.sessions.entries()]) {
+        if (session.connectionId === connectionId) {
+          this.sessions.delete(sessionKey);
+        }
+      }
+
+      for (const [requestId, request] of [...this.inFlightCommands.entries()]) {
+        if (request.browserConnectionId === connectionId) {
+          const controller = this.controllerConnections.get(request.controllerConnectionId);
+          controller?.send(
+            createSocketEnvelope("command.error", {
+              requestId,
+              error: "The target browser connection disconnected before the command completed.",
+            }),
+          );
+          this.inFlightCommands.delete(requestId);
+        }
+      }
+      return;
+    }
+
+    for (const [requestId, request] of [...this.inFlightCommands.entries()]) {
+      if (request.controllerConnectionId === connectionId) {
+        this.inFlightCommands.delete(requestId);
+      }
+    }
   }
 
   readSummary() {
@@ -253,9 +536,9 @@ export class BrowserSessionStore {
     const pendingCommandCount = this.commandOrder.filter(
       (commandId) => this.commands.get(commandId)?.status === "pending",
     ).length;
-    const claimedCommandCount = this.commandOrder.filter(
-      (commandId) => this.commands.get(commandId)?.status === "claimed",
-    ).length;
+    const claimedCommandCount =
+      this.commandOrder.filter((commandId) => this.commands.get(commandId)?.status === "claimed").length +
+      this.inFlightCommands.size;
     const tabSummaries = freshSessions.map((session) => ({
       tabId: session.tabId,
       page: cloneValue(session.page),
@@ -287,7 +570,7 @@ export class BrowserSessionStore {
           ? freshSessions.length > 1
             ? "Active Agent Picker browser sessions are ready across multiple tabs."
             : "Active Agent Picker browser session is ready."
-          : "The last Agent Picker browser session heartbeat is stale. Refocus the target tab to resume command polling.",
+          : "The last Agent Picker browser session update is stale. Reconnect the extension or refocus the target tab.",
     };
   }
 
@@ -302,9 +585,12 @@ export class BrowserSessionStore {
       type: sanitized.type,
       selector: sanitized.selector,
       selectorPath: sanitized.selectorPath,
+      label: sanitized.label,
       text: sanitized.text,
       value: sanitized.value,
       key: sanitized.key,
+      kind: sanitized.kind,
+      scope: sanitized.scope,
       targetTabId: sanitized.targetTabId,
       targetUrl: sanitized.targetUrl,
       targetUrlContains: sanitized.targetUrlContains,
@@ -366,5 +652,35 @@ export class BrowserSessionStore {
   readCommand(commandId) {
     const command = this.commands.get(commandId);
     return command ? cloneValue(command) : null;
+  }
+
+  findMatchingSession(command) {
+    const sessions = [...this.sessions.values()].filter((session) => isFreshSession(session));
+    const matching = sessions.filter((session) =>
+      doesCommandMatchClaimant(command, {
+        tabId: session.tabId,
+        url: session.page?.url,
+        visible: session.visible,
+        focused: session.focused,
+      }),
+    );
+
+    return matching.sort(compareSessions)[0] ?? null;
+  }
+
+  completeBrowserEnvelope(connectionId, requestId, envelope) {
+    const request = this.inFlightCommands.get(requestId);
+    if (!request) {
+      throw new Error(`Unknown browser command request: ${requestId}`);
+    }
+
+    if (request.browserConnectionId !== connectionId) {
+      throw new Error("Only the claimed browser connection can complete this command.");
+    }
+
+    const controller = this.controllerConnections.get(request.controllerConnectionId);
+    controller?.send(createSocketEnvelope(envelope.type, envelope));
+    this.inFlightCommands.delete(requestId);
+    return cloneValue(envelope);
   }
 }
