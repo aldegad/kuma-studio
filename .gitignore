@@ -3,6 +3,9 @@ web/node_modules
 .artifacts
 coverage
 dist
+.DS_Store
+tmp/
+*.tsbuildinfo
 example/next-host/.next
 example/next-host/node_modules
 example/next-host/public/agent-picker/drafts
