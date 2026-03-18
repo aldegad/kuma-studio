@@ -6,7 +6,9 @@ importScripts(
   "./background/debugger.js",
   "./background/injection.js",
   "./background/daemon-client.js",
+  "./background/browser-commands.js",
+  "./background/browser-presence.js",
+  "./background/browser-inspect.js",
   "./background/socket-client.js",
-  "./background/handlers.js",
   "./background/service-worker.js",
 );

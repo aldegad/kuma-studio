@@ -1,0 +1,110 @@
+async function handleCapturePage(daemonUrl, message) {
+  const tab = await resolveTargetTab(message);
+  const pageContext = await collectPageContext(tab.id);
+  const screenshotDataUrl = await captureTabScreenshot(tab.windowId);
+  const selection = await saveSelectionToDaemon(daemonUrl, pageContext, screenshotDataUrl);
+  await reportExtensionHeartbeatSafely(daemonUrl, {
+    source: "popup:capture-page",
+    page: pageContext.page,
+  });
+
+  return {
+    ok: true,
+    message: "Current page saved to the bridge.",
+    selection,
+  };
+}
+
+async function captureInspectScreenshot(windowId, message) {
+  const screenshotDataUrl = await captureTabScreenshot(windowId);
+
+  if (!message.captureRect) {
+    return screenshotDataUrl;
+  }
+
+  return cropTabScreenshot(screenshotDataUrl, message.captureRect, message.pageContext?.viewport);
+}
+
+async function handleStartInspect(daemonUrl, message) {
+  const tab = await resolveTargetTab(message);
+  await ensureInteractiveAgentPicker(tab.id);
+  await setInspectState(tab.id, daemonUrl);
+  await enableInspectBadge(tab.id);
+
+  const response = await sendMessageToTab(tab.id, {
+    type: "agent-picker:start-inspect",
+  });
+  if (!response?.ok) {
+    await clearInspectState(tab.id);
+    throw new Error(response?.error || "Failed to arm inspect mode.");
+  }
+
+  await reportExtensionHeartbeatSafely(daemonUrl, {
+    source: "popup:start-inspect",
+    page: createPageRecordFromTab(tab),
+  });
+
+  return {
+    ok: true,
+    message: "Inspect mode armed. Click the target element in the page.",
+  };
+}
+
+async function notifyInspectResult(tabId, payload) {
+  await sendMessageToTab(tabId, {
+    type: "agent-picker:inspect-result",
+    ...payload,
+  });
+}
+
+async function handleInspectPicked(message, sender) {
+  const tabId = sender.tab?.id;
+  const windowId = sender.tab?.windowId;
+
+  if (!tabId || !windowId) {
+    throw new Error("Missing browser tab information for the picked element.");
+  }
+
+  const inspectState = await getInspectState(tabId);
+  if (!inspectState?.daemonUrl) {
+    throw new Error("Inspect mode is no longer active for this tab.");
+  }
+
+  const screenshot = await captureInspectScreenshot(windowId, message);
+  const selection = await saveSelectionToDaemon(
+    inspectState.daemonUrl,
+    message.pageContext,
+    screenshot,
+  );
+  await reportExtensionHeartbeatSafely(inspectState.daemonUrl, {
+    source: "content-script:inspect-picked",
+    page: message.pageContext?.page,
+  });
+
+  await clearInspectState(tabId);
+  await notifyInspectResult(tabId, {
+    ok: true,
+    message: "Element saved to the local Agent Picker bridge.",
+  });
+
+  return {
+    ok: true,
+    message: "Element saved to the bridge.",
+    selection,
+  };
+}
+
+async function handleInspectFailure(message, sender, error) {
+  if (sender.tab?.id && message?.type === "agent-picker:inspect-picked") {
+    await clearInspectState(sender.tab.id);
+
+    try {
+      await notifyInspectResult(sender.tab.id, {
+        ok: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } catch {
+      // Ignore follow-up notification failures after an inspect error.
+    }
+  }
+}

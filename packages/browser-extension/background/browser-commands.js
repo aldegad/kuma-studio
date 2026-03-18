@@ -1,0 +1,213 @@
+async function collectPageContext(tabId) {
+  const response = await sendMessageToTab(tabId, {
+    type: "agent-picker:collect-page",
+  });
+
+  if (!response?.ok || !response.pageContext) {
+    throw new Error(response?.error || "Failed to read the page.");
+  }
+
+  return response.pageContext;
+}
+
+async function sendAgentCommandToTab(tabId, command) {
+  let response = null;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    response = await sendMessageToTab(tabId, {
+      type: "agent-picker:browser-command",
+      command,
+    });
+
+    if (response?.ok) {
+      return response.result ?? null;
+    }
+
+    if (response?.error !== "The Agent Picker browser command tools are not loaded for this page yet.") {
+      break;
+    }
+
+    await waitForDelay(150);
+  }
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "The active tab rejected the browser command.");
+  }
+
+  return response.result ?? null;
+}
+
+async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await collectPageContext(tabId);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) {
+        await waitForDelay(delayMs);
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to read the page after reloading.");
+}
+
+function normalizeScreenshotClipRect(command) {
+  const candidate = command?.clipRect;
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const rect = {
+    x: typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : 0,
+    y: typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : 0,
+    width: typeof candidate.width === "number" && Number.isFinite(candidate.width) ? candidate.width : 0,
+    height: typeof candidate.height === "number" && Number.isFinite(candidate.height) ? candidate.height : 0,
+  };
+
+  return rect.width >= 1 && rect.height >= 1 ? rect : null;
+}
+
+function getScreenshotSelector(command) {
+  if (typeof command?.selectorPath === "string") {
+    return command.selectorPath;
+  }
+
+  return typeof command?.selector === "string" ? command.selector : null;
+}
+
+function getRefreshTimeoutMs(command) {
+  return typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) && command.timeoutMs > 0
+    ? command.timeoutMs
+    : 15_000;
+}
+
+async function executeScreenshotBrowserCommand(tab, command) {
+  const pageContext = await collectPageContext(tab.id);
+  const capture = await captureTargetTabScreenshot(tab, {
+    focusTabFirst: command?.focusTabFirst !== false,
+  });
+  let screenshot = {
+    dataUrl: capture.dataUrl,
+    mimeType: "image/png",
+    width: 0,
+    height: 0,
+    capturedAt: new Date().toISOString(),
+  };
+  let clip = null;
+
+  const selector = getScreenshotSelector(command);
+  const clipRect = normalizeScreenshotClipRect(command);
+
+  if (selector || clipRect) {
+    const measured = selector
+      ? await sendAgentCommandToTab(tab.id, {
+          type: "measure",
+          selector: typeof command?.selector === "string" ? command.selector : null,
+          selectorPath: typeof command?.selectorPath === "string" ? command.selectorPath : null,
+          scope: typeof command?.scope === "string" ? command.scope : null,
+        })
+      : null;
+    const rect = clipRect ?? measured?.rect ?? null;
+    const cropped = await cropTabScreenshot(capture.dataUrl, rect, pageContext.viewport);
+    screenshot = {
+      dataUrl: cropped.dataUrl,
+      mimeType: cropped.mimeType,
+      width: cropped.width,
+      height: cropped.height,
+      capturedAt: new Date().toISOString(),
+    };
+    clip = {
+      mode: measured ? "selector" : "rect",
+      scope: typeof command?.scope === "string" ? command.scope : "page",
+      selector: measured?.selector ?? null,
+      rect,
+      element: measured?.element ?? null,
+    };
+  }
+
+  return {
+    page: pageContext.page,
+    screenshot,
+    capture: {
+      tabId: capture.tabId,
+      windowId: capture.windowId,
+      focused: capture.focused,
+      active: capture.active,
+    },
+    clip,
+  };
+}
+
+async function executeRefreshBrowserCommand(tab, command) {
+  const reloaded = await reloadTargetTab(tab, {
+    bypassCache: command?.bypassCache === true,
+    timeoutMs: getRefreshTimeoutMs(command),
+  });
+  const pageContext = await collectPageContextWithRetry(reloaded.tab.id);
+
+  return {
+    page: pageContext.page,
+    refreshedTabId: reloaded.tab.id,
+    refreshedWindowId: reloaded.tab.windowId ?? null,
+    bypassCache: reloaded.bypassCache,
+    status: reloaded.tab.status ?? null,
+  };
+}
+
+async function executeWaitForDownloadBrowserCommand(tab, command) {
+  const pageContext = await collectPageContext(tab.id);
+  const { filter, waitedMs, record, permission } = await waitForMatchingDownload(command, tab);
+  return {
+    page: pageContext.page,
+    matched: true,
+    waitedMs,
+    download: serializeDownloadResult(record, filter),
+    permission: serializeDownloadPermission(permission),
+  };
+}
+
+async function executeGetLatestDownloadBrowserCommand(tab, command) {
+  const pageContext = await collectPageContext(tab.id);
+  const { filter, record, permission } = await getLatestDownload(command, tab);
+  return {
+    page: pageContext.page,
+    download: serializeDownloadResult(record, filter),
+    permission: serializeDownloadPermission(permission),
+  };
+}
+
+async function executeBrowserCommand(tab, command) {
+  switch (command?.type) {
+    case "context":
+      return {
+        pageContext: await collectPageContext(tab.id),
+      };
+    case "debugger-capture":
+      return captureDebuggerDiagnostics(tab, command);
+    case "dom":
+    case "click":
+    case "click-point":
+    case "fill":
+    case "key":
+    case "console":
+    case "wait-for-text":
+    case "wait-for-text-disappear":
+    case "wait-for-selector":
+    case "wait-for-dialog-close":
+    case "query-dom":
+      return sendAgentCommandToTab(tab.id, command);
+    case "screenshot":
+      return executeScreenshotBrowserCommand(tab, command);
+    case "refresh":
+      return executeRefreshBrowserCommand(tab, command);
+    case "wait-for-download":
+      return executeWaitForDownloadBrowserCommand(tab, command);
+    case "get-latest-download":
+      return executeGetLatestDownloadBrowserCommand(tab, command);
+    default:
+      throw new Error(`Unsupported Agent Picker browser command: ${String(command?.type)}`);
+  }
+}
