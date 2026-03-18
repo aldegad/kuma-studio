@@ -311,3 +311,317 @@ nextjs-portal {
   padding: 0 0.95rem;
   font-size: 0.92rem;
 }
+
+.kuma-launcher {
+  background:
+    linear-gradient(180deg, #fbfbfd 0%, #f6f6f8 100%);
+  color: #111111;
+  font-family:
+    "SF Pro Display",
+    "Helvetica Neue",
+    "Avenir Next",
+    sans-serif;
+}
+
+.kuma-launcher-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(17, 17, 17, 0.08);
+  background: rgba(251, 251, 253, 0.84);
+  backdrop-filter: blur(18px);
+}
+
+.kuma-app-row {
+  display: flex;
+  align-items: center;
+  gap: 1.35rem;
+  border-radius: 2rem;
+  padding: 1rem 0.4rem;
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+.kuma-app-row:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.kuma-app-row:hover .kuma-app-row-arrow {
+  transform: translateX(3px);
+  color: #8b8b8b;
+}
+
+.kuma-app-row-arrow {
+  transition:
+    transform 140ms ease,
+    color 140ms ease;
+}
+
+.kuma-app-icon {
+  position: relative;
+  height: 138px;
+  width: 138px;
+  overflow: hidden;
+  border-radius: 31px;
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 18px 36px rgba(28, 28, 28, 0.1);
+}
+
+.kuma-app-icon-image {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kuma-app-icon-sudoku {
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255, 244, 220, 0.96), transparent 34%),
+    linear-gradient(180deg, #ffd671 0%, #f0b54d 100%);
+}
+
+.kuma-app-icon-grid {
+  position: absolute;
+  inset: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  opacity: 0.68;
+}
+
+.kuma-app-icon-grid span {
+  border-radius: 10px;
+  border: 2px solid rgba(104, 61, 17, 0.22);
+  background: rgba(255, 249, 236, 0.34);
+}
+
+.kuma-app-icon-bear-face {
+  position: absolute;
+  left: 50%;
+  top: 28px;
+  height: 76px;
+  width: 76px;
+  transform: translateX(-50%);
+  border-radius: 46% 46% 42% 42%;
+  background: linear-gradient(180deg, #fff3cf, #f5d58f);
+  box-shadow:
+    inset 0 -8px 14px rgba(156, 98, 25, 0.15),
+    0 10px 24px rgba(118, 69, 17, 0.12);
+}
+
+.kuma-app-icon-bear-ear {
+  position: absolute;
+  top: -9px;
+  height: 24px;
+  width: 24px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #f4c76f, #e2a548);
+}
+
+.kuma-app-icon-bear-ear-left {
+  left: 9px;
+}
+
+.kuma-app-icon-bear-ear-right {
+  right: 9px;
+}
+
+.kuma-app-icon-bear-eye {
+  position: absolute;
+  top: 30px;
+  height: 6px;
+  width: 6px;
+  border-radius: 999px;
+  background: #5d3611;
+}
+
+.kuma-app-icon-bear-eye-left {
+  left: 21px;
+}
+
+.kuma-app-icon-bear-eye-right {
+  right: 21px;
+}
+
+.kuma-app-icon-bear-snout {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  height: 22px;
+  width: 30px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(255, 248, 233, 0.9);
+}
+
+.kuma-app-icon-bear-snout::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 5px;
+  height: 7px;
+  width: 8px;
+  transform: translateX(-50%);
+  border-radius: 999px 999px 65% 65%;
+  background: #5b3410;
+}
+
+.kuma-app-icon-chat {
+  background:
+    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.6), transparent 30%),
+    linear-gradient(180deg, #2ca9ff 0%, #0c7de7 100%);
+}
+
+.kuma-app-icon-chat-bubble {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 26px;
+  color: white;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+}
+
+.kuma-app-icon-chat-bubble-left {
+  left: 22px;
+  top: 28px;
+  height: 54px;
+  width: 54px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.18));
+}
+
+.kuma-app-icon-chat-bubble-right {
+  right: 20px;
+  bottom: 24px;
+  height: 48px;
+  width: 48px;
+  background: linear-gradient(180deg, #0b3f7e, #072c56);
+}
+
+.kuma-app-icon-chat-badge {
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.22rem 0.48rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #0857a4;
+}
+
+.kuma-app-icon-chat-badge-right {
+  left: auto;
+  right: 16px;
+  top: 18px;
+  bottom: auto;
+  color: #082f5b;
+}
+
+.kuma-app-row-sudoku .kuma-app-icon {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 18px 42px rgba(176, 120, 24, 0.2);
+}
+
+.kuma-app-row-chat .kuma-app-icon {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 18px 42px rgba(12, 125, 231, 0.2);
+}
+
+.kuma-surface-card {
+  border-radius: 2rem;
+  border: 1px solid rgba(141, 98, 46, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 251, 242, 0.95), rgba(255, 242, 220, 0.92));
+  padding: 1.5rem;
+  box-shadow: 0 22px 56px rgba(94, 57, 20, 0.1);
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.kuma-surface-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 28px 72px rgba(94, 57, 20, 0.14);
+}
+
+.kuma-surface-card-active {
+  border-color: rgba(101, 165, 145, 0.5);
+  background:
+    linear-gradient(180deg, rgba(243, 253, 249, 0.96), rgba(229, 247, 239, 0.92)),
+    linear-gradient(180deg, rgba(255, 250, 240, 0.97), rgba(255, 242, 220, 0.92));
+  box-shadow: 0 28px 84px rgba(57, 112, 91, 0.16);
+}
+
+.kuma-chat-player-1p {
+  background:
+    linear-gradient(180deg, rgba(255, 248, 234, 0.94), rgba(255, 238, 205, 0.92));
+}
+
+.kuma-chat-player-2p {
+  background:
+    linear-gradient(180deg, rgba(241, 252, 248, 0.95), rgba(221, 245, 237, 0.94));
+}
+
+.kuma-chat-input:focus {
+  border-color: rgba(120, 80, 32, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 4px rgba(244, 193, 95, 0.18);
+}
+
+.kuma-chat-log {
+  background:
+    radial-gradient(circle at top right, rgba(255, 217, 129, 0.24), transparent 22%),
+    linear-gradient(180deg, rgba(255, 249, 240, 0.96), rgba(255, 243, 223, 0.92));
+}
+
+.kuma-chat-bubble {
+  max-width: min(80%, 36rem);
+  border-radius: 1.5rem;
+  border: 1px solid rgba(141, 98, 46, 0.14);
+  padding: 1rem 1rem 1rem 1.1rem;
+  box-shadow: 0 16px 38px rgba(93, 57, 20, 0.08);
+}
+
+.kuma-chat-bubble-left {
+  align-self: flex-start;
+  background: linear-gradient(180deg, rgba(255, 235, 192, 0.96), rgba(255, 245, 225, 0.95));
+}
+
+.kuma-chat-bubble-right {
+  align-self: flex-end;
+  background: linear-gradient(180deg, rgba(222, 245, 236, 0.97), rgba(241, 253, 248, 0.95));
+}
+
+@media (max-width: 768px) {
+  .kuma-app-row {
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .kuma-app-icon {
+    height: 108px;
+    width: 108px;
+    border-radius: 24px;
+  }
+
+  .kuma-app-icon-grid {
+    inset: 16px;
+  }
+
+  .kuma-app-icon-bear-face {
+    top: 20px;
+    height: 60px;
+    width: 60px;
+  }
+}

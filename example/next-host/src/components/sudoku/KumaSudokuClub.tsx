@@ -237,7 +237,7 @@ export function KumaSudokuClub() {
   const selectedValue = board[selected.row][selected.col];
 
   return (
-    <main className="kuma-shell min-h-screen px-4 py-6 sm:px-6 lg:px-10">
+    <section className="kuma-shell min-h-screen px-4 py-6 sm:px-6 lg:px-10">
       <div className="mx-auto flex w-full max-w-[1380px] flex-col gap-6">
         <section className="kuma-hero overflow-hidden rounded-[2.3rem] p-6 shadow-[0_28px_90px_rgba(88,53,18,0.18)] sm:p-8 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_320px]">
@@ -470,7 +470,7 @@ export function KumaSudokuClub() {
           </div>
         ) : null}
       </div>
-    </main>
+    </section>
   );
 }
 

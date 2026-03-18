@@ -1,5 +1,5 @@
-import { KumaSudokuClub } from "../components/sudoku/KumaSudokuClub";
+import { KumaTestLab } from "../components/lab/KumaTestLab";
 
 export default function HomePage() {
-  return <KumaSudokuClub />;
+  return <KumaTestLab />;
 }
