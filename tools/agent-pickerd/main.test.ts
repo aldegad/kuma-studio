@@ -62,10 +62,11 @@ describe("agent-pickerd note fallback", () => {
 });
 
 describe("agent-pickerd browser usage", () => {
-  it("prints the console, refresh, download, and semantic DOM query commands in help output", () => {
+  it("prints the console, debugger capture, refresh, download, and semantic DOM query commands in help output", () => {
     const output = runCli(["--help"], process.cwd());
 
     expect(output).toContain("browser-console");
+    expect(output).toContain("browser-debugger-capture");
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");

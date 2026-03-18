@@ -3,6 +3,7 @@ importScripts(
   "./background/storage.js",
   "./background/downloads.js",
   "./background/tabs.js",
+  "./background/debugger.js",
   "./background/injection.js",
   "./background/daemon-client.js",
   "./background/socket-client.js",

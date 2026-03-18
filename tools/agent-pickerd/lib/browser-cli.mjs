@@ -259,6 +259,16 @@ export async function commandBrowserConsole(options) {
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }
 
+export async function commandBrowserDebuggerCapture(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "debugger-capture",
+    refreshBeforeCapture: options["refresh"] === true,
+    bypassCache: options["bypass-cache"] === true,
+    captureMs: readNumber(options, "capture-ms", 3_000),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
 export async function commandBrowserClick(options) {
   const selector = readOptionalString(options, "selector");
   const selectorPath = readOptionalString(options, "selector-path");

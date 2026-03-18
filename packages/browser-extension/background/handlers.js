@@ -4,6 +4,7 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "context",
   "dom",
   "console",
+  "debugger-capture",
   "click",
   "click-point",
   "fill",
@@ -467,6 +468,8 @@ async function executeBrowserCommand(tab, command) {
       return {
         pageContext: await collectPageContext(tab.id),
       };
+    case "debugger-capture":
+      return captureDebuggerDiagnostics(tab, command);
     case "dom":
     case "click":
     case "click-point":

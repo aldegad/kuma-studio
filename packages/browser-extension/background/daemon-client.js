@@ -71,6 +71,7 @@ async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
         "context",
         "dom",
         "console",
+        "debugger-capture",
         "click",
         "click-point",
         "fill",

@@ -294,6 +294,42 @@ describe("BrowserSessionStore", () => {
     );
   });
 
+  it("preserves debugger capture options when dispatching websocket commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-06",
+      command: {
+        type: "debugger-capture",
+        targetUrlContains: "staging.example.com",
+        refreshBeforeCapture: true,
+        bypassCache: true,
+        captureMs: 4_000,
+      },
+    });
+
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-06",
+        command: expect.objectContaining({
+          type: "debugger-capture",
+          targetUrlContains: "staging.example.com",
+          refreshBeforeCapture: true,
+          bypassCache: true,
+          captureMs: 4_000,
+        }),
+      }),
+    );
+  });
+
   it("keeps the legacy polling queue available for explicit fallback mode", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();

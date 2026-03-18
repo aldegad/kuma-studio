@@ -113,6 +113,7 @@ function sanitizeCommandPayload(candidate) {
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
+  const captureMs = Number(candidate.captureMs);
   const timeoutMs = Number(candidate.timeoutMs);
   const targetTabId = sanitizeOptionalInteger(candidate.targetTabId);
   const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
@@ -146,6 +147,11 @@ function sanitizeCommandPayload(candidate) {
     y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
     clipRect,
     bypassCache: candidate.bypassCache === true,
+    refreshBeforeCapture: candidate.refreshBeforeCapture === true,
+    captureMs:
+      Number.isFinite(captureMs) && captureMs >= 0
+        ? Math.min(30_000, Math.round(captureMs))
+        : null,
     shiftKey: candidate.shiftKey === true,
     postActionDelayMs:
       Number.isFinite(postActionDelayMs) && postActionDelayMs >= 0

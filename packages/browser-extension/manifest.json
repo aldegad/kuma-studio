@@ -7,6 +7,7 @@
   "permissions": [
     "activeTab",
     "contentSettings",
+    "debugger",
     "downloads",
     "scripting",
     "storage",
