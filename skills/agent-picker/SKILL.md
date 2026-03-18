@@ -7,7 +7,20 @@ description: Read the latest Agent Picker selection, screenshot, shared note sta
 
 Use Agent Picker as a shared coordination workflow, not a private scratchpad.
 
-After `npm run skill:install`, the unpacked Chrome extension is also available at `~/.codex/extensions/agent-picker-browser-extension` unless `CODEX_HOME` overrides that base path.
+## Prerequisites — run once after skill registration
+
+If `~/.codex/extensions/agent-picker-browser-extension/manifest.json` does not exist, the browser extension has not been installed yet. Run the following from the agent-picker repo:
+
+```bash
+npm run extension:install          # copies the unpacked extension
+# or, to install both skill files and extension together:
+npm run skill:install
+```
+
+Then load the unpacked extension in Chrome:
+`chrome://extensions` → Developer mode → Load unpacked → `~/.codex/extensions/agent-picker-browser-extension`
+
+Skip this section if the extension is already loaded in Chrome.
 
 ## Core workflow
 
