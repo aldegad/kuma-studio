@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       "tools/**/*.test.ts",
       "web/**/*.test.ts",
+      "example/next-host/src/**/*.test.ts",
     ],
     exclude: [
       "example/next-host/.next/**",

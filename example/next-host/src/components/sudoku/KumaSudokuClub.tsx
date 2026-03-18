@@ -1,51 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import { Pencil, RotateCcw, Sparkles, Trophy } from "lucide-react";
 
-const puzzle = [
-  [0, 0, 0, 2, 6, 0, 7, 0, 1],
-  [6, 8, 0, 0, 7, 0, 0, 9, 0],
-  [1, 9, 0, 0, 0, 4, 5, 0, 0],
-  [8, 2, 0, 1, 0, 0, 0, 4, 0],
-  [0, 0, 4, 6, 0, 2, 9, 0, 0],
-  [0, 5, 0, 0, 0, 3, 0, 2, 8],
-  [0, 0, 9, 3, 0, 0, 0, 7, 4],
-  [0, 4, 0, 0, 5, 0, 0, 3, 6],
-  [7, 0, 3, 0, 1, 8, 0, 0, 0],
-] as const;
-
-const solution = [
-  [4, 3, 5, 2, 6, 9, 7, 8, 1],
-  [6, 8, 2, 5, 7, 1, 4, 9, 3],
-  [1, 9, 7, 8, 3, 4, 5, 6, 2],
-  [8, 2, 6, 1, 9, 5, 3, 4, 7],
-  [3, 7, 4, 6, 8, 2, 9, 1, 5],
-  [9, 5, 1, 7, 4, 3, 6, 2, 8],
-  [5, 1, 9, 3, 2, 6, 8, 7, 4],
-  [2, 4, 8, 9, 5, 7, 1, 3, 6],
-  [7, 6, 3, 4, 1, 8, 2, 5, 9],
-] as const;
+import { cloneBoard, generateSudokuGame, type SudokuGame } from "./sudoku-engine";
 
 type CellPosition = { row: number; col: number };
-
-const starterBoard = puzzle.map((row) => row.slice());
-const starterNotes = Array.from({ length: 9 }, () =>
-  Array.from({ length: 9 }, () => [] as number[]),
-);
 
 function getBlockIndex(row: number, col: number) {
   return Math.floor(row / 3) * 3 + Math.floor(col / 3);
 }
 
+function createEmptyNotes() {
+  return Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => [] as number[]));
+}
+
 export function KumaSudokuClub() {
-  const [board, setBoard] = useState<number[][]>(() => starterBoard.map((row) => row.slice()));
-  const [notes, setNotes] = useState<number[][][]>(() =>
-    starterNotes.map((row) => row.map((cell) => cell.slice())),
-  );
+  const initialGame = useMemo<SudokuGame>(() => generateSudokuGame(), []);
+  const [game, setGame] = useState<SudokuGame>(initialGame);
+  const [board, setBoard] = useState<number[][]>(() => cloneBoard(initialGame.puzzle));
+  const [notes, setNotes] = useState<number[][][]>(() => createEmptyNotes());
   const [selected, setSelected] = useState<CellPosition>({ row: 0, col: 0 });
   const [noteMode, setNoteMode] = useState(false);
   const [secondsElapsed, setSecondsElapsed] = useState(0);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const puzzle = game.puzzle;
+  const solution = game.solution;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -93,11 +74,31 @@ export function KumaSudokuClub() {
   }, [board]);
 
   function resetGame() {
-    setBoard(starterBoard.map((row) => row.slice()));
-    setNotes(starterNotes.map((row) => row.map((cell) => cell.slice())));
+    setBoard(cloneBoard(puzzle));
+    setNotes(createEmptyNotes());
     setSelected({ row: 0, col: 0 });
     setNoteMode(false);
     setSecondsElapsed(0);
+  }
+
+  function newPuzzle() {
+    if (isGenerating) {
+      return;
+    }
+
+    setIsGenerating(true);
+    window.setTimeout(() => {
+      const nextGame = generateSudokuGame();
+      startTransition(() => {
+        setGame(nextGame);
+        setBoard(cloneBoard(nextGame.puzzle));
+        setNotes(createEmptyNotes());
+        setSelected({ row: 0, col: 0 });
+        setNoteMode(false);
+        setSecondsElapsed(0);
+        setIsGenerating(false);
+      });
+    }, 0);
   }
 
   function updateCell(value: number) {
@@ -251,15 +252,16 @@ export function KumaSudokuClub() {
                 Sharp selectors.
               </h1>
               <p className="mt-5 max-w-[62ch] text-base leading-8 text-[#70451d] sm:text-lg">
-                This example is now a full Sudoku play surface for Agent Picker. It is designed to
-                test cell targeting, keyboard input, readback verification, note mode, hints,
-                mistakes, and completion flows on a real interactive UI.
+                This example is now a full Sudoku play surface for Agent Picker. Every new board is
+                generated from a fresh solved grid, then carved back into a uniquely solvable
+                puzzle to test cell targeting, keyboard input, readback verification, note mode,
+                hints, mistakes, and completion flows on a real interactive UI.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold text-[#6f451d]">
                 <div className="kuma-pill">Target cells by row and column labels</div>
                 <div className="kuma-pill">Verify values after writes</div>
-                <div className="kuma-pill">Use notes, hints, and reset flows</div>
+                <div className="kuma-pill">Use notes, hints, reset, and fresh puzzle flows</div>
               </div>
             </div>
 
@@ -277,7 +279,7 @@ export function KumaSudokuClub() {
                 <ul className="mt-4 space-y-3 text-sm leading-6">
                   <li>Numbers must be unique in every row, column, and 3x3 box.</li>
                   <li>Press a cell, type `1-9`, and verify the board readback.</li>
-                  <li>Toggle notes with `N` or the note chip for multi-step E2E flows.</li>
+                  <li>Toggle notes with `N` and try `New Puzzle` to validate random-board flows.</li>
                 </ul>
               </div>
             </aside>
@@ -302,7 +304,11 @@ export function KumaSudokuClub() {
                 <MetricCard label="Filled" value={`${filledCount}/81`} accent="gold" />
                 <MetricCard label="Mistakes" value={String(wrongEntries)} accent="cream" />
                 <MetricCard label="Timer" value={formatTime(secondsElapsed)} accent="mint" />
-                <MetricCard label="Mode" value={noteMode ? "Notes" : "Write"} accent="rose" />
+                <MetricCard
+                  label="Mode"
+                  value={isGenerating ? "Shuffling" : noteMode ? "Notes" : "Write"}
+                  accent="rose"
+                />
               </div>
             </div>
 
@@ -412,6 +418,9 @@ export function KumaSudokuClub() {
                     <RotateCcw className="h-4 w-4" />
                     Reset
                   </button>
+                  <button type="button" className="kuma-tool col-span-2" disabled={isGenerating} onClick={newPuzzle}>
+                    {isGenerating ? "Shuffling..." : "New Puzzle"}
+                  </button>
                 </div>
               </div>
             </div>
@@ -424,7 +433,7 @@ export function KumaSudokuClub() {
                 <CheckRow title="Click a cell" body="Target row 4 column 7 or use the board grid selectors." />
                 <CheckRow title="Write and verify" body="Enter a value, then read it back with `browser-query-dom`." />
                 <CheckRow title="Test note mode" body="Toggle notes and confirm mini digits render in the same tile." />
-                <CheckRow title="Finish the puzzle" body="Use hints or fill the board to trigger the completion badge." />
+                <CheckRow title="Generate a fresh board" body="Use `New Puzzle` to confirm the surface re-renders with a different layout." />
               </div>
             </div>
 
@@ -433,7 +442,7 @@ export function KumaSudokuClub() {
               <div className="mt-4 space-y-3 text-sm leading-6">
                 <div className="rounded-2xl bg-white/8 px-4 py-3">`data-testid="cell-r-c"` style cell targeting via `cell-1-1` to `cell-9-9`</div>
                 <div className="rounded-2xl bg-white/8 px-4 py-3">`data-testid="numpad-1"` to `numpad-9`</div>
-                <div className="rounded-2xl bg-white/8 px-4 py-3">Completion state is visible when every cell matches the solution.</div>
+                <div className="rounded-2xl bg-white/8 px-4 py-3">Completion state is visible when every cell matches the generated solution.</div>
               </div>
             </div>
           </aside>
@@ -453,8 +462,8 @@ export function KumaSudokuClub() {
                 and persistence verification.
               </p>
               <div className="mt-6 flex justify-center gap-3">
-                <button type="button" className="kuma-tool" onClick={resetGame}>
-                  Play Again
+                <button type="button" className="kuma-tool" onClick={newPuzzle}>
+                  New Puzzle
                 </button>
               </div>
             </div>
