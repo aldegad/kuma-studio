@@ -1,4 +1,5 @@
-const AgentPickerExtensionAgentActionCore = (() => {
+(() => {
+var AgentPickerExtensionAgentActionCore = (() => {
   const COMMAND_INTERACTIVE_SELECTOR = [
     "button",
     "a[href]",
@@ -424,3 +425,4 @@ const AgentPickerExtensionAgentActionCore = (() => {
 })();
 
 globalThis.AgentPickerExtensionAgentActionCore = AgentPickerExtensionAgentActionCore;
+})();

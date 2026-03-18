@@ -40,13 +40,13 @@ export function CafeSeasonalDialog({
           </label>
 
           <label className="block">
-            <span className="text-sm font-black tracking-[-0.03em] text-[#4d2e11]">Promo URL</span>
+            <span className="text-sm font-black tracking-[-0.03em] text-[#4d2e11]">Promo Artwork</span>
             <input
               className="kuma-field mt-3"
-              placeholder="https://example.com/menu/cloud-honey-latte"
+              placeholder="/kuma-cafe-icon.png"
               required
-              value={draft.url}
-              onChange={(event) => onChange("url", event.target.value)}
+              value={draft.artworkUrl}
+              onChange={(event) => onChange("artworkUrl", event.target.value)}
             />
           </label>
 

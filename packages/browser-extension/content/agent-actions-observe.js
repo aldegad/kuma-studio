@@ -1,26 +1,27 @@
-const {
-  normalizeText,
-  normalizeRole,
-  isExtensionUiElement,
-  isVisibleElement,
-  describeElementForCommand,
-  getFillableElements,
-  findBestFillableByLabel,
-  getVisibleDialogs,
-  getScopeRoot,
-  findElementByTextWithinRoot,
-  findElementBySelectorWithinRoot,
-  getLastObservedSelectorState,
-  getAccessibleText,
-  scoreTextMatch,
-  buildDomSnapshot,
+(() => {
+var {
+  normalizeText: coreNormalizeText,
+  normalizeRole: coreNormalizeRole,
+  isExtensionUiElement: coreIsExtensionUiElement,
+  isVisibleElement: coreIsVisibleElement,
+  describeElementForCommand: coreDescribeElementForCommand,
+  getFillableElements: coreGetFillableElements,
+  findBestFillableByLabel: coreFindBestFillableByLabel,
+  getVisibleDialogs: coreGetVisibleDialogs,
+  getScopeRoot: coreGetScopeRoot,
+  findElementByTextWithinRoot: coreFindElementByTextWithinRoot,
+  findElementBySelectorWithinRoot: coreFindElementBySelectorWithinRoot,
+  getLastObservedSelectorState: coreGetLastObservedSelectorState,
+  getAccessibleText: coreGetAccessibleText,
+  scoreTextMatch: coreScoreTextMatch,
+  buildDomSnapshot: coreBuildDomSnapshot,
 } = globalThis.AgentPickerExtensionAgentActionCore;
-const {
-  waitForDelay,
-  executeClickCommand,
-  executeClickPointCommand,
-  executeFillCommand,
-  executeKeyCommand,
+var {
+  waitForDelay: interactionWaitForDelay,
+  executeClickCommand: interactionExecuteClickCommand,
+  executeClickPointCommand: interactionExecuteClickPointCommand,
+  executeFillCommand: interactionExecuteFillCommand,
+  executeKeyCommand: interactionExecuteKeyCommand,
 } = globalThis.AgentPickerExtensionAgentActionInteraction;
 
 function readTimeoutMs(command, fallbackMs = 15_000) {
@@ -44,7 +45,7 @@ async function pollUntil(command, evaluator) {
         ...observation.result,
       };
     }
-    await waitForDelay(100);
+    await interactionWaitForDelay(100);
   }
 
   const details = lastObserved ? ` Last observed: ${JSON.stringify(lastObserved)}.` : "";
@@ -54,18 +55,18 @@ async function pollUntil(command, evaluator) {
 }
 
 async function executeWaitForTextCommand(command, expectPresent) {
-  const text = normalizeText(command?.text);
+  const text = coreNormalizeText(command?.text);
   if (!text) {
     throw new Error(expectPresent ? "browser-wait-for-text requires --text." : "browser-wait-for-text-disappear requires --text.");
   }
 
-  const scopeRoot = getScopeRoot(command?.scope);
+  const scopeRoot = coreGetScopeRoot(command?.scope);
   if (!scopeRoot) {
     throw new Error("No visible dialog is open for the requested dialog scope.");
   }
 
   const result = await pollUntil(command, () => {
-    const haystack = normalizeText(scopeRoot.innerText || scopeRoot.textContent || "");
+    const haystack = coreNormalizeText(scopeRoot.innerText || scopeRoot.textContent || "");
     const present = haystack.includes(text);
     return {
       matched: expectPresent ? present : !present,
@@ -83,20 +84,20 @@ async function executeWaitForSelectorCommand(command) {
     throw new Error("browser-wait-for-selector requires --selector or --selector-path.");
   }
 
-  const scopeRoot = getScopeRoot(command?.scope);
+  const scopeRoot = coreGetScopeRoot(command?.scope);
   if (!scopeRoot) {
     throw new Error("No visible dialog is open for the requested dialog scope.");
   }
 
   const result = await pollUntil(command, () => {
-    const target = findElementBySelectorWithinRoot(selector, scopeRoot);
+    const target = coreFindElementBySelectorWithinRoot(selector, scopeRoot);
     return {
       matched: target instanceof Element,
-      lastObserved: getLastObservedSelectorState(selector, scopeRoot),
+      lastObserved: coreGetLastObservedSelectorState(selector, scopeRoot),
       result: {
         selector,
         scope: command?.scope === "dialog" ? "dialog" : "page",
-        element: target instanceof Element ? describeElementForCommand(target) : null,
+        element: target instanceof Element ? coreDescribeElementForCommand(target) : null,
       },
     };
   });
@@ -106,7 +107,7 @@ async function executeWaitForSelectorCommand(command) {
 
 async function executeWaitForDialogCloseCommand(command) {
   const result = await pollUntil(command, () => {
-    const dialogs = getVisibleDialogs();
+    const dialogs = coreGetVisibleDialogs();
     return {
       matched: dialogs.length === 0,
       lastObserved: { openDialogCount: dialogs.length },
@@ -118,11 +119,11 @@ async function executeWaitForDialogCloseCommand(command) {
 }
 
 function serializeQueryResult(element) {
-  const record = describeElementForCommand(element);
-  const textContent = normalizeText(element.textContent).slice(0, 400) || null;
+  const record = coreDescribeElementForCommand(element);
+  const textContent = coreNormalizeText(element.textContent).slice(0, 400) || null;
   const displayValue =
     element instanceof HTMLSelectElement
-      ? normalizeText(Array.from(element.selectedOptions).map((option) => option.textContent).join(" ")) || null
+      ? coreNormalizeText(Array.from(element.selectedOptions).map((option) => option.textContent).join(" ")) || null
       : record.valuePreview ?? record.value ?? null;
 
   return {
@@ -149,7 +150,7 @@ function serializeQueryResult(element) {
     ariaHaspopup: element.getAttribute("aria-haspopup") || null,
     ariaControls: element.getAttribute("aria-controls") || null,
     open: element.hasAttribute("open"),
-    visible: isVisibleElement(element),
+    visible: coreIsVisibleElement(element),
     textContent,
     rect: record.rect,
   };
@@ -157,40 +158,40 @@ function serializeQueryResult(element) {
 
 function getAssociatedLabelSummary(element) {
   return typeof getAssociatedLabelTexts === "function"
-    ? getAssociatedLabelTexts(element).map((entry) => normalizeText(entry)).filter(Boolean)
+    ? getAssociatedLabelTexts(element).map((entry) => coreNormalizeText(entry)).filter(Boolean)
     : [];
 }
 
 function findElementsByAssociatedLabel(root, labelText) {
-  const normalizedNeedle = normalizeText(labelText);
+  const normalizedNeedle = coreNormalizeText(labelText);
   if (!normalizedNeedle || !(root instanceof Element)) {
     return [];
   }
 
   return Array.from(root.querySelectorAll("input, textarea, select, [role='combobox'], [role='listbox'], [role='tab'], button, summary"))
-    .filter((element) => element instanceof Element && isVisibleElement(element))
+    .filter((element) => element instanceof Element && coreIsVisibleElement(element))
     .map((element) => ({
       element,
-      score: getAssociatedLabelSummary(element).reduce((best, label) => Math.max(best, scoreTextMatch(label, normalizedNeedle)), 0),
+      score: getAssociatedLabelSummary(element).reduce((best, label) => Math.max(best, coreScoreTextMatch(label, normalizedNeedle)), 0),
     }))
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score);
 }
 
 function filterSemanticMatches(elements, text) {
-  const normalizedNeedle = normalizeText(text);
+  const normalizedNeedle = coreNormalizeText(text);
   if (!normalizedNeedle) {
     return [...elements];
   }
 
   return elements
     .map((element) => {
-      const accessibleText = getAccessibleText(element);
+      const accessibleText = coreGetAccessibleText(element);
       const labelScore = getAssociatedLabelSummary(element).reduce(
-        (best, label) => Math.max(best, scoreTextMatch(label, normalizedNeedle)),
+        (best, label) => Math.max(best, coreScoreTextMatch(label, normalizedNeedle)),
         0,
       );
-      return { element, score: Math.max(scoreTextMatch(accessibleText, normalizedNeedle), labelScore) };
+      return { element, score: Math.max(coreScoreTextMatch(accessibleText, normalizedNeedle), labelScore) };
     })
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score)
@@ -210,13 +211,13 @@ function serializeControlledElement(element) {
   if (!(element instanceof Element)) {
     return null;
   }
-  const record = describeElementForCommand(element);
+  const record = coreDescribeElementForCommand(element);
   return {
     tagName: record.tagName,
     role: record.role,
     selector: record.selector,
     selectorPath: record.selectorPath,
-    visible: isVisibleElement(element),
+    visible: coreIsVisibleElement(element),
   };
 }
 
@@ -225,7 +226,7 @@ function readOptionLikeState(element) {
     return {
       optionCount: element.options.length,
       selectedOptions: Array.from(element.selectedOptions).map((option) => ({
-        text: normalizeText(option.textContent) || null,
+        text: coreNormalizeText(option.textContent) || null,
         value: option.value || null,
         selected: option.selected === true,
       })),
@@ -234,15 +235,15 @@ function readOptionLikeState(element) {
 
   const controlledElement = getControlledElement(element);
   const optionRoot =
-    normalizeRole(element.getAttribute("role")) === "listbox"
+    coreNormalizeRole(element.getAttribute("role")) === "listbox"
       ? element
-      : normalizeRole(controlledElement?.getAttribute?.("role")) === "listbox"
+      : coreNormalizeRole(controlledElement?.getAttribute?.("role")) === "listbox"
         ? controlledElement
         : controlledElement instanceof Element
           ? controlledElement
           : element;
   const options = Array.from(optionRoot.querySelectorAll("[role='option'], option")).filter(
-    (option) => option instanceof Element && !isExtensionUiElement(option),
+    (option) => option instanceof Element && !coreIsExtensionUiElement(option),
   );
 
   return {
@@ -255,7 +256,7 @@ function readOptionLikeState(element) {
         return option.getAttribute("aria-selected") === "true" || option.getAttribute("aria-checked") === "true";
       })
       .map((option) => ({
-        text: normalizeText(option.textContent) || null,
+        text: coreNormalizeText(option.textContent) || null,
         value: "value" in option ? option.value || null : null,
         selected: true,
         selector: createSelector(option),
@@ -265,7 +266,7 @@ function readOptionLikeState(element) {
 }
 
 function getQueryableRoot(scope) {
-  const root = getScopeRoot(scope);
+  const root = coreGetScopeRoot(scope);
   if (!root) {
     throw new Error("No visible dialog is open for the requested dialog scope.");
   }
@@ -274,7 +275,7 @@ function getQueryableRoot(scope) {
 
 function queryRequiredFields(scope) {
   const root = getQueryableRoot(scope);
-  return getFillableElements(root).filter((element) =>
+  return coreGetFillableElements(root).filter((element) =>
     element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement || element instanceof HTMLSelectElement
       ? element.required || element.getAttribute("aria-required") === "true"
       : element.getAttribute("aria-required") === "true",
@@ -282,13 +283,13 @@ function queryRequiredFields(scope) {
 }
 
 function queryAllTextareas(scope) {
-  return Array.from(getQueryableRoot(scope).querySelectorAll("textarea")).filter(isVisibleElement);
+  return Array.from(getQueryableRoot(scope).querySelectorAll("textarea")).filter(coreIsVisibleElement);
 }
 
 function queryNearbyInput(scope, text) {
   const root = getQueryableRoot(scope);
-  const target = findBestFillableByLabel(text, root) ?? (() => {
-    const anchor = findElementByTextWithinRoot(text, root);
+  const target = coreFindBestFillableByLabel(text, root) ?? (() => {
+    const anchor = coreFindElementByTextWithinRoot(text, root);
     if (!(anchor instanceof Element)) {
       return null;
     }
@@ -296,7 +297,7 @@ function queryNearbyInput(scope, text) {
     let current = anchor instanceof HTMLLabelElement ? anchor : anchor.closest("label, fieldset, form, section, div");
     for (let depth = 0; depth < 3 && current; depth += 1) {
       const candidate = current.querySelector?.("input, textarea, select, [contenteditable='true']");
-      if (candidate instanceof Element && isVisibleElement(candidate)) {
+      if (candidate instanceof Element && coreIsVisibleElement(candidate)) {
         return candidate;
       }
       current = current.parentElement;
@@ -308,7 +309,7 @@ function queryNearbyInput(scope, text) {
 }
 
 function queryInputByLabel(scope, text) {
-  const target = findBestFillableByLabel(text, getQueryableRoot(scope));
+  const target = coreFindBestFillableByLabel(text, getQueryableRoot(scope));
   return target ? [target] : [];
 }
 
@@ -318,7 +319,7 @@ function queryMenuState(scope, text) {
     root.querySelectorAll(
       "select, summary, [role='combobox'], [role='listbox'], [role='menu'], [aria-haspopup='menu'], [aria-haspopup='listbox'], [aria-expanded]",
     ),
-  ).filter(isVisibleElement);
+  ).filter(coreIsVisibleElement);
 
   const combined = [...menuLikeElements];
   for (const match of findElementsByAssociatedLabel(root, text)) {
@@ -331,24 +332,24 @@ function queryMenuState(scope, text) {
 
 function querySelectedOption(scope, text) {
   const root = getQueryableRoot(scope);
-  const labelTarget = findBestFillableByLabel(text, root);
+  const labelTarget = coreFindBestFillableByLabel(text, root);
   if (
     labelTarget instanceof HTMLSelectElement ||
-    normalizeRole(labelTarget?.getAttribute?.("role")) === "listbox" ||
-    normalizeRole(labelTarget?.getAttribute?.("role")) === "combobox"
+    coreNormalizeRole(labelTarget?.getAttribute?.("role")) === "listbox" ||
+    coreNormalizeRole(labelTarget?.getAttribute?.("role")) === "combobox"
   ) {
     return [labelTarget];
   }
-  return filterSemanticMatches(Array.from(root.querySelectorAll("select, [role='listbox'], [role='combobox']")).filter(isVisibleElement), text);
+  return filterSemanticMatches(Array.from(root.querySelectorAll("select, [role='listbox'], [role='combobox']")).filter(coreIsVisibleElement), text);
 }
 
 function queryTabState(scope, text) {
-  return filterSemanticMatches(Array.from(getQueryableRoot(scope).querySelectorAll("[role='tab']")).filter(isVisibleElement), text);
+  return filterSemanticMatches(Array.from(getQueryableRoot(scope).querySelectorAll("[role='tab']")).filter(coreIsVisibleElement), text);
 }
 
 function executeQueryDomCommand(command) {
-  const kind = normalizeText(command?.kind).toLowerCase();
-  const text = normalizeText(command?.text);
+  const kind = coreNormalizeText(command?.kind).toLowerCase();
+  const text = coreNormalizeText(command?.text);
   const scope = command?.scope === "dialog" ? "dialog" : "page";
 
   const queryMap = {
@@ -385,7 +386,7 @@ function executeQueryDomCommand(command) {
           ...serializeQueryResult(element),
           selected: element.getAttribute("aria-selected") == null ? null : element.getAttribute("aria-selected") === "true",
           controlledElement: serializeControlledElement(controlledElement),
-          controlledVisible: controlledElement ? isVisibleElement(controlledElement) : null,
+          controlledVisible: controlledElement ? coreIsVisibleElement(controlledElement) : null,
         };
       },
       requiresText: true,
@@ -414,15 +415,15 @@ async function executeBrowserCommand(command) {
     case "context":
       return { pageContext: buildPageContext(getPageTargetElement()) };
     case "dom":
-      return { domSnapshot: buildDomSnapshot() };
+      return { domSnapshot: coreBuildDomSnapshot() };
     case "click":
-      return executeClickCommand(command);
+      return interactionExecuteClickCommand(command);
     case "click-point":
-      return executeClickPointCommand(command);
+      return interactionExecuteClickPointCommand(command);
     case "fill":
-      return executeFillCommand(command);
+      return interactionExecuteFillCommand(command);
     case "key":
-      return executeKeyCommand(command);
+      return interactionExecuteKeyCommand(command);
     case "wait-for-text":
       return executeWaitForTextCommand(command, true);
     case "wait-for-text-disappear":
@@ -439,3 +440,4 @@ async function executeBrowserCommand(command) {
 }
 
 globalThis.AgentPickerExtensionAgentActions = { executeBrowserCommand };
+})();

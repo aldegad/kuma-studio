@@ -72,9 +72,7 @@ async function sendMessageToTab(tabId, payload) {
   try {
     return await chrome.tabs.sendMessage(tabId, payload);
   } catch {
-    throw new Error(
-      "This page does not accept the Agent Picker content script. Try a regular website tab instead of a browser-internal page.",
-    );
+    throw new Error("This page does not accept the Agent Picker content script. Try a regular website tab instead of a browser-internal page.");
   }
 }
 

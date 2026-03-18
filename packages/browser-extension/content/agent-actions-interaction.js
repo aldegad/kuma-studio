@@ -1,17 +1,18 @@
-const {
-  FOCUSABLE_SELECTOR,
-  normalizeText,
-  normalizeRole,
-  isExtensionUiElement,
-  describeElementForCommand,
-  isVisibleElement,
-  isTextInputElement,
-  isFillableElement,
-  resolveCommandTarget,
-  resolveFillTarget,
+(() => {
+var {
+  FOCUSABLE_SELECTOR: coreFocusableSelector,
+  normalizeText: coreNormalizeText,
+  normalizeRole: coreNormalizeRole,
+  isExtensionUiElement: coreIsExtensionUiElement,
+  describeElementForCommand: coreDescribeElementForCommand,
+  isVisibleElement: coreIsVisibleElement,
+  isTextInputElement: coreIsTextInputElement,
+  isFillableElement: coreIsFillableElement,
+  resolveCommandTarget: coreResolveCommandTarget,
+  resolveFillTarget: coreResolveFillTarget,
 } = globalThis.AgentPickerExtensionAgentActionCore;
 
-const AgentPickerExtensionAgentActionInteraction = (() => {
+var AgentPickerExtensionAgentActionInteraction = (() => {
   function waitForDelay(ms) {
     if (!(Number.isFinite(ms) && ms > 0)) {
       return Promise.resolve();
@@ -67,7 +68,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
 
   function shouldUseSemanticClickFallback(target, before, after) {
     const isTabLike =
-      normalizeRole(target.getAttribute?.("role")) === "tab" || Boolean(target.getAttribute?.("aria-controls"));
+      coreNormalizeRole(target.getAttribute?.("role")) === "tab" || Boolean(target.getAttribute?.("aria-controls"));
     if (!isTabLike) {
       return false;
     }
@@ -89,7 +90,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
     }
 
     const target = document.elementFromPoint(x, y);
-    if (!(target instanceof Element) || isExtensionUiElement(target)) {
+    if (!(target instanceof Element) || coreIsExtensionUiElement(target)) {
       throw new Error("Failed to find a clickable element at the requested viewport coordinates.");
     }
 
@@ -127,7 +128,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
   }
 
   function getFocusableElements() {
-    return Array.from(document.querySelectorAll(FOCUSABLE_SELECTOR)).filter(isVisibleElement);
+    return Array.from(document.querySelectorAll(coreFocusableSelector)).filter(coreIsVisibleElement);
   }
 
   function moveFocus(shiftKey) {
@@ -157,7 +158,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function executeClickCommand(command) {
-    const target = resolveCommandTarget(command);
+    const target = coreResolveCommandTarget(command);
     if (!(target instanceof Element)) {
       throw new Error("Failed to find a matching element to click in the active tab.");
     }
@@ -185,7 +186,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
     await waitForPostActionDelay(command, 400);
     return {
       page: buildPageRecord(),
-      clickedElement: describeElementForCommand(target),
+      clickedElement: coreDescribeElementForCommand(target),
       fallbackUsed,
     };
   }
@@ -199,20 +200,20 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
     return {
       page: buildPageRecord(),
       clickPoint: { x, y },
-      clickedElement: describeElementForCommand(target),
+      clickedElement: coreDescribeElementForCommand(target),
     };
   }
 
   async function executeFillCommand(command) {
-    const target = resolveFillTarget(command);
-    if (!(target instanceof Element) || !isFillableElement(target)) {
+    const target = coreResolveFillTarget(command);
+    if (!(target instanceof Element) || !coreIsFillableElement(target)) {
       throw new Error("Failed to find a fillable input, textarea, select, or contenteditable target.");
     }
 
     const value = typeof command?.value === "string" ? command.value : "";
     focusElement(target);
 
-    if (isTextInputElement(target)) {
+    if (coreIsTextInputElement(target)) {
       setNativeValue(target, value);
       if (typeof target.setSelectionRange === "function") {
         try {
@@ -233,21 +234,21 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
     await waitForPostActionDelay(command, 100);
     return {
       page: buildPageRecord(),
-      filledElement: describeElementForCommand(target),
-      label: typeof command?.label === "string" ? normalizeText(command.label) || null : null,
+      filledElement: coreDescribeElementForCommand(target),
+      label: typeof command?.label === "string" ? coreNormalizeText(command.label) || null : null,
       value,
     };
   }
 
   async function executeKeyCommand(command) {
-    const key = normalizeText(command?.key);
+    const key = coreNormalizeText(command?.key);
     if (!key) {
       throw new Error("The key command requires a non-empty key.");
     }
 
     const shiftKey = command?.shiftKey === true;
     const target =
-      resolveCommandTarget(command, { allowFocusedElement: true }) ??
+      coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
       (document.body instanceof Element ? document.body : document.documentElement);
 
     if (!(target instanceof Element)) {
@@ -261,7 +262,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
     let keyResult = null;
     if (key === "Tab") {
       const nextTarget = moveFocus(shiftKey);
-      keyResult = nextTarget ? { focusedElement: describeElementForCommand(nextTarget) } : null;
+      keyResult = nextTarget ? { focusedElement: coreDescribeElementForCommand(nextTarget) } : null;
     } else if (key === "Enter") {
       if (target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) {
         target.click();
@@ -281,7 +282,7 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
       page: buildPageRecord(),
       key,
       shiftKey,
-      targetElement: describeElementForCommand(target),
+      targetElement: coreDescribeElementForCommand(target),
       ...keyResult,
     };
   }
@@ -296,3 +297,4 @@ const AgentPickerExtensionAgentActionInteraction = (() => {
 })();
 
 globalThis.AgentPickerExtensionAgentActionInteraction = AgentPickerExtensionAgentActionInteraction;
+})();

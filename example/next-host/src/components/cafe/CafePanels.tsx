@@ -1,9 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { Download, PanelTop, Sparkles } from "lucide-react";
 
 import type { CafeTabId, SeasonalDrink, ShiftFocus } from "./cafe-model";
-import { CAFE_TABS, SHIFT_OPTIONS } from "./cafe-model";
+import { CAFE_TABS, PASTRY_SHOWCASE_ITEMS, SHIFT_OPTIONS } from "./cafe-model";
 
 export function CafePanels({
   activeTab,
@@ -187,7 +188,53 @@ export function CafePanels({
                   <div className="rounded-[1.3rem] border border-[#8f6333]/10 bg-[#fff9ef] px-4 py-4 text-sm leading-7 text-[#6f461f]">
                     Current board pairing: <strong>{shiftFocus}</strong> shift with <strong>{pastryDrop}</strong>.
                     <br />
-                    Promo URL: <strong>{seasonalDrink.url}</strong>
+                    Seasonal artwork
+                    <div className="mt-3 overflow-hidden rounded-[1.15rem] border border-[#8f6333]/12 bg-white/70">
+                      <div className="relative aspect-[4/3] w-full bg-[#f5e3bc]">
+                        <Image
+                          src={seasonalDrink.artworkUrl || "/kuma-cafe-icon.png"}
+                          alt={`${seasonalDrink.name} promo artwork`}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 1024px) 100vw, 320px"
+                        />
+                      </div>
+                      <div className="px-4 py-3 text-xs font-semibold text-[#7a4a19]">{seasonalDrink.controlMessage}</div>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {PASTRY_SHOWCASE_ITEMS.map((item) => {
+                      const selected = item.name === pastryDrop;
+                      return (
+                        <article
+                          key={item.name}
+                          className={`overflow-hidden rounded-[1.2rem] border bg-white/88 transition-transform duration-150 ${
+                            selected ? "border-[#ba7b33] shadow-[0_18px_38px_rgba(122,74,25,0.16)]" : "border-[#8f6333]/10"
+                          }`}
+                        >
+                          <div className="relative aspect-square bg-[#f6e2b7]">
+                            <Image
+                              src={item.artworkUrl}
+                              alt={`${item.name} pastry artwork`}
+                              fill
+                              className="object-cover"
+                              sizes="(max-width: 768px) 100vw, 220px"
+                            />
+                          </div>
+                          <div className="space-y-1 px-3 py-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <h4 className="text-sm font-black tracking-[-0.03em] text-[#48270d]">{item.name}</h4>
+                              {selected ? (
+                                <span className="rounded-full bg-[#f8dfaa] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#8a561f]">
+                                  Active
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-xs leading-5 text-[#7a4a19]">{item.note}</p>
+                          </div>
+                        </article>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
