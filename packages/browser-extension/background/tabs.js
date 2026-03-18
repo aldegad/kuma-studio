@@ -131,10 +131,6 @@ async function captureTargetTabScreenshot(tab, { focusTabFirst = true } = {}) {
     throw new Error("Failed to activate the target tab before taking a screenshot.");
   }
 
-  if (targetWindow.focused !== true) {
-    throw new Error("Failed to focus the target Chrome window before taking a screenshot.");
-  }
-
   return {
     dataUrl: await captureTabScreenshot(confirmedTab.windowId),
     tabId: confirmedTab.id,

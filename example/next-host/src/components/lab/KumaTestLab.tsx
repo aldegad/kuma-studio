@@ -2,7 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, Sparkles } from "lucide-react";
+import { ChevronRight } from "lucide-react";
+
+import {
+  KUMA_AGENT_CHAT_ICON_SRC,
+  KUMA_CAFE_ICON_SRC,
+  KUMA_SUDOKU_ICON_SRC,
+  KUMA_TEST_CONNECT_ICON_SRC,
+} from "../../lib/kuma-assets";
 
 const TEST_SURFACES: Array<{
   id: string;
@@ -22,7 +29,7 @@ const TEST_SURFACES: Array<{
     status: "Ready for automation",
     version: "v2.0 logic surface",
     accentClassName: "kuma-app-row-sudoku",
-    iconSrc: "/kuma-sudoku-icon.png",
+    iconSrc: KUMA_SUDOKU_ICON_SRC,
   },
   {
     id: "chat",
@@ -32,7 +39,7 @@ const TEST_SURFACES: Array<{
     status: "Ready for dual-agent bridge test",
     version: "v1.1 dispatch surface",
     accentClassName: "kuma-app-row-chat",
-    iconSrc: "/agent-chat-icon.png",
+    iconSrc: KUMA_AGENT_CHAT_ICON_SRC,
   },
   {
     id: "cafe",
@@ -42,7 +49,7 @@ const TEST_SURFACES: Array<{
     status: "Ready for workflow automation",
     version: "v1.0 browser workflow surface",
     accentClassName: "kuma-app-row-cafe",
-    iconSrc: "/kuma-cafe-icon.png",
+    iconSrc: KUMA_CAFE_ICON_SRC,
   },
 ];
 
@@ -52,8 +59,15 @@ export function KumaTestLab() {
       <header className="kuma-launcher-topbar">
         <div className="mx-auto flex w-full max-w-[1340px] items-center justify-between gap-6 px-6 py-4">
           <div className="flex items-center gap-3 text-[#181818]">
-            <div className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-[#111111] text-white shadow-[0_10px_24px_rgba(0,0,0,0.14)]">
-              <Sparkles className="h-4 w-4" />
+            <div className="overflow-hidden rounded-[11px] shadow-[0_10px_24px_rgba(0,0,0,0.14)]">
+              <Image
+                src={KUMA_TEST_CONNECT_ICON_SRC}
+                alt="Kuma Test Connect icon"
+                width={36}
+                height={36}
+                className="block rounded-[11px]"
+                priority
+              />
             </div>
             <div className="text-[1.15rem] font-semibold tracking-[-0.03em]">Kuma Test Connect</div>
           </div>

@@ -1,5 +1,6 @@
 import { Settings2, X } from "lucide-react";
 
+import { KUMA_CAFE_ICON_SRC } from "../../lib/kuma-assets";
 import type { SeasonalDrink } from "./cafe-model";
 
 export function CafeSeasonalDialog({
@@ -43,7 +44,7 @@ export function CafeSeasonalDialog({
             <span className="text-sm font-black tracking-[-0.03em] text-[#4d2e11]">Promo Artwork</span>
             <input
               className="kuma-field mt-3"
-              placeholder="/kuma-cafe-icon.png"
+              placeholder={KUMA_CAFE_ICON_SRC}
               required
               value={draft.artworkUrl}
               onChange={(event) => onChange("artworkUrl", event.target.value)}

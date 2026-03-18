@@ -4,6 +4,7 @@ import Image from "next/image";
 import { startTransition, useEffect, useMemo, useState } from "react";
 import { Pencil, RotateCcw, Trophy } from "lucide-react";
 
+import { KUMA_SUDOKU_ICON_SRC } from "../../lib/kuma-assets";
 import { KumaSurfaceFrame } from "../lab/KumaSurfaceFrame";
 import { cloneBoard, generateSudokuGame, type SudokuGame } from "./sudoku-engine";
 
@@ -257,7 +258,7 @@ export function KumaSudokuClub() {
       ]}
       visual={
         <div className="kuma-story-visual-stack">
-          <Image src="/kuma-sudoku-icon.png" alt="Kuma Sudoku Club icon" width={210} height={210} className="kuma-story-icon" priority />
+          <Image src={KUMA_SUDOKU_ICON_SRC} alt="Kuma Sudoku Club icon" width={210} height={210} className="kuma-story-icon" priority />
           <div className="kuma-surface-float-card">
             <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[#87521f]">Today&apos;s Board</div>
             <div className="mt-2 text-lg font-black tracking-[-0.05em] text-[#4b2a0d]">{filledCount}/81 filled</div>

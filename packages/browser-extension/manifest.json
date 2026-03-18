@@ -27,7 +27,7 @@
   "icons": {
     "16": "assets/icons/agent-picker-icon-16.png",
     "32": "assets/icons/agent-picker-icon-32.png",
-    "48": "assets/icons/agent-picker-icon-128.png",
+    "48": "assets/icons/agent-picker-icon-48.png",
     "128": "assets/icons/agent-picker-icon-128.png"
   },
   "action": {

@@ -118,6 +118,31 @@ async function executeWaitForDialogCloseCommand(command) {
   return { page: buildPageRecord(), ...result };
 }
 
+function executeMeasureCommand(command) {
+  const selector = command?.selectorPath || command?.selector;
+  if (!selector) {
+    throw new Error("The measure command requires --selector or --selector-path.");
+  }
+
+  const scopeRoot = coreGetScopeRoot(command?.scope);
+  if (!scopeRoot) {
+    throw new Error("No visible dialog is open for the requested dialog scope.");
+  }
+
+  const target = coreFindElementBySelectorWithinRoot(selector, scopeRoot);
+  if (!(target instanceof Element)) {
+    throw new Error(`Failed to find an element that matches ${selector}.`);
+  }
+
+  return {
+    page: buildPageRecord(),
+    scope: command?.scope === "dialog" ? "dialog" : "page",
+    selector,
+    element: coreDescribeElementForCommand(target),
+    rect: target.getBoundingClientRect(),
+  };
+}
+
 function serializeQueryResult(element) {
   const record = coreDescribeElementForCommand(element);
   const textContent = coreNormalizeText(element.textContent).slice(0, 400) || null;
@@ -434,6 +459,8 @@ async function executeBrowserCommand(command) {
       return executeWaitForDialogCloseCommand(command);
     case "query-dom":
       return executeQueryDomCommand(command);
+    case "measure":
+      return executeMeasureCommand(command);
     default:
       throw new Error(`Unsupported Agent Picker browser command: ${String(command?.type)}`);
   }

@@ -66,6 +66,32 @@ function sanitizeRequestId(value) {
   return candidate && /^[a-zA-Z0-9:_-]{6,128}$/.test(candidate) ? candidate : null;
 }
 
+function sanitizeClipRect(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const x = Number(candidate.x);
+  const y = Number(candidate.y);
+  const width = Number(candidate.width);
+  const height = Number(candidate.height);
+
+  if (![x, y, width, height].every((value) => Number.isFinite(value))) {
+    return null;
+  }
+
+  if (width < 1 || height < 1) {
+    return null;
+  }
+
+  return {
+    x: Math.max(0, Math.round(x)),
+    y: Math.max(0, Math.round(y)),
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+  };
+}
+
 function sanitizeCommandPayload(candidate) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Browser command payload must be an object.");
@@ -92,6 +118,7 @@ function sanitizeCommandPayload(candidate) {
   const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
   const x = Number(candidate.x);
   const y = Number(candidate.y);
+  const clipRect = sanitizeClipRect(candidate.clipRect);
   const hasTarget =
     Number.isInteger(targetTabId) ||
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
@@ -117,6 +144,7 @@ function sanitizeCommandPayload(candidate) {
     resolvedTargetTabId,
     x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : null,
     y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
+    clipRect,
     shiftKey: candidate.shiftKey === true,
     postActionDelayMs:
       Number.isFinite(postActionDelayMs) && postActionDelayMs >= 0

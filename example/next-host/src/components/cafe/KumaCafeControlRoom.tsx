@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useId, useState } from "react";
 
+import { KUMA_CAFE_ICON_SRC } from "../../lib/kuma-assets";
 import { KumaSurfaceFrame } from "../lab/KumaSurfaceFrame";
 import { CafePanels } from "./CafePanels";
 import { CafeSeasonalDialog } from "./CafeSeasonalDialog";
@@ -130,7 +131,7 @@ export function KumaCafeControlRoom() {
             priority
           />
           <div className="kuma-cafe-icon-float">
-            <Image src="/kuma-cafe-icon.png" alt="Kuma Cafe icon" width={112} height={112} className="rounded-[28px]" />
+            <Image src={KUMA_CAFE_ICON_SRC} alt="Kuma Cafe icon" width={112} height={112} className="rounded-[28px]" />
           </div>
         </div>
       }

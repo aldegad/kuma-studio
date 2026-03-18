@@ -56,6 +56,22 @@ async function sendAgentCommandToTab(tabId, command) {
   return response.result ?? null;
 }
 
+function normalizeScreenshotClipRect(command) {
+  const candidate = command?.clipRect;
+  if (!candidate || typeof candidate !== "object") {
+    return null;
+  }
+
+  const rect = {
+    x: typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : 0,
+    y: typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : 0,
+    width: typeof candidate.width === "number" && Number.isFinite(candidate.width) ? candidate.width : 0,
+    height: typeof candidate.height === "number" && Number.isFinite(candidate.height) ? candidate.height : 0,
+  };
+
+  return rect.width >= 1 && rect.height >= 1 ? rect : null;
+}
+
 async function reportExtensionHeartbeatSafely(daemonUrl, payload) {
   try {
     await reportExtensionHeartbeat(daemonUrl, payload);
@@ -448,21 +464,55 @@ async function executeBrowserCommand(tab, command) {
       const capture = await captureTargetTabScreenshot(tab, {
         focusTabFirst: command?.focusTabFirst !== false,
       });
+      let screenshot = {
+        dataUrl: capture.dataUrl,
+        mimeType: "image/png",
+        width: 0,
+        height: 0,
+        capturedAt: new Date().toISOString(),
+      };
+      let clip = null;
+
+      const selector = typeof command?.selectorPath === "string" ? command.selectorPath : typeof command?.selector === "string" ? command.selector : null;
+      const clipRect = normalizeScreenshotClipRect(command);
+
+      if (selector || clipRect) {
+        const measured = selector
+          ? await sendAgentCommandToTab(tab.id, {
+              type: "measure",
+              selector: typeof command?.selector === "string" ? command.selector : null,
+              selectorPath: typeof command?.selectorPath === "string" ? command.selectorPath : null,
+              scope: typeof command?.scope === "string" ? command.scope : null,
+            })
+          : null;
+        const rect = clipRect ?? measured?.rect ?? null;
+        const cropped = await cropTabScreenshot(capture.dataUrl, rect, pageContext.viewport);
+        screenshot = {
+          dataUrl: cropped.dataUrl,
+          mimeType: cropped.mimeType,
+          width: cropped.width,
+          height: cropped.height,
+          capturedAt: new Date().toISOString(),
+        };
+        clip = {
+          mode: measured ? "selector" : "rect",
+          scope: typeof command?.scope === "string" ? command.scope : "page",
+          selector: measured?.selector ?? null,
+          rect,
+          element: measured?.element ?? null,
+        };
+      }
+
       return {
         page: pageContext.page,
-        screenshot: {
-          dataUrl: capture.dataUrl,
-          mimeType: "image/png",
-          width: 0,
-          height: 0,
-          capturedAt: new Date().toISOString(),
-        },
+        screenshot,
         capture: {
           tabId: capture.tabId,
           windowId: capture.windowId,
           focused: capture.focused,
           active: capture.active,
         },
+        clip,
       };
     }
     case "wait-for-download": {

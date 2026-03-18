@@ -447,12 +447,34 @@ export async function commandBrowserQueryDom(options) {
 
 export async function commandBrowserScreenshot(options) {
   const file = requireString(options, "file");
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const scope = readOptionalString(options, "scope");
+  const x = readNumber(options, "x", null);
+  const y = readNumber(options, "y", null);
+  const width = readNumber(options, "width", null);
+  const height = readNumber(options, "height", null);
+  const hasClipRect = [x, y, width, height].every((value) => Number.isFinite(value));
+
+  if ([x, y, width, height].some((value) => value != null) && !hasClipRect) {
+    throw new Error("browser-screenshot clip mode requires --x, --y, --width, and --height together.");
+  }
+
+  if (hasClipRect && (width < 1 || height < 1)) {
+    throw new Error("browser-screenshot clip width and height must be positive.");
+  }
+
   const result = await enqueueBrowserCommand(options, {
     type: "screenshot",
     focusTabFirst: options["focus-tab-first"] !== false,
+    selector,
+    selectorPath,
+    scope,
+    clipRect: hasClipRect ? { x, y, width, height } : null,
   });
   const screenshot = result.result?.screenshot ?? null;
   const capture = result.result?.capture ?? null;
+  const clip = result.result?.clip ?? null;
 
   if (!screenshot?.dataUrl) {
     throw new Error("The browser screenshot result did not include image data.");
@@ -471,6 +493,7 @@ export async function commandBrowserScreenshot(options) {
         capturedWindowId: capture?.windowId ?? null,
         focused: capture?.focused ?? null,
         active: capture?.active ?? null,
+        clip,
       },
       null,
       2,

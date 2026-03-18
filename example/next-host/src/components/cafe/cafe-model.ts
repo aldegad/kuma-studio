@@ -1,3 +1,5 @@
+import { KUMA_CAFE_ICON_SRC } from "../../lib/kuma-assets";
+
 export type CafeTabId = "orders" | "menu" | "delivery";
 export type ShiftFocus = "Morning Rush" | "Quiet Editing" | "After Hours";
 
@@ -41,7 +43,7 @@ export const PASTRY_SHOWCASE_ITEMS: PastryShowcaseItem[] = [
 
 export const DEFAULT_SEASONAL_DRINK: SeasonalDrink = {
   name: "Maple Cream Matcha",
-  artworkUrl: "/kuma-cafe-icon.png",
+  artworkUrl: KUMA_CAFE_ICON_SRC,
   controlMessage: "Keep the maple cream chilled and visible on the hero board.",
 };
 

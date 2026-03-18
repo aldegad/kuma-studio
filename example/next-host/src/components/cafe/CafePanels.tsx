@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Download, PanelTop, Sparkles } from "lucide-react";
 
+import { KUMA_CAFE_ICON_SRC } from "../../lib/kuma-assets";
 import type { CafeTabId, SeasonalDrink, ShiftFocus } from "./cafe-model";
 import { CAFE_TABS, PASTRY_SHOWCASE_ITEMS, SHIFT_OPTIONS } from "./cafe-model";
 
@@ -192,7 +193,7 @@ export function CafePanels({
                     <div className="mt-3 overflow-hidden rounded-[1.15rem] border border-[#8f6333]/12 bg-white/70">
                       <div className="relative aspect-[4/3] w-full bg-[#f5e3bc]">
                         <Image
-                          src={seasonalDrink.artworkUrl || "/kuma-cafe-icon.png"}
+                          src={seasonalDrink.artworkUrl || KUMA_CAFE_ICON_SRC}
                           alt={`${seasonalDrink.name} promo artwork`}
                           fill
                           className="object-cover"
