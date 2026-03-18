@@ -106,7 +106,7 @@ That directory currently includes:
 `/health` now reports the active browser transport mode as `browserTransport`.
 The default is `websocket`.
 
-Browser control commands such as `browser-context`, `browser-dom`, `browser-click`,
+Browser control commands such as `browser-context`, `browser-dom`, `browser-console`, `browser-click`,
 `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane by default.
@@ -133,6 +133,7 @@ node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
 node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.com"
+node ./packages/server/src/cli.mjs browser-console --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting.com" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
@@ -170,6 +171,7 @@ For browser commands:
 - use `--url` for an exact tab URL match
 - use `--url-contains` for a looser match when the URL has changing query params
 - browser control is routed over the daemon's WebSocket control plane, not the old HTTP polling queue
+- use `browser-console` to read recent `console.*`, `window.onerror`, and `unhandledrejection` events from the target page
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
 - use `browser-wait-for-download` when the action should end in a real downloaded file path
 - use `browser-wait-for-text`, `browser-wait-for-text-disappear`, `browser-wait-for-selector`, and `browser-wait-for-dialog-close` to confirm save flows

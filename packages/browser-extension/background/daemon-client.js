@@ -70,6 +70,7 @@ async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
       capabilities: [
         "context",
         "dom",
+        "console",
         "click",
         "click-point",
         "fill",

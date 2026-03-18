@@ -6,6 +6,7 @@ import { AgentNoteStore } from "./lib/agent-note-store.mjs";
 import {
   commandBrowserClick,
   commandBrowserClickPoint,
+  commandBrowserConsole,
   commandBrowserContext,
   commandBrowserDom,
   commandBrowserFill,
@@ -44,6 +45,7 @@ Usage:
   node main.mjs clear-agent-note [--session-id session-01] [--root .]
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-console (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] [--exact-text] [--role tab] [--within "설정 모드"] [--nth 1] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-click-point --x 120 --y 240 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
@@ -230,6 +232,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-dom":
       await commandBrowserDom(options);
+      return;
+    case "browser-console":
+      await commandBrowserConsole(options);
       return;
     case "browser-click":
       await commandBrowserClick(options);

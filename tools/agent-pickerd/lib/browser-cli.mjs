@@ -252,6 +252,13 @@ export async function commandBrowserDom(options) {
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }
 
+export async function commandBrowserConsole(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "console",
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
 export async function commandBrowserClick(options) {
   const selector = readOptionalString(options, "selector");
   const selectorPath = readOptionalString(options, "selector-path");

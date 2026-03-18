@@ -3,6 +3,7 @@ const knownBrowserTabs = new Map();
 const BROWSER_COMMAND_CAPABILITIES = [
   "context",
   "dom",
+  "console",
   "click",
   "click-point",
   "fill",
@@ -471,6 +472,7 @@ async function executeBrowserCommand(tab, command) {
     case "click-point":
     case "fill":
     case "key":
+    case "console":
     case "wait-for-text":
     case "wait-for-text-disappear":
     case "wait-for-selector":

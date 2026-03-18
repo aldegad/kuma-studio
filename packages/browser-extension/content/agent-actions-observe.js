@@ -441,6 +441,14 @@ async function executeBrowserCommand(command) {
       return { pageContext: buildPageContext(getPageTargetElement()) };
     case "dom":
       return { domSnapshot: coreBuildDomSnapshot() };
+    case "console":
+      return {
+        page: buildPageRecord(),
+        ...(globalThis.AgentPickerExtensionRuntimeObserver?.readEntries?.() ?? {
+          count: 0,
+          entries: [],
+        }),
+      };
     case "click":
       return interactionExecuteClickCommand(command);
     case "click-point":

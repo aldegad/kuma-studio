@@ -63,6 +63,7 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 4. Use the narrowest targeted browser command that answers the question.
    - `npm run agent-pickerd:browser-context -- --url-contains "example.com"`
    - `npm run agent-pickerd:browser-dom -- --url-contains "example.com"`
+   - `npm run agent-pickerd:browser-console -- --url-contains "example.com"`
    - `npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"`
    - `npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"`
    - `npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab`

@@ -108,6 +108,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "agent-picker:page-heartbeat":
           sendResponse(await handlePageHeartbeat(daemonUrl, message, sender));
           return;
+        case "agent-picker:ensure-runtime-observer":
+          if (!sender.tab?.id) {
+            sendResponse({ ok: false, error: "No target tab is available for the runtime observer." });
+            return;
+          }
+          await ensureRuntimeObserver(sender.tab.id, typeof sender.frameId === "number" ? sender.frameId : 0);
+          sendResponse({ ok: true });
+          return;
         case "agent-picker:capture-page":
           sendResponse(await handleCapturePage(daemonUrl, message));
           return;

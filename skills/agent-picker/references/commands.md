@@ -17,6 +17,7 @@ npm run agent-pickerd:get-agent-note
 npm run agent-pickerd:get-browser-session
 npm run agent-pickerd:browser-context -- --url-contains "example.com"
 npm run agent-pickerd:browser-dom -- --url-contains "example.com"
+npm run agent-pickerd:browser-console -- --url-contains "example.com"
 npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
 npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
@@ -41,6 +42,7 @@ npm run agent-pickerd:get-agent-note
 npm run agent-pickerd:get-browser-session
 npm run agent-pickerd:browser-context -- --url-contains "example.com"
 npm run agent-pickerd:browser-dom -- --url-contains "example.com"
+npm run agent-pickerd:browser-console -- --url-contains "example.com"
 npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
 npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
@@ -72,11 +74,12 @@ Use these before relying on the Chrome extension bridge:
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
 - The CLI still uses the same `browser-*` commands, but they are now transported over WebSocket instead of the deprecated HTTP polling queue.
-- Background tabs can answer `browser-context`, `browser-dom`, and `browser-click`.
+- Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, and `browser-click`.
 - Background tabs can also answer `browser-fill`, `browser-key`, `browser-refresh`, and `browser-click-point`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
 - Use the wait commands to verify save states instead of guessing from click timing alone.
 - Use `browser-query-dom` when a long DOM snapshot is too noisy and you need nearby or required field results.
+- Use `browser-console` to inspect recent `console.*`, `window.onerror`, and `unhandledrejection` events after a refresh or action.
 - Use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`.
 - Use `browser-refresh` after deploys or config changes, and add `--bypass-cache` when you need a cache-bypassing reload.
 - Use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable.
