@@ -27,6 +27,9 @@ Skip this section if the extension is already loaded in Chrome.
 1. Find the command surface.
    - Prefer host-root `agent-pickerd:*` scripts in installed projects.
    - In the standalone Agent Picker repo, use the root scripts that target `example/next-host`.
+   - In this standalone repo, root `agent-pickerd:*` scripts are expected to exist in the root `package.json`.
+   - Before saying scripts are missing, verify the root script list first. Do not guess from memory.
+   - Do not tell the user "this repo doesn't have `agent-pickerd:*` scripts" unless you actually checked the root `package.json` or ran the command and saw it fail.
 2. Read the latest selection before doing anything else.
    - Default command: `npm run agent-pickerd:get-selection`
 3. If work begins from a saved selection, acknowledge the shared note.
@@ -47,11 +50,13 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 1. Check the browser bridge session first.
    - Default command: `npm run agent-pickerd:get-browser-session`
    - Read `activeTabId`, `tabCount`, and `tabs[]` when multiple Chrome windows or tabs are open.
+   - Prefer saying what you are checking right now over narrating a hypothetical blocker. For example: "I'll read the current browser session first."
 2. If the session is missing or stale, fix the bridge before continuing.
    - Start the current daemon for this repo or host.
    - Reload the Chrome extension after extension code changes.
    - In the extension popup, point the daemon URL at the currently running daemon.
    - Browser control is WebSocket-based by default. Only use `AGENT_PICKER_TRANSPORT=legacy-poll` when you are intentionally debugging the deprecated transport.
+   - If you are blocked, name the exact command you ran and the concrete failure. Do not replace that with a generic line about needing to "find where to launch the bridge command."
 3. Prefer targeted tab commands when the user may switch away from the page.
    - Use `--tab-id`, `--url`, or `--url-contains` for background-tab DOM reads and clicks.
    - When `get-browser-session` reports more than one live tab, prefer `--tab-id` from that summary instead of relying on the current active tab.
@@ -88,6 +93,13 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 - Treat `~/.codex/agent-picker/` or `$CODEX_HOME/agent-picker/` as shared state unless `AGENT_PICKER_STATE_HOME` overrides it.
 - Do not clear notes unless they would mislead the next agent.
 - Prefer `needs_reselect` over guessing when the saved element no longer matches the current UI.
+
+## Response guardrails
+
+- Do not invent setup problems before checking the repo and command output.
+- In the standalone Agent Picker repo, assume the root `agent-pickerd:*` scripts are the starting point unless verification proves otherwise.
+- When you need a bridge or daemon, state the exact next command you are about to run instead of a reusable fallback speech.
+- If a command is unavailable, include the specific checked path or command in your explanation.
 
 ## Command and state details
 

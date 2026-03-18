@@ -13,6 +13,8 @@
 - If the user says `see pick1`, `check pick 1`, `look at selection 2`, or similar English shorthand, read the latest selection first and map the number to the `elements` array using 1-based indexing.
 - Primary command in the standalone repo: `npm run agent-pickerd:get-selection`
 - Primary command in an installed host: the host root `agent-pickerd:get-selection` script
+- In this standalone repo, do not claim `agent-pickerd:*` scripts are missing unless you checked the root `package.json` or ran the command and saw it fail.
+- Prefer concrete status updates like "I'll run `npm run agent-pickerd:get-browser-session` now" over generic bridge-triage preambles.
 
 ## Agent Notes
 
