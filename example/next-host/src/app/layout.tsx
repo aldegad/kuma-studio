@@ -5,8 +5,12 @@ import "./globals.css";
 import { Providers } from "../components/providers";
 
 export const metadata: Metadata = {
-  title: "Agent Picker Example",
-  description: "Standalone smoke-test host for Agent Picker.",
+  title: "Kuma Sudoku Club",
+  description: "A playful Sudoku test surface for Agent Picker browser automation and E2E workflows.",
+  icons: {
+    icon: "/kuma-sudoku-icon.png",
+    apple: "/kuma-sudoku-icon.png",
+  },
 };
 
 export default function RootLayout({
