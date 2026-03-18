@@ -1,6 +1,7 @@
 const recentDownloadRecords = new Map();
 const pendingDownloadWaiters = new Map();
 let nextDownloadWaiterId = 1;
+const DOWNLOAD_MATCH_GRACE_MS = 3_000;
 
 function normalizePermissionStatus(value) {
   return value === "allow" || value === "block" || value === "ask" ? value : "unknown";
@@ -172,11 +173,15 @@ function createDownloadFilter(command = {}, tab = null) {
   const targetUrl = typeof tab?.url === "string" ? tab.url : null;
   const filenameContains = normalizeDownloadText(command.filenameContains);
   const downloadUrlContains = normalizeDownloadText(command.downloadUrlContains);
+  const startedAfterIso =
+    typeof command.startedAfter === "string" && command.startedAfter.trim()
+      ? command.startedAfter
+      : new Date(Date.now() - DOWNLOAD_MATCH_GRACE_MS).toISOString();
 
   return {
     filenameContains: filenameContains || null,
     downloadUrlContains: downloadUrlContains || null,
-    startedAfter: new Date().toISOString(),
+    startedAfter: startedAfterIso,
     contextTargetUrl: targetUrl,
     completedOnly: command.includeInProgress !== true,
   };

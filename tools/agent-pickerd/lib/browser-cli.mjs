@@ -120,6 +120,7 @@ function connectWebSocket(url) {
 
 async function enqueueWebSocketBrowserCommand(daemonUrl, options, payload) {
   const timeoutMs = readNumber(options, "timeout-ms", 15_000);
+  const controllerTimeoutMs = timeoutMs + 2_000;
   const targets = requireCommandTarget(options);
   const requestId = createRequestId();
   const socket = await connectWebSocket(createBrowserSessionSocketUrl(daemonUrl));
@@ -132,10 +133,10 @@ async function enqueueWebSocketBrowserCommand(daemonUrl, options, payload) {
       socket.close();
       rejectCommand(
         new Error(
-          `Timed out waiting for the browser command result after ${timeoutMs}ms. Keep the target tab open with the extension connected.`,
+          `Timed out waiting for the browser command result after ${controllerTimeoutMs}ms. Keep the target tab open with the extension connected.`,
         ),
       );
-    }, timeoutMs);
+    }, controllerTimeoutMs);
 
     function settle(handler, value) {
       if (settled) {
@@ -305,6 +306,7 @@ export async function commandBrowserFill(options) {
   const selectorPath = readOptionalString(options, "selector-path");
   const label = readOptionalString(options, "label");
   const text = readOptionalString(options, "text");
+  const scope = readOptionalString(options, "scope");
 
   if (value == null) {
     throw new Error("browser-fill requires --value.");
@@ -317,6 +319,7 @@ export async function commandBrowserFill(options) {
     selectorPath,
     label,
     text,
+    scope,
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
   });
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);

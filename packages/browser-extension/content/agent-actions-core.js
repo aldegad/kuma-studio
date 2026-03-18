@@ -344,19 +344,24 @@ var AgentPickerExtensionAgentActionCore = (() => {
   }
 
   function resolveFillTarget(command) {
-    const selectorTarget = findElementBySelector(command?.selectorPath) ?? findElementBySelector(command?.selector);
+    const scopeRoot = getScopeRoot(command?.scope) ?? (document.body || document.documentElement);
+    const selectorTarget =
+      findElementBySelectorWithinRoot(command?.selectorPath, scopeRoot) ??
+      findElementBySelectorWithinRoot(command?.selector, scopeRoot) ??
+      findElementBySelector(command?.selectorPath) ??
+      findElementBySelector(command?.selector);
     if (selectorTarget && isFillableElement(selectorTarget)) {
       return selectorTarget;
     }
 
     if (typeof command?.label === "string" && command.label.trim()) {
-      const labelTarget = findBestFillableByLabel(command.label);
+      const labelTarget = findBestFillableByLabel(command.label, scopeRoot);
       if (labelTarget) {
         return labelTarget;
       }
     }
 
-    const textTarget = findElementByTextWithConstraints(command?.text, {}, document.body || document.documentElement);
+    const textTarget = findElementByTextWithConstraints(command?.text, {}, scopeRoot);
     if (textTarget && isFillableElement(textTarget)) {
       return textTarget;
     }

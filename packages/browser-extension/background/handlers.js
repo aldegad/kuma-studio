@@ -30,10 +30,24 @@ async function collectPageContext(tabId) {
 }
 
 async function sendAgentCommandToTab(tabId, command) {
-  const response = await sendMessageToTab(tabId, {
-    type: "agent-picker:browser-command",
-    command,
-  });
+  let response = null;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    response = await sendMessageToTab(tabId, {
+      type: "agent-picker:browser-command",
+      command,
+    });
+
+    if (response?.ok) {
+      return response.result ?? null;
+    }
+
+    if (response?.error !== "The Agent Picker browser command tools are not loaded for this page yet.") {
+      break;
+    }
+
+    await waitForDelay(150);
+  }
 
   if (!response?.ok) {
     throw new Error(response?.error || "The active tab rejected the browser command.");

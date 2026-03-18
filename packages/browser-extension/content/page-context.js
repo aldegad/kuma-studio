@@ -123,14 +123,30 @@ function getAssociatedLabelTexts(element) {
     pushText(wrappingLabel.textContent);
   }
 
+  if (labels.size > 0) {
+    return [...labels];
+  }
+
   let current = element.parentElement;
   for (let depth = 0; depth < 3 && current; depth += 1) {
-    for (const candidate of Array.from(current.querySelectorAll("label, legend"))) {
-      if (!(candidate instanceof Element) || candidate.contains(element)) {
+    const siblingLabels = Array.from(current.children).filter((candidate) => {
+      return (
+        candidate instanceof Element &&
+        (candidate.tagName === "LABEL" || candidate.tagName === "LEGEND") &&
+        !candidate.contains(element)
+      );
+    });
+
+    for (const candidate of siblingLabels) {
+      if (!(candidate instanceof Element)) {
         continue;
       }
 
       pushText(candidate.textContent);
+    }
+
+    if (siblingLabels.length > 0) {
+      break;
     }
 
     current = current.parentElement;
