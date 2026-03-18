@@ -358,6 +358,30 @@ export async function commandBrowserWaitForText(options) {
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }
 
+export async function commandBrowserWaitForDownload(options) {
+  const filenameContains = readOptionalString(options, "filename-contains");
+  const downloadUrlContains = readOptionalString(options, "download-url-contains");
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "wait-for-download",
+    filenameContains,
+    downloadUrlContains,
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserGetLatestDownload(options) {
+  const filenameContains = readOptionalString(options, "filename-contains");
+  const downloadUrlContains = readOptionalString(options, "download-url-contains");
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "get-latest-download",
+    filenameContains,
+    downloadUrlContains,
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
 export async function commandBrowserWaitForTextDisappear(options) {
   const text = readOptionalString(options, "text");
   if (!text) {
@@ -405,7 +429,7 @@ export async function commandBrowserQueryDom(options) {
     throw new Error("browser-query-dom requires --kind.");
   }
 
-  if ((kind === "nearby-input" || kind === "input-by-label") && !text) {
+  if ((kind === "nearby-input" || kind === "input-by-label" || kind === "menu-state" || kind === "selected-option" || kind === "tab-state") && !text) {
     throw new Error(`browser-query-dom --kind ${kind} requires --text.`);
   }
 

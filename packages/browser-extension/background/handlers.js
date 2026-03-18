@@ -8,6 +8,8 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "fill",
   "key",
   "screenshot",
+  "wait-for-download",
+  "get-latest-download",
   "wait-for-text",
   "wait-for-text-disappear",
   "wait-for-selector",
@@ -447,6 +449,26 @@ async function executeBrowserCommand(tab, command) {
           focused: capture.focused,
           active: capture.active,
         },
+      };
+    }
+    case "wait-for-download": {
+      const pageContext = await collectPageContext(tab.id);
+      const { filter, waitedMs, record, permission } = await waitForMatchingDownload(command, tab);
+      return {
+        page: pageContext.page,
+        matched: true,
+        waitedMs,
+        download: serializeDownloadResult(record, filter),
+        permission: serializeDownloadPermission(permission),
+      };
+    }
+    case "get-latest-download": {
+      const pageContext = await collectPageContext(tab.id);
+      const { filter, record, permission } = await getLatestDownload(command, tab);
+      return {
+        page: pageContext.page,
+        download: serializeDownloadResult(record, filter),
+        permission: serializeDownloadPermission(permission),
       };
     }
     default:

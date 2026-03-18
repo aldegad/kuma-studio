@@ -107,7 +107,8 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-click`,
-`browser-fill`, `browser-key`, `browser-click-point`, and `browser-screenshot`
+`browser-fill`, `browser-key`, `browser-click-point`, `browser-screenshot`,
+`browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane by default.
 
 The older HTTP command queue endpoints still exist only as an internal escape
@@ -138,9 +139,13 @@ node ./packages/server/src/cli.mjs browser-click --url-contains "developers.port
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
+node ./packages/server/src/cli.mjs browser-wait-for-download --url-contains "facebook.com" --filename-contains ".csv"
+node ./packages/server/src/cli.mjs browser-get-latest-download --url-contains "facebook.com" --filename-contains ".csv"
 node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
 node ./packages/server/src/cli.mjs browser-wait-for-selector --url-contains "facebook.com" --selector ".toast-success"
 node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind input-by-label --text "사이트 URL" --scope dialog
+node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind menu-state --text "설정 모드" --scope dialog
+node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind tab-state --text "테스트"
 node ./packages/server/src/cli.mjs browser-screenshot --url-contains "ddalkkakposting.com" --file ./tmp/current-tab.png
 node ./packages/server/src/cli.mjs add-node --root ./example/next-host --id node-welcome-01 --item-id draft-cards-welcomecard --title "Welcome Card" --viewport original --x 120 --y 80 --z-index 1
 ```
@@ -164,8 +169,9 @@ For browser commands:
 - use `--url-contains` for a looser match when the URL has changing query params
 - browser control is routed over the daemon's WebSocket control plane, not the old HTTP polling queue
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
+- use `browser-wait-for-download` when the action should end in a real downloaded file path
 - use `browser-wait-for-text`, `browser-wait-for-text-disappear`, `browser-wait-for-selector`, and `browser-wait-for-dialog-close` to confirm save flows
-- use `browser-query-dom` for structured questions such as required fields, nearby inputs, or all textareas
+- use `browser-query-dom` for structured questions such as required fields, nearby inputs, menu state, selected options, tab state, or all textareas
 - use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`
 - use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
 - visible-tab screenshots still require the page to be the active focused tab in Chrome

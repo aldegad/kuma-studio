@@ -34,6 +34,16 @@ const TEST_SURFACES: Array<{
     accentClassName: "kuma-app-row-chat",
     iconSrc: "/agent-chat-icon.png",
   },
+  {
+    id: "cafe",
+    href: "/cafe-control-room",
+    name: "Kuma Cafe Control Room",
+    subtitle: "Tabs, menus, dialogs, toast waits, and real CSV downloads",
+    status: "Ready for workflow automation",
+    version: "v1.0 browser workflow surface",
+    accentClassName: "kuma-app-row-cafe",
+    iconSrc: "/kuma-cafe-icon.png",
+  },
 ];
 
 export function KumaTestLab() {
@@ -71,7 +81,7 @@ export function KumaTestLab() {
               Apps
             </h1>
             <p className="mt-4 max-w-[54ch] text-[16px] leading-8 text-[#5c5c5c]">
-              Two test apps are ready for Agent Picker flows. Open the icon you want and run the
+              Three test apps are ready for Agent Picker flows. Open the icon you want and run the
               full browser test inside its dedicated screen.
             </p>
           </div>

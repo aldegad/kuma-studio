@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { startTransition, useEffect, useMemo, useState } from "react";
-import { Pencil, RotateCcw, Sparkles, Trophy } from "lucide-react";
+import { Pencil, RotateCcw, Trophy } from "lucide-react";
 
+import { KumaSurfaceFrame } from "../lab/KumaSurfaceFrame";
 import { cloneBoard, generateSudokuGame, type SudokuGame } from "./sudoku-engine";
 
 type CellPosition = { row: number; col: number };
@@ -237,55 +239,40 @@ export function KumaSudokuClub() {
   const selectedValue = board[selected.row][selected.col];
 
   return (
-    <section className="kuma-shell min-h-screen px-4 py-6 sm:px-6 lg:px-10">
-      <div className="mx-auto flex w-full max-w-[1380px] flex-col gap-6">
-        <section className="kuma-hero overflow-hidden rounded-[2.3rem] p-6 shadow-[0_28px_90px_rgba(88,53,18,0.18)] sm:p-8 lg:p-10">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.2fr)_320px]">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#855826]/20 bg-white/78 px-4 py-2 text-[11px] font-black uppercase tracking-[0.3em] text-[#7a4a19]">
-                <Sparkles className="h-3.5 w-3.5" />
-                Kuma Sudoku Club
-              </div>
-              <h1 className="mt-5 max-w-[10ch] text-5xl font-black leading-[0.88] tracking-[-0.08em] text-[#41230a] sm:text-6xl lg:text-7xl">
-                Sweet logic.
-                <br />
-                Sharp selectors.
-              </h1>
-              <p className="mt-5 max-w-[62ch] text-base leading-8 text-[#70451d] sm:text-lg">
-                This example is now a full Sudoku play surface for Agent Picker. Every new board is
-                generated from a fresh solved grid, then carved back into a uniquely solvable
-                puzzle to test cell targeting, keyboard input, readback verification, note mode,
-                hints, mistakes, and completion flows on a real interactive UI.
-              </p>
-
-              <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold text-[#6f451d]">
-                <div className="kuma-pill">Target cells by row and column labels</div>
-                <div className="kuma-pill">Verify values after writes</div>
-                <div className="kuma-pill">Use notes, hints, reset, and fresh puzzle flows</div>
-              </div>
-            </div>
-
-            <aside className="kuma-bear-card relative overflow-hidden rounded-[2rem] border border-[#8b6234]/15 bg-[#fff8eb] p-5">
-              <div className="kuma-bear-face" aria-hidden="true">
-                <div className="kuma-ear kuma-ear-left" />
-                <div className="kuma-ear kuma-ear-right" />
-                <div className="kuma-face-grid" />
-                <div className="kuma-eye kuma-eye-left" />
-                <div className="kuma-eye kuma-eye-right" />
-                <div className="kuma-snout" />
-              </div>
-              <div className="mt-[210px] rounded-[1.6rem] bg-[#4f3212] px-5 py-4 text-[#fff6df] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-[#f9cf86]">Club Rules</p>
-                <ul className="mt-4 space-y-3 text-sm leading-6">
-                  <li>Numbers must be unique in every row, column, and 3x3 box.</li>
-                  <li>Press a cell, type `1-9`, and verify the board readback.</li>
-                  <li>Toggle notes with `N` and try `New Puzzle` to validate random-board flows.</li>
-                </ul>
-              </div>
-            </aside>
+    <KumaSurfaceFrame
+      appName="Kuma Sudoku Club"
+      eyebrow="Kuma Sudoku Club"
+      headline={
+        <>
+          Sweet logic.
+          <br />
+          Sharp selectors.
+        </>
+      }
+      description="Every board starts from a fresh solved grid and gets carved back into a uniquely solvable puzzle. It is a polished Agent Picker surface for click targeting, keyboard input, note mode, readback verification, mistakes, and completion checks."
+      pills={[
+        "Target cells by row and column labels",
+        "Verify values after writes",
+        "Use notes, hints, reset, and fresh puzzle flows",
+      ]}
+      visual={
+        <div className="kuma-story-visual-stack">
+          <Image src="/kuma-sudoku-icon.png" alt="Kuma Sudoku Club icon" width={210} height={210} className="kuma-story-icon" priority />
+          <div className="kuma-surface-float-card">
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[#87521f]">Today&apos;s Board</div>
+            <div className="mt-2 text-lg font-black tracking-[-0.05em] text-[#4b2a0d]">{filledCount}/81 filled</div>
+            <div className="mt-2 text-sm text-[#6f461f]">{wrongEntries} mistakes detected</div>
           </div>
-        </section>
-
+        </div>
+      }
+      sidekickTitle="A puzzle that rewards exact automation"
+      sidekickBody="The board is spacious, vivid, and packed with visible state so Agent Picker can click, read back, and prove success instead of guessing."
+      sidekickItems={[
+        "Starter tiles stay locked while editable cells expose value changes immediately.",
+        "Use note mode, keyboard entry, and hint flows for richer automation coverage.",
+        "Every new puzzle changes the layout so scripts must read state instead of memorizing positions.",
+      ]}
+    >
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div className="kuma-board-card rounded-[2.2rem] p-5 shadow-[0_30px_90px_rgba(91,58,19,0.14)] sm:p-6">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -469,8 +456,7 @@ export function KumaSudokuClub() {
             </div>
           </div>
         ) : null}
-      </div>
-    </section>
+    </KumaSurfaceFrame>
   );
 }
 

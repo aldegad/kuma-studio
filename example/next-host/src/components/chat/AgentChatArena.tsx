@@ -1,7 +1,10 @@
 "use client";
 
-import { MessageCircle, RefreshCcw, Send, Users } from "lucide-react";
+import Image from "next/image";
+import { MessageCircle, RefreshCcw, Send } from "lucide-react";
 import { type KeyboardEvent, useState } from "react";
+
+import { KumaSurfaceFrame } from "../lab/KumaSurfaceFrame";
 
 type PlayerId = "1p" | "2p";
 
@@ -111,55 +114,40 @@ export function AgentChatArena() {
   const lastSpeaker = messages.at(-1)?.player ?? null;
 
   return (
-    <section className="kuma-shell min-h-screen px-4 py-6 sm:px-6 lg:px-10">
-      <div className="mx-auto flex w-full max-w-[1380px] flex-col gap-6">
-        <section className="kuma-hero overflow-hidden rounded-[2.3rem] p-6 shadow-[0_28px_90px_rgba(88,53,18,0.18)] sm:p-8 lg:p-10">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_320px]">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-[#855826]/20 bg-white/78 px-4 py-2 text-[11px] font-black uppercase tracking-[0.3em] text-[#7a4a19]">
-                <Users className="h-3.5 w-3.5" />
-                Agent Chat Arena
-              </div>
-              <h1 className="mt-5 max-w-[11ch] text-5xl font-black leading-[0.88] tracking-[-0.08em] text-[#41230a] sm:text-6xl lg:text-7xl">
-                Two agents.
-                <br />
-                One live room.
-              </h1>
-              <p className="mt-5 max-w-[62ch] text-base leading-8 text-[#70451d] sm:text-lg">
-                This test surface is built for side-by-side Agent Picker control. Each lane has its
-                own labeled composer, send button, and transcript feedback so two agents can prove
-                their skill install, extension path, and browser actions without stepping on the
-                same field.
-              </p>
-
-              <div className="mt-8 flex flex-wrap gap-3 text-sm font-semibold text-[#6f451d]">
-                <div className="kuma-pill">Two independently targetable chat inputs</div>
-                <div className="kuma-pill">Shared transcript for write verification</div>
-                <div className="kuma-pill">Clear labels and `data-testid` hooks for automation</div>
-              </div>
-            </div>
-
-            <aside className="rounded-[2rem] border border-[#8b6234]/15 bg-[#fff8eb] p-5">
-              <div className="grid gap-3">
-                <StatCard label="Messages" value={String(messages.length)} />
-                <StatCard
-                  label="Last Speaker"
-                  value={lastSpeaker ? PLAYER_COPY[lastSpeaker].title : "Waiting"}
-                />
-                <StatCard label="Send Shortcut" value="Cmd/Ctrl + Enter" />
-              </div>
-              <div className="mt-5 rounded-[1.6rem] bg-[#4f3212] px-5 py-4 text-[#fff6df] shadow-[inset_0_1px_0_rgba(255,255,255,0.16)]">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-[#f9cf86]">Room Rules</p>
-                <ul className="mt-4 space-y-3 text-sm leading-6">
-                  <li>Target `1P message` or `2P message` by label before writing.</li>
-                  <li>Use the matching send button to append a transcript bubble.</li>
-                  <li>Verify the bubble text after every write instead of assuming success.</li>
-                </ul>
-              </div>
-            </aside>
+    <KumaSurfaceFrame
+      appName="Agent Chat Arena"
+      eyebrow="Agent Chat Arena"
+      headline={
+        <>
+          Two agents.
+          <br />
+          One live room.
+        </>
+      }
+      description="This surface is tuned for side-by-side Agent Picker control. Each lane has its own labeled composer and send action while the transcript gives you direct write-after-read verification."
+      pills={[
+        "Two independently targetable chat inputs",
+        "Shared transcript for write verification",
+        "Clear labels and data-testid hooks for automation",
+      ]}
+      visual={
+        <div className="kuma-story-visual-stack">
+          <Image src="/agent-chat-icon.png" alt="Agent Chat icon" width={210} height={210} className="kuma-story-icon" priority />
+          <div className="kuma-surface-float-card kuma-surface-float-card-mint">
+            <div className="text-[10px] font-black uppercase tracking-[0.24em] text-[#165546]">Live Room</div>
+            <div className="mt-2 text-lg font-black tracking-[-0.05em] text-[#14392f]">{messages.length} messages</div>
+            <div className="mt-2 text-sm text-[#2e6556]">{lastSpeaker ? `${PLAYER_COPY[lastSpeaker].title} spoke last` : "Waiting for a turn"}</div>
           </div>
-        </section>
-
+        </div>
+      }
+      sidekickTitle="A clean proving ground for dual-agent installs"
+      sidekickBody="The room is intentionally legible: two strong input lanes, obvious action buttons, and a shared history that makes verification fast."
+      sidekickItems={[
+        "Use each labeled lane independently so two agents never fight over the same field.",
+        "Send a bubble, then read it back from the transcript before moving on.",
+        "Reset the room to validate clean-state setup and repeated runs.",
+      ]}
+    >
         <section className="grid gap-6 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)_minmax(0,320px)]">
           <PlayerPanel
             player="1p"
@@ -235,8 +223,7 @@ export function AgentChatArena() {
             onKeyDown={handleComposerKeyDown}
           />
         </section>
-      </div>
-    </section>
+    </KumaSurfaceFrame>
   );
 }
 

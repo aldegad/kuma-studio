@@ -9,9 +9,11 @@ import {
   commandBrowserContext,
   commandBrowserDom,
   commandBrowserFill,
+  commandBrowserGetLatestDownload,
   commandBrowserKey,
   commandBrowserQueryDom,
   commandBrowserScreenshot,
+  commandBrowserWaitForDownload,
   commandBrowserWaitForDialogClose,
   commandBrowserWaitForSelector,
   commandBrowserWaitForText,
@@ -46,11 +48,13 @@ Usage:
   node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-key --key Tab [--shift] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-screenshot --file ./tmp/browser.png (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--focus-tab-first] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-wait-for-download [--filename-contains ".csv"] [--download-url-contains "export"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-get-latest-download [--filename-contains ".csv"] [--download-url-contains "export"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-text --text "Saved" (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-text-disappear --text "Saving..." (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-selector [--selector ".toast-success"] [--selector-path "body > div:nth-of-type(4)"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-dialog-close (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
-  node main.mjs browser-query-dom --kind required-fields|all-textareas|nearby-input|input-by-label (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--text "Site URL"] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-query-dom --kind required-fields|all-textareas|nearby-input|input-by-label|menu-state|selected-option|tab-state (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--text "Site URL"] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs put-scene --file ./scene.json [--root .]
   node main.mjs add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   node main.mjs move-node --id node-01 --x 120 --y 80 [--root .]
@@ -239,6 +243,12 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-screenshot":
       await commandBrowserScreenshot(options);
+      return;
+    case "browser-wait-for-download":
+      await commandBrowserWaitForDownload(options);
+      return;
+    case "browser-get-latest-download":
+      await commandBrowserGetLatestDownload(options);
       return;
     case "browser-wait-for-text":
       await commandBrowserWaitForText(options);

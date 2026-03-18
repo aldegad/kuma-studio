@@ -1,6 +1,7 @@
 importScripts(
   "./shared/runtime.js",
   "./background/storage.js",
+  "./background/downloads.js",
   "./background/tabs.js",
   "./background/injection.js",
   "./background/daemon-client.js",

@@ -60,3 +60,13 @@ describe("agent-pickerd note fallback", () => {
     expect(fetched.message).toBe("hello");
   });
 });
+
+describe("agent-pickerd browser usage", () => {
+  it("prints the download and semantic DOM query commands in help output", () => {
+    const output = runCli(["--help"], process.cwd());
+
+    expect(output).toContain("browser-wait-for-download");
+    expect(output).toContain("browser-get-latest-download");
+    expect(output).toContain("menu-state|selected-option|tab-state");
+  });
+});

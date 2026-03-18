@@ -6,6 +6,8 @@
   "description": "Inspect the current webpage and send element or area picks to a local Agent Picker daemon.",
   "permissions": [
     "activeTab",
+    "contentSettings",
+    "downloads",
     "scripting",
     "storage",
     "tabs"
@@ -44,6 +46,9 @@
       "js": [
         "content/constants.js",
         "content/page-context.js",
+        "content/agent-actions-core.js",
+        "content/agent-actions-interaction.js",
+        "content/agent-actions-observe.js",
         "content/agent-actions.js",
         "content/bridge.js"
       ],

@@ -55,6 +55,40 @@ nextjs-portal {
     linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 28%);
 }
 
+.kuma-surface-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+}
+
+.kuma-surface-backlink,
+.kuma-surface-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 88, 41, 0.14);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0.78rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #5f3a16;
+  box-shadow: 0 14px 34px rgba(101, 61, 21, 0.08);
+}
+
+.kuma-surface-backlink {
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kuma-surface-backlink:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 34px rgba(101, 61, 21, 0.12);
+}
+
 .kuma-hero {
   position: relative;
   background:
@@ -75,6 +109,67 @@ nextjs-portal {
   background:
     linear-gradient(180deg, rgba(255, 250, 240, 0.97), rgba(255, 242, 220, 0.92));
   border: 1px solid rgba(141, 98, 46, 0.14);
+}
+
+.kuma-story-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2rem;
+  border: 1px solid rgba(141, 98, 46, 0.15);
+  background:
+    radial-gradient(circle at top left, rgba(255, 222, 157, 0.28), transparent 36%),
+    linear-gradient(180deg, #5a3613 0%, #41240a 100%);
+  padding: 1.1rem;
+  box-shadow: 0 30px 70px rgba(75, 45, 15, 0.22);
+}
+
+.kuma-story-visual {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.6rem;
+  background: linear-gradient(180deg, rgba(255, 249, 237, 0.95), rgba(255, 235, 203, 0.92));
+  padding: 1rem;
+  min-height: 280px;
+}
+
+.kuma-story-copy {
+  margin-top: 1rem;
+  border-radius: 1.45rem;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1rem;
+}
+
+.kuma-story-visual-stack {
+  position: relative;
+  display: flex;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+}
+
+.kuma-story-icon {
+  height: auto;
+  width: min(210px, 100%);
+  border-radius: 2rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 22px 54px rgba(87, 54, 16, 0.2);
+}
+
+.kuma-surface-float-card {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: min(210px, 60%);
+  border-radius: 1.3rem;
+  border: 1px solid rgba(141, 98, 46, 0.14);
+  background: rgba(255, 249, 239, 0.94);
+  padding: 0.95rem 1rem;
+  box-shadow: 0 18px 44px rgba(87, 54, 16, 0.16);
+}
+
+.kuma-surface-float-card-mint {
+  background: rgba(239, 252, 247, 0.95);
 }
 
 .kuma-bear-card::after {
@@ -343,6 +438,12 @@ nextjs-portal {
     background 140ms ease;
 }
 
+.kuma-app-row-cafe .kuma-app-icon {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 18px 42px rgba(143, 98, 46, 0.22);
+}
+
 .kuma-app-row:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.7);
@@ -603,7 +704,127 @@ nextjs-portal {
   background: linear-gradient(180deg, rgba(222, 245, 236, 0.97), rgba(241, 253, 248, 0.95));
 }
 
+.kuma-field {
+  width: 100%;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(128, 88, 41, 0.16);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.95rem 1rem;
+  font-size: 0.95rem;
+  color: #4f3013;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 10px 24px rgba(101, 61, 21, 0.06);
+}
+
+.kuma-field:focus {
+  outline: none;
+  border-color: rgba(120, 80, 32, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 0 0 4px rgba(244, 193, 95, 0.18);
+}
+
+.kuma-field-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 800;
+}
+
+.kuma-cafe-visual {
+  position: relative;
+  min-height: 280px;
+}
+
+.kuma-cafe-hero-image {
+  height: auto;
+  width: 100%;
+  border-radius: 1.6rem;
+  object-fit: cover;
+  box-shadow: 0 24px 52px rgba(90, 56, 18, 0.16);
+}
+
+.kuma-cafe-icon-float {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  border-radius: 2rem;
+  background: rgba(255, 252, 246, 0.88);
+  padding: 0.55rem;
+  box-shadow: 0 16px 44px rgba(90, 56, 18, 0.16);
+}
+
+.kuma-cafe-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 88, 41, 0.12);
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.85rem 1.15rem;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #6c431c;
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.kuma-cafe-tab:hover {
+  transform: translateY(-1px);
+}
+
+.kuma-cafe-tab-active {
+  background: linear-gradient(180deg, #f6c86c, #efb24f);
+  color: #4b2b0d;
+  box-shadow: 0 14px 32px rgba(143, 98, 46, 0.16);
+}
+
+.kuma-cafe-panel[hidden] {
+  display: none;
+}
+
+.kuma-menu-list {
+  display: grid;
+  gap: 0.5rem;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(128, 88, 41, 0.14);
+  background: rgba(255, 251, 243, 0.96);
+  padding: 0.6rem;
+  box-shadow: 0 18px 36px rgba(101, 61, 21, 0.1);
+}
+
+.kuma-menu-option {
+  width: 100%;
+  border-radius: 0.95rem;
+  padding: 0.85rem 0.95rem;
+  text-align: left;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #5a3513;
+  transition: background 120ms ease;
+}
+
+.kuma-menu-option:hover {
+  background: rgba(245, 210, 138, 0.28);
+}
+
+.kuma-menu-option-active {
+  background: rgba(243, 191, 92, 0.24);
+}
+
 @media (max-width: 768px) {
+  .kuma-surface-topbar {
+    align-items: stretch;
+  }
+
+  .kuma-surface-backlink,
+  .kuma-surface-status {
+    justify-content: center;
+  }
+
   .kuma-app-row {
     align-items: flex-start;
     gap: 1rem;
@@ -623,5 +844,13 @@ nextjs-portal {
     top: 20px;
     height: 60px;
     width: 60px;
+  }
+
+  .kuma-surface-float-card {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    margin-top: -0.5rem;
+    width: 100%;
   }
 }
