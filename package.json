@@ -36,6 +36,7 @@
     "agent-pickerd:browser-click-point": "node ./packages/server/src/cli.mjs browser-click-point",
     "agent-pickerd:browser-fill": "node ./packages/server/src/cli.mjs browser-fill",
     "agent-pickerd:browser-key": "node ./packages/server/src/cli.mjs browser-key",
+    "agent-pickerd:browser-refresh": "node ./packages/server/src/cli.mjs browser-refresh",
     "agent-pickerd:browser-screenshot": "node ./packages/server/src/cli.mjs browser-screenshot",
     "agent-pickerd:browser-wait-for-download": "node ./packages/server/src/cli.mjs browser-wait-for-download",
     "agent-pickerd:browser-get-latest-download": "node ./packages/server/src/cli.mjs browser-get-latest-download",

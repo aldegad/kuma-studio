@@ -7,6 +7,7 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "click-point",
   "fill",
   "key",
+  "refresh",
   "screenshot",
   "wait-for-download",
   "get-latest-download",
@@ -54,6 +55,23 @@ async function sendAgentCommandToTab(tabId, command) {
   }
 
   return response.result ?? null;
+}
+
+async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await collectPageContext(tabId);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) {
+        await waitForDelay(delayMs);
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Failed to read the page after reloading.");
 }
 
 function normalizeScreenshotClipRect(command) {
@@ -513,6 +531,24 @@ async function executeBrowserCommand(tab, command) {
           active: capture.active,
         },
         clip,
+      };
+    }
+    case "refresh": {
+      const reloaded = await reloadTargetTab(tab, {
+        bypassCache: command?.bypassCache === true,
+        timeoutMs:
+          typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) && command.timeoutMs > 0
+            ? command.timeoutMs
+            : 15_000,
+      });
+      const pageContext = await collectPageContextWithRetry(reloaded.tab.id);
+
+      return {
+        page: pageContext.page,
+        refreshedTabId: reloaded.tab.id,
+        refreshedWindowId: reloaded.tab.windowId ?? null,
+        bypassCache: reloaded.bypassCache,
+        status: reloaded.tab.status ?? null,
       };
     }
     case "wait-for-download": {

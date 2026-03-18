@@ -80,6 +80,46 @@ async function captureTabScreenshot(windowId) {
   return chrome.tabs.captureVisibleTab(windowId, { format: "png" });
 }
 
+async function waitForTabReloadComplete(tabId, timeoutMs = 15_000) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const timer = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+      rejectPromise(new Error(`Timed out waiting for tab ${tabId} to finish reloading.`));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+    }
+
+    async function handleUpdated(updatedTabId, changeInfo, updatedTab) {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") {
+        return;
+      }
+
+      cleanup();
+      resolvePromise(updatedTab?.id ? updatedTab : await chrome.tabs.get(tabId));
+    }
+
+    chrome.tabs.onUpdated.addListener(handleUpdated);
+  });
+}
+
+async function reloadTargetTab(tab, { bypassCache = false, timeoutMs = 15_000 } = {}) {
+  if (!isResolvableTab(tab)) {
+    throw new Error("Failed to resolve the target browser tab before reloading.");
+  }
+
+  const reloadWait = waitForTabReloadComplete(tab.id, timeoutMs);
+  await chrome.tabs.reload(tab.id, { bypassCache });
+  const reloadedTab = await reloadWait;
+
+  return {
+    tab: reloadedTab,
+    bypassCache,
+  };
+}
+
 function waitForDelay(ms) {
   return new Promise((resolvePromise) => {
     setTimeout(resolvePromise, ms);

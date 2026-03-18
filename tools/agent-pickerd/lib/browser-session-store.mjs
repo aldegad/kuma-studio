@@ -145,6 +145,7 @@ function sanitizeCommandPayload(candidate) {
     x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : null,
     y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
     clipRect,
+    bypassCache: candidate.bypassCache === true,
     shiftKey: candidate.shiftKey === true,
     postActionDelayMs:
       Number.isFinite(postActionDelayMs) && postActionDelayMs >= 0

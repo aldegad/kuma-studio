@@ -74,6 +74,7 @@ async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
         "click-point",
         "fill",
         "key",
+        "refresh",
         "screenshot",
         "wait-for-download",
         "get-latest-download",

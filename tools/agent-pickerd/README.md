@@ -107,7 +107,7 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-click`,
-`browser-fill`, `browser-key`, `browser-click-point`, `browser-screenshot`,
+`browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane by default.
 
@@ -139,6 +139,8 @@ node ./packages/server/src/cli.mjs browser-click --url-contains "developers.port
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
+node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com"
+node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com" --bypass-cache
 node ./packages/server/src/cli.mjs browser-wait-for-download --url-contains "facebook.com" --filename-contains ".csv"
 node ./packages/server/src/cli.mjs browser-get-latest-download --url-contains "facebook.com" --filename-contains ".csv"
 node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
@@ -173,5 +175,7 @@ For browser commands:
 - use `browser-wait-for-text`, `browser-wait-for-text-disappear`, `browser-wait-for-selector`, and `browser-wait-for-dialog-close` to confirm save flows
 - use `browser-query-dom` for structured questions such as required fields, nearby inputs, menu state, selected options, tab state, or all textareas
 - use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`
+- use `browser-refresh` to reload the target tab after deploys or settings changes
+- add `--bypass-cache` to `browser-refresh` when you want a cache-bypassing reload during verification
 - use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
 - visible-tab screenshots still require the page to be the active focused tab in Chrome

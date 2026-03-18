@@ -347,6 +347,14 @@ export async function commandBrowserKey(options) {
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }
 
+export async function commandBrowserRefresh(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "refresh",
+    bypassCache: options["bypass-cache"] === true,
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
 export async function commandBrowserWaitForText(options) {
   const text = readOptionalString(options, "text");
   if (!text) {
