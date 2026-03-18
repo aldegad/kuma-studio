@@ -42,6 +42,7 @@ packages/browser-extension
 ```
 
 If you installed Agent Picker with `npm run skill:install`, prefer the `~/.codex/extensions/agent-picker-browser-extension` copy so Chrome can keep using a stable global path.
+That core install does not add any files to your app repo, and it does not enable the experimental embedded picker/provider mode by default.
 
 ## Start The Bridge
 

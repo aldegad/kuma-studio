@@ -1,9 +1,13 @@
-# Install Into a Next.js App Router Host
+# Experimental: Install Into a Next.js App Router Host
 
 Agent Picker's current integration model is repo-first. Vendor the repository into your host app, then point a few aliases at the vendored source.
 It is not currently published as installable npm packages.
 Use Node.js 20 or newer for the vendored CLI and local development workflow.
 The example in this repository is currently wired and tested through Next.js webpack mode, so the alias examples below assume the same setup.
+
+This guide is optional.
+You do not need any of it if you only want the Chrome extension plus local daemon workflow.
+Use it only if you explicitly want the embedded picker/provider or the design-lab route inside your app.
 
 ## Put Agent Picker In Your Repo
 

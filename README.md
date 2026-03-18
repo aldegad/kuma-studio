@@ -1,6 +1,6 @@
 # Agent Picker
 
-Agent Picker is a repo-first UI selection bridge for coding agents. Clone or subtree this repository into your app, wire a small set of `tsconfig` aliases, and mount the provider to capture DOM selections directly in the host app, sync shared agent notes through `agent-pickerd`, and optionally render a design lab for comparing UI pieces. Its Chrome extension bridge now uses a WebSocket-based browser control plane by default, while scene sync and saved-selection flows stay on HTTP/SSE.
+Agent Picker is an extension-first UI selection bridge for coding agents. The default install path is the local daemon plus the Chrome extension bridge, so you can inspect and control arbitrary web pages without modifying the target app. An embedded host mode with the picker/provider and design-lab still exists, but it is optional and currently experimental.
 
 ## Domains
 
@@ -25,11 +25,37 @@ Then open the printed web URL and append `/design-lab`. If `3000` is free, it wi
 Agent Picker stores shared runtime state in `~/.codex/agent-picker/` by default, or in `$CODEX_HOME/agent-picker/` when `CODEX_HOME` is set.
 Browser control commands such as `browser-context` and `browser-click` run over the daemon's WebSocket control plane by default. The old HTTP polling transport is kept only as a temporary debug fallback behind `AGENT_PICKER_TRANSPORT=legacy-poll`.
 
-## Install Into Your App
+## Core Install
+
+The default local install is:
+
+```bash
+npm run skill:install
+```
+
+This installs only the core extension-first workflow:
+
+- the skill into `~/.codex/skills/agent-picker`
+- the Chrome extension into `~/.codex/extensions/agent-picker-browser-extension`
+
+It does not install anything into your current app repo.
+It also does not enable the embedded picker/provider or design-lab host mode by default.
+
+If `CODEX_HOME` is set, both install paths move under that directory instead.
+
+In Chrome, use `Load unpacked` and point it at `~/.codex/extensions/agent-picker-browser-extension`.
+
+After you pull new changes, run the same command again to update the installed local copy.
+
+## Optional Experimental Host Embedding
 
 Agent Picker is currently designed to be vendored into a host repo.
 It is not currently published as installable npm packages.
 Use Node.js 20 or newer when working in this repository or wiring the vendored CLI into a host app.
+
+This path is optional.
+You do not need it for the browser extension workflow.
+Treat it as experimental host embedding for teams that want an in-app picker/provider or a design-lab route.
 
 1. add this repo under a stable path such as `apps/web/vendor/agent-picker`
 2. add `tsconfig` aliases that map `@agent-picker/picker` and `@agent-picker/design-lab` to that vendored source
@@ -75,24 +101,7 @@ Agent-specific guidance lives here:
 ## Codex Skill
 
 The repo-managed source of truth for the Codex skill lives in [skills/agent-picker/](./skills/agent-picker/).
-
-Install or update the local skill and bundled browser extension with:
-
-```bash
-npm run skill:install
-```
-
-This syncs:
-
-- the skill into `~/.codex/skills/agent-picker`
-- the Chrome extension into `~/.codex/extensions/agent-picker-browser-extension`
-
-If `CODEX_HOME` is set, both paths move under that directory instead.
-Once installed there, the skill and extension are available from other projects on the same machine too.
-
-In Chrome, use `Load unpacked` and point it at `~/.codex/extensions/agent-picker-browser-extension`.
-
-After you pull new changes, run the same command again to update the installed local copy.
+Use `npm run skill:install` for the core extension-first workflow described above.
 
 ## Common Commands
 
