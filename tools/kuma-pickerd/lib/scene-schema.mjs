@@ -116,3 +116,19 @@ export function encodeAgentNoteEvent(note, source, deleted = false) {
     note: deleted ? null : note,
   })}\n\n`;
 }
+
+export function encodeJobCardEvent(card, source, deleted = false) {
+  const id = typeof card?.id === "string" ? card.id : null;
+  if (!id) {
+    throw new Error("Job card event requires id");
+  }
+
+  return `event: job-card\ndata: ${JSON.stringify({
+    type: "job-card.updated",
+    source,
+    id,
+    deleted: Boolean(deleted),
+    updatedAt: typeof card?.updatedAt === "string" ? card.updatedAt : undefined,
+    card: deleted ? null : card,
+  })}\n\n`;
+}

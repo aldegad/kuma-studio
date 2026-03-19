@@ -33,6 +33,8 @@ import { normalizeViewport } from "./lib/scene-schema.mjs";
 import { SceneStore } from "./lib/scene-store.mjs";
 import { resolveAgentNoteSessionId } from "./lib/session-resolvers.mjs";
 
+const DEFAULT_DAEMON_URL = "http://127.0.0.1:4312";
+
 function printUsage() {
   process.stdout.write(`kuma-pickerd
 
@@ -41,9 +43,11 @@ Usage:
   node main.mjs get-scene [--root .]
   node main.mjs get-selection [--session-id session-01] [--recent 5 | --all] [--root .]
   node main.mjs get-agent-note [--session-id session-01] [--root .]
+  node main.mjs get-job-card [--session-id session-01] [--daemon-url http://127.0.0.1:4312]
   node main.mjs get-extension-status [--root .]
   node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
   node main.mjs set-agent-note --author codex --status fixed --message "Updated the picked element." [--session-id session-01] [--selection-id selector-path] [--root .]
+  node main.mjs set-job-status --status in_progress --message "작업 중인 내용을 짧게 적기" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
   node main.mjs clear-agent-note [--session-id session-01] [--root .]
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
@@ -72,6 +76,98 @@ Usage:
 
 function resolveAgentNoteSessionIdFromOptions(root, options, allowGlobalFallback = false) {
   return resolveAgentNoteSessionId(root, readOptionalString(options, "session-id"), allowGlobalFallback);
+}
+
+function resolveSelectionSessionId(root, options) {
+  const explicitSessionId = readOptionalString(options, "session-id");
+  if (explicitSessionId) {
+    return explicitSessionId;
+  }
+
+  const selectionStore = new DevSelectionStore(root);
+  return selectionStore.readAll()?.latestSessionId ?? null;
+}
+
+function readDaemonUrlOption(options) {
+  return readOptionalString(options, "daemon-url") ?? DEFAULT_DAEMON_URL;
+}
+
+function buildJobCardTargetFromOptions(options) {
+  const tabId = readNumber(options, "tab-id", null);
+  const url = readOptionalString(options, "url");
+  const urlContains = readOptionalString(options, "url-contains");
+
+  if (!Number.isInteger(tabId) && !url && !urlContains) {
+    return null;
+  }
+
+  return {
+    tabId: Number.isInteger(tabId) ? tabId : null,
+    url: url ?? null,
+    urlContains: urlContains ?? null,
+  };
+}
+
+function buildJobCardAnchorFromOptions(options) {
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const rectJson = readOptionalString(options, "rect-json");
+  let rect = null;
+
+  if (rectJson) {
+    try {
+      rect = JSON.parse(rectJson);
+    } catch {
+      throw new Error("--rect-json must be valid JSON.");
+    }
+  }
+
+  if (!selector && !selectorPath && !rect) {
+    return null;
+  }
+
+  return {
+    selector: selector ?? null,
+    selectorPath: selectorPath ?? null,
+    rect,
+  };
+}
+
+async function readJobCardFromDaemon(daemonUrl, sessionId = null) {
+  const search = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : "";
+  const response = await fetch(`${daemonUrl}/job-card${search}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Failed to read job cards from ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
+async function writeJobCardToDaemon(daemonUrl, payload) {
+  const response = await fetch(`${daemonUrl}/job-card`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Failed to write the job card to ${daemonUrl}.`);
+  }
+
+  return response.json();
 }
 
 function commandServe(options) {
@@ -158,6 +254,13 @@ function commandGetAgentNote(options) {
   process.stdout.write(`${JSON.stringify(sessionId ? agentNoteStore.readSession(sessionId) : null, null, 2)}\n`);
 }
 
+async function commandGetJobCard(options) {
+  const root = typeof options.root === "string" ? options.root : ".";
+  const sessionId = resolveSelectionSessionId(root, options);
+  const daemonUrl = readDaemonUrlOption(options);
+  process.stdout.write(`${JSON.stringify(await readJobCardFromDaemon(daemonUrl, sessionId), null, 2)}\n`);
+}
+
 function commandGetExtensionStatus(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const extensionStatusStore = new BrowserExtensionStatusStore(root);
@@ -179,6 +282,24 @@ function commandSetAgentNote(options) {
     { sessionId },
   );
   process.stdout.write(`${JSON.stringify(note, null, 2)}\n`);
+}
+
+async function commandSetJobStatus(options) {
+  const root = typeof options.root === "string" ? options.root : ".";
+  const daemonUrl = readDaemonUrlOption(options);
+  const sessionId = resolveSelectionSessionId(root, options);
+  const resultMessage = requireString(options, "message");
+  const payload = {
+    sessionId,
+    status: requireString(options, "status"),
+    message: resultMessage,
+    resultMessage,
+    author: readOptionalString(options, "author") ?? "codex",
+    target: buildJobCardTargetFromOptions(options),
+    anchor: buildJobCardAnchorFromOptions(options),
+  };
+
+  process.stdout.write(`${JSON.stringify(await writeJobCardToDaemon(daemonUrl, payload), null, 2)}\n`);
 }
 
 function commandClearAgentNote(options) {
@@ -260,6 +381,9 @@ export async function main(argv = process.argv.slice(2)) {
     case "get-agent-note":
       commandGetAgentNote(options);
       return;
+    case "get-job-card":
+      await commandGetJobCard(options);
+      return;
     case "get-extension-status":
       commandGetExtensionStatus(options);
       return;
@@ -268,6 +392,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "set-agent-note":
       commandSetAgentNote(options);
+      return;
+    case "set-job-status":
+      await commandSetJobStatus(options);
       return;
     case "clear-agent-note":
       commandClearAgentNote(options);

@@ -14,7 +14,16 @@ const PNG_DATA_URL =
 interface DevSelectionStoreModule {
   DevSelectionStore: new (root: string) => {
     write(record: unknown): unknown;
+    read(): unknown;
   };
+}
+
+interface JobCardStoreModule {
+  JobCardStore: new (root: string) => {
+    write(record: unknown, fallback?: unknown): unknown;
+    readAll(): { cards: unknown[] };
+  };
+  buildJobCardFromSelection: (selection: unknown, overrides?: unknown) => unknown;
 }
 
 function runCli(args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env) {
@@ -25,7 +34,7 @@ function runCli(args: string[], cwd: string, env: NodeJS.ProcessEnv = process.en
   });
 }
 
-function createSelectionRecord(sessionId: string, index: number) {
+function createSelectionRecord(sessionId: string, index: number, jobMessage?: string) {
   const isoDay = String(index).padStart(2, "0");
 
   return {
@@ -35,6 +44,7 @@ function createSelectionRecord(sessionId: string, index: number) {
       url: `http://localhost:3000/session-${index}`,
       pathname: `/session-${index}`,
       title: `Session ${index}`,
+      tabId: 1000 + index,
     },
     session: {
       id: sessionId,
@@ -64,6 +74,7 @@ function createSelectionRecord(sessionId: string, index: number) {
       selectorPath: `main > div:nth-of-type(${index})`,
       dataset: {},
       rect: { x: 10, y: 20, width: 120, height: 48 },
+      pickedPoint: { x: 44, y: 66 },
       boxModel: {
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
         padding: { top: 8, right: 8, bottom: 8, left: 8 },
@@ -83,6 +94,15 @@ function createSelectionRecord(sessionId: string, index: number) {
       outerHTMLSnippet: `<div id="card-${index}">Hero card ${index}</div>`,
     },
     elements: [],
+    job: jobMessage
+      ? {
+          id: `job-${index}`,
+          message: jobMessage,
+          createdAt: `2026-03-${isoDay}T00:00:00.000Z`,
+          author: "user",
+          status: "noted" as const,
+        }
+      : null,
   };
 }
 
@@ -141,6 +161,8 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
+    expect(output).toContain("get-job-card");
+    expect(output).toContain("set-job-status");
     expect(output).toContain("menu-state|selected-option|tab-state");
   });
 });
@@ -234,5 +256,104 @@ describe("kuma-pickerd selection reads", () => {
 
     expect(selection.latestSessionId).toBe("session_02");
     expect(selection.sessions.map((entry) => entry.session.id)).toEqual(["session_01", "session_02"]);
+  });
+
+  it("preserves selection jobs and tab ids when selections are persisted", async () => {
+    // @ts-expect-error runtime import of local .mjs helper
+    const { DevSelectionStore } = (await import("./lib/dev-selection-store.mjs")) as DevSelectionStoreModule;
+    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-selection-"));
+    tempRoots.push(root);
+    const stateHome = path.join(root, "state");
+    process.env.KUMA_PICKER_STATE_HOME = stateHome;
+
+    const store = new DevSelectionStore(root);
+    store.write(createSelectionRecord("session_10", 10, "Fix this card"));
+
+    const selection = store.read() as {
+      page: { tabId: number | null };
+      job: { message: string; status: string } | null;
+    };
+
+    expect(selection.page.tabId).toBe(1010);
+    expect(selection.job?.message).toBe("Fix this card");
+    expect(selection.job?.status).toBe("noted");
+  });
+});
+
+describe("kuma-pickerd job cards", () => {
+  it("preserves the original picked job message and anchors to the picked point", async () => {
+    // @ts-expect-error runtime import of local .mjs helper
+    const { buildJobCardFromSelection } = (await import("./lib/job-card-store.mjs")) as JobCardStoreModule;
+
+    const card = buildJobCardFromSelection(createSelectionRecord("session_04", 4, "여기 버튼 문구를 다듬어줘")) as {
+      status: string;
+      requestMessage: string;
+      resultMessage: string;
+      anchor: { point: { x: number; y: number } };
+    };
+
+    expect(card.status).toBe("noted");
+    expect(card.requestMessage).toBe("여기 버튼 문구를 다듬어줘");
+    expect(card.resultMessage).toBe("");
+    expect(card.anchor.point).toEqual({ x: 44, y: 66 });
+  });
+});
+
+describe("kuma-pickerd job cards", () => {
+  const tempRoots: string[] = [];
+
+  afterEach(() => {
+    delete process.env.KUMA_PICKER_STATE_HOME;
+    for (const root of tempRoots.splice(0)) {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("creates and updates the same job card from a picked selection", async () => {
+    // @ts-expect-error runtime import of local .mjs helper
+    const { JobCardStore, buildJobCardFromSelection } = (await import("./lib/job-card-store.mjs")) as JobCardStoreModule;
+    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-job-card-"));
+    tempRoots.push(root);
+    const stateHome = path.join(root, "state");
+    process.env.KUMA_PICKER_STATE_HOME = stateHome;
+
+    const store = new JobCardStore(root);
+    const selection = createSelectionRecord("session_20", 20, "Adjust this layout");
+    const initialCard = buildJobCardFromSelection(selection) as {
+      id: string;
+      sessionId: string;
+      status: string;
+      target: { tabId: number | null };
+      message: string;
+    };
+
+    const persistedInitial = store.write(initialCard, {
+      id: initialCard.id,
+      sessionId: initialCard.sessionId,
+    }) as { id: string; status: string };
+    const persistedUpdated = store.write(
+      {
+        sessionId: "session_20",
+        status: "completed",
+        message: "Updated the layout and spacing.",
+        author: "codex",
+      },
+      {
+        id: initialCard.id,
+        sessionId: initialCard.sessionId,
+        target: initialCard.target,
+      },
+    ) as { id: string; status: string; message: string; author: string };
+
+    const feed = store.readAll() as { cards: Array<{ id: string; status: string }> };
+
+    expect(initialCard.target.tabId).toBe(1020);
+    expect(persistedInitial.status).toBe("noted");
+    expect(persistedUpdated.id).toBe(initialCard.id);
+    expect(persistedUpdated.status).toBe("completed");
+    expect(persistedUpdated.message).toBe("Updated the layout and spacing.");
+    expect(persistedUpdated.author).toBe("codex");
+    expect(feed.cards).toHaveLength(1);
+    expect(feed.cards[0].id).toBe(initialCard.id);
   });
 });

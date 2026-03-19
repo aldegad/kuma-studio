@@ -54,6 +54,28 @@ async function reportExtensionHeartbeat(daemonUrl, details = {}) {
   return response.json();
 }
 
+async function fetchJobCardFeed(daemonUrl) {
+  const response = await fetch(`${daemonUrl}/job-card`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (response.status === 204) {
+    return {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      cards: [],
+    };
+  }
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to fetch job cards from ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
 function getSessionLabel(page) {
   try {
     const hostname = new URL(page.url).hostname;
@@ -107,6 +129,28 @@ function createSelectionPayload(pageContext, screenshot) {
     },
     element,
     elements: [element],
+    job:
+      pageContext.job && typeof pageContext.job === "object"
+        ? {
+            id:
+              typeof pageContext.job.id === "string" && pageContext.job.id.trim()
+                ? pageContext.job.id.trim()
+                : `job-${Date.now().toString(36)}`,
+            message: typeof pageContext.job.message === "string" ? pageContext.job.message.trim() : "",
+            createdAt:
+              typeof pageContext.job.createdAt === "string" && pageContext.job.createdAt.trim()
+                ? pageContext.job.createdAt
+                : capturedAt,
+            author:
+              typeof pageContext.job.author === "string" && pageContext.job.author.trim()
+                ? pageContext.job.author.trim()
+                : "user",
+            status:
+              pageContext.job.status === "in_progress" || pageContext.job.status === "completed"
+                ? pageContext.job.status
+                : "noted",
+          }
+        : null,
   };
 }
 

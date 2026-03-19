@@ -6,6 +6,7 @@ It is responsible for:
 - reading and writing `scene.json`
 - reading and writing saved selections under `dev-selection*.json`
 - storing selection snapshots under `dev-selection-assets/`
+- storing shared job-card overlay state under `job-cards.json`
 - storing per-session agent notes under `agent-notes/`
 - falling back to a shared global picker note when a note is posted before any selection exists
 - validating scene payloads
@@ -73,6 +74,7 @@ That directory currently includes:
 - `dev-selections/<session-id>.json` for each saved selection session
 - `dev-selection-assets/<session-id>/...` for saved snapshots
 - `agent-notes/<session-id>.json` for shared per-session agent notes
+- `job-cards.json` for the recent browser work-card feed
 - `browser-extension-status.json` for the latest browser extension presence/status snapshot
 
 `--root` is still accepted for host-relative CLI compatibility, but runtime state now lives in the shared Kuma Picker state home.
@@ -83,6 +85,7 @@ That directory currently includes:
 - `GET /scene`
 - `PATCH /scene/meta`
 - `GET /agent-note`
+- `GET /job-card`
 - `GET /browser-session`
 - `GET /extension-status`
 - `GET /events`
@@ -96,8 +99,10 @@ That directory currently includes:
 - `DELETE /dev-selection`
 - `DELETE /dev-selection/session?sessionId=...`
 - `POST /agent-note`
+- `POST /job-card`
 - `POST /extension-status`
 - `DELETE /agent-note`
+- `DELETE /job-card`
 
 ## WebSocket API
 
@@ -121,8 +126,11 @@ node ./packages/server/src/cli.mjs get-selection --root ./example/next-host
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --recent 5
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --all
 node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host
+node ./packages/server/src/cli.mjs get-job-card --root ./example/next-host
 node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host
 node ./packages/server/src/cli.mjs get-browser-session
+node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status in_progress --message "Implementing the requested UI change."
+node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status completed --message "Updated the picked element and verified the change."
 node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
 node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.com"
@@ -155,9 +163,10 @@ node ./vendor/kuma-picker/packages/server/src/cli.mjs get-scene --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-selection --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-selection --root . --recent 5
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-agent-note --root .
+node ./vendor/kuma-picker/packages/server/src/cli.mjs get-job-card --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-extension-status --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-browser-session
-node ./vendor/kuma-picker/packages/server/src/cli.mjs set-agent-note --root . --author codex --status fixed --message "Updated the selected element."
+node ./vendor/kuma-picker/packages/server/src/cli.mjs set-job-status --root . --status in_progress --message "Implementing the requested UI change."
 ```
 
 For browser commands:
@@ -188,3 +197,5 @@ For saved selections:
 - add `--recent <n>` to inspect a bounded recent selection history
 - add `--all` only when you truly need the full saved selection collection
 - keep `--session-id <id>` for a specific saved selection session
+- `Pick With Job` saves a selection with a `job` payload and immediately creates a browser work card in the target tab
+- use `set-job-status --status in_progress|completed --message "..."` to update that same card instead of posting a generic note

@@ -2,6 +2,7 @@ const daemonUrlInput = document.getElementById("daemon-url");
 const connectDaemonButton = document.getElementById("connect-daemon");
 const capturePageButton = document.getElementById("capture-page");
 const inspectElementButton = document.getElementById("inspect-element");
+const inspectWithJobButton = document.getElementById("inspect-with-job");
 const copyRefactorPromptButton = document.getElementById("copy-refactor-prompt");
 const refactorPromptElement = document.getElementById("refactor-prompt");
 const connectionFormElement = document.getElementById("connection-form");
@@ -13,16 +14,21 @@ const pageStatusElement = document.getElementById("page-status");
 const pageStatusDotElement = document.getElementById("page-status-dot");
 const pageStatusLabelElement = document.getElementById("page-status-label");
 const pageStatusMetaElement = document.getElementById("page-status-meta");
+const pageStatusControlsElement = document.getElementById("page-status-controls");
+const pageTabIdElement = document.getElementById("page-tab-id");
+const copyPageTabIdButton = document.getElementById("copy-page-tab-id");
 const feedbackElement = document.getElementById("feedback");
 const lastSavedElement = document.getElementById("last-saved");
 let isBusy = false;
 let isConnected = false;
 let isCurrentPageReady = false;
+let currentPageTabId = null;
 
 function syncButtonState() {
   connectDaemonButton.disabled = isBusy;
   capturePageButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectElementButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
+  inspectWithJobButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
 }
 
 function setBusyState(busyState) {
@@ -49,7 +55,38 @@ function setRefactorPrompt(message) {
   refactorPromptElement.value = message;
 }
 
-function setConnectionState({ state, label, url, showForm, pageState = "checking", pageLabel = "", pageMeta = "" }) {
+function setCurrentPageTabId(tabId) {
+  currentPageTabId = Number.isInteger(tabId) ? tabId : null;
+  const hasTabId = currentPageTabId !== null;
+  pageStatusControlsElement.classList.toggle("is-hidden", !hasTabId);
+  pageTabIdElement.textContent = hasTabId ? `Tab ID ${currentPageTabId}` : "";
+  copyPageTabIdButton.disabled = !hasTabId;
+}
+
+async function copyCurrentPageTabId() {
+  if (currentPageTabId === null) {
+    return;
+  }
+
+  try {
+    const tabIdArgument = `--tab-id ${currentPageTabId}`;
+    await navigator.clipboard.writeText(tabIdArgument);
+    setFeedback(`${tabIdArgument} copied.`, "success");
+  } catch (error) {
+    setFeedback(error instanceof Error ? error.message : String(error), "error");
+  }
+}
+
+function setConnectionState({
+  state,
+  label,
+  url,
+  showForm,
+  pageState = "checking",
+  pageLabel = "",
+  pageMeta = "",
+  pageTabId = null,
+}) {
   connectionStatusElement.dataset.state = state;
   connectionDotElement.className = `status-dot status-dot-${state}`;
   connectionLabelElement.textContent = label;
@@ -59,6 +96,7 @@ function setConnectionState({ state, label, url, showForm, pageState = "checking
   pageStatusDotElement.className = `status-dot status-dot-${pageState === "ready" ? "connected" : pageState === "checking" ? "checking" : "error"}`;
   pageStatusLabelElement.textContent = pageLabel;
   pageStatusMetaElement.textContent = pageMeta;
+  setCurrentPageTabId(pageTabId);
   setActionAvailability(state === "connected", pageState === "ready");
 }
 
@@ -75,3 +113,7 @@ function updateSavedSelectionLabel(result) {
 
   setLastSaved("");
 }
+
+copyPageTabIdButton.addEventListener("click", () => {
+  void copyCurrentPageTabId();
+});

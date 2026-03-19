@@ -7,6 +7,7 @@ pages into a local `kuma-pickerd` daemon.
 
 - saves the current page as the latest Kuma Picker selection
 - offers a lightweight inspect mode so you can click a single element or drag a viewport area on any site
+- lets you save a picked element or dragged area with a short job message
 - captures a visible-tab screenshot and stores it through the shared Kuma Picker state flow
 
 This MVP does not try to map DOM nodes back to app source code or React
@@ -64,7 +65,7 @@ http://127.0.0.1:4312
 2. open the extension popup
 3. leave the daemon URL at `http://127.0.0.1:4312` or paste your custom one
 4. click `Test Bridge`
-5. click `Capture Current Page` or `Pick Element Or Drag Area`
+5. click `Capture Current Page`, `Pick Element Or Drag Area`, or `Pick With Job`
 6. read the latest saved context from the repo root:
 
 ```bash
@@ -96,6 +97,8 @@ node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "faceboo
 node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind input-by-label --text "사이트 URL" --scope dialog
 node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind selected-option --text "설정 모드" --scope dialog
 node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers.portone.io" --file ./tmp/portone.png
+node ./packages/server/src/cli.mjs set-job-status --status in_progress --message "Implementing the picked UI request."
+node ./packages/server/src/cli.mjs set-job-status --status completed --message "Updated the picked area and verified the change."
 ```
 
 ## Notes
@@ -103,6 +106,7 @@ node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers
 - browser-internal pages such as `chrome://...` will not accept the content script
 - screenshots are captured from the visible viewport, not the entire scrollable page
 - dragged area captures are cropped from the visible viewport screenshot before they are saved
+- `Pick With Job` creates a 3-step work card on the target page: `메모 남김` → `작업 중` → `작업 완료`
 - the extension talks to the same daemon and state files as the embedded provider mode
 - selection saves still use the daemon's HTTP endpoints, but browser control uses the daemon's WebSocket endpoint at `/browser-session/socket`
 - extension status remains best-effort presence data: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last status becomes stale

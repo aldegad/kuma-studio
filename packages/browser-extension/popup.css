@@ -49,10 +49,14 @@ body {
   background: #f9fbfc;
 }
 
+.page-status > .status-dot {
+  margin-top: 4px;
+}
+
 .page-status-copy {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 
 .connection-badge {
@@ -182,6 +186,20 @@ body {
   overflow-wrap: anywhere;
 }
 
+.page-status-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-tab-id {
+  color: var(--muted-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .connection-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -256,6 +274,17 @@ body {
   background: #ffe8d7;
 }
 
+.button-tertiary {
+  background: var(--lavender);
+  border-color: #dde0ff;
+  color: #4850a5;
+}
+
+.button-tertiary:hover {
+  background: #e7e8ff;
+  border-color: #d5d8ff;
+}
+
 .button-ghost {
   padding: 9px 12px;
   background: #ffffff;
@@ -271,6 +300,43 @@ body {
   border-color: #c7d3da;
   color: #55626e;
   opacity: 0.9;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid #d4dee4;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #6f7d89;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.icon-button:hover {
+  transform: translateY(-1px);
+  border-color: #bfd0da;
+  color: #51606c;
+}
+
+.icon-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
+.icon-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .micro-copy {

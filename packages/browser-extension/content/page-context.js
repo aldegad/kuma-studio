@@ -16,6 +16,21 @@ function getRect(element) {
   };
 }
 
+function normalizePoint(point) {
+  const candidate = point && typeof point === "object" ? point : {};
+  const x = typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : null;
+  const y = typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : null;
+
+  if (x == null || y == null) {
+    return null;
+  }
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+  };
+}
+
 function parsePixels(value) {
   const next = Number.parseFloat(value);
   return Number.isFinite(next) ? next : 0;
@@ -312,7 +327,7 @@ function getTypography(element) {
   };
 }
 
-function toSelectionElementRecord(element) {
+function toSelectionElementRecord(element, pickedPoint = null) {
   const rect = getRect(element);
   const state = getElementState(element);
   return {
@@ -337,6 +352,7 @@ function toSelectionElementRecord(element) {
     selectorPath: createSelectorPath(element),
     dataset: getDataset(element),
     rect,
+    pickedPoint: normalizePoint(pickedPoint),
     boxModel: getBoxModel(element, rect),
     typography: getTypography(element),
     outerHTMLSnippet: element.outerHTML.slice(0, 1200),
@@ -364,7 +380,7 @@ function normalizeSelectionRect(rect) {
   };
 }
 
-function buildAreaSelectionRecord(rect) {
+function buildAreaSelectionRecord(rect, pickedPoint = null) {
   const normalizedRect = normalizeSelectionRect(rect);
   const selector = `area:${normalizedRect.x},${normalizedRect.y},${normalizedRect.width},${normalizedRect.height}`;
 
@@ -378,6 +394,7 @@ function buildAreaSelectionRecord(rect) {
     selectorPath: selector,
     dataset: {},
     rect: normalizedRect,
+    pickedPoint: normalizePoint(pickedPoint),
     boxModel: {
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
       padding: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -399,18 +416,18 @@ function buildPageRecord() {
   };
 }
 
-function buildPageContext(element) {
+function buildPageContext(element, pickedPoint = null) {
   return {
     page: buildPageRecord(),
-    element: toSelectionElementRecord(element),
+    element: toSelectionElementRecord(element, pickedPoint),
     viewport: getViewportMetrics(),
   };
 }
 
-function buildAreaPageContext(rect) {
+function buildAreaPageContext(rect, pickedPoint = null) {
   return {
     page: buildPageRecord(),
-    element: buildAreaSelectionRecord(rect),
+    element: buildAreaSelectionRecord(rect, pickedPoint),
     viewport: getViewportMetrics(),
   };
 }
