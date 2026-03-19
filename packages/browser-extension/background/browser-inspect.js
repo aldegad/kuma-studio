@@ -97,6 +97,7 @@ async function handleInspectPicked(message, sender) {
     source: "content-script:inspect-picked",
     page: pageContext?.page,
   });
+  await syncJobCardsForTab(inspectState.daemonUrl, sender.tab);
 
   await clearInspectState(tabId);
   await notifyInspectResult(tabId, {

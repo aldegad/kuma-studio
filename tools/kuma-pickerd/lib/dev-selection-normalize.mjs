@@ -9,6 +9,21 @@ function normalizeRect(rect) {
   };
 }
 
+function normalizePoint(point) {
+  const candidate = point && typeof point === "object" ? point : {};
+  const x = typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : null;
+  const y = typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : null;
+
+  if (x == null || y == null) {
+    return null;
+  }
+
+  return {
+    x,
+    y,
+  };
+}
+
 function normalizeJob(job) {
   const candidate = job && typeof job === "object" ? job : null;
   if (!candidate) {
@@ -200,6 +215,7 @@ function normalizeElement(element) {
     selectorPath: typeof candidate.selectorPath === "string" ? candidate.selectorPath : "",
     dataset,
     rect: normalizeRect(candidate.rect),
+    pickedPoint: normalizePoint(candidate.pickedPoint),
     boxModel: {
       margin: normalizeEdges(rawBoxModel.margin),
       padding: normalizeEdges(rawBoxModel.padding),

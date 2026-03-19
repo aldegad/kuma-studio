@@ -487,14 +487,15 @@
       return;
     }
 
-    const selectionRect = createRectFromPoints(dragStartPoint, getPoint(event));
+    const releasePoint = getPoint(event);
+    const selectionRect = createRectFromPoints(dragStartPoint, releasePoint);
     const target =
       getTargetElement(getUnderlyingElementFromPoint(event.clientX, event.clientY)) || hoveredElement;
     const didDrag = isDraggingArea || isAreaGesture(selectionRect);
 
     if (didDrag) {
       void savePickedContext(
-        buildAreaPageContext(selectionRect),
+        buildAreaPageContext(selectionRect, releasePoint),
         "Saving the selected area...",
         selectionRect,
       );
@@ -506,7 +507,7 @@
       return;
     }
 
-    void savePickedContext(buildPageContext(target), "Saving the picked element...");
+    void savePickedContext(buildPageContext(target, releasePoint), "Saving the picked element...");
   }
 
   function handleClick(event) {

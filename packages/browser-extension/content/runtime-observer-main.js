@@ -6,6 +6,13 @@
   }
   window.__kumaPickerRuntimeObserverInstalled = true;
 
+  function shouldWrapConsole() {
+    const host = window.location.hostname || "";
+    return !/(^|\.)threads\.com$|(^|\.)instagram\.com$|(^|\.)facebook\.com$|(^|\.)fb\.com$|(^|\.)messenger\.com$/i.test(
+      host,
+    );
+  }
+
   function normalizeString(value, maxLength = 400) {
     if (typeof value !== "string") {
       return null;
@@ -144,22 +151,24 @@
     };
   }
 
-  for (const level of ["log", "info", "warn", "error", "debug"]) {
-    if (typeof console[level] !== "function") {
-      continue;
-    }
+  if (shouldWrapConsole()) {
+    for (const level of ["log", "info", "warn", "error", "debug"]) {
+      if (typeof console[level] !== "function") {
+        continue;
+      }
 
-    const original = console[level];
-    console[level] = function kumaPickerConsoleProxy(...args) {
-      const summarizedArgs = summarizeArgs(args);
-      publishEntry(
-        createBaseEntry("console", level, {
-          message: normalizeString(summarizedArgs.map(formatSummary).join(" "), 1_500),
-          args: summarizedArgs,
-        }),
-      );
-      return original.apply(this, args);
-    };
+      const original = console[level];
+      console[level] = function kumaPickerConsoleProxy(...args) {
+        const summarizedArgs = summarizeArgs(args);
+        publishEntry(
+          createBaseEntry("console", level, {
+            message: normalizeString(summarizedArgs.map(formatSummary).join(" "), 1_500),
+            args: summarizedArgs,
+          }),
+        );
+        return original.apply(this, args);
+      };
+    }
   }
 
   window.addEventListener("error", (event) => {

@@ -4,14 +4,137 @@
     return;
   }
 
+  const UI_ATTRIBUTE = "data-kuma-picker-extension-ui";
   const MAX_VISIBLE_CARDS = 5;
   const FALLBACK_RIGHT = 16;
   const FALLBACK_TOP = 16;
   const CARD_WIDTH = 260;
+  const DISMISSED_STORAGE_KEY = "kuma-picker:dismissed-job-cards";
+  const POSITION_STORAGE_KEY = "kuma-picker:job-card-positions";
 
   let rootElement = null;
   const cards = new Map();
   const dismissedCardIds = new Set();
+  let dismissedCardState = loadDismissedCardState();
+  let persistedPositions = loadPersistedPositions();
+
+  function loadDismissedCardState() {
+    try {
+      const raw = globalThis.localStorage?.getItem(DISMISSED_STORAGE_KEY);
+      if (!raw) {
+        return {};
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+
+      return Object.fromEntries(
+        Object.entries(parsed).filter(
+          ([key, value]) => typeof key === "string" && typeof value === "string" && value.trim(),
+        ),
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  function persistDismissedCardState() {
+    try {
+      globalThis.localStorage?.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(dismissedCardState));
+    } catch {
+      // Ignore storage quota or disabled storage.
+    }
+  }
+
+  function loadPersistedPositions() {
+    try {
+      const raw = globalThis.localStorage?.getItem(POSITION_STORAGE_KEY);
+      if (!raw) {
+        return {};
+      }
+
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") {
+        return {};
+      }
+
+      return Object.fromEntries(
+        Object.entries(parsed).filter(([, value]) => {
+          return (
+            value &&
+            typeof value === "object" &&
+            typeof value.left === "number" &&
+            Number.isFinite(value.left) &&
+            typeof value.top === "number" &&
+            Number.isFinite(value.top)
+          );
+        }),
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  function persistPositions() {
+    try {
+      globalThis.localStorage?.setItem(POSITION_STORAGE_KEY, JSON.stringify(persistedPositions));
+    } catch {
+      // Ignore storage quota or disabled storage.
+    }
+  }
+
+  function loadSavedPosition(cardId) {
+    if (typeof cardId !== "string" || !cardId) {
+      return null;
+    }
+
+    const saved = persistedPositions[cardId];
+    if (!saved || typeof saved !== "object") {
+      return null;
+    }
+
+    return {
+      left: saved.left,
+      top: saved.top,
+    };
+  }
+
+  function saveCardPosition(cardId, position) {
+    if (typeof cardId !== "string" || !cardId || !position) {
+      return;
+    }
+
+    persistedPositions[cardId] = {
+      left: position.left,
+      top: position.top,
+    };
+    persistPositions();
+  }
+
+  function markCardDismissed(card) {
+    if (!card?.id) {
+      return;
+    }
+
+    dismissedCardIds.add(card.id);
+    dismissedCardState[card.id] = typeof card.updatedAt === "string" && card.updatedAt.trim() ? card.updatedAt : "dismissed";
+    persistDismissedCardState();
+  }
+
+  function isCardDismissed(card) {
+    if (!card?.id) {
+      return false;
+    }
+
+    const dismissedAt = dismissedCardState[card.id];
+    if (!dismissedAt) {
+      return false;
+    }
+
+    return dismissedAt === "dismissed" || dismissedAt >= (card.updatedAt || "");
+  }
 
   function ensureRoot() {
     if (rootElement) {
@@ -31,12 +154,35 @@
   function statusLabel(status) {
     switch (status) {
       case "in_progress":
-        return "작업 중";
+        return "Working";
       case "completed":
-        return "작업 완료";
+        return "Done";
       default:
-        return "메모 남김";
+        return "Queued";
     }
+  }
+
+  function secondaryLabel(status) {
+    switch (status) {
+      case "in_progress":
+        return "Progress";
+      case "completed":
+        return "Updated";
+      default:
+        return "";
+    }
+  }
+
+  function displayAuthor(author) {
+    if (author === "user") {
+      return "나";
+    }
+
+    if (author === "codex") {
+      return "에이전트";
+    }
+
+    return author || "에이전트";
   }
 
   function statusColors(status) {
@@ -141,8 +287,10 @@
     element.style.background = "rgba(255, 255, 255, 0.98)";
     element.style.backdropFilter = "blur(12px)";
     element.style.pointerEvents = "auto";
+    element.style.touchAction = "none";
     element.style.fontFamily = '"Pretendard", "SUIT", "IBM Plex Sans KR", "Segoe UI", sans-serif';
     element.style.transition = "transform 140ms ease, opacity 140ms ease";
+    element.style.cursor = "grab";
 
     const header = document.createElement("div");
     header.setAttribute(UI_ATTRIBUTE, "true");
@@ -150,6 +298,7 @@
     header.style.alignItems = "center";
     header.style.gap = "8px";
     header.style.marginBottom = "8px";
+    header.style.cursor = "grab";
 
     const badge = document.createElement("span");
     badge.setAttribute(UI_ATTRIBUTE, "true");
@@ -183,7 +332,7 @@
     closeButton.style.lineHeight = "1";
     closeButton.style.cursor = "pointer";
     closeButton.addEventListener("click", () => {
-      dismissedCardIds.add(card.id);
+      markCardDismissed(card);
       const state = cards.get(card.id);
       if (state?.element) {
         state.element.remove();
@@ -194,19 +343,36 @@
 
     const title = document.createElement("div");
     title.setAttribute(UI_ATTRIBUTE, "true");
-    title.textContent = "내가 고친 곳";
-    title.style.fontSize = "13px";
-    title.style.fontWeight = "800";
-    title.style.lineHeight = "1.35";
-    title.style.color = "#22313f";
-    title.style.marginBottom = "4px";
+    const requestMessage = document.createElement("div");
+    requestMessage.setAttribute(UI_ATTRIBUTE, "true");
+    requestMessage.dataset.part = "request-message";
+    requestMessage.style.fontSize = "12px";
+    requestMessage.style.lineHeight = "1.55";
+    requestMessage.style.color = "#33424f";
+    requestMessage.style.marginTop = "2px";
 
-    const message = document.createElement("div");
-    message.setAttribute(UI_ATTRIBUTE, "true");
-    message.dataset.part = "message";
-    message.style.fontSize = "12px";
-    message.style.lineHeight = "1.55";
-    message.style.color = "#5f6e7a";
+    const resultBlock = document.createElement("div");
+    resultBlock.setAttribute(UI_ATTRIBUTE, "true");
+    resultBlock.style.display = "grid";
+    resultBlock.style.gap = "4px";
+    resultBlock.style.marginTop = "8px";
+
+    const resultLabel = document.createElement("div");
+    resultLabel.setAttribute(UI_ATTRIBUTE, "true");
+    resultLabel.dataset.part = "result-label";
+    resultLabel.style.fontSize = "11px";
+    resultLabel.style.fontWeight = "800";
+    resultLabel.style.lineHeight = "1.35";
+    resultLabel.style.color = "#60707d";
+
+    const resultMessage = document.createElement("div");
+    resultMessage.setAttribute(UI_ATTRIBUTE, "true");
+    resultMessage.dataset.part = "result-message";
+    resultMessage.style.fontSize = "12px";
+    resultMessage.style.lineHeight = "1.55";
+    resultMessage.style.color = "#5f6e7a";
+
+    resultBlock.append(resultLabel, resultMessage);
 
     const meta = document.createElement("div");
     meta.setAttribute(UI_ATTRIBUTE, "true");
@@ -216,16 +382,24 @@
     meta.style.fontWeight = "600";
     meta.style.color = "#94a1ac";
 
-    element.append(header, title, message, meta);
+    element.append(header, requestMessage, resultBlock, meta);
     rootElement.appendChild(element);
 
-    return {
+    const state = {
       element,
+      header,
       badge,
       time,
-      message,
+      requestMessage,
+      resultBlock,
+      resultLabel,
+      resultMessage,
       meta,
+      manualPosition: loadSavedPosition(card.id),
     };
+
+    attachDragHandlers(state, closeButton);
+    return state;
   }
 
   function updateCardLook(state) {
@@ -236,12 +410,110 @@
     state.badge.style.color = palette.badgeInk;
     state.badge.textContent = statusLabel(state.card.status);
     state.time.textContent = relativeTime(state.card.updatedAt);
-    state.message.textContent = state.card.message || "";
-    state.meta.textContent = state.card.author ? `by ${state.card.author}` : "";
+    state.requestMessage.textContent = state.card.requestMessage || state.card.message || "";
+    const nextResultMessage = state.card.resultMessage || "";
+    state.resultLabel.textContent = secondaryLabel(state.card.status);
+    state.resultMessage.textContent = nextResultMessage;
+    state.resultBlock.style.display = nextResultMessage ? "grid" : "none";
+    state.meta.textContent = state.card.author ? `Updated by ${displayAuthor(state.card.author)}` : "";
+  }
+
+  function clampManualPosition(left, top, element) {
+    return {
+      left: Math.max(12, Math.min(left, window.innerWidth - element.offsetWidth - 12)),
+      top: Math.max(12, Math.min(top, window.innerHeight - element.offsetHeight - 12)),
+    };
+  }
+
+  function attachDragHandlers(state, closeButton) {
+    let dragState = null;
+
+    const endDrag = () => {
+      if (!dragState) {
+        return;
+      }
+
+      state.element.style.cursor = "grab";
+      state.header.style.cursor = "grab";
+      if (state.card?.id && state.manualPosition) {
+        saveCardPosition(state.card.id, state.manualPosition);
+      }
+      window.removeEventListener("pointermove", handlePointerMove, true);
+      window.removeEventListener("pointerup", endDrag, true);
+      window.removeEventListener("pointercancel", endDrag, true);
+      dragState = null;
+    };
+
+    const handlePointerMove = (event) => {
+      if (!dragState) {
+        return;
+      }
+
+      const nextLeft = dragState.startLeft + (event.clientX - dragState.startX);
+      const nextTop = dragState.startTop + (event.clientY - dragState.startY);
+      state.manualPosition = clampManualPosition(nextLeft, nextTop, state.element);
+      state.element.style.left = `${state.manualPosition.left}px`;
+      state.element.style.top = `${state.manualPosition.top}px`;
+      event.preventDefault();
+    };
+
+    state.element.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      if (event.target instanceof Element && event.target.closest("button") === closeButton) {
+        return;
+      }
+
+      const rect = state.element.getBoundingClientRect();
+      dragState = {
+        startX: event.clientX,
+        startY: event.clientY,
+        startLeft: rect.left,
+        startTop: rect.top,
+      };
+      state.element.style.cursor = "grabbing";
+      state.header.style.cursor = "grabbing";
+      window.addEventListener("pointermove", handlePointerMove, true);
+      window.addEventListener("pointerup", endDrag, true);
+      window.addEventListener("pointercancel", endDrag, true);
+      event.preventDefault();
+    });
   }
 
   function placeCard(state, fallbackIndex = 0) {
+    if (state.manualPosition) {
+      const clamped = clampManualPosition(state.manualPosition.left, state.manualPosition.top, state.element);
+      state.manualPosition = clamped;
+      state.element.style.left = `${clamped.left}px`;
+      state.element.style.top = `${clamped.top}px`;
+      return;
+    }
+
     const anchorElement = resolveAnchorElement(state.card.anchor);
+    const rawAnchorPoint =
+      state.card.anchor?.point &&
+      typeof state.card.anchor.point.x === "number" &&
+      typeof state.card.anchor.point.y === "number"
+        ? state.card.anchor.point
+        : null;
+    const anchorPoint =
+      rawAnchorPoint && anchorElement instanceof Element && state.card.anchor?.rect
+        ? {
+            x: anchorElement.getBoundingClientRect().x + (rawAnchorPoint.x - state.card.anchor.rect.x),
+            y: anchorElement.getBoundingClientRect().y + (rawAnchorPoint.y - state.card.anchor.rect.y),
+          }
+        : rawAnchorPoint;
+
+    if (anchorPoint) {
+      const left = Math.max(12, Math.min(anchorPoint.x + 12, window.innerWidth - CARD_WIDTH - 12));
+      const top = Math.max(12, Math.min(anchorPoint.y + 12, window.innerHeight - state.element.offsetHeight - 12));
+      state.element.style.left = `${left}px`;
+      state.element.style.top = `${top}px`;
+      return;
+    }
+
     const anchorRect =
       anchorElement instanceof Element
         ? anchorElement.getBoundingClientRect()
@@ -268,7 +540,7 @@
     ensureRoot();
 
     const visibleCards = [...cards.values()]
-      .filter((state) => !dismissedCardIds.has(state.card.id))
+      .filter((state) => !dismissedCardIds.has(state.card.id) && !isCardDismissed(state.card))
       .sort((left, right) => left.card.updatedAt.localeCompare(right.card.updatedAt))
       .slice(-MAX_VISIBLE_CARDS);
 
@@ -295,12 +567,19 @@
         ...existing.card,
         ...card,
       };
+      existing.manualPosition = existing.manualPosition ?? loadSavedPosition(card.id);
+      if (!isCardDismissed(existing.card)) {
+        dismissedCardIds.delete(card.id);
+      }
     } else {
       const shell = createCardShell(card);
       cards.set(card.id, {
         ...shell,
         card,
       });
+      if (isCardDismissed(card)) {
+        dismissedCardIds.add(card.id);
+      }
     }
 
     render();

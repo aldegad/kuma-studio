@@ -41,6 +41,21 @@ function normalizeRect(rect) {
   };
 }
 
+function normalizePoint(point) {
+  const candidate = point && typeof point === "object" ? point : {};
+  const x = typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : null;
+  const y = typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : null;
+
+  if (x == null || y == null) {
+    return null;
+  }
+
+  return {
+    x,
+    y,
+  };
+}
+
 function normalizeAnchor(anchor) {
   const candidate = anchor && typeof anchor === "object" ? anchor : {};
   const selector =
@@ -55,8 +70,9 @@ function normalizeAnchor(anchor) {
     rectCandidate && (rectCandidate.width > 0 || rectCandidate.height > 0 || rectCandidate.x > 0 || rectCandidate.y > 0)
       ? rectCandidate
       : null;
+  const point = normalizePoint(candidate.point);
 
-  if (!selector && !selectorPath && !rect) {
+  if (!selector && !selectorPath && !rect && !point) {
     return null;
   }
 
@@ -64,6 +80,7 @@ function normalizeAnchor(anchor) {
     selector,
     selectorPath,
     rect,
+    point,
   };
 }
 
@@ -100,12 +117,27 @@ function normalizeCard(card, fallback = {}) {
     : ALLOWED_STATUSES.has(fallback.status)
       ? fallback.status
       : "noted";
-  const message =
-    typeof candidate.message === "string" && candidate.message.trim()
-      ? candidate.message.trim()
-      : typeof fallback.message === "string" && fallback.message.trim()
-        ? fallback.message.trim()
-        : "";
+  const candidateMessage = typeof candidate.message === "string" ? candidate.message.trim() : "";
+  const fallbackMessage = typeof fallback.message === "string" ? fallback.message.trim() : "";
+  const requestMessage =
+    typeof candidate.requestMessage === "string" && candidate.requestMessage.trim()
+      ? candidate.requestMessage.trim()
+      : typeof fallback.requestMessage === "string" && fallback.requestMessage.trim()
+        ? fallback.requestMessage.trim()
+        : status === "noted"
+          ? candidateMessage || (fallback.status === "noted" ? fallbackMessage : "")
+          : fallback.status === "noted"
+            ? fallbackMessage
+            : "";
+  const resultMessage =
+    typeof candidate.resultMessage === "string" && candidate.resultMessage.trim()
+      ? candidate.resultMessage.trim()
+      : typeof fallback.resultMessage === "string" && fallback.resultMessage.trim()
+        ? fallback.resultMessage.trim()
+        : status === "in_progress" || status === "completed"
+          ? candidateMessage || ((fallback.status === "in_progress" || fallback.status === "completed") ? fallbackMessage : "")
+          : "";
+  const message = resultMessage || requestMessage || candidateMessage || fallbackMessage;
   const author =
     typeof candidate.author === "string" && candidate.author.trim()
       ? candidate.author.trim()
@@ -121,6 +153,8 @@ function normalizeCard(card, fallback = {}) {
     selectionId,
     status,
     message,
+    requestMessage,
+    resultMessage,
     createdAt,
     updatedAt,
     author,
@@ -141,8 +175,10 @@ export function buildJobCardFromSelection(selection, overrides = {}) {
       id: typeof job.id === "string" && job.id.trim() ? job.id.trim() : sessionId,
       sessionId,
       selectionId: typeof job.id === "string" && job.id.trim() ? job.id.trim() : sessionId,
-      status: job.status ?? "noted",
-      message: overrides.message ?? job.message ?? "",
+      status: overrides.status ?? job.status ?? "noted",
+      requestMessage: overrides.requestMessage ?? job.message ?? "",
+      resultMessage: overrides.resultMessage ?? "",
+      message: overrides.resultMessage ?? overrides.message ?? job.message ?? "",
       createdAt: job.createdAt ?? selection.capturedAt,
       updatedAt: currentTimestamp(),
       author: overrides.author ?? job.author ?? "user",
@@ -150,6 +186,7 @@ export function buildJobCardFromSelection(selection, overrides = {}) {
         selector: selection?.element?.selector ?? null,
         selectorPath: selection?.element?.selectorPath ?? null,
         rect: selection?.element?.rect ?? null,
+        point: selection?.element?.pickedPoint ?? null,
       },
       target: overrides.target ?? {
         tabId: Number.isInteger(selection?.page?.tabId) ? selection.page.tabId : null,
@@ -184,7 +221,9 @@ export class JobCardStore {
     try {
       const parsed = JSON.parse(readFileSync(this.feedPath, "utf8"));
       const cards = Array.isArray(parsed?.cards)
-        ? parsed.cards.map((entry) => normalizeCard(entry)).filter((entry) => entry.message || entry.target || entry.anchor)
+        ? parsed.cards
+            .map((entry) => normalizeCard(entry))
+            .filter((entry) => entry.message || entry.requestMessage || entry.resultMessage || entry.target || entry.anchor)
         : [];
 
       return {

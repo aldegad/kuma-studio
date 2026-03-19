@@ -47,7 +47,7 @@ Usage:
   node main.mjs get-extension-status [--root .]
   node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
   node main.mjs set-agent-note --author codex --status fixed --message "Updated the picked element." [--session-id session-01] [--selection-id selector-path] [--root .]
-  node main.mjs set-job-status --status in_progress --message "Working on it." [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
+  node main.mjs set-job-status --status in_progress --message "작업 중인 내용을 짧게 적기" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
   node main.mjs clear-agent-note [--session-id session-01] [--root .]
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
@@ -288,10 +288,12 @@ async function commandSetJobStatus(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const daemonUrl = readDaemonUrlOption(options);
   const sessionId = resolveSelectionSessionId(root, options);
+  const resultMessage = requireString(options, "message");
   const payload = {
     sessionId,
     status: requireString(options, "status"),
-    message: requireString(options, "message"),
+    message: resultMessage,
+    resultMessage,
     author: readOptionalString(options, "author") ?? "codex",
     target: buildJobCardTargetFromOptions(options),
     anchor: buildJobCardAnchorFromOptions(options),

@@ -6,6 +6,8 @@
       grab: "assets/gestures/kuma-paw-grab.png",
     };
     const DEFAULT_SIZE = 88;
+    const CLICK_SIZE = 70;
+    const CLICK_HOTSPOT_Y = 0.25;
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -101,48 +103,51 @@
         return;
       }
 
-      const size = DEFAULT_SIZE;
+      const size = CLICK_SIZE;
       const left = clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10);
-      const top = clamp(point.y - size * 0.1, 10, window.innerHeight - size - 10);
+      const top = clamp(point.y - size * CLICK_HOTSPOT_Y, 10, window.innerHeight - size - 10);
       const paw = createPawElement(size, "click");
       paw.style.left = `${left}px`;
       paw.style.top = `${top}px`;
 
       await playAnimation(
         paw,
-      [
-        {
-          opacity: 0,
-          transform: "translate3d(0, -5px, 0) scale(1)",
-        },
-        {
-          opacity: 1,
-          transform: "translate3d(0, 0, 0) scale(1)",
-          offset: 0.1,
-        },
-        {
-          opacity: 1,
-          transform: "translate3d(0, 0, 0) scale(1)",
-          offset: 0.5,
-        },
-        {
-          opacity: 1,
-          transform: "translate3d(0, 0, 0) scale(0.9)",
-          offset: 0.65,
-        },
-        {
-          opacity: 1,
-          transform: "translate3d(0, 0, 0) scale(1)",
-          offset: 0.8,
-        },
-        {
-          opacity: 0,
-          transform: "translate3d(0, 2px, 0) scale(1)",
+        [
+          {
+            opacity: 0,
+            transform: "translate3d(0, 5px, 0) scale(1)",
+          },
+          {
+            opacity: 1,
+            offset: 0.1,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 2px, 0) scale(1)",
+            offset: 0.5,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(0.9)",
+            offset: 0.65,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(1)",
+            offset: 0.8,
+          },
+          {
+            opacity: 1,
+            offset: 0.9,
+          },
+          {
+            opacity: 0,
+            transform: "translate3d(0, 5px, 0) scale(1)",
           },
         ],
         {
           duration: 380,
-          easing: "cubic-bezier(0.2, 0.9, 0.28, 1)",
+          easing: "ease-in-out",
           fill: "forwards",
         },
       );

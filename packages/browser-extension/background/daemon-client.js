@@ -54,6 +54,28 @@ async function reportExtensionHeartbeat(daemonUrl, details = {}) {
   return response.json();
 }
 
+async function fetchJobCardFeed(daemonUrl) {
+  const response = await fetch(`${daemonUrl}/job-card`, {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (response.status === 204) {
+    return {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      cards: [],
+    };
+  }
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to fetch job cards from ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
 function getSessionLabel(page) {
   try {
     const hostname = new URL(page.url).hostname;

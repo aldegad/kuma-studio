@@ -392,7 +392,7 @@ export function createServer({ host, port, root }) {
           typeof payload?.sessionId === "string" && payload.sessionId.trim()
             ? selectionStore.readSession(payload.sessionId.trim())
             : null;
-        const cardFromSelection = selection ? buildJobCardFromSelection(selection, payload) : null;
+        const cardFromSelection = selection ? buildJobCardFromSelection(selection) : null;
         const card = jobCardStore.write(
           {
             ...cardFromSelection,
@@ -409,6 +409,8 @@ export function createServer({ host, port, root }) {
             anchor: cardFromSelection?.anchor ?? null,
             createdAt: cardFromSelection?.createdAt ?? payload?.createdAt ?? null,
             author: cardFromSelection?.author ?? payload?.author ?? null,
+            requestMessage: cardFromSelection?.requestMessage ?? payload?.requestMessage ?? null,
+            resultMessage: cardFromSelection?.resultMessage ?? payload?.resultMessage ?? null,
             message: cardFromSelection?.message ?? payload?.message ?? null,
             status: cardFromSelection?.status ?? payload?.status ?? null,
           },

@@ -74,6 +74,7 @@ function createSelectionRecord(sessionId: string, index: number, jobMessage?: st
       selectorPath: `main > div:nth-of-type(${index})`,
       dataset: {},
       rect: { x: 10, y: 20, width: 120, height: 48 },
+      pickedPoint: { x: 44, y: 66 },
       boxModel: {
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
         padding: { top: 8, right: 8, bottom: 8, left: 8 },
@@ -276,6 +277,25 @@ describe("kuma-pickerd selection reads", () => {
     expect(selection.page.tabId).toBe(1010);
     expect(selection.job?.message).toBe("Fix this card");
     expect(selection.job?.status).toBe("noted");
+  });
+});
+
+describe("kuma-pickerd job cards", () => {
+  it("preserves the original picked job message and anchors to the picked point", async () => {
+    // @ts-expect-error runtime import of local .mjs helper
+    const { buildJobCardFromSelection } = (await import("./lib/job-card-store.mjs")) as JobCardStoreModule;
+
+    const card = buildJobCardFromSelection(createSelectionRecord("session_04", 4, "여기 버튼 문구를 다듬어줘")) as {
+      status: string;
+      requestMessage: string;
+      resultMessage: string;
+      anchor: { point: { x: number; y: number } };
+    };
+
+    expect(card.status).toBe("noted");
+    expect(card.requestMessage).toBe("여기 버튼 문구를 다듬어줘");
+    expect(card.resultMessage).toBe("");
+    expect(card.anchor.point).toEqual({ x: 44, y: 66 });
   });
 });
 
