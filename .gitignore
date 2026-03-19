@@ -5,3 +5,5 @@ dist
 .DS_Store
 tmp/
 *.tsbuildinfo
+.agent-picker/
+.kuma-picker/
