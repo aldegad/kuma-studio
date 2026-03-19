@@ -7,6 +7,7 @@ import { ChevronRight } from "lucide-react";
 import {
   KUMA_AGENT_CHAT_ICON_SRC,
   KUMA_CAFE_ICON_SRC,
+  KUMA_SHOOTING_ICON_SRC,
   KUMA_SUDOKU_ICON_SRC,
   KUMA_TEST_CONNECT_ICON_SRC,
 } from "../../lib/kuma-assets";
@@ -50,6 +51,16 @@ const TEST_SURFACES: Array<{
     version: "v1.0 browser workflow surface",
     accentClassName: "kuma-app-row-cafe",
     iconSrc: KUMA_CAFE_ICON_SRC,
+  },
+  {
+    id: "shooting",
+    href: "/shooting",
+    name: "Kuma Shooting Range",
+    subtitle: "Canvas bullet-hell, 60 fps touch input, real-time reactivity benchmark",
+    status: "Ready for real-time interaction test",
+    version: "v1.0 reactivity surface",
+    accentClassName: "kuma-app-row-shooting",
+    iconSrc: KUMA_SHOOTING_ICON_SRC,
   },
 ];
 
@@ -95,7 +106,7 @@ export function KumaTestLab() {
               Apps
             </h1>
             <p className="mt-4 max-w-[54ch] text-[16px] leading-8 text-[#5c5c5c]">
-              Three test apps are ready for Kuma Picker flows. Open the icon you want and run the
+              Four test apps are ready for Kuma Picker flows. Open the icon you want and run the
               full browser test inside its dedicated screen.
             </p>
           </div>

@@ -11,5 +11,6 @@ export const KUMA_CAFE_BEAR_BARISTA_SRC = withRev("/kuma-cafe-bear-barista.png")
 export const KUMA_CAFE_GUEST_RABBIT_SRC = withRev("/kuma-cafe-guest-rabbit.png");
 export const KUMA_CAFE_GUEST_CAT_SRC = withRev("/kuma-cafe-guest-cat.png");
 export const KUMA_CAFE_GUEST_RACCOON_SRC = withRev("/kuma-cafe-guest-raccoon.png");
+export const KUMA_SHOOTING_ICON_SRC = withRev("/kuma-shooting-icon.png");
 export const KUMA_TEST_CONNECT_ICON_SRC = withRev("/kuma-test-connect-icon.png");
 export const KUMA_FAVICON_SRC = withRev("/kuma-favicon.png");
