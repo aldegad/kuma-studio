@@ -141,6 +141,31 @@ function scheduleDaemonSocketReconnect(daemonUrl) {
   }, nextDelay);
 }
 
+async function relayJobCardUpdate(message) {
+  const target = message?.card?.target ?? null;
+  if (!target) {
+    return;
+  }
+
+  try {
+    const tab = await resolveTargetTab({
+      tabId: Number.isInteger(target?.tabId) ? target.tabId : undefined,
+      url: typeof target?.url === "string" ? target.url : undefined,
+      urlContains: typeof target?.urlContains === "string" ? target.urlContains : undefined,
+    });
+
+    await sendMessageToTab(tab.id, {
+      type: "kuma-picker:job-card-event",
+      id: message?.id ?? message?.card?.id ?? null,
+      deleted: message?.deleted === true,
+      card: message?.card ?? null,
+      source: message?.source ?? "websocket",
+    });
+  } catch {
+    // Ignore stale target-tab routing failures for best-effort overlay delivery.
+  }
+}
+
 function openDaemonSocket(daemonUrl) {
   const socketUrl = createDaemonSocketUrl(daemonUrl);
   if (
@@ -202,6 +227,9 @@ function openDaemonSocket(daemonUrl) {
           return;
         case "command.request":
           await handleSocketCommandRequest(daemonUrl, message);
+          return;
+        case "job-card.updated":
+          await relayJobCardUpdate(message);
           return;
         default:
           return;

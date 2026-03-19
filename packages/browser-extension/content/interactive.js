@@ -9,8 +9,15 @@
   let outlineElement = null;
   let labelElement = null;
   let toastElement = null;
+  let promptElement = null;
+  let promptTitleElement = null;
+  let promptInputElement = null;
+  let promptCancelButton = null;
+  let promptSaveButton = null;
   let toastTimerId = null;
+  let pendingJobPromptResolve = null;
   let isInspecting = false;
+  let inspectMode = "standard";
   let hoveredElement = null;
   let dragStartPoint = null;
   let isDraggingArea = false;
@@ -86,8 +93,98 @@
     toastElement.style.transform = "translateY(6px)";
     toastElement.style.transition = "opacity 120ms ease, transform 120ms ease";
 
-    rootElement.append(shieldElement, outlineElement, labelElement, toastElement);
+    promptElement = document.createElement("div");
+    promptElement.setAttribute(UI_ATTRIBUTE, "true");
+    promptElement.style.position = "fixed";
+    promptElement.style.left = "50%";
+    promptElement.style.bottom = "20px";
+    promptElement.style.width = "min(360px, calc(100vw - 32px))";
+    promptElement.style.padding = "14px";
+    promptElement.style.border = "1px solid rgba(32, 191, 143, 0.22)";
+    promptElement.style.borderRadius = "18px";
+    promptElement.style.background = "rgba(255, 255, 255, 0.98)";
+    promptElement.style.boxShadow = "0 18px 36px rgba(15, 23, 42, 0.18)";
+    promptElement.style.transform = "translate(-50%, 8px)";
+    promptElement.style.opacity = "0";
+    promptElement.style.pointerEvents = "none";
+    promptElement.style.transition = "opacity 140ms ease, transform 140ms ease";
+    promptElement.style.display = "grid";
+    promptElement.style.gap = "10px";
+
+    promptTitleElement = document.createElement("div");
+    promptTitleElement.setAttribute(UI_ATTRIBUTE, "true");
+    promptTitleElement.textContent = "What should the agent do here?";
+    promptTitleElement.style.color = "#22313f";
+    promptTitleElement.style.fontFamily = '"Pretendard", "SUIT", "IBM Plex Sans KR", "Segoe UI", sans-serif';
+    promptTitleElement.style.fontSize = "13px";
+    promptTitleElement.style.fontWeight = "700";
+    promptTitleElement.style.lineHeight = "1.35";
+
+    promptInputElement = document.createElement("textarea");
+    promptInputElement.setAttribute(UI_ATTRIBUTE, "true");
+    promptInputElement.rows = 3;
+    promptInputElement.placeholder = "Describe the job for this picked area or element.";
+    promptInputElement.style.width = "100%";
+    promptInputElement.style.padding = "12px 13px";
+    promptInputElement.style.border = "1px solid #dbe5ea";
+    promptInputElement.style.borderRadius = "14px";
+    promptInputElement.style.background = "#ffffff";
+    promptInputElement.style.color = "#22313f";
+    promptInputElement.style.fontFamily = '"Pretendard", "SUIT", "IBM Plex Sans KR", "Segoe UI", sans-serif';
+    promptInputElement.style.fontSize = "13px";
+    promptInputElement.style.lineHeight = "1.5";
+    promptInputElement.style.resize = "none";
+
+    const promptActionsElement = document.createElement("div");
+    promptActionsElement.setAttribute(UI_ATTRIBUTE, "true");
+    promptActionsElement.style.display = "flex";
+    promptActionsElement.style.justifyContent = "flex-end";
+    promptActionsElement.style.gap = "8px";
+
+    promptCancelButton = document.createElement("button");
+    promptCancelButton.setAttribute(UI_ATTRIBUTE, "true");
+    promptCancelButton.type = "button";
+    promptCancelButton.textContent = "Cancel";
+    promptCancelButton.style.padding = "9px 12px";
+    promptCancelButton.style.border = "1px solid #dbe5ea";
+    promptCancelButton.style.borderRadius = "999px";
+    promptCancelButton.style.background = "#ffffff";
+    promptCancelButton.style.color = "#65727e";
+    promptCancelButton.style.font = "600 12px/1.1 Pretendard, SUIT, IBM Plex Sans KR, Segoe UI, sans-serif";
+    promptCancelButton.style.cursor = "pointer";
+
+    promptSaveButton = document.createElement("button");
+    promptSaveButton.setAttribute(UI_ATTRIBUTE, "true");
+    promptSaveButton.type = "button";
+    promptSaveButton.textContent = "Save Job";
+    promptSaveButton.style.padding = "9px 14px";
+    promptSaveButton.style.border = "1px solid #bfeedd";
+    promptSaveButton.style.borderRadius = "999px";
+    promptSaveButton.style.background = "#bfeedd";
+    promptSaveButton.style.color = "#175846";
+    promptSaveButton.style.font = "700 12px/1.1 Pretendard, SUIT, IBM Plex Sans KR, Segoe UI, sans-serif";
+    promptSaveButton.style.cursor = "pointer";
+
+    promptActionsElement.append(promptCancelButton, promptSaveButton);
+    promptElement.append(promptTitleElement, promptInputElement, promptActionsElement);
+
+    rootElement.append(shieldElement, outlineElement, labelElement, toastElement, promptElement);
     document.documentElement.appendChild(rootElement);
+
+    promptCancelButton.addEventListener("click", () => {
+      resolveJobPrompt(null);
+    });
+
+    promptSaveButton.addEventListener("click", () => {
+      resolveJobPrompt(promptInputElement.value);
+    });
+
+    promptInputElement.addEventListener("keydown", (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        resolveJobPrompt(promptInputElement.value);
+      }
+    });
   }
 
   function getInspectSurfaceElement() {
@@ -147,6 +244,44 @@
       toastElement.style.transform = "translateY(6px)";
       toastTimerId = null;
     }, tone === "error" ? 2800 : 1800);
+  }
+
+  function setPromptVisible(visible) {
+    ensureUi();
+    promptElement.style.pointerEvents = visible ? "auto" : "none";
+    promptElement.style.opacity = visible ? "1" : "0";
+    promptElement.style.transform = visible ? "translate(-50%, 0)" : "translate(-50%, 8px)";
+  }
+
+  function resolveJobPrompt(value) {
+    if (!pendingJobPromptResolve) {
+      return;
+    }
+
+    const resolvePrompt = pendingJobPromptResolve;
+    pendingJobPromptResolve = null;
+    setPromptVisible(false);
+    const message = typeof value === "string" ? value.trim() : "";
+    promptInputElement.value = "";
+    resolvePrompt(message || null);
+  }
+
+  function promptForJob() {
+    ensureUi();
+
+    if (pendingJobPromptResolve) {
+      resolveJobPrompt(null);
+    }
+
+    promptInputElement.value = "";
+    setPromptVisible(true);
+
+    return new Promise((resolvePrompt) => {
+      pendingJobPromptResolve = resolvePrompt;
+      window.setTimeout(() => {
+        promptInputElement.focus();
+      }, 20);
+    });
   }
 
   function updateOverlay(element) {
@@ -230,12 +365,36 @@
     isDraggingArea = false;
   }
 
-  function savePickedContext(pageContext, message, captureRect = null) {
+  async function savePickedContext(pageContext, message, captureRect = null) {
+    const nextInspectMode = inspectMode;
     stopInspectMode();
-    showToast(message, "info");
+    let nextPageContext = pageContext;
+    let nextMessage = message;
+    if (nextInspectMode === "job") {
+      const jobMessage = await promptForJob();
+      if (!jobMessage) {
+        showToast("Job entry cancelled.", "info");
+        return;
+      }
+
+      const createdAt = new Date().toISOString();
+      nextPageContext = {
+        ...pageContext,
+        job: {
+          id: `job-${createdAt.replace(/[:.]/g, "-")}`,
+          message: jobMessage,
+          createdAt,
+          author: "user",
+          status: "noted",
+        },
+      };
+      nextMessage = "Saving the picked job...";
+    }
+
+    showToast(nextMessage, "info");
     const payload = {
       type: "kuma-picker:inspect-picked",
-      pageContext,
+      pageContext: nextPageContext,
     };
 
     if (captureRect) {
@@ -247,6 +406,7 @@
 
   function stopInspectMode() {
     isInspecting = false;
+    inspectMode = "standard";
     hoveredElement = null;
     clearDragState();
     hideOverlay();
@@ -260,14 +420,20 @@
     document.removeEventListener("keydown", handleKeyDown, true);
   }
 
-  function startInspectMode() {
+  function startInspectMode(options = {}) {
     if (isInspecting) {
       return;
     }
 
     ensureUi();
     isInspecting = true;
-    showToast("Inspect mode on. Click an element or drag an area. Press Esc.", "info");
+    inspectMode = options?.withJob === true ? "job" : "standard";
+    showToast(
+      inspectMode === "job"
+        ? "Job pick mode on. Pick first, then write the job. Press Esc."
+        : "Inspect mode on. Click an element or drag an area. Press Esc.",
+      "info",
+    );
     setInspectSurfaceEnabled(true);
 
     const surface = getInspectSurfaceElement();
@@ -321,14 +487,15 @@
       return;
     }
 
-    const selectionRect = createRectFromPoints(dragStartPoint, getPoint(event));
+    const releasePoint = getPoint(event);
+    const selectionRect = createRectFromPoints(dragStartPoint, releasePoint);
     const target =
       getTargetElement(getUnderlyingElementFromPoint(event.clientX, event.clientY)) || hoveredElement;
     const didDrag = isDraggingArea || isAreaGesture(selectionRect);
 
     if (didDrag) {
-      savePickedContext(
-        buildAreaPageContext(selectionRect),
+      void savePickedContext(
+        buildAreaPageContext(selectionRect, releasePoint),
         "Saving the selected area...",
         selectionRect,
       );
@@ -340,7 +507,7 @@
       return;
     }
 
-    savePickedContext(buildPageContext(target), "Saving the picked element...");
+    void savePickedContext(buildPageContext(target, releasePoint), "Saving the picked element...");
   }
 
   function handleClick(event) {
@@ -354,6 +521,12 @@
   }
 
   function handleKeyDown(event) {
+    if (pendingJobPromptResolve && event.key === "Escape") {
+      event.preventDefault();
+      resolveJobPrompt(null);
+      return;
+    }
+
     if (!isInspecting || event.key !== "Escape") {
       return;
     }

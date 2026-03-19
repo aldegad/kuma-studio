@@ -1,4 +1,4 @@
-import { encodeAgentNoteEvent, encodeSceneEvent, ensureSceneShape } from "./scene-schema.mjs";
+import { encodeAgentNoteEvent, encodeJobCardEvent, encodeSceneEvent, ensureSceneShape } from "./scene-schema.mjs";
 
 export function createJsonHeaders(statusCode, payload) {
   const body = Buffer.from(JSON.stringify(payload), "utf8");
@@ -69,6 +69,7 @@ export class SceneEventBroker {
     this.nextListenerId = 1;
     this.lastSignature = "";
     this.lastAgentNoteSignatures = new Map();
+    this.lastJobCardSignatures = new Map();
   }
 
   subscribe(response) {
@@ -114,6 +115,21 @@ export class SceneEventBroker {
 
     this.lastAgentNoteSignatures.set(sessionId, signature);
     this.publish(encodeAgentNoteEvent(note, source, deleted));
+  }
+
+  publishJobCard(card, source, deleted = false) {
+    const id = typeof card?.id === "string" ? card.id : null;
+    if (!id) {
+      return;
+    }
+
+    const signature = deleted ? "__deleted__" : JSON.stringify(card);
+    if (this.lastJobCardSignatures.get(id) === signature) {
+      return;
+    }
+
+    this.lastJobCardSignatures.set(id, signature);
+    this.publish(encodeJobCardEvent(card, source, deleted));
   }
 }
 

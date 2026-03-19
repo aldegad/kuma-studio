@@ -9,6 +9,50 @@ function normalizeRect(rect) {
   };
 }
 
+function normalizePoint(point) {
+  const candidate = point && typeof point === "object" ? point : {};
+  const x = typeof candidate.x === "number" && Number.isFinite(candidate.x) ? candidate.x : null;
+  const y = typeof candidate.y === "number" && Number.isFinite(candidate.y) ? candidate.y : null;
+
+  if (x == null || y == null) {
+    return null;
+  }
+
+  return {
+    x,
+    y,
+  };
+}
+
+function normalizeJob(job) {
+  const candidate = job && typeof job === "object" ? job : null;
+  if (!candidate) {
+    return null;
+  }
+
+  const message = typeof candidate.message === "string" ? candidate.message.trim() : "";
+  if (!message) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof candidate.id === "string" && candidate.id.trim()
+        ? candidate.id.trim()
+        : `job-${Date.now().toString(36)}`,
+    message,
+    createdAt:
+      typeof candidate.createdAt === "string" && candidate.createdAt.trim()
+        ? candidate.createdAt
+        : new Date().toISOString(),
+    author:
+      typeof candidate.author === "string" && candidate.author.trim()
+        ? candidate.author.trim()
+        : "user",
+    status: candidate.status === "in_progress" || candidate.status === "completed" ? candidate.status : "noted",
+  };
+}
+
 export function sanitizeSessionId(value) {
   if (typeof value !== "string") {
     return null;
@@ -171,6 +215,7 @@ function normalizeElement(element) {
     selectorPath: typeof candidate.selectorPath === "string" ? candidate.selectorPath : "",
     dataset,
     rect: normalizeRect(candidate.rect),
+    pickedPoint: normalizePoint(candidate.pickedPoint),
     boxModel: {
       margin: normalizeEdges(rawBoxModel.margin),
       padding: normalizeEdges(rawBoxModel.padding),
@@ -239,8 +284,10 @@ export function normalizeDevSelection(record, sessionDefaults = {}) {
       url: typeof page.url === "string" ? page.url : "",
       pathname: typeof page.pathname === "string" ? page.pathname : "",
       title: typeof page.title === "string" ? page.title : "",
+      tabId: Number.isInteger(page.tabId) ? page.tabId : null,
     },
     session: normalizeSession(candidate.session, sessionDefaults),
+    job: normalizeJob(candidate.job),
     element: normalizedElements[normalizedElements.length - 1],
     elements: normalizedElements,
   };

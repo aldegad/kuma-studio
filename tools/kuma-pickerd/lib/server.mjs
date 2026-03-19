@@ -5,6 +5,7 @@ import { AgentNoteStore, watchAgentNotes } from "./agent-note-store.mjs";
 import { BrowserSessionStore } from "./browser-session-store.mjs";
 import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mjs";
 import { DevSelectionStore } from "./dev-selection-store.mjs";
+import { buildJobCardFromSelection, JobCardStore } from "./job-card-store.mjs";
 import { SceneStore, watchSceneFile } from "./scene-store.mjs";
 import {
   SceneEventBroker,
@@ -28,6 +29,7 @@ export function createServer({ host, port, root }) {
   });
   const selectionStore = new DevSelectionStore(root);
   const agentNoteStore = new AgentNoteStore(root);
+  const jobCardStore = new JobCardStore(root);
   const extensionStatusStore = new BrowserExtensionStatusStore(root);
   const browserSessionStore = new BrowserSessionStore();
 
@@ -62,6 +64,39 @@ export function createServer({ host, port, root }) {
   function disconnectSocket(connectionId) {
     socketStates.delete(connectionId);
     browserSessionStore.disconnect(connectionId);
+  }
+
+  function publishJobCard(card, source, deleted = false) {
+    broker.publishJobCard(card, source, deleted);
+
+    for (const state of socketStates.values()) {
+      if (state.role !== "browser") {
+        continue;
+      }
+
+      sendSocketJson(state.socket, {
+        type: "job-card.updated",
+        source,
+        deleted,
+        card: deleted ? null : card,
+        id: card?.id ?? null,
+      });
+    }
+  }
+
+  function writeJobCardFromSelection(selection, source = "selection-write") {
+    const card = buildJobCardFromSelection(selection);
+    if (!card) {
+      return null;
+    }
+
+    const persisted = jobCardStore.write(card, {
+      id: card.id,
+      sessionId: card.sessionId,
+      selectionId: card.selectionId,
+    });
+    publishJobCard(persisted, source, false);
+    return persisted;
   }
 
   socketServer.on("connection", (socket) => {
@@ -228,6 +263,24 @@ export function createServer({ host, port, root }) {
       return;
     }
 
+    if (request.method === "GET" && url.pathname === "/job-card") {
+      const sessionId = url.searchParams.get("sessionId");
+      const feed = jobCardStore.readAll();
+      if (sessionId) {
+        const card = jobCardStore.readBySession(sessionId);
+        if (!card) {
+          sendNoContent(response);
+          return;
+        }
+
+        sendJson(response, 200, card);
+        return;
+      }
+
+      sendJson(response, 200, feed);
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/extension-status") {
       sendJson(response, 200, extensionStatusStore.readSummary());
       return;
@@ -299,6 +352,7 @@ export function createServer({ host, port, root }) {
         const sessionId = url.searchParams.get("sessionId");
         const selection = selectionStore.deleteSession(sessionId);
         const deletedNote = agentNoteStore.deleteSession(sessionId);
+        const deletedCard = jobCardStore.deleteBySession(sessionId);
         if (!selection) {
           sendNoContent(response);
           return;
@@ -308,12 +362,18 @@ export function createServer({ host, port, root }) {
           broker.publishAgentNote(deletedNote, "selection-session-delete", true);
         }
 
+        if (deletedCard) {
+          publishJobCard(deletedCard, "selection-session-delete", true);
+        }
+
         sendJson(response, 200, selection);
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/dev-selection") {
-        sendJson(response, 200, selectionStore.write(await readJsonBody(request)));
+        const selection = selectionStore.write(await readJsonBody(request));
+        writeJobCardFromSelection(selection, "selection-write");
+        sendJson(response, 200, selection);
         return;
       }
 
@@ -323,6 +383,40 @@ export function createServer({ host, port, root }) {
         const note = agentNoteStore.write(payload, { sessionId: fallbackSessionId });
         broker.publishAgentNote(note, "agent-note-write");
         sendJson(response, 200, note);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/job-card") {
+        const payload = await readJsonBody(request);
+        const selection =
+          typeof payload?.sessionId === "string" && payload.sessionId.trim()
+            ? selectionStore.readSession(payload.sessionId.trim())
+            : null;
+        const cardFromSelection = selection ? buildJobCardFromSelection(selection) : null;
+        const card = jobCardStore.write(
+          {
+            ...cardFromSelection,
+            ...payload,
+            target: payload?.target ?? cardFromSelection?.target ?? null,
+            anchor: payload?.anchor ?? cardFromSelection?.anchor ?? null,
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: cardFromSelection?.id ?? payload?.id ?? null,
+            sessionId: cardFromSelection?.sessionId ?? payload?.sessionId ?? null,
+            selectionId: cardFromSelection?.selectionId ?? payload?.selectionId ?? null,
+            target: cardFromSelection?.target ?? null,
+            anchor: cardFromSelection?.anchor ?? null,
+            createdAt: cardFromSelection?.createdAt ?? payload?.createdAt ?? null,
+            author: cardFromSelection?.author ?? payload?.author ?? null,
+            requestMessage: cardFromSelection?.requestMessage ?? payload?.requestMessage ?? null,
+            resultMessage: cardFromSelection?.resultMessage ?? payload?.resultMessage ?? null,
+            message: cardFromSelection?.message ?? payload?.message ?? null,
+            status: cardFromSelection?.status ?? payload?.status ?? null,
+          },
+        );
+        publishJobCard(card, "job-card-write", false);
+        sendJson(response, 200, card);
         return;
       }
 
@@ -342,6 +436,19 @@ export function createServer({ host, port, root }) {
 
         broker.publishAgentNote(note, "agent-note-delete", true);
         sendJson(response, 200, note);
+        return;
+      }
+
+      if (request.method === "DELETE" && url.pathname === "/job-card") {
+        const sessionId = url.searchParams.get("sessionId");
+        const card = sessionId ? jobCardStore.deleteBySession(sessionId) : null;
+        if (!card) {
+          sendNoContent(response);
+          return;
+        }
+
+        publishJobCard(card, "job-card-delete", true);
+        sendJson(response, 200, card);
         return;
       }
 

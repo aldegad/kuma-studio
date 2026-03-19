@@ -1,6 +1,6 @@
 ---
 name: kuma-picker
-description: Read the latest Kuma Picker selection, screenshot, shared note state, and browser bridge status before working on picked UI or browser-driven investigation. Use when a repo exposes `kuma-pickerd:*` scripts, when the user mentions Kuma Picker, a picked element, a saved selection, browser extension control, tab inspection, DOM reads, clicks, screenshots, or shorthand like "check pick 1", and when work should start from the shared Kuma Picker state home.
+description: Read the latest Kuma Picker selection, screenshot, job state, and browser bridge status before working on picked UI or browser-driven investigation. Use when a repo exposes `kuma-pickerd:*` scripts, when the user mentions Kuma Picker, a picked element, a saved selection, browser extension control, tab inspection, DOM reads, clicks, screenshots, or shorthand like "check pick 1", and when work should start from the shared Kuma Picker state home.
 ---
 
 # Kuma Picker
@@ -17,16 +17,19 @@ Use Kuma Picker as a shared coordination workflow, not a private scratchpad.
    - This now returns only the latest saved selection by default.
    - Use `npm run kuma-pickerd:get-selection -- --recent 5` only when you need a bounded recent history.
    - Use `npm run kuma-pickerd:get-selection -- --all` only when the user explicitly needs the full saved selection collection.
-3. If work begins from a saved selection, acknowledge the shared note.
-   - Default command:
-     `npm run kuma-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."`
+3. If the latest selection includes a `job`, treat it as the user's explicit task for that pick.
+   - Check the saved `job.message` first.
+   - When you begin the actual work, prefer:
+     `npm run kuma-pickerd:set-job-status -- --status in_progress --message "Implementing the requested change."`
 4. Interpret the selection.
    - Read the page URL/title, selected element metadata, and snapshot reference.
    - Prefer values you can verify from the repo, the current page, the saved selection, or `browser-*` commands before asking the user for them.
    - If the user references `pick 1`, `selection 2`, or similar, map the number to `elements[]` using 1-based indexing.
 5. Work from that saved context.
-   - Update the shared note as progress changes.
-6. Before the final reply, leave a final note if code changed for the picked element.
+   - For UI-facing changes, keep the same work card updated instead of posting generic note acknowledgements.
+6. Before the final reply, update the picked work card to completed if the page changed in a user-visible way.
+   - Default command:
+     `npm run kuma-pickerd:set-job-status -- --status completed --message "Updated the picked element and verified the change."`
 
 ## Browser bridge workflow
 
@@ -71,6 +74,13 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 - Prefer `browser-sequence` with per-step `assert` checks when menus or modal states can disappear between separate commands.
 - Prefer selector, role, and label targeting over text-only clicks when duplicate text may exist.
 - Use point clicks only after semantic targeting fails.
+
+## Job cards
+
+- `Pick With Job` creates a saved selection with `job` metadata and shows a `메모 남김` card on the target page.
+- Use `set-job-status --status in_progress` when you actually start working on that picked request.
+- Use `set-job-status --status completed` with a short "what changed" summary when the visible UI changed.
+- If the work is backend-only and there is nothing meaningful to point at on the page, you may skip the work-card update.
 
 ## Note statuses
 

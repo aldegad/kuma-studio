@@ -68,6 +68,7 @@
       "js": [
         "content/constants.js",
         "content/page-context.js",
+        "content/job-cards.js",
         "content/agent-actions-core.js",
         "content/agent-actions-gesture-overlay.js",
         "content/agent-actions-interaction.js",

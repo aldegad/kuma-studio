@@ -159,6 +159,50 @@ async function probeCurrentPageReadiness(daemonUrl, message) {
   }
 }
 
+function cardTargetsTab(card, tab) {
+  const target = card?.target ?? null;
+  if (!target || !tab?.id || !tab?.url) {
+    return false;
+  }
+
+  if (Number.isInteger(target.tabId)) {
+    return target.tabId === tab.id;
+  }
+
+  if (typeof target.url === "string" && target.url.trim()) {
+    return target.url.trim() === tab.url;
+  }
+
+  if (typeof target.urlContains === "string" && target.urlContains.trim()) {
+    return tab.url.includes(target.urlContains.trim());
+  }
+
+  return false;
+}
+
+async function syncJobCardsForTab(daemonUrl, tab) {
+  if (!tab?.id) {
+    return;
+  }
+
+  try {
+    const feed = await fetchJobCardFeed(daemonUrl);
+    const cards = Array.isArray(feed?.cards) ? feed.cards : [];
+
+    for (const card of cards.filter((entry) => cardTargetsTab(entry, tab))) {
+      await sendMessageToTab(tab.id, {
+        type: "kuma-picker:job-card-event",
+        id: card?.id ?? null,
+        deleted: false,
+        card,
+        source: "job-card-sync",
+      });
+    }
+  } catch {
+    // Ignore best-effort sync failures while keeping page presence alive.
+  }
+}
+
 async function handleSocketCommandRequest(daemonUrl, message) {
   const requestId = typeof message?.requestId === "string" ? message.requestId : null;
   const command = message?.command;
@@ -225,6 +269,10 @@ async function handlePageHeartbeat(daemonUrl, message, sender) {
     visible: message?.visibilityState === "visible",
     focused: message?.hasFocus === true,
   });
+
+  if (message?.type === "kuma-picker:page-ready") {
+    await syncJobCardsForTab(daemonUrl, sender.tab);
+  }
 
   return {
     ok: true,
