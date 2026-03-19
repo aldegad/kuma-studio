@@ -38,7 +38,7 @@ export function KumaSurfaceFrame({
 
           <div className="kuma-surface-status">
             <span className="h-2.5 w-2.5 rounded-full bg-[#34c759]" />
-            <span>Live Agent Picker Surface</span>
+            <span>Live Kuma Picker Surface</span>
           </div>
         </header>
 

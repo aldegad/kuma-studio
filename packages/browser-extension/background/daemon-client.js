@@ -1,4 +1,4 @@
-const { createSessionId } = AgentPickerExtensionShared;
+const { createSessionId } = KumaPickerExtensionShared;
 
 async function fetchDaemonHealth(daemonUrl) {
   const response = await fetch(`${daemonUrl}/health`, {
@@ -18,7 +18,7 @@ function getExtensionManifestMetadata() {
 
   return {
     extensionId: chrome.runtime.id || null,
-    extensionName: manifest?.name || "Agent Picker Bridge",
+    extensionName: manifest?.name || "Kuma Picker Bridge",
     extensionVersion: manifest?.version || "0.0.0",
     browserName: "chrome",
   };
@@ -49,96 +49,6 @@ async function reportExtensionHeartbeat(daemonUrl, details = {}) {
   if (!response.ok) {
     const responseText = await response.text();
     throw new Error(responseText || `Failed to report extension status to ${daemonUrl}.`);
-  }
-
-  return response.json();
-}
-
-async function reportBrowserSessionHeartbeat(daemonUrl, details = {}) {
-  const response = await fetch(`${daemonUrl}/browser-session/heartbeat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      ...getExtensionManifestMetadata(),
-      source: details.source || "unknown",
-      page: details.page || null,
-      activeTabId: Number.isInteger(details.activeTabId) ? details.activeTabId : null,
-      visible: details.visible === true,
-      focused: details.focused === true,
-      capabilities: [
-        "context",
-        "dom",
-        "console",
-        "debugger-capture",
-        "click",
-        "sequence",
-        "click-point",
-        "fill",
-        "key",
-        "refresh",
-        "screenshot",
-        "wait-for-download",
-        "get-latest-download",
-        "wait-for-text",
-        "wait-for-text-disappear",
-        "wait-for-selector",
-        "wait-for-dialog-close",
-        "query-dom",
-      ],
-      lastSeenAt: new Date().toISOString(),
-    }),
-  });
-
-  if (!response.ok) {
-    const responseText = await response.text();
-    throw new Error(responseText || `Failed to report browser session heartbeat to ${daemonUrl}.`);
-  }
-
-  return response.json();
-}
-
-async function claimNextBrowserCommand(daemonUrl, claimant = {}) {
-  const endpoint = new URL(`${daemonUrl}/browser-session/commands/next`);
-  if (Number.isInteger(claimant.tabId)) {
-    endpoint.searchParams.set("tabId", String(claimant.tabId));
-  }
-  if (typeof claimant.url === "string" && claimant.url.trim()) {
-    endpoint.searchParams.set("url", claimant.url.trim());
-  }
-  endpoint.searchParams.set("visible", claimant.visible === true ? "true" : "false");
-  endpoint.searchParams.set("focused", claimant.focused === true ? "true" : "false");
-
-  const response = await fetch(endpoint, {
-    method: "GET",
-    cache: "no-store",
-  });
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  if (!response.ok) {
-    const responseText = await response.text();
-    throw new Error(responseText || `Failed to read the next browser command from ${daemonUrl}.`);
-  }
-
-  return response.json();
-}
-
-async function reportBrowserCommandResult(daemonUrl, commandId, payload) {
-  const response = await fetch(`${daemonUrl}/browser-session/commands/${commandId}/result`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const responseText = await response.text();
-    throw new Error(responseText || `Failed to report the browser command result for ${commandId}.`);
   }
 
   return response.json();

@@ -1,18 +1,18 @@
-if (!globalThis.AgentPickerExtensionBridgeInitialized) {
-  globalThis.AgentPickerExtensionBridgeInitialized = true;
+if (!globalThis.KumaPickerExtensionBridgeInitialized) {
+  globalThis.KumaPickerExtensionBridgeInitialized = true;
 
   function getInteractiveApi() {
-    return globalThis.AgentPickerExtensionInteractive ?? null;
+    return globalThis.KumaPickerExtensionInteractive ?? null;
   }
 
   function getAgentActionsApi() {
-    return globalThis.AgentPickerExtensionAgentActions ?? null;
+    return globalThis.KumaPickerExtensionAgentActions ?? null;
   }
 
   async function sendPageHeartbeat() {
     try {
       await chrome.runtime.sendMessage({
-        type: "agent-picker:page-heartbeat",
+        type: "kuma-picker:page-heartbeat",
         page: buildPageRecord(),
         visibilityState: document.visibilityState,
         hasFocus: document.hasFocus(),
@@ -25,17 +25,17 @@ if (!globalThis.AgentPickerExtensionBridgeInitialized) {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     void (async () => {
       switch (message?.type) {
-        case "agent-picker:collect-page":
+        case "kuma-picker:collect-page":
           sendResponse({
             ok: true,
             pageContext: buildPageContext(getPageTargetElement()),
           });
           return;
-        case "agent-picker:start-inspect":
+        case "kuma-picker:start-inspect":
           if (!getInteractiveApi()?.startInspectMode) {
             sendResponse({
               ok: false,
-              error: "The Agent Picker inspect tools are not loaded for this page yet.",
+              error: "The Kuma Picker inspect tools are not loaded for this page yet.",
             });
             return;
           }
@@ -43,11 +43,11 @@ if (!globalThis.AgentPickerExtensionBridgeInitialized) {
           getInteractiveApi().startInspectMode();
           sendResponse({ ok: true });
           return;
-        case "agent-picker:browser-command":
+        case "kuma-picker:browser-command":
           if (!getAgentActionsApi()?.executeBrowserCommand) {
             sendResponse({
               ok: false,
-              error: "The Agent Picker browser command tools are not loaded for this page yet.",
+              error: "The Kuma Picker browser command tools are not loaded for this page yet.",
             });
             return;
           }
@@ -65,7 +65,7 @@ if (!globalThis.AgentPickerExtensionBridgeInitialized) {
             });
           }
           return;
-        case "agent-picker:inspect-result":
+        case "kuma-picker:inspect-result":
           getInteractiveApi()?.showToast?.(
             message.message || (message.ok ? "Element saved." : "Failed to save the picked element."),
             message.ok ? "info" : "error",
@@ -84,7 +84,7 @@ if (!globalThis.AgentPickerExtensionBridgeInitialized) {
   });
 
   void chrome.runtime.sendMessage({
-    type: "agent-picker:page-ready",
+    type: "kuma-picker:page-ready",
     page: buildPageRecord(),
   });
   void sendPageHeartbeat();

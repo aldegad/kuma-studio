@@ -48,7 +48,7 @@ function ensureDirectoryLink(sourceDir, targetDir, label) {
     }
   }
 
-  process.stdout.write(`agent-picker ${label} link ready: ${targetDir} -> ${relativeSource}\n`);
+  process.stdout.write(`kuma-picker ${label} link ready: ${targetDir} -> ${relativeSource}\n`);
   return true;
 }
 
@@ -65,10 +65,10 @@ function removeLegacyPath(targetPath) {
 try {
   lstatSync(runtimeSourceDir);
 } catch {
-  process.stdout.write("agent-picker runtime link skipped: root node_modules not found\n");
+  process.stdout.write("kuma-picker runtime link skipped: root node_modules not found\n");
   process.exit(0);
 }
 
-removeLegacyPath(path.join(exampleRoot, "vendor", "agent-picker"));
+removeLegacyPath(path.join(exampleRoot, "vendor", "kuma-picker"));
 
 ensureDirectoryLink(runtimeSourceDir, runtimeTargetDir, "runtime");

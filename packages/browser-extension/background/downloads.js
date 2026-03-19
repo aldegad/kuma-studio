@@ -34,7 +34,7 @@ function createAutomaticDownloadPermissionRecord({ supported, setting, origin, e
   } else if (supported && normalizedSetting === "block") {
     message = "Chrome is currently blocking repeated downloads for this site.";
   } else if (error) {
-    message = "Agent Picker could not read Chrome's automatic-download permission state.";
+    message = "Kuma Picker could not read Chrome's automatic-download permission state.";
   }
 
   return {

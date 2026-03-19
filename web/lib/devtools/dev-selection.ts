@@ -1,4 +1,4 @@
-import { getAgentPickerDaemonUrl } from "../scene-daemon";
+import { getKumaPickerDaemonUrl } from "../scene-daemon";
 
 export interface DevSelectionEdges {
   top: number;
@@ -107,8 +107,8 @@ export interface DevSelectionSaveElementRecord extends Omit<DevSelectionElementR
   snapshot?: DevSelectionSnapshotPayload | null;
 }
 
-export function getAgentPickerDevSelectionEndpoint(sessionId?: string): string {
-  const endpoint = new URL(`${getAgentPickerDaemonUrl()}/dev-selection`);
+export function getKumaPickerDevSelectionEndpoint(sessionId?: string): string {
+  const endpoint = new URL(`${getKumaPickerDaemonUrl()}/dev-selection`);
   if (sessionId) {
     endpoint.searchParams.set("sessionId", sessionId);
   }
@@ -116,12 +116,12 @@ export function getAgentPickerDevSelectionEndpoint(sessionId?: string): string {
   return endpoint.toString();
 }
 
-export function getAgentPickerDevSelectionSessionEndpoint(sessionId: string): string {
-  const endpoint = new URL(`${getAgentPickerDaemonUrl()}/dev-selection/session`);
+export function getKumaPickerDevSelectionSessionEndpoint(sessionId: string): string {
+  const endpoint = new URL(`${getKumaPickerDaemonUrl()}/dev-selection/session`);
   endpoint.searchParams.set("sessionId", sessionId);
   return endpoint.toString();
 }
 
-export function getAgentPickerDevSelectionAssetUrl(assetUrl: string): string {
-  return new URL(assetUrl, getAgentPickerDaemonUrl()).toString();
+export function getKumaPickerDevSelectionAssetUrl(assetUrl: string): string {
+  return new URL(assetUrl, getKumaPickerDaemonUrl()).toString();
 }

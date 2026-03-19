@@ -20,10 +20,10 @@ const nextConfig: NextConfig = {
   webpack(config) {
     config.resolve.alias = {
       ...(config.resolve.alias ?? {}),
-      "@agent-picker/picker": pickerEntry,
-      "@agent-picker/design-lab": designLabEntry,
-      "@agent-picker/design-lab/registry": path.join(designLabSource, "registry.ts"),
-      "@agent-picker/design-lab/types": path.join(designLabSource, "types.ts"),
+      "@kuma-picker/picker": pickerEntry,
+      "@kuma-picker/design-lab": designLabEntry,
+      "@kuma-picker/design-lab/registry": path.join(designLabSource, "registry.ts"),
+      "@kuma-picker/design-lab/types": path.join(designLabSource, "types.ts"),
     };
 
     return config;

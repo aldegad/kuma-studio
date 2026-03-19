@@ -80,7 +80,7 @@ export function KumaTestLab() {
 
           <div className="flex items-center gap-2 rounded-full border border-[#e2e2e2] bg-white px-3 py-2 text-sm text-[#555555] shadow-[0_8px_20px_rgba(0,0,0,0.04)]">
             <span className="h-2 w-2 rounded-full bg-[#34c759]" />
-            <span className="hidden sm:inline">Local Agent Picker Workspace</span>
+            <span className="hidden sm:inline">Local Kuma Picker Workspace</span>
           </div>
         </div>
       </header>
@@ -95,7 +95,7 @@ export function KumaTestLab() {
               Apps
             </h1>
             <p className="mt-4 max-w-[54ch] text-[16px] leading-8 text-[#5c5c5c]">
-              Three test apps are ready for Agent Picker flows. Open the icon you want and run the
+              Three test apps are ready for Kuma Picker flows. Open the icon you want and run the
               full browser test inside its dedicated screen.
             </p>
           </div>

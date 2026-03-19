@@ -1,45 +1,45 @@
 "use client";
 
 import { createContext, useContext, useMemo } from "react";
-import { AgentPickerProvider } from "../../picker/src";
-import InternalAgentPickerApp from "../../../web/components/AgentPickerApp";
+import { KumaPickerProvider } from "../../picker/src";
+import InternalKumaPickerApp from "../../../web/components/KumaPickerApp";
 import {
-  createAgentPickerRegistry,
-  mergeAgentPickerItems,
-  type AgentPickerRegistry,
+  createKumaPickerRegistry,
+  mergeKumaPickerItems,
+  type KumaPickerRegistry,
 } from "./registry";
-import type { AgentPickerComponentItem } from "./types";
+import type { KumaPickerComponentItem } from "./types";
 
-interface AgentPickerDesignLabProviderProps {
+interface KumaPickerDesignLabProviderProps {
   children: React.ReactNode;
-  items: AgentPickerComponentItem[];
-  itemsById?: Map<string, AgentPickerComponentItem>;
+  items: KumaPickerComponentItem[];
+  itemsById?: Map<string, KumaPickerComponentItem>;
 }
 
-interface AgentPickerDesignLabProps {
-  items?: AgentPickerComponentItem[];
-  itemsById?: Map<string, AgentPickerComponentItem>;
+interface KumaPickerDesignLabProps {
+  items?: KumaPickerComponentItem[];
+  itemsById?: Map<string, KumaPickerComponentItem>;
 }
 
-interface AgentPickerDesignLabProjectProviderProps {
+interface KumaPickerDesignLabProjectProviderProps {
   children: React.ReactNode;
-  draftItems?: AgentPickerComponentItem[];
-  projectItems?: AgentPickerComponentItem[];
-  pageImportItems?: AgentPickerComponentItem[];
+  draftItems?: KumaPickerComponentItem[];
+  projectItems?: KumaPickerComponentItem[];
+  pageImportItems?: KumaPickerComponentItem[];
   showDevtoolsInDevelopment?: boolean;
 }
 
-const AgentPickerRegistryContext = createContext<AgentPickerRegistry | null>(null);
+const KumaPickerRegistryContext = createContext<KumaPickerRegistry | null>(null);
 
 function useResolvedRegistry(
-  items?: AgentPickerComponentItem[],
-  itemsById?: Map<string, AgentPickerComponentItem>,
-): AgentPickerRegistry {
-  const context = useContext(AgentPickerRegistryContext);
+  items?: KumaPickerComponentItem[],
+  itemsById?: Map<string, KumaPickerComponentItem>,
+): KumaPickerRegistry {
+  const context = useContext(KumaPickerRegistryContext);
 
   return useMemo(() => {
     if (items) {
-      return itemsById ? { items, itemsById } : createAgentPickerRegistry(items);
+      return itemsById ? { items, itemsById } : createKumaPickerRegistry(items);
     }
 
     if (context) {
@@ -47,68 +47,68 @@ function useResolvedRegistry(
     }
 
     throw new Error(
-      "AgentPickerDesignLab needs either AgentPickerDesignLabProvider or explicit items.",
+      "KumaPickerDesignLab needs either KumaPickerDesignLabProvider or explicit items.",
     );
   }, [context, items, itemsById]);
 }
 
-export function AgentPickerDesignLabProvider({
+export function KumaPickerDesignLabProvider({
   children,
   items,
   itemsById,
-}: AgentPickerDesignLabProviderProps) {
+}: KumaPickerDesignLabProviderProps) {
   const value = useMemo(
-    () => (itemsById ? { items, itemsById } : createAgentPickerRegistry(items)),
+    () => (itemsById ? { items, itemsById } : createKumaPickerRegistry(items)),
     [items, itemsById],
   );
 
   return (
-    <AgentPickerRegistryContext.Provider value={value}>
+    <KumaPickerRegistryContext.Provider value={value}>
       {children}
-    </AgentPickerRegistryContext.Provider>
+    </KumaPickerRegistryContext.Provider>
   );
 }
 
-export function AgentPickerDesignLabProjectProvider({
+export function KumaPickerDesignLabProjectProvider({
   children,
   draftItems = [],
   projectItems = [],
   pageImportItems = [],
   showDevtoolsInDevelopment = false,
-}: AgentPickerDesignLabProjectProviderProps) {
+}: KumaPickerDesignLabProjectProviderProps) {
   const items = useMemo(
-    () => mergeAgentPickerItems(draftItems, projectItems, pageImportItems),
+    () => mergeKumaPickerItems(draftItems, projectItems, pageImportItems),
     [draftItems, pageImportItems, projectItems],
   );
 
   return (
-    <AgentPickerProvider showDevtoolsInDevelopment={showDevtoolsInDevelopment}>
-      <AgentPickerDesignLabProvider items={items}>
+    <KumaPickerProvider showDevtoolsInDevelopment={showDevtoolsInDevelopment}>
+      <KumaPickerDesignLabProvider items={items}>
         {children}
-      </AgentPickerDesignLabProvider>
-    </AgentPickerProvider>
+      </KumaPickerDesignLabProvider>
+    </KumaPickerProvider>
   );
 }
 
-export function useAgentPickerRegistry() {
-  const context = useContext(AgentPickerRegistryContext);
+export function useKumaPickerRegistry() {
+  const context = useContext(KumaPickerRegistryContext);
   if (!context) {
     throw new Error(
-      "useAgentPickerRegistry must be used inside AgentPickerDesignLabProvider.",
+      "useKumaPickerRegistry must be used inside KumaPickerDesignLabProvider.",
     );
   }
 
   return context;
 }
 
-export function AgentPickerDesignLab({
+export function KumaPickerDesignLab({
   items,
   itemsById,
-}: AgentPickerDesignLabProps) {
+}: KumaPickerDesignLabProps) {
   const registry = useResolvedRegistry(items, itemsById);
 
   return (
-    <InternalAgentPickerApp
+    <InternalKumaPickerApp
       items={registry.items}
       itemsById={registry.itemsById}
     />

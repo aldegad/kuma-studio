@@ -4,11 +4,11 @@ import { toPng } from "html-to-image";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  DEFAULT_AGENT_PICKER_NOTE_SESSION_ID,
-  fetchAgentPickerAgentNote,
-  parseAgentPickerAgentNoteEvent,
-  type AgentPickerAgentNoteRecord,
-  getAgentPickerAgentNoteStatusLabel,
+  DEFAULT_KUMA_PICKER_NOTE_SESSION_ID,
+  fetchKumaPickerAgentNote,
+  parseKumaPickerAgentNoteEvent,
+  type KumaPickerAgentNoteRecord,
+  getKumaPickerAgentNoteStatusLabel,
 } from "../../lib/devtools/agent-note";
 import {
   type DevSelectionCollection,
@@ -20,9 +20,9 @@ import {
   type DevSelectionSessionRecord,
   type DevSelectionSnapshotPayload,
   type DevSelectionSnapshotRecord,
-  getAgentPickerDevSelectionAssetUrl,
-  getAgentPickerDevSelectionEndpoint,
-  getAgentPickerDevSelectionSessionEndpoint,
+  getKumaPickerDevSelectionAssetUrl,
+  getKumaPickerDevSelectionEndpoint,
+  getKumaPickerDevSelectionSessionEndpoint,
 } from "../../lib/devtools/dev-selection";
 import { createSceneEventSource } from "../../lib/scene-daemon";
 
@@ -114,8 +114,8 @@ const ROOT_MARGIN = 20;
 const DRAG_THRESHOLD = 6;
 const FLING_STOP_SPEED = 0.008;
 const FLING_VELOCITY_LIMIT = 2.8;
-const PICKER_POSITION_STORAGE_KEYS = ["agent-picker:picker-position"] as const;
-const PICKER_SESSION_ID_STORAGE_KEYS = ["agent-picker:session-id"] as const;
+const PICKER_POSITION_STORAGE_KEYS = ["kuma-picker:picker-position"] as const;
+const PICKER_SESSION_ID_STORAGE_KEYS = ["kuma-picker:session-id"] as const;
 const SNAPSHOT_MAX_PIXELS = 2_400_000;
 const SNAPSHOT_MIN_PIXEL_RATIO = 0.75;
 const SNAPSHOT_MAX_PIXEL_RATIO = 2;
@@ -1067,12 +1067,12 @@ function toPayload(
 function isPickerElement(element: Element | null) {
   return Boolean(
     element?.closest(
-      "[data-agent-picker-root='true'], [data-agent-picker-ui='true']",
+      "[data-kuma-picker-root='true'], [data-kuma-picker-ui='true']",
     ),
   );
 }
 
-function createAgentNoteKey(note: AgentPickerAgentNoteRecord | null) {
+function createAgentNoteKey(note: KumaPickerAgentNoteRecord | null) {
   if (!note) {
     return null;
   }
@@ -1088,9 +1088,9 @@ function createAgentNoteKey(note: AgentPickerAgentNoteRecord | null) {
 }
 
 export default function AgentDomPicker() {
-  const [sessionAgentNote, setSessionAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
-  const [globalAgentNote, setGlobalAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
-  const [renderedAgentNote, setRenderedAgentNote] = useState<AgentPickerAgentNoteRecord | null>(null);
+  const [sessionAgentNote, setSessionAgentNote] = useState<KumaPickerAgentNoteRecord | null>(null);
+  const [globalAgentNote, setGlobalAgentNote] = useState<KumaPickerAgentNoteRecord | null>(null);
+  const [renderedAgentNote, setRenderedAgentNote] = useState<KumaPickerAgentNoteRecord | null>(null);
   const [isAgentNoteTransitionVisible, setIsAgentNoteTransitionVisible] = useState(false);
   const [dismissedAgentNoteKey, setDismissedAgentNoteKey] = useState<string | null>(null);
   const [isActive, setIsActive] = useState(false);
@@ -1136,7 +1136,7 @@ export default function AgentDomPicker() {
       return null;
     }
 
-    return getAgentPickerDevSelectionAssetUrl(activePreview.snapshot.assetUrl);
+    return getKumaPickerDevSelectionAssetUrl(activePreview.snapshot.assetUrl);
   }, [activePreview?.snapshot]);
 
   const clampToViewport = useCallback(
@@ -1226,11 +1226,11 @@ export default function AgentDomPicker() {
   }, []);
 
   const syncAgentNotes = useCallback(async (sessionId: string | null) => {
-    const sessionNotePromise = sessionId ? fetchAgentPickerAgentNote(sessionId).catch(() => null) : Promise.resolve(null);
+    const sessionNotePromise = sessionId ? fetchKumaPickerAgentNote(sessionId).catch(() => null) : Promise.resolve(null);
     const globalNotePromise =
-      sessionId === DEFAULT_AGENT_PICKER_NOTE_SESSION_ID
+      sessionId === DEFAULT_KUMA_PICKER_NOTE_SESSION_ID
         ? Promise.resolve(null)
-        : fetchAgentPickerAgentNote(DEFAULT_AGENT_PICKER_NOTE_SESSION_ID).catch(() => null);
+        : fetchKumaPickerAgentNote(DEFAULT_KUMA_PICKER_NOTE_SESSION_ID).catch(() => null);
 
     const [nextSessionNote, nextGlobalNote] = await Promise.all([
       sessionNotePromise,
@@ -1246,7 +1246,7 @@ export default function AgentDomPicker() {
       const sessionId = sessionIdRef.current || getOrCreateSessionId();
       sessionIdRef.current = sessionId;
 
-      const response = await fetch(getAgentPickerDevSelectionEndpoint(), {
+      const response = await fetch(getKumaPickerDevSelectionEndpoint(), {
         cache: "no-store",
       });
 
@@ -1311,7 +1311,7 @@ export default function AgentDomPicker() {
 
     const eventSource = createSceneEventSource();
     const handleAgentNoteEvent = (event: MessageEvent<string>) => {
-      const payload = parseAgentPickerAgentNoteEvent(event.data);
+      const payload = parseKumaPickerAgentNoteEvent(event.data);
       if (!payload) {
         return;
       }
@@ -1320,7 +1320,7 @@ export default function AgentDomPicker() {
         setSessionAgentNote(payload.deleted ? null : payload.note);
       }
 
-      if (payload.sessionId === DEFAULT_AGENT_PICKER_NOTE_SESSION_ID) {
+      if (payload.sessionId === DEFAULT_KUMA_PICKER_NOTE_SESSION_ID) {
         setGlobalAgentNote(payload.deleted ? null : payload.note);
       }
     };
@@ -1389,7 +1389,7 @@ export default function AgentDomPicker() {
     sessionIdRef.current = sessionId;
 
     const cleanup = () => {
-      void fetch(getAgentPickerDevSelectionSessionEndpoint(sessionId), {
+      void fetch(getKumaPickerDevSelectionSessionEndpoint(sessionId), {
         method: "DELETE",
         keepalive: true,
       }).catch(() => {});
@@ -1540,7 +1540,7 @@ export default function AgentDomPicker() {
           },
           snapshots,
         );
-        const response = await fetch(getAgentPickerDevSelectionEndpoint(sessionId), {
+        const response = await fetch(getKumaPickerDevSelectionEndpoint(sessionId), {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -1937,7 +1937,7 @@ export default function AgentDomPicker() {
       updatedAt: new Date().toISOString(),
     });
 
-    void fetch(getAgentPickerDevSelectionEndpoint(), {
+    void fetch(getKumaPickerDevSelectionEndpoint(), {
       method: "DELETE",
       keepalive: true,
     })
@@ -2121,7 +2121,7 @@ export default function AgentDomPicker() {
       {activePreview ? (
         <>
           <div
-            data-agent-picker-ui="true"
+            data-kuma-picker-ui="true"
             className={`fixed z-[2147483004] max-w-[320px] border border-white/10 bg-[rgba(23,36,43,0.2)] px-3 py-2 text-xs text-white shadow-[0_16px_36px_rgba(15,23,42,0.24)] transition-colors duration-200 hover:bg-[rgba(23,36,43,0.9)] ${
               isActive ? "pointer-events-none" : "pointer-events-auto"
             }`}
@@ -2180,7 +2180,7 @@ export default function AgentDomPicker() {
 
       {position && renderedAgentNote ? (
         <div
-          data-agent-picker-ui="true"
+          data-kuma-picker-ui="true"
           className={`pointer-events-none fixed z-[2147483002] max-w-[260px] rounded-[1rem] border px-3 py-2 text-[11px] shadow-[0_14px_32px_rgba(15,23,42,0.14)] transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[opacity,transform] ${agentNoteTone} ${
             isAgentNoteTransitionVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
           }`}
@@ -2191,7 +2191,7 @@ export default function AgentDomPicker() {
         >
           <div className="flex items-center justify-between gap-3">
             <p className="font-semibold">
-              {renderedAgentNote.author} · {getAgentPickerAgentNoteStatusLabel(renderedAgentNote.status)}
+              {renderedAgentNote.author} · {getKumaPickerAgentNoteStatusLabel(renderedAgentNote.status)}
             </p>
             <div className="flex items-center gap-2">
               {agentNoteTimeLabel ? <p className="text-[10px] opacity-70">{agentNoteTimeLabel}</p> : null}
@@ -2211,8 +2211,8 @@ export default function AgentDomPicker() {
 
       <div
         ref={widgetRef}
-        data-agent-picker-root="true"
-        data-agent-picker-ui="true"
+        data-kuma-picker-root="true"
+        data-kuma-picker-ui="true"
         onPointerDown={handlePointerDown}
         className={`fixed left-0 top-0 isolate z-[2147483000] h-12 w-12 touch-none select-none transition-opacity duration-300 ${
           isDragging ? "cursor-grabbing" : "cursor-grab"
@@ -2228,8 +2228,8 @@ export default function AgentDomPicker() {
           onClick={handleToggleClick}
           className={`absolute bottom-0 left-0 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border transition-[background-color,border-color,box-shadow,color,transform] duration-300 ${buttonTone}`}
           aria-pressed={isActive}
-          aria-label="Toggle Agent Picker"
-          title="Toggle Agent Picker (Cmd/Ctrl+Shift+X)"
+          aria-label="Toggle Kuma Picker"
+          title="Toggle Kuma Picker (Cmd/Ctrl+Shift+X)"
           disabled={isSaving}
         >
           <FilledCursorIcon className="h-4 w-4" />

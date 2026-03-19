@@ -1,6 +1,6 @@
 const {
   createDaemonSocketUrl,
-} = AgentPickerExtensionShared;
+} = KumaPickerExtensionShared;
 
 const SOCKET_RECONNECT_BASE_DELAY_MS = 1_000;
 const SOCKET_RECONNECT_MAX_DELAY_MS = 10_000;
@@ -8,7 +8,6 @@ const SOCKET_PROBE_TIMEOUT_MS = 1_500;
 
 let daemonSocket = null;
 let daemonSocketUrl = null;
-let daemonTransportMode = null;
 let daemonTransportUrl = null;
 let queuedPresenceUpdate = null;
 let reconnectDelayMs = SOCKET_RECONNECT_BASE_DELAY_MS;
@@ -27,7 +26,7 @@ function clearDaemonReconnectTimer() {
 }
 
 function getDaemonTransportMode() {
-  return daemonTransportMode === "legacy-poll" ? "legacy-poll" : "websocket";
+  return "websocket";
 }
 
 function isDaemonSocketOpen() {
@@ -130,7 +129,7 @@ function sendDaemonSocketMessage(payload) {
 }
 
 function scheduleDaemonSocketReconnect(daemonUrl) {
-  if (getDaemonTransportMode() !== "websocket" || reconnectTimer != null) {
+  if (reconnectTimer != null) {
     return;
   }
 
@@ -143,10 +142,6 @@ function scheduleDaemonSocketReconnect(daemonUrl) {
 }
 
 function openDaemonSocket(daemonUrl) {
-  if (getDaemonTransportMode() !== "websocket") {
-    return;
-  }
-
   const socketUrl = createDaemonSocketUrl(daemonUrl);
   if (
     daemonSocket &&
@@ -228,7 +223,7 @@ function openDaemonSocket(daemonUrl) {
 
   socket.addEventListener("error", () => {
     if (daemonSocket === socket) {
-      setSocketError("The Agent Picker WebSocket bridge failed to initialize.", daemonUrl, "websocket:error");
+      setSocketError("The Kuma Picker WebSocket bridge failed to initialize.", daemonUrl, "websocket:error");
       try {
         socket.close();
       } catch {
@@ -256,26 +251,14 @@ async function waitForDaemonSocketReady(timeoutMs = SOCKET_PROBE_TIMEOUT_MS) {
 }
 
 async function ensureDaemonTransport(daemonUrl, options = {}) {
-  const normalizedDaemonUrl = AgentPickerExtensionShared.normalizeDaemonUrl(daemonUrl);
-  const shouldRefresh = options.force === true || daemonTransportMode == null || daemonTransportUrl !== normalizedDaemonUrl;
+  const normalizedDaemonUrl = KumaPickerExtensionShared.normalizeDaemonUrl(daemonUrl);
+  const shouldRefresh = options.force === true || daemonTransportUrl !== normalizedDaemonUrl;
 
   if (shouldRefresh) {
-    try {
-      const health = await fetchDaemonHealth(normalizedDaemonUrl);
-      daemonTransportMode = health?.browserTransport === "websocket" ? "websocket" : "legacy-poll";
-    } catch {
-      daemonTransportMode = "legacy-poll";
-    }
+    await fetchDaemonHealth(normalizedDaemonUrl);
     daemonTransportUrl = normalizedDaemonUrl;
   }
 
-  if (getDaemonTransportMode() === "websocket") {
-    openDaemonSocket(normalizedDaemonUrl);
-  } else {
-    clearSocketError();
-    closeDaemonSocket({ intentional: true });
-    void reportSocketDiagnostics(normalizedDaemonUrl, "transport:legacy-poll");
-  }
-
+  openDaemonSocket(normalizedDaemonUrl);
   return getDaemonTransportMode();
 }

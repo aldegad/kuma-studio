@@ -1,38 +1,38 @@
-import { getAgentPickerDaemonUrl } from "../scene-daemon";
+import { getKumaPickerDaemonUrl } from "../scene-daemon";
 
-export type AgentPickerAgentNoteStatus = "acknowledged" | "in_progress" | "fixed" | "needs_reselect";
-export const DEFAULT_AGENT_PICKER_NOTE_SESSION_ID = "global-note";
+export type KumaPickerAgentNoteStatus = "acknowledged" | "in_progress" | "fixed" | "needs_reselect";
+export const DEFAULT_KUMA_PICKER_NOTE_SESSION_ID = "global-note";
 
-export interface AgentPickerAgentNoteRecord {
+export interface KumaPickerAgentNoteRecord {
   version: 1;
   sessionId: string;
   selectionId?: string | null;
   author: string;
-  status: AgentPickerAgentNoteStatus;
+  status: KumaPickerAgentNoteStatus;
   message: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface AgentPickerAgentNotePayload {
+export interface KumaPickerAgentNotePayload {
   sessionId?: string;
   selectionId?: string | null;
   author: string;
-  status: AgentPickerAgentNoteStatus;
+  status: KumaPickerAgentNoteStatus;
   message: string;
 }
 
-export interface AgentPickerAgentNoteEvent {
+export interface KumaPickerAgentNoteEvent {
   type: "agent-note.updated";
   source: string;
   sessionId: string;
   deleted: boolean;
   updatedAt?: string;
-  note: AgentPickerAgentNoteRecord | null;
+  note: KumaPickerAgentNoteRecord | null;
 }
 
-export function getAgentPickerAgentNoteEndpoint(sessionId?: string): string {
-  const endpoint = new URL(`${getAgentPickerDaemonUrl()}/agent-note`);
+export function getKumaPickerAgentNoteEndpoint(sessionId?: string): string {
+  const endpoint = new URL(`${getKumaPickerDaemonUrl()}/agent-note`);
   if (sessionId) {
     endpoint.searchParams.set("sessionId", sessionId);
   }
@@ -40,8 +40,8 @@ export function getAgentPickerAgentNoteEndpoint(sessionId?: string): string {
   return endpoint.toString();
 }
 
-export async function fetchAgentPickerAgentNote(sessionId?: string) {
-  const response = await fetch(getAgentPickerAgentNoteEndpoint(sessionId), {
+export async function fetchKumaPickerAgentNote(sessionId?: string) {
+  const response = await fetch(getKumaPickerAgentNoteEndpoint(sessionId), {
     cache: "no-store",
   });
 
@@ -53,10 +53,10 @@ export async function fetchAgentPickerAgentNote(sessionId?: string) {
     throw new Error("Failed to load agent note");
   }
 
-  return (await response.json()) as AgentPickerAgentNoteRecord;
+  return (await response.json()) as KumaPickerAgentNoteRecord;
 }
 
-export function getAgentPickerAgentNoteStatusLabel(status: AgentPickerAgentNoteStatus) {
+export function getKumaPickerAgentNoteStatusLabel(status: KumaPickerAgentNoteStatus) {
   switch (status) {
     case "acknowledged":
       return "Read";
@@ -71,7 +71,7 @@ export function getAgentPickerAgentNoteStatusLabel(status: AgentPickerAgentNoteS
   }
 }
 
-export function parseAgentPickerAgentNoteEvent(raw: string): AgentPickerAgentNoteEvent | null {
+export function parseKumaPickerAgentNoteEvent(raw: string): KumaPickerAgentNoteEvent | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (parsed.type !== "agent-note.updated" || typeof parsed.sessionId !== "string") {
@@ -81,7 +81,7 @@ export function parseAgentPickerAgentNoteEvent(raw: string): AgentPickerAgentNot
     const rawNote = parsed.note;
     const note =
       rawNote && typeof rawNote === "object"
-        ? (rawNote as AgentPickerAgentNoteRecord)
+        ? (rawNote as KumaPickerAgentNoteRecord)
         : null;
 
     return {

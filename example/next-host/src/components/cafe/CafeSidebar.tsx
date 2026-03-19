@@ -2,7 +2,7 @@ export function CafeSidebar() {
   return (
     <aside className="space-y-4">
       <div className="rounded-[2rem] border border-[#91612f]/15 bg-[#fff9f0] p-5 shadow-[0_24px_72px_rgba(89,58,19,0.12)]">
-        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#8e5d2b]">Agent Picker Checklist</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#8e5d2b]">Kuma Picker Checklist</p>
         <div className="mt-4 space-y-3 text-sm leading-6 text-[#6f461f]">
           <CafeCheck title="Read the tabs" body="Use `browser-query-dom --kind tab-state --text Orders`." />
           <CafeCheck title="Inspect menu state" body="Open Shift Focus, then query `menu-state` or `selected-option`." />

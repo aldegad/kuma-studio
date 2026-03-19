@@ -2,7 +2,7 @@ const {
   DAEMON_STORAGE_KEY,
   INSPECT_KEY_PREFIX,
   normalizeDaemonUrl,
-} = AgentPickerExtensionShared;
+} = KumaPickerExtensionShared;
 
 async function getStoredDaemonUrl() {
   const stored = await chrome.storage.local.get(DAEMON_STORAGE_KEY);

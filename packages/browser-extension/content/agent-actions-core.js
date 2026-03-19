@@ -1,5 +1,5 @@
 (() => {
-var AgentPickerExtensionAgentActionCore = (() => {
+var KumaPickerExtensionAgentActionCore = (() => {
   const COMMAND_INTERACTIVE_SELECTOR = [
     "button",
     "a[href]",
@@ -429,5 +429,5 @@ var AgentPickerExtensionAgentActionCore = (() => {
   };
 })();
 
-globalThis.AgentPickerExtensionAgentActionCore = AgentPickerExtensionAgentActionCore;
+globalThis.KumaPickerExtensionAgentActionCore = KumaPickerExtensionAgentActionCore;
 })();

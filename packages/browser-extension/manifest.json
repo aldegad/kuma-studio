@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "Agent Picker Bridge",
+  "name": "Kuma Picker Bridge",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
-  "description": "Inspect the current webpage and send element or area picks to a local Agent Picker daemon.",
+  "description": "Inspect the current webpage and send element or area picks to a local Kuma Picker daemon.",
   "permissions": [
     "activeTab",
     "contentSettings",
@@ -26,17 +26,17 @@
     "service_worker": "background.js"
   },
   "icons": {
-    "16": "assets/icons/agent-picker-icon-16.png",
-    "32": "assets/icons/agent-picker-icon-32.png",
-    "48": "assets/icons/agent-picker-icon-48.png",
-    "128": "assets/icons/agent-picker-icon-128.png"
+    "16": "assets/icons/kuma-picker-icon-16.png",
+    "32": "assets/icons/kuma-picker-icon-32.png",
+    "48": "assets/icons/kuma-picker-icon-48.png",
+    "128": "assets/icons/kuma-picker-icon-128.png"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Agent Picker Bridge",
+    "default_title": "Kuma Picker Bridge",
     "default_icon": {
-      "16": "assets/icons/agent-picker-icon-16.png",
-      "32": "assets/icons/agent-picker-icon-32.png"
+      "16": "assets/icons/kuma-picker-icon-16.png",
+      "32": "assets/icons/kuma-picker-icon-32.png"
     }
   },
   "web_accessible_resources": [
@@ -71,6 +71,7 @@
         "content/agent-actions-core.js",
         "content/agent-actions-gesture-overlay.js",
         "content/agent-actions-interaction.js",
+        "content/agent-actions-observe-extra.js",
         "content/agent-actions-observe.js",
         "content/agent-actions.js",
         "content/bridge.js"

@@ -1,10 +1,10 @@
 import {
   clampCanvasPosition,
-  agentPickerCanvas,
-  agentPickerViewports,
-  type AgentPickerComponentItem,
-  type AgentPickerScene,
-  type AgentPickerStudy,
+  kumaPickerCanvas,
+  kumaPickerViewports,
+  type KumaPickerComponentItem,
+  type KumaPickerScene,
+  type KumaPickerStudy,
 } from "./types";
 
 export const MIN_ZOOM = 0.1;
@@ -17,45 +17,45 @@ export function clampZoom(value: number) {
 }
 
 export function getCanvasSafeTop(toolbarSafeTop: number, zoom: number) {
-  return Math.max(agentPickerCanvas.padding, Math.ceil(toolbarSafeTop / Math.max(zoom, 0.1)) + 16);
+  return Math.max(kumaPickerCanvas.padding, Math.ceil(toolbarSafeTop / Math.max(zoom, 0.1)) + 16);
 }
 
 export function getDefaultStudyPosition(
-  item: AgentPickerComponentItem,
+  item: KumaPickerComponentItem,
   index: number,
   toolbarSafeTop: number,
   zoom: number,
 ) {
-  const config = agentPickerViewports[item.recommendedViewport];
+  const config = kumaPickerViewports[item.recommendedViewport];
   const column = index % 4;
   const row = Math.floor(index / 4);
-  const x = agentPickerCanvas.padding + column * (config.nodeWidth + 24);
+  const x = kumaPickerCanvas.padding + column * (config.nodeWidth + 24);
   const y = getCanvasSafeTop(toolbarSafeTop, zoom) + row * (config.nodeHeight + 24);
 
   return clampCanvasPosition(item.recommendedViewport, x, y);
 }
 
-export function getNextZIndex(studies: AgentPickerStudy[]) {
+export function getNextZIndex(studies: KumaPickerStudy[]) {
   return studies.reduce((maxZIndex, study) => Math.max(maxZIndex, study.zIndex), 0) + 1;
 }
 
-export function getLastVisibleStudyId(studies: AgentPickerStudy[]) {
+export function getLastVisibleStudyId(studies: KumaPickerStudy[]) {
   return [...studies].reverse().find((study) => !study.hidden)?.id ?? null;
 }
 
-export function sortStudies(studies: AgentPickerStudy[]) {
+export function sortStudies(studies: KumaPickerStudy[]) {
   return [...studies].sort((left, right) => left.zIndex - right.zIndex);
 }
 
 export function createStudy(
-  item: AgentPickerComponentItem,
-  studies: AgentPickerStudy[],
+  item: KumaPickerComponentItem,
+  studies: KumaPickerStudy[],
   toolbarSafeTop: number,
   zoom: number,
   point?: { x: number; y: number },
 ) {
   const viewport = item.recommendedViewport;
-  const config = agentPickerViewports[viewport];
+  const config = kumaPickerViewports[viewport];
   const fallback = getDefaultStudyPosition(item, studies.length, toolbarSafeTop, zoom);
   const position = point
     ? clampCanvasPosition(viewport, point.x - config.nodeWidth / 2, point.y - 56)
@@ -72,27 +72,27 @@ export function createStudy(
     hidden: false,
     locked: false,
     propsPatch: {},
-  } satisfies AgentPickerStudy;
+  } satisfies KumaPickerStudy;
 }
 
 export function autoArrangeStudies(
-  studies: AgentPickerStudy[],
-  itemsById: Map<string, AgentPickerComponentItem>,
+  studies: KumaPickerStudy[],
+  itemsById: Map<string, KumaPickerComponentItem>,
   toolbarSafeTop: number,
   zoom: number,
 ) {
-  let cursorX = agentPickerCanvas.padding;
+  let cursorX = kumaPickerCanvas.padding;
   let cursorY = getCanvasSafeTop(toolbarSafeTop, zoom);
   let rowHeight = 0;
 
   return sortStudies(studies).map((study) => {
     const item = itemsById.get(study.itemId);
-    const config = agentPickerViewports[study.viewport];
+    const config = kumaPickerViewports[study.viewport];
 
     if (!item) return study;
 
-    if (cursorX + config.nodeWidth > agentPickerCanvas.minWidth - agentPickerCanvas.padding) {
-      cursorX = agentPickerCanvas.padding;
+    if (cursorX + config.nodeWidth > kumaPickerCanvas.minWidth - kumaPickerCanvas.padding) {
+      cursorX = kumaPickerCanvas.padding;
       cursorY += rowHeight + 28;
       rowHeight = 0;
     }
@@ -109,8 +109,8 @@ export function autoArrangeStudies(
 }
 
 export function resolveSceneStudies(
-  scene: AgentPickerScene,
-  itemsById: Map<string, AgentPickerComponentItem>,
+  scene: KumaPickerScene,
+  itemsById: Map<string, KumaPickerComponentItem>,
   toolbarSafeTop: number,
   zoom: number,
 ) {

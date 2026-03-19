@@ -13,37 +13,19 @@ async function reportStoredExtensionHeartbeat(source, page = null) {
   }
 }
 
-async function reportStoredBrowserSessionHeartbeat(source, page = null) {
-  try {
-    await reportBrowserSessionHeartbeat(await getStoredDaemonUrl(), {
-      source,
-      page,
-      activeTabId: null,
-    });
-  } catch {
-    // Ignore daemon availability issues for passive session updates.
-  }
-}
-
 chrome.runtime.onInstalled.addListener(() => {
   void (async () => {
     const daemonUrl = await getStoredDaemonUrl();
-    const transportMode = await ensureDaemonTransport(daemonUrl, { force: true });
-    if (transportMode === "legacy-poll") {
-      await reportStoredExtensionHeartbeat("runtime:on-installed");
-      await reportStoredBrowserSessionHeartbeat("runtime:on-installed");
-    }
+    await ensureDaemonTransport(daemonUrl, { force: true });
+    await reportStoredExtensionHeartbeat("runtime:on-installed");
   })();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   void (async () => {
     const daemonUrl = await getStoredDaemonUrl();
-    const transportMode = await ensureDaemonTransport(daemonUrl, { force: true });
-    if (transportMode === "legacy-poll") {
-      await reportStoredExtensionHeartbeat("runtime:on-startup");
-      await reportStoredBrowserSessionHeartbeat("runtime:on-startup");
-    }
+    await ensureDaemonTransport(daemonUrl, { force: true });
+    await reportStoredExtensionHeartbeat("runtime:on-startup");
   })();
 });
 
@@ -56,7 +38,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           : await getStoredDaemonUrl();
 
       switch (message?.type) {
-        case "agent-picker:test-daemon":
+        case "kuma-picker:test-daemon":
           const health = await fetchDaemonHealth(daemonUrl);
           const transportMode = await ensureDaemonTransport(daemonUrl, { force: true });
           const diagnostics =
@@ -87,7 +69,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ok: true,
             healthOk: true,
             browserTransport: health?.browserTransport ?? transportMode,
-            socketConnected: diagnostics.socketConnected === true || transportMode === "legacy-poll",
+            socketConnected: diagnostics.socketConnected === true,
             socketStatus: diagnostics.socketStatus,
             lastSocketError: diagnostics.lastSocketError,
             currentPageReady: pageProbe.ready === true,
@@ -95,20 +77,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             currentPageTabId: pageProbe.tabId ?? message?.tabId ?? null,
             currentPageMessage: pageProbe.message,
             message:
-              transportMode === "legacy-poll"
-                ? `Bridge reachable at ${daemonUrl} using legacy polling mode.`
-                : pageProbe.ready === true
-                  ? `Bridge reachable at ${daemonUrl}, WebSocket connected, and the current page is ready.`
-                  : `Bridge reachable at ${daemonUrl}, but the current page is not ready for Agent Picker commands.`,
+              pageProbe.ready === true
+                ? `Bridge reachable at ${daemonUrl}, WebSocket connected, and the current page is ready.`
+                : `Bridge reachable at ${daemonUrl}, but the current page is not ready for Kuma Picker commands.`,
           });
           return;
-        case "agent-picker:page-ready":
+        case "kuma-picker:page-ready":
           sendResponse(await handlePageHeartbeat(daemonUrl, message, sender));
           return;
-        case "agent-picker:page-heartbeat":
+        case "kuma-picker:page-heartbeat":
           sendResponse(await handlePageHeartbeat(daemonUrl, message, sender));
           return;
-        case "agent-picker:ensure-runtime-observer":
+        case "kuma-picker:ensure-runtime-observer":
           if (!sender.tab?.id) {
             sendResponse({ ok: false, error: "No target tab is available for the runtime observer." });
             return;
@@ -116,16 +96,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await ensureRuntimeObserver(sender.tab.id, typeof sender.frameId === "number" ? sender.frameId : 0);
           sendResponse({ ok: true });
           return;
-        case "agent-picker:capture-page":
+        case "kuma-picker:capture-page":
           sendResponse(await handleCapturePage(daemonUrl, message));
           return;
-        case "agent-picker:start-inspect":
+        case "kuma-picker:start-inspect":
           sendResponse(await handleStartInspect(daemonUrl, message));
           return;
-        case "agent-picker:inspect-picked":
+        case "kuma-picker:inspect-picked":
           sendResponse(await handleInspectPicked(message, sender));
           return;
-        case "agent-picker:cancel-inspect":
+        case "kuma-picker:cancel-inspect":
           if (sender.tab?.id) {
             await clearInspectState(sender.tab.id);
           }

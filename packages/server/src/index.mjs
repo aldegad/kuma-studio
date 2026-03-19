@@ -1,1 +1,1 @@
-export { createServer, main } from "../../../tools/agent-pickerd/main.mjs";
+export { createServer, main } from "../../../tools/kuma-pickerd/main.mjs";

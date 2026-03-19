@@ -1,6 +1,6 @@
 async function collectPageContext(tabId) {
   const response = await sendMessageToTab(tabId, {
-    type: "agent-picker:collect-page",
+    type: "kuma-picker:collect-page",
   });
 
   if (!response?.ok || !response.pageContext) {
@@ -15,7 +15,7 @@ async function sendAgentCommandToTab(tabId, command) {
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     response = await sendMessageToTab(tabId, {
-      type: "agent-picker:browser-command",
+      type: "kuma-picker:browser-command",
       command,
     });
 
@@ -23,7 +23,7 @@ async function sendAgentCommandToTab(tabId, command) {
       return response.result ?? null;
     }
 
-    if (response?.error !== "The Agent Picker browser command tools are not loaded for this page yet.") {
+    if (response?.error !== "The Kuma Picker browser command tools are not loaded for this page yet.") {
       break;
     }
 
@@ -209,6 +209,6 @@ async function executeBrowserCommand(tab, command) {
     case "get-latest-download":
       return executeGetLatestDownloadBrowserCommand(tab, command);
     default:
-      throw new Error(`Unsupported Agent Picker browser command: ${String(command?.type)}`);
+      throw new Error(`Unsupported Kuma Picker browser command: ${String(command?.type)}`);
   }
 }

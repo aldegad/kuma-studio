@@ -39,7 +39,7 @@ async function refreshConnectionState(showFailure = false) {
   });
 
   try {
-    const result = await sendBridgeMessage("agent-picker:test-daemon", daemonUrl);
+    const result = await sendBridgeMessage("kuma-picker:test-daemon", daemonUrl);
     if (!result?.ok) {
       const error = result?.error || result?.message || "The bridge did not return a result.";
       const bridgeLabel = result?.healthOk ? "Daemon reachable, socket failed" : "Bridge offline";
@@ -64,7 +64,7 @@ async function refreshConnectionState(showFailure = false) {
 
     setConnectionState({
       state: "connected",
-      label: result?.browserTransport === "legacy-poll" ? "Bridge connected (legacy)" : "Bridge connected",
+      label: "Bridge connected",
       url: daemonUrl,
       showForm: false,
       pageState: result?.currentPageReady === true ? "ready" : "unavailable",
@@ -76,7 +76,7 @@ async function refreshConnectionState(showFailure = false) {
       setFeedback(
         result?.currentPageReady === true
           ? "Bridge connected and the current page is ready."
-          : "Bridge connected, but the current page is not ready for Agent Picker commands.",
+          : "Bridge connected, but the current page is not ready for Kuma Picker commands.",
         result?.currentPageReady === true ? "success" : "error",
       );
     }
@@ -142,7 +142,7 @@ connectDaemonButton.addEventListener("click", async () => {
 
 capturePageButton.addEventListener("click", async () => {
   await runAction(
-    "agent-picker:capture-page",
+    "kuma-picker:capture-page",
     "Capturing the current page...",
     "Current page saved to the bridge.",
   );
@@ -150,7 +150,7 @@ capturePageButton.addEventListener("click", async () => {
 
 inspectElementButton.addEventListener("click", async () => {
   const ok = await runAction(
-    "agent-picker:start-inspect",
+    "kuma-picker:start-inspect",
     "Inspect mode armed. Click an element or drag an area in the page.",
     "Inspect mode armed. Click the target element or drag the area you want to save.",
   );

@@ -49,14 +49,14 @@ async function main() {
   runLinkScript();
 
   const requestedWebPort = Number(process.env.PORT ?? 3000);
-  const requestedDaemonPort = Number(process.env.AGENT_PICKER_DAEMON_PORT ?? 4312);
+  const requestedDaemonPort = Number(process.env.KUMA_PICKER_DAEMON_PORT ?? 4312);
 
   const daemonPort = await findAvailablePort(requestedDaemonPort, "127.0.0.1");
   const webPort = await findAvailablePort(requestedWebPort);
   const daemonUrl = `http://127.0.0.1:${daemonPort}`;
 
-  process.stdout.write(`[agent-picker] daemon: ${daemonUrl}\n`);
-  process.stdout.write(`[agent-picker] web: http://127.0.0.1:${webPort}\n`);
+  process.stdout.write(`[kuma-picker] daemon: ${daemonUrl}\n`);
+  process.stdout.write(`[kuma-picker] web: http://127.0.0.1:${webPort}\n`);
 
   const daemon = spawn(
     process.execPath,
@@ -70,13 +70,13 @@ async function main() {
 
   const web = spawn(
     npmCommand,
-    ["run", "dev", "--workspace=agent-picker-example-next-host", "--", "--port", String(webPort)],
+    ["run", "dev", "--workspace=kuma-picker-example-next-host", "--", "--port", String(webPort)],
     {
       cwd: repoRoot,
       stdio: "inherit",
       env: {
         ...process.env,
-        NEXT_PUBLIC_AGENT_PICKER_DAEMON_URL: daemonUrl,
+        NEXT_PUBLIC_KUMA_PICKER_DAEMON_URL: daemonUrl,
         PORT: String(webPort),
       },
     },

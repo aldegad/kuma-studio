@@ -1,6 +1,6 @@
 (() => {
-  var AgentPickerExtensionAgentGestureOverlay = (() => {
-    const ROOT_ID = "agent-picker-gesture-overlay-root";
+  var KumaPickerExtensionAgentGestureOverlay = (() => {
+    const ROOT_ID = "kuma-picker-gesture-overlay-root";
     const CLICK_ASSET_PATH = "assets/gestures/kuma-paw-tap.png";
     const SCROLL_ASSET_PATHS = {
       grab: "assets/gestures/kuma-paw-grab.png",
@@ -202,5 +202,5 @@
     };
   })();
 
-  globalThis.AgentPickerExtensionAgentGestureOverlay = AgentPickerExtensionAgentGestureOverlay;
+  globalThis.KumaPickerExtensionAgentGestureOverlay = KumaPickerExtensionAgentGestureOverlay;
 })();

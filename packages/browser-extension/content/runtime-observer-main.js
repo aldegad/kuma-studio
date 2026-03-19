@@ -1,10 +1,10 @@
 (() => {
-  const AGENT_PICKER_RUNTIME_SOURCE = "agent-picker:runtime-observer";
+  const KUMA_PICKER_RUNTIME_SOURCE = "kuma-picker:runtime-observer";
 
-  if (window.__agentPickerRuntimeObserverInstalled === true) {
+  if (window.__kumaPickerRuntimeObserverInstalled === true) {
     return;
   }
-  window.__agentPickerRuntimeObserverInstalled = true;
+  window.__kumaPickerRuntimeObserverInstalled = true;
 
   function normalizeString(value, maxLength = 400) {
     if (typeof value !== "string") {
@@ -125,7 +125,7 @@
     try {
       window.postMessage(
         {
-          source: AGENT_PICKER_RUNTIME_SOURCE,
+          source: KUMA_PICKER_RUNTIME_SOURCE,
           entry,
         },
         "*",
@@ -150,7 +150,7 @@
     }
 
     const original = console[level];
-    console[level] = function agentPickerConsoleProxy(...args) {
+    console[level] = function kumaPickerConsoleProxy(...args) {
       const summarizedArgs = summarizeArgs(args);
       publishEntry(
         createBaseEntry("console", level, {

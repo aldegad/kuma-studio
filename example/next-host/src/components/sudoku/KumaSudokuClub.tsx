@@ -250,7 +250,7 @@ export function KumaSudokuClub() {
           Sharp selectors.
         </>
       }
-      description="Every board starts from a fresh solved grid and gets carved back into a uniquely solvable puzzle. It is a polished Agent Picker surface for click targeting, keyboard input, note mode, readback verification, mistakes, and completion checks."
+      description="Every board starts from a fresh solved grid and gets carved back into a uniquely solvable puzzle. It is a polished Kuma Picker surface for click targeting, keyboard input, note mode, readback verification, mistakes, and completion checks."
       pills={[
         "Target cells by row and column labels",
         "Verify values after writes",
@@ -267,7 +267,7 @@ export function KumaSudokuClub() {
         </div>
       }
       sidekickTitle="A puzzle that rewards exact automation"
-      sidekickBody="The board is spacious, vivid, and packed with visible state so Agent Picker can click, read back, and prove success instead of guessing."
+      sidekickBody="The board is spacious, vivid, and packed with visible state so Kuma Picker can click, read back, and prove success instead of guessing."
       sidekickItems={[
         "Starter tiles stay locked while editable cells expose value changes immediately.",
         "Use note mode, keyboard entry, and hint flows for richer automation coverage.",
@@ -416,7 +416,7 @@ export function KumaSudokuClub() {
 
           <aside className="space-y-4">
             <div className="rounded-[2rem] border border-[#91612f]/15 bg-[#fff9f0] p-5 shadow-[0_24px_72px_rgba(89,58,19,0.12)]">
-              <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#8e5d2b]">Agent Picker Checklist</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#8e5d2b]">Kuma Picker Checklist</p>
               <div className="mt-4 space-y-3 text-sm leading-6 text-[#6f461f]">
                 <CheckRow title="Click a cell" body="Target row 4 column 7 or use the board grid selectors." />
                 <CheckRow title="Write and verify" body="Enter a value, then read it back with `browser-query-dom`." />

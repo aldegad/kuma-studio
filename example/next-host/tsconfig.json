@@ -22,13 +22,13 @@
       "@/*": [
         "src/*"
       ],
-      "@agent-picker/picker": [
+      "@kuma-picker/picker": [
         "../../packages/picker/src/index.ts"
       ],
-      "@agent-picker/design-lab": [
+      "@kuma-picker/design-lab": [
         "../../packages/design-lab/src/index.ts"
       ],
-      "@agent-picker/design-lab/*": [
+      "@kuma-picker/design-lab/*": [
         "../../packages/design-lab/src/*"
       ]
     },

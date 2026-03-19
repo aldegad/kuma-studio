@@ -1,5 +1,5 @@
 (() => {
-  const existingApi = globalThis.AgentPickerExtensionInteractive;
+  const existingApi = globalThis.KumaPickerExtensionInteractive;
   if (existingApi?.version === 1) {
     return;
   }
@@ -234,7 +234,7 @@
     stopInspectMode();
     showToast(message, "info");
     const payload = {
-      type: "agent-picker:inspect-picked",
+      type: "kuma-picker:inspect-picked",
       pageContext,
     };
 
@@ -361,10 +361,10 @@
     event.preventDefault();
     stopInspectMode();
     showToast("Inspect mode cancelled.", "info");
-    chrome.runtime.sendMessage({ type: "agent-picker:cancel-inspect" });
+    chrome.runtime.sendMessage({ type: "kuma-picker:cancel-inspect" });
   }
 
-  globalThis.AgentPickerExtensionInteractive = {
+  globalThis.KumaPickerExtensionInteractive = {
     version: 1,
     showToast,
     startInspectMode,

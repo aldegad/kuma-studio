@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
-const skillName = "agent-picker";
+const skillName = "kuma-picker";
 const sourceDir = path.join(repoRoot, "skills", skillName);
 const extensionSourceDir = path.join(repoRoot, "packages", "browser-extension");
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const targetDir = path.join(codexHome, "skills", skillName);
-const extensionTargetDir = path.join(codexHome, "extensions", "agent-picker-browser-extension");
+const extensionTargetDir = path.join(codexHome, "extensions", "kuma-picker-browser-extension");
 const hostGuidePath = path.join(repoRoot, "docs", "install-next-app-router.md");
 
 function parseArgs(argv) {
@@ -31,8 +31,8 @@ Usage:
   node ./scripts/install-codex-skill.mjs [--yes] [--skip-experimental-prompt] [--show-experimental-guide]
 
 What it installs by default:
-  - ~/.codex/skills/agent-picker
-  - ~/.codex/extensions/agent-picker-browser-extension
+  - ~/.codex/skills/kuma-picker
+  - ~/.codex/extensions/kuma-picker-browser-extension
 
 What it does not install by default:
   - picker/provider host embedding

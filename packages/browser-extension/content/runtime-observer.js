@@ -1,5 +1,5 @@
-if (!globalThis.AgentPickerExtensionRuntimeObserver) {
-  const AGENT_PICKER_RUNTIME_SOURCE = "agent-picker:runtime-observer";
+if (!globalThis.KumaPickerExtensionRuntimeObserver) {
+  const KUMA_PICKER_RUNTIME_SOURCE = "kuma-picker:runtime-observer";
   const MAX_RUNTIME_ENTRIES = 200;
   const runtimeEntries = [];
 
@@ -25,7 +25,7 @@ if (!globalThis.AgentPickerExtensionRuntimeObserver) {
     }
 
     const payload = event.data;
-    if (!payload || payload.source !== AGENT_PICKER_RUNTIME_SOURCE || !payload.entry) {
+    if (!payload || payload.source !== KUMA_PICKER_RUNTIME_SOURCE || !payload.entry) {
       return;
     }
 
@@ -33,12 +33,12 @@ if (!globalThis.AgentPickerExtensionRuntimeObserver) {
   });
 
   void chrome.runtime.sendMessage({
-    type: "agent-picker:ensure-runtime-observer",
+    type: "kuma-picker:ensure-runtime-observer",
   }).catch(() => {
     // Ignore pages that cannot use the extension bridge.
   });
 
-  globalThis.AgentPickerExtensionRuntimeObserver = {
+  globalThis.KumaPickerExtensionRuntimeObserver = {
     readEntries() {
       return {
         count: runtimeEntries.length,

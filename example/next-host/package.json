@@ -1,5 +1,5 @@
 {
-  "name": "agent-picker-example-next-host",
+  "name": "kuma-picker-example-next-host",
   "private": true,
   "scripts": {
     "build": "next build --webpack",

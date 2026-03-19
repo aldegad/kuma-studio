@@ -1,13 +1,13 @@
 # Browser Extension MVP
 
 This folder contains an unpacked Chrome extension that bridges arbitrary web
-pages into a local `agent-pickerd` daemon.
+pages into a local `kuma-pickerd` daemon.
 
 ## What It Does
 
-- saves the current page as the latest Agent Picker selection
+- saves the current page as the latest Kuma Picker selection
 - offers a lightweight inspect mode so you can click a single element or drag a viewport area on any site
-- captures a visible-tab screenshot and stores it through the shared Agent Picker state flow
+- captures a visible-tab screenshot and stores it through the shared Kuma Picker state flow
 
 This MVP does not try to map DOM nodes back to app source code or React
 components. It is meant to prove the bridge model on real websites first.
@@ -38,10 +38,10 @@ the page to be the currently focused tab.
 
 ```text
 packages/browser-extension
-~/.codex/extensions/agent-picker-browser-extension
+~/.codex/extensions/kuma-picker-browser-extension
 ```
 
-If you installed Agent Picker with `npm run skill:install`, prefer the `~/.codex/extensions/agent-picker-browser-extension` copy so Chrome can keep using a stable global path.
+If you installed Kuma Picker with `npm run skill:install`, prefer the `~/.codex/extensions/kuma-picker-browser-extension` copy so Chrome can keep using a stable global path.
 That core install does not add any files to your app repo, and it does not enable the experimental embedded picker/provider mode by default.
 
 ## Start The Bridge
@@ -49,7 +49,7 @@ That core install does not add any files to your app repo, and it does not enabl
 From the standalone repo root:
 
 ```bash
-npm run agent-pickerd:serve
+npm run kuma-pickerd:serve
 ```
 
 That gives the extension a stable default bridge at:
@@ -68,13 +68,13 @@ http://127.0.0.1:4312
 6. read the latest saved context from the repo root:
 
 ```bash
-npm run agent-pickerd:get-selection
+npm run kuma-pickerd:get-selection
 ```
 
 To check whether the daemon has seen this extension recently, run:
 
 ```bash
-npm run agent-pickerd:get-extension-status
+npm run kuma-pickerd:get-extension-status
 ```
 
 To inspect or control the active tab from a local agent, keep the target page
@@ -110,4 +110,4 @@ node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers
 - targeted DOM and click commands can run against background tabs as long as the tab stays open with the content script loaded
 - targeted `browser-fill`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
 - screenshots still require the target page to be the visible focused tab in Chrome
-- the legacy HTTP polling transport is no longer the default path; it is kept only as an internal debug escape hatch behind `AGENT_PICKER_TRANSPORT=legacy-poll`
+- browser control now assumes the WebSocket bridge path only

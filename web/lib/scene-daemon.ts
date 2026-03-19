@@ -1,9 +1,9 @@
-import type { AgentPickerScene, AgentPickerStudy, AgentPickerSyncState, AgentPickerViewport } from "./types";
+import type { KumaPickerScene, KumaPickerStudy, KumaPickerSyncState, KumaPickerViewport } from "./types";
 
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:4312";
-type RawViewport = AgentPickerViewport | "mark";
+type RawViewport = KumaPickerViewport | "mark";
 
-export interface AgentPickerSceneEvent {
+export interface KumaPickerSceneEvent {
   type: "scene.updated";
   source: string;
   revision?: number;
@@ -22,7 +22,7 @@ function normalizeSelectedStudyId(value: unknown) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function normalizeNode(rawNode: unknown): AgentPickerStudy | null {
+function normalizeNode(rawNode: unknown): KumaPickerStudy | null {
   if (!rawNode || typeof rawNode !== "object") return null;
 
   const candidate = rawNode as Record<string, unknown>;
@@ -43,7 +43,7 @@ function normalizeNode(rawNode: unknown): AgentPickerStudy | null {
     id: candidate.id,
     itemId: candidate.itemId,
     title: candidate.title,
-    viewport: (candidate.viewport === "mark" ? "original" : candidate.viewport) as AgentPickerViewport,
+    viewport: (candidate.viewport === "mark" ? "original" : candidate.viewport) as KumaPickerViewport,
     x,
     y,
     zIndex,
@@ -56,16 +56,16 @@ function normalizeNode(rawNode: unknown): AgentPickerStudy | null {
   };
 }
 
-export function getAgentPickerDaemonUrl() {
-  const raw = process.env.NEXT_PUBLIC_AGENT_PICKER_DAEMON_URL ?? DEFAULT_DAEMON_URL;
+export function getKumaPickerDaemonUrl() {
+  const raw = process.env.NEXT_PUBLIC_KUMA_PICKER_DAEMON_URL ?? DEFAULT_DAEMON_URL;
   return raw.replace(/\/$/, "");
 }
 
-export function getAgentPickerEventsUrl() {
-  return `${getAgentPickerDaemonUrl()}/events`;
+export function getKumaPickerEventsUrl() {
+  return `${getKumaPickerDaemonUrl()}/events`;
 }
 
-export function normalizeScene(scene: unknown): AgentPickerScene {
+export function normalizeScene(scene: unknown): KumaPickerScene {
   if (!scene || typeof scene !== "object") {
     return {
       version: 1,
@@ -84,7 +84,7 @@ export function normalizeScene(scene: unknown): AgentPickerScene {
   const rawNodes = Array.isArray(candidate.nodes) ? candidate.nodes : [];
   const nodes = rawNodes
     .map((rawNode) => normalizeNode(rawNode))
-    .filter((node): node is AgentPickerStudy => Boolean(node))
+    .filter((node): node is KumaPickerStudy => Boolean(node))
     .sort((left, right) => left.zIndex - right.zIndex);
 
   return {
@@ -123,25 +123,25 @@ async function requestScene(input: RequestInfo | URL, init?: RequestInit) {
 }
 
 export async function fetchScene(signal?: AbortSignal) {
-  return requestScene(`${getAgentPickerDaemonUrl()}/scene`, {
+  return requestScene(`${getKumaPickerDaemonUrl()}/scene`, {
     method: "GET",
     signal,
   });
 }
 
 export async function updateSceneMeta(
-  updates: Partial<Pick<AgentPickerScene["meta"], "selectedStudyId">>,
+  updates: Partial<Pick<KumaPickerScene["meta"], "selectedStudyId">>,
   signal?: AbortSignal,
 ) {
-  return requestScene(`${getAgentPickerDaemonUrl()}/scene/meta`, {
+  return requestScene(`${getKumaPickerDaemonUrl()}/scene/meta`, {
     method: "PATCH",
     body: JSON.stringify(updates),
     signal,
   });
 }
 
-export async function addSceneNode(node: AgentPickerStudy, signal?: AbortSignal) {
-  return requestScene(`${getAgentPickerDaemonUrl()}/scene/nodes`, {
+export async function addSceneNode(node: KumaPickerStudy, signal?: AbortSignal) {
+  return requestScene(`${getKumaPickerDaemonUrl()}/scene/nodes`, {
     method: "POST",
     body: JSON.stringify({
       id: node.id,
@@ -161,10 +161,10 @@ export async function addSceneNode(node: AgentPickerStudy, signal?: AbortSignal)
 
 export async function updateSceneNode(
   nodeId: string,
-  updates: Partial<Pick<AgentPickerStudy, "title" | "viewport" | "x" | "y" | "zIndex" | "hidden" | "locked" | "propsPatch">>,
+  updates: Partial<Pick<KumaPickerStudy, "title" | "viewport" | "x" | "y" | "zIndex" | "hidden" | "locked" | "propsPatch">>,
   signal?: AbortSignal,
 ) {
-  return requestScene(`${getAgentPickerDaemonUrl()}/scene/nodes/${nodeId}`, {
+  return requestScene(`${getKumaPickerDaemonUrl()}/scene/nodes/${nodeId}`, {
     method: "PATCH",
     body: JSON.stringify(updates),
     signal,
@@ -172,17 +172,17 @@ export async function updateSceneNode(
 }
 
 export async function removeSceneNode(nodeId: string, signal?: AbortSignal) {
-  return requestScene(`${getAgentPickerDaemonUrl()}/scene/nodes/${nodeId}`, {
+  return requestScene(`${getKumaPickerDaemonUrl()}/scene/nodes/${nodeId}`, {
     method: "DELETE",
     signal,
   });
 }
 
 export function createSceneEventSource() {
-  return new EventSource(getAgentPickerEventsUrl());
+  return new EventSource(getKumaPickerEventsUrl());
 }
 
-export function parseSceneEvent(raw: string): AgentPickerSceneEvent | null {
+export function parseSceneEvent(raw: string): KumaPickerSceneEvent | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (parsed.type !== "scene.updated") return null;
@@ -198,7 +198,7 @@ export function parseSceneEvent(raw: string): AgentPickerSceneEvent | null {
   }
 }
 
-export function getSyncStateLabel(state: AgentPickerSyncState) {
+export function getSyncStateLabel(state: KumaPickerSyncState) {
   switch (state) {
     case "connecting":
       return "Connecting";

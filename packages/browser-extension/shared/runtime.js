@@ -1,7 +1,7 @@
-const AgentPickerExtensionShared = (() => {
+const KumaPickerExtensionShared = (() => {
   const DEFAULT_DAEMON_URL = "http://127.0.0.1:4312";
-  const DAEMON_STORAGE_KEY = "agentPicker.browserExtension.daemonUrl";
-  const INSPECT_KEY_PREFIX = "agentPicker.browserExtension.inspect.";
+  const DAEMON_STORAGE_KEY = "kumaPicker.browserExtension.daemonUrl";
+  const INSPECT_KEY_PREFIX = "kumaPicker.browserExtension.inspect.";
 
   function normalizeDaemonUrl(rawValue) {
     const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";

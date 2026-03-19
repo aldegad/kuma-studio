@@ -2,15 +2,15 @@
 
 import InternalAgentDomPicker from "../../../web/components/devtools/AgentDomPicker";
 
-interface AgentPickerProviderProps {
+interface KumaPickerProviderProps {
   children: React.ReactNode;
   showDevtoolsInDevelopment?: boolean;
 }
 
-export function AgentPickerProvider({
+export function KumaPickerProvider({
   children,
   showDevtoolsInDevelopment = false,
-}: AgentPickerProviderProps) {
+}: KumaPickerProviderProps) {
   return (
     <>
       {children}
@@ -21,6 +21,6 @@ export function AgentPickerProvider({
   );
 }
 
-export function AgentPickerDevtools() {
+export function KumaPickerDevtools() {
   return <InternalAgentDomPicker />;
 }

@@ -10,10 +10,10 @@ var {
   isFillableElement: coreIsFillableElement,
   resolveCommandTarget: coreResolveCommandTarget,
   resolveFillTarget: coreResolveFillTarget,
-} = globalThis.AgentPickerExtensionAgentActionCore;
-var gestureOverlay = globalThis.AgentPickerExtensionAgentGestureOverlay ?? null;
+} = globalThis.KumaPickerExtensionAgentActionCore;
+var gestureOverlay = globalThis.KumaPickerExtensionAgentGestureOverlay ?? null;
 
-var AgentPickerExtensionAgentActionInteraction = (() => {
+var KumaPickerExtensionAgentActionInteraction = (() => {
   function waitForDelay(ms) {
     if (!(Number.isFinite(ms) && ms > 0)) {
       return Promise.resolve();
@@ -341,5 +341,5 @@ var AgentPickerExtensionAgentActionInteraction = (() => {
   };
 })();
 
-globalThis.AgentPickerExtensionAgentActionInteraction = AgentPickerExtensionAgentActionInteraction;
+globalThis.KumaPickerExtensionAgentActionInteraction = KumaPickerExtensionAgentActionInteraction;
 })();

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Kuma Picker"
+  short_description: "Read picks, notes, and browser bridge tabs"
+  default_prompt: "Use $kuma-picker to read the latest selection, verify the browser bridge, and work from the picked UI or live tab context."

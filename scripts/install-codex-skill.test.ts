@@ -17,7 +17,7 @@ describe("install-codex-skill", () => {
   });
 
   it("installs the skill and browser extension into CODEX_HOME", () => {
-    const codexHome = mkdtempSync(path.join(tmpdir(), "agent-picker-codex-home-"));
+    const codexHome = mkdtempSync(path.join(tmpdir(), "kuma-picker-codex-home-"));
     tempDirs.push(codexHome);
 
     const output = execFileSync(process.execPath, [SCRIPT_PATH], {
@@ -26,16 +26,16 @@ describe("install-codex-skill", () => {
       encoding: "utf8",
     });
 
-    const skillPath = path.join(codexHome, "skills", "agent-picker", "SKILL.md");
-    const extensionPath = path.join(codexHome, "extensions", "agent-picker-browser-extension", "manifest.json");
+    const skillPath = path.join(codexHome, "skills", "kuma-picker", "SKILL.md");
+    const extensionPath = path.join(codexHome, "extensions", "kuma-picker-browser-extension", "manifest.json");
 
-    expect(output).toContain("Installed agent-picker skill");
+    expect(output).toContain("Installed kuma-picker skill");
     expect(output).toContain("Installed browser extension");
     expect(existsSync(skillPath)).toBe(true);
     expect(existsSync(extensionPath)).toBe(true);
 
     const manifest = JSON.parse(readFileSync(extensionPath, "utf8")) as { manifest_version: number; name: string };
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.name).toContain("Agent Picker");
+    expect(manifest.name).toContain("Kuma Picker");
   });
 });

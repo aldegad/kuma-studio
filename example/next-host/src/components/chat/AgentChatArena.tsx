@@ -67,7 +67,7 @@ export function AgentChatArena() {
     {
       id: "seed-1",
       player: "1p",
-      text: "Bridge check. 1P is online and ready to type through Agent Picker.",
+      text: "Bridge check. 1P is online and ready to type through Kuma Picker.",
       sentAt: nowLabel(),
     },
     {

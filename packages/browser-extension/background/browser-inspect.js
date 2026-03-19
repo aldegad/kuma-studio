@@ -27,12 +27,12 @@ async function captureInspectScreenshot(windowId, message) {
 
 async function handleStartInspect(daemonUrl, message) {
   const tab = await resolveTargetTab(message);
-  await ensureInteractiveAgentPicker(tab.id);
+  await ensureInteractiveKumaPicker(tab.id);
   await setInspectState(tab.id, daemonUrl);
   await enableInspectBadge(tab.id);
 
   const response = await sendMessageToTab(tab.id, {
-    type: "agent-picker:start-inspect",
+    type: "kuma-picker:start-inspect",
   });
   if (!response?.ok) {
     await clearInspectState(tab.id);
@@ -52,7 +52,7 @@ async function handleStartInspect(daemonUrl, message) {
 
 async function notifyInspectResult(tabId, payload) {
   await sendMessageToTab(tabId, {
-    type: "agent-picker:inspect-result",
+    type: "kuma-picker:inspect-result",
     ...payload,
   });
 }
@@ -84,7 +84,7 @@ async function handleInspectPicked(message, sender) {
   await clearInspectState(tabId);
   await notifyInspectResult(tabId, {
     ok: true,
-    message: "Element saved to the local Agent Picker bridge.",
+    message: "Element saved to the local Kuma Picker bridge.",
   });
 
   return {
@@ -95,7 +95,7 @@ async function handleInspectPicked(message, sender) {
 }
 
 async function handleInspectFailure(message, sender, error) {
-  if (sender.tab?.id && message?.type === "agent-picker:inspect-picked") {
+  if (sender.tab?.id && message?.type === "kuma-picker:inspect-picked") {
     await clearInspectState(sender.tab.id);
 
     try {

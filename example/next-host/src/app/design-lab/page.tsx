@@ -2,20 +2,20 @@
 
 import type { ComponentType } from "react";
 import {
-  AgentPickerDesignLab,
-  type AgentPickerComponentItem,
-} from "@agent-picker/design-lab";
-import WelcomeCard from "../../components/agent-picker/WelcomeCard";
+  KumaPickerDesignLab,
+  type KumaPickerComponentItem,
+} from "@kuma-picker/design-lab";
+import WelcomeCard from "../../components/kuma-picker/WelcomeCard";
 
-const designLabItems: AgentPickerComponentItem[] = [
+const designLabItems: KumaPickerComponentItem[] = [
   {
     id: "draft-example-welcome-card",
     title: "Welcome Card",
     shortLabel: "Welcome Card",
-    description: "Standalone example card shipped with the Agent Picker repository.",
+    description: "Standalone example card shipped with the Kuma Picker repository.",
     sourceKind: "draft",
     category: "cards",
-    componentPath: "src/components/agent-picker/WelcomeCard.tsx",
+    componentPath: "src/components/kuma-picker/WelcomeCard.tsx",
     tags: ["example", "welcome", "card"],
     recommendedViewport: "desktop",
     renderKind: "component",
@@ -25,5 +25,5 @@ const designLabItems: AgentPickerComponentItem[] = [
 ];
 
 export default function DesignLabPage() {
-  return <AgentPickerDesignLab items={designLabItems} />;
+  return <KumaPickerDesignLab items={designLabItems} />;
 }

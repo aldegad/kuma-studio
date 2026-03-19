@@ -1,12 +1,12 @@
 import type { ComponentType } from "react";
 
-export type AgentPickerSourceKind = "project" | "draft" | "page-import";
-export type AgentPickerViewport = "desktop" | "mobile" | "original";
-export type AgentPickerSyncState = "connecting" | "connected" | "saving" | "offline" | "conflict";
-export type AgentPickerRenderKind = "component" | "asset";
+export type KumaPickerSourceKind = "project" | "draft" | "page-import";
+export type KumaPickerViewport = "desktop" | "mobile" | "original";
+export type KumaPickerSyncState = "connecting" | "connected" | "saving" | "offline" | "conflict";
+export type KumaPickerRenderKind = "component" | "asset";
 
-export interface AgentPickerViewportConfig {
-  key: AgentPickerViewport;
+export interface KumaPickerViewportConfig {
+  key: KumaPickerViewport;
   label: string;
   canvasWidth: number;
   canvasHeight: number;
@@ -16,39 +16,39 @@ export interface AgentPickerViewportConfig {
   nodeHeight: number;
 }
 
-interface AgentPickerItemBase {
+interface KumaPickerItemBase {
   id: string;
   title: string;
   shortLabel: string;
   description?: string | null;
-  sourceKind: AgentPickerSourceKind;
+  sourceKind: KumaPickerSourceKind;
   category: string;
   componentPath: string;
   sourceRoute?: string | null;
   sourceFilePath?: string | null;
   tags: string[];
-  recommendedViewport: AgentPickerViewport;
-  renderKind: AgentPickerRenderKind;
+  recommendedViewport: KumaPickerViewport;
+  renderKind: KumaPickerRenderKind;
 }
 
-export interface AgentPickerComponentDraftItem extends AgentPickerItemBase {
+export interface KumaPickerComponentDraftItem extends KumaPickerItemBase {
   renderKind: "component";
   Component: ComponentType<Record<string, unknown>>;
   props: Record<string, unknown>;
 }
 
-export interface AgentPickerAssetDraftItem extends AgentPickerItemBase {
+export interface KumaPickerAssetDraftItem extends KumaPickerItemBase {
   renderKind: "asset";
   assetUrl: string;
 }
 
-export type AgentPickerComponentItem = AgentPickerComponentDraftItem | AgentPickerAssetDraftItem;
+export type KumaPickerComponentItem = KumaPickerComponentDraftItem | KumaPickerAssetDraftItem;
 
-export interface AgentPickerStudy {
+export interface KumaPickerStudy {
   id: string;
   itemId: string;
   title: string;
-  viewport: AgentPickerViewport;
+  viewport: KumaPickerViewport;
   x: number;
   y: number;
   zIndex: number;
@@ -57,18 +57,18 @@ export interface AgentPickerStudy {
   propsPatch?: Record<string, unknown>;
 }
 
-export interface AgentPickerSceneMeta {
+export interface KumaPickerSceneMeta {
   zoom?: number;
   revision?: number;
   updatedAt?: string;
   selectedStudyId?: string | null;
 }
 
-export interface AgentPickerSceneNode {
+export interface KumaPickerSceneNode {
   id: string;
   itemId: string;
   title: string;
-  viewport: AgentPickerViewport;
+  viewport: KumaPickerViewport;
   x: number;
   y: number;
   zIndex: number;
@@ -77,13 +77,13 @@ export interface AgentPickerSceneNode {
   propsPatch?: Record<string, unknown>;
 }
 
-export interface AgentPickerScene {
+export interface KumaPickerScene {
   version: number;
-  meta: AgentPickerSceneMeta;
-  nodes: AgentPickerSceneNode[];
+  meta: KumaPickerSceneMeta;
+  nodes: KumaPickerSceneNode[];
 }
 
-export const agentPickerCanvas = {
+export const kumaPickerCanvas = {
   minWidth: 1080,
   minHeight: 640,
   maxWidth: 3200,
@@ -91,7 +91,7 @@ export const agentPickerCanvas = {
   padding: 24,
 };
 
-export const agentPickerViewports: Record<AgentPickerViewport, AgentPickerViewportConfig> = {
+export const kumaPickerViewports: Record<KumaPickerViewport, KumaPickerViewportConfig> = {
   desktop: {
     key: "desktop",
     label: "Desktop",
@@ -124,12 +124,12 @@ export const agentPickerViewports: Record<AgentPickerViewport, AgentPickerViewpo
   },
 };
 
-export const agentPickerViewportList = Object.values(agentPickerViewports);
+export const kumaPickerViewportList = Object.values(kumaPickerViewports);
 
-export function clampCanvasPosition(viewport: AgentPickerViewport, x: number, y: number) {
-  const config = agentPickerViewports[viewport];
-  const maxX = agentPickerCanvas.maxWidth - config.nodeWidth;
-  const maxY = agentPickerCanvas.maxHeight - config.nodeHeight;
+export function clampCanvasPosition(viewport: KumaPickerViewport, x: number, y: number) {
+  const config = kumaPickerViewports[viewport];
+  const maxX = kumaPickerCanvas.maxWidth - config.nodeWidth;
+  const maxY = kumaPickerCanvas.maxHeight - config.nodeHeight;
 
   return {
     x: Math.max(0, Math.min(x, maxX)),
@@ -137,18 +137,18 @@ export function clampCanvasPosition(viewport: AgentPickerViewport, x: number, y:
   };
 }
 
-export function getCanvasBounds(studies: Pick<AgentPickerStudy, "viewport" | "x" | "y">[]) {
-  let width = studies.length > 0 ? 0 : agentPickerCanvas.minWidth;
-  let height = studies.length > 0 ? 0 : agentPickerCanvas.minHeight;
+export function getCanvasBounds(studies: Pick<KumaPickerStudy, "viewport" | "x" | "y">[]) {
+  let width = studies.length > 0 ? 0 : kumaPickerCanvas.minWidth;
+  let height = studies.length > 0 ? 0 : kumaPickerCanvas.minHeight;
 
   for (const study of studies) {
-    const config = agentPickerViewports[study.viewport];
-    width = Math.max(width, study.x + config.nodeWidth + agentPickerCanvas.padding);
-    height = Math.max(height, study.y + config.nodeHeight + agentPickerCanvas.padding);
+    const config = kumaPickerViewports[study.viewport];
+    width = Math.max(width, study.x + config.nodeWidth + kumaPickerCanvas.padding);
+    height = Math.max(height, study.y + config.nodeHeight + kumaPickerCanvas.padding);
   }
 
   return {
-    width: Math.min(agentPickerCanvas.maxWidth, Math.round(width)),
-    height: Math.min(agentPickerCanvas.maxHeight, Math.round(height)),
+    width: Math.min(kumaPickerCanvas.maxWidth, Math.round(width)),
+    height: Math.min(kumaPickerCanvas.maxHeight, Math.round(height)),
   };
 }

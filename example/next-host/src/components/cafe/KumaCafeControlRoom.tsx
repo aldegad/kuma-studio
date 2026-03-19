@@ -114,7 +114,7 @@ export function KumaCafeControlRoom() {
           Real browser flows.
         </>
       }
-      description="This playful control room is built for the next Agent Picker batch: semantic tabs, menu state reads, selected-option checks, dialog workflows, toast waits, and a real CSV download."
+      description="This playful control room is built for the next Kuma Picker batch: semantic tabs, menu state reads, selected-option checks, dialog workflows, toast waits, and a real CSV download."
       pills={[
         "Tab state is visible and queryable",
         "Custom menu exposes open and selected state",
@@ -136,7 +136,7 @@ export function KumaCafeControlRoom() {
         </div>
       }
       sidekickTitle="A fun surface for serious automation checks"
-      sidekickBody="Everything here is intentionally testable by Agent Picker without feeling like a sterile fixture board."
+      sidekickBody="Everything here is intentionally testable by Kuma Picker without feeling like a sterile fixture board."
       sidekickItems={[
         "Use the Orders / Menu / Delivery tabs to test tab-state readback.",
         "Open Shift Focus to inspect menu-state and selected-option results.",

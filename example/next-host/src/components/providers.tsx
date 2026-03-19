@@ -1,11 +1,11 @@
 "use client";
 
-import { AgentPickerProvider } from "@agent-picker/picker";
+import { KumaPickerProvider } from "@kuma-picker/picker";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <AgentPickerProvider>
+    <KumaPickerProvider>
       {children}
-    </AgentPickerProvider>
+    </KumaPickerProvider>
   );
 }

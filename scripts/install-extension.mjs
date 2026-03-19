@@ -8,7 +8,28 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const extensionSourceDir = path.join(repoRoot, "packages", "browser-extension");
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
-const extensionTargetDir = path.join(codexHome, "extensions", "agent-picker-browser-extension");
+const extensionTargetDir = path.join(codexHome, "extensions", "kuma-picker-browser-extension");
+
+function removeDirectoryIfPresent(targetDir) {
+  if (!fs.existsSync(targetDir)) {
+    return;
+  }
+
+  const backupDir = `${targetDir}.replacing-${Date.now()}`;
+  fs.renameSync(targetDir, backupDir);
+
+  try {
+    fs.rmSync(backupDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 50,
+    });
+  } catch (error) {
+    console.warn(`Deferred cleanup for previous extension install: ${backupDir}`);
+    console.warn(error instanceof Error ? error.message : String(error));
+  }
+}
 
 if (!fs.existsSync(extensionSourceDir)) {
   console.error(`Browser extension source not found: ${extensionSourceDir}`);
@@ -16,7 +37,7 @@ if (!fs.existsSync(extensionSourceDir)) {
 }
 
 fs.mkdirSync(path.dirname(extensionTargetDir), { recursive: true });
-fs.rmSync(extensionTargetDir, { recursive: true, force: true });
+removeDirectoryIfPresent(extensionTargetDir);
 fs.cpSync(extensionSourceDir, extensionTargetDir, { recursive: true });
 
 console.log(`Installed browser extension to ${extensionTargetDir}`);

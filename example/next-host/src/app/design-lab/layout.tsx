@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Agent Picker Design Lab",
-  description: "Standalone design lab for the bundled Agent Picker example host.",
+  title: "Kuma Picker Design Lab",
+  description: "Standalone design lab for the bundled Kuma Picker example host.",
 };
 
 export default function DesignLabLayout({

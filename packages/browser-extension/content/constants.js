@@ -1,2 +1,2 @@
-const UI_ATTRIBUTE = "data-agent-picker-extension-ui";
-const ROOT_ID = "agent-picker-extension-root";
+const UI_ATTRIBUTE = "data-kuma-picker-extension-ui";
+const ROOT_ID = "kuma-picker-extension-root";

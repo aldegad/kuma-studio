@@ -1,7 +1,7 @@
 const INTERACTIVE_SCRIPT_FILES = ["content/interactive.js"];
 const RUNTIME_OBSERVER_MAIN_SCRIPT_FILES = ["content/runtime-observer-main.js"];
 
-async function executeAgentPickerScripts(tabId, files, unavailableMessage) {
+async function executeKumaPickerScripts(tabId, files, unavailableMessage) {
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -12,11 +12,11 @@ async function executeAgentPickerScripts(tabId, files, unavailableMessage) {
   }
 }
 
-async function ensureInteractiveAgentPicker(tabId) {
-  await executeAgentPickerScripts(
+async function ensureInteractiveKumaPicker(tabId) {
+  await executeKumaPickerScripts(
     tabId,
     INTERACTIVE_SCRIPT_FILES,
-    "This page does not allow the Agent Picker interactive tools. Try a regular website tab instead of a browser-internal page.",
+    "This page does not allow the Kuma Picker interactive tools. Try a regular website tab instead of a browser-internal page.",
   );
 }
 
@@ -28,6 +28,6 @@ async function ensureRuntimeObserver(tabId, frameId = 0) {
       world: "MAIN",
     });
   } catch {
-    throw new Error("This page does not allow the Agent Picker runtime observer. Try a regular website tab instead of a browser-internal page.");
+    throw new Error("This page does not allow the Kuma Picker runtime observer. Try a regular website tab instead of a browser-internal page.");
   }
 }
