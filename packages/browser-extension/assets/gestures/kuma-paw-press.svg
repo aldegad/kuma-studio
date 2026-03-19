@@ -1,0 +1,26 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pawShellPress" x1="24" y1="24" x2="104" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3CB81"/>
+      <stop offset="1" stop-color="#CB8331"/>
+    </linearGradient>
+    <linearGradient id="beanPress" x1="30" y1="46" x2="92" y2="102" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F0AF61"/>
+      <stop offset="1" stop-color="#C86E18"/>
+    </linearGradient>
+    <filter id="shadowPress" x="10" y="18" width="108" height="102" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#5A3313" flood-opacity="0.14"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadowPress)">
+    <path d="M64 34C72 24 88 23 96 33C99 37 100 42 99 47C107 48 112 53 112 60C112 69 108 76 103 82C99 87 97 95 90 99C82 104 72 102 64 99C56 102 46 104 38 99C31 95 29 87 25 82C20 76 16 69 16 60C16 53 21 48 29 47C28 42 29 37 32 33C40 23 56 24 64 34Z" fill="url(#pawShellPress)" stroke="#71411A" stroke-width="4" stroke-linejoin="round"/>
+    <ellipse cx="35.5" cy="44" rx="12.5" ry="12" fill="url(#beanPress)" stroke="#71411A" stroke-width="4"/>
+    <ellipse cx="54.5" cy="34" rx="12" ry="12.5" fill="url(#beanPress)" stroke="#71411A" stroke-width="4"/>
+    <ellipse cx="73.5" cy="34" rx="12" ry="12.5" fill="url(#beanPress)" stroke="#71411A" stroke-width="4"/>
+    <ellipse cx="92.5" cy="44" rx="12.5" ry="12" fill="url(#beanPress)" stroke="#71411A" stroke-width="4"/>
+    <path d="M64 58C84 58 98 68 98 82C98 94 89 100 64 101C39 100 30 94 30 82C30 68 44 58 64 58Z" fill="url(#beanPress)" stroke="#71411A" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M45 27C48 24 51 25 53 28" stroke="#FFF6E5" stroke-width="4" stroke-linecap="round"/>
+    <path d="M31 37C34 35 37 35 39 38" stroke="#FFF6E5" stroke-width="4" stroke-linecap="round"/>
+    <path d="M56 64C61 61 66 62 69 65" stroke="#FFF6E5" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

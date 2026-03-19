@@ -1,0 +1,26 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pawShellIdle" x1="24" y1="20" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5D08A"/>
+      <stop offset="1" stop-color="#D08A39"/>
+    </linearGradient>
+    <linearGradient id="beanIdle" x1="32" y1="44" x2="90" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6B86B"/>
+      <stop offset="1" stop-color="#D17A22"/>
+    </linearGradient>
+    <filter id="shadowIdle" x="10" y="12" width="108" height="110" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#5A3313" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadowIdle)">
+    <path d="M64 30C72 19 88 17 96 28C100 34 101 41 99 47C107 47 113 53 113 62C113 71 109 78 104 85C99 91 98 100 91 104C83 109 73 106 64 102C55 106 45 109 37 104C30 100 29 91 24 85C19 78 15 71 15 62C15 53 21 47 29 47C27 41 28 34 32 28C40 17 56 19 64 30Z" fill="url(#pawShellIdle)" stroke="#71411A" stroke-width="4" stroke-linejoin="round"/>
+    <ellipse cx="35.5" cy="45" rx="11.5" ry="13" fill="url(#beanIdle)" stroke="#71411A" stroke-width="4"/>
+    <ellipse cx="54.5" cy="34" rx="11.5" ry="14" fill="url(#beanIdle)" stroke="#71411A" stroke-width="4"/>
+    <ellipse cx="73.5" cy="34" rx="11.5" ry="14" fill="url(#beanIdle)" stroke="#71411A" stroke-width="4"/>
+    <ellipse cx="92.5" cy="45" rx="11.5" ry="13" fill="url(#beanIdle)" stroke="#71411A" stroke-width="4"/>
+    <path d="M64 54C82 54 95 66 95 83C95 91 91 97 84 101C79 103 72 102 64 99C56 102 49 103 44 101C37 97 33 91 33 83C33 66 46 54 64 54Z" fill="url(#beanIdle)" stroke="#71411A" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M44 24C48 22 51 23 53 27" stroke="#FFF6E5" stroke-width="4" stroke-linecap="round"/>
+    <path d="M31 37C35 35 38 36 40 40" stroke="#FFF6E5" stroke-width="4" stroke-linecap="round"/>
+    <path d="M57 61C62 58 66 59 69 63" stroke="#FFF6E5" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

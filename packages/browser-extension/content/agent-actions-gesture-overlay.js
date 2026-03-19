@@ -1,7 +1,11 @@
 (() => {
 var AgentPickerExtensionAgentGestureOverlay = (() => {
   const ROOT_ID = "agent-picker-gesture-overlay-root";
-  const PAW_ASSET_PATH = "assets/gestures/kuma-paw-overlay.png";
+  const PAW_ASSET_PATHS = {
+    idle: "assets/gestures/kuma-paw-idle.svg",
+    press: "assets/gestures/kuma-paw-press.svg",
+    grab: "assets/gestures/kuma-paw-grab.svg",
+  };
   const DEFAULT_SIZE = 88;
 
   function clamp(value, min, max) {
@@ -44,16 +48,17 @@ var AgentPickerExtensionAgentGestureOverlay = (() => {
     return root;
   }
 
-  function getPawAssetUrl() {
+  function getPawAssetUrl(kind) {
+    const assetPath = PAW_ASSET_PATHS[kind] ?? PAW_ASSET_PATHS.idle;
     if (typeof chrome?.runtime?.getURL === "function") {
-      return chrome.runtime.getURL(PAW_ASSET_PATH);
+      return chrome.runtime.getURL(assetPath);
     }
-    return PAW_ASSET_PATH;
+    return assetPath;
   }
 
-  function createPawElement(size) {
+  function createPawElement(size, kind = "idle") {
     const element = document.createElement("img");
-    element.src = getPawAssetUrl();
+    element.src = getPawAssetUrl(kind);
     element.alt = "";
     element.draggable = false;
     Object.assign(element.style, {
@@ -68,6 +73,10 @@ var AgentPickerExtensionAgentGestureOverlay = (() => {
       filter: "drop-shadow(0 18px 28px rgba(72, 42, 10, 0.16))",
     });
     return element;
+  }
+
+  function swapPawAsset(element, kind) {
+    element.src = getPawAssetUrl(kind);
   }
 
   async function playAnimation(element, keyframes, options) {
@@ -97,9 +106,16 @@ var AgentPickerExtensionAgentGestureOverlay = (() => {
     const size = DEFAULT_SIZE;
     const left = clamp(point.x - size * 0.62, 10, window.innerWidth - size - 10);
     const top = clamp(point.y - size * 0.78, 10, window.innerHeight - size - 10);
-    const paw = createPawElement(size);
+    const paw = createPawElement(size, "idle");
     paw.style.left = `${left}px`;
     paw.style.top = `${top}px`;
+
+    window.setTimeout(() => {
+      swapPawAsset(paw, "press");
+    }, 150);
+    window.setTimeout(() => {
+      swapPawAsset(paw, "idle");
+    }, 270);
 
     await playAnimation(
       paw,
@@ -150,7 +166,7 @@ var AgentPickerExtensionAgentGestureOverlay = (() => {
       ? clamp(window.innerHeight - size - 42, 14, window.innerHeight - size - 14)
       : 24;
     const endY = startY + (movesUp ? -travel : travel);
-    const paw = createPawElement(size);
+    const paw = createPawElement(size, "grab");
     paw.style.left = `${left}px`;
     paw.style.top = `${startY}px`;
 

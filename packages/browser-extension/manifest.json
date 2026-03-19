@@ -43,7 +43,9 @@
     {
       "resources": [
         "content/runtime-observer-main.js",
-        "assets/gestures/kuma-paw-overlay.png"
+        "assets/gestures/kuma-paw-idle.svg",
+        "assets/gestures/kuma-paw-press.svg",
+        "assets/gestures/kuma-paw-grab.svg"
       ],
       "matches": [
         "<all_urls>"
