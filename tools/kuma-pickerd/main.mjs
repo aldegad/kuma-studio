@@ -39,7 +39,7 @@ function printUsage() {
 Usage:
   node main.mjs serve [--host 127.0.0.1] [--port 4312] [--root .]
   node main.mjs get-scene [--root .]
-  node main.mjs get-selection [--session-id session-01] [--root .]
+  node main.mjs get-selection [--session-id session-01] [--recent 5 | --all] [--root .]
   node main.mjs get-agent-note [--session-id session-01] [--root .]
   node main.mjs get-extension-status [--root .]
   node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
@@ -102,11 +102,52 @@ function commandGetScene(options) {
   process.stdout.write(`${JSON.stringify(store.read(), null, 2)}\n`);
 }
 
+function readPositiveIntegerOption(options, key) {
+  const value = readNumber(options, key, null);
+  if (value == null) {
+    return null;
+  }
+
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`--${key} must be a positive integer.`);
+  }
+
+  return value;
+}
+
+function sliceRecentSelections(collection, count) {
+  if (!collection || !Array.isArray(collection.sessions)) {
+    return null;
+  }
+
+  const sessions = collection.sessions.slice(-count);
+  const latestSessionId = sessions[sessions.length - 1]?.session?.id ?? null;
+
+  return {
+    ...collection,
+    updatedAt: sessions[sessions.length - 1]?.capturedAt ?? collection.updatedAt,
+    latestSessionId,
+    sessions,
+  };
+}
+
 function commandGetSelection(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const selectionStore = new DevSelectionStore(root);
   const sessionId = readOptionalString(options, "session-id");
-  const selection = sessionId ? selectionStore.readSession(sessionId) : selectionStore.readAll();
+  const recentCount = readPositiveIntegerOption(options, "recent");
+  let selection = null;
+
+  if (sessionId) {
+    selection = selectionStore.readSession(sessionId);
+  } else if (options.all === true) {
+    selection = selectionStore.readAll();
+  } else if (recentCount) {
+    selection = sliceRecentSelections(selectionStore.readAll(), recentCount);
+  } else {
+    selection = selectionStore.read();
+  }
+
   process.stdout.write(`${JSON.stringify(selection ?? null, null, 2)}\n`);
 }
 

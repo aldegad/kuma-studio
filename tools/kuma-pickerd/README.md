@@ -118,6 +118,8 @@ Standalone repository:
 ```bash
 node ./packages/server/src/cli.mjs get-scene --root ./example/next-host
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host
+node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --recent 5
+node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --all
 node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host
 node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host
 node ./packages/server/src/cli.mjs get-browser-session
@@ -151,6 +153,7 @@ Installed host project:
 ```bash
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-scene --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-selection --root .
+node ./vendor/kuma-picker/packages/server/src/cli.mjs get-selection --root . --recent 5
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-agent-note --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-extension-status --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-browser-session
@@ -178,3 +181,10 @@ For browser commands:
 - add `--bypass-cache` to `browser-refresh` when you want a cache-bypassing reload during verification
 - use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
 - visible-tab screenshots still require the page to be the active focused tab in Chrome
+
+For saved selections:
+
+- `get-selection` now returns only the latest saved selection by default
+- add `--recent <n>` to inspect a bounded recent selection history
+- add `--all` only when you truly need the full saved selection collection
+- keep `--session-id <id>` for a specific saved selection session

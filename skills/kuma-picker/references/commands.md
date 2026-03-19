@@ -13,6 +13,8 @@ Prefer host-root wrapper scripts:
 ```bash
 npm run kuma-pickerd:serve
 npm run kuma-pickerd:get-selection
+npm run kuma-pickerd:get-selection -- --recent 5
+npm run kuma-pickerd:get-selection -- --all
 npm run kuma-pickerd:get-agent-note
 npm run kuma-pickerd:get-browser-session
 npm run kuma-pickerd:browser-context -- --url-contains "example.com"
@@ -40,6 +42,8 @@ Use the repo-root scripts, which target `example/next-host`:
 ```bash
 npm run kuma-pickerd:serve
 npm run kuma-pickerd:get-selection
+npm run kuma-pickerd:get-selection -- --recent 5
+npm run kuma-pickerd:get-selection -- --all
 npm run kuma-pickerd:get-agent-note
 npm run kuma-pickerd:get-browser-session
 npm run kuma-pickerd:browser-context -- --url-contains "example.com"
@@ -100,6 +104,9 @@ Treat these as shared coordination files under the Kuma Picker state home:
 - `dev-selections/<session-id>.json`: saved session payload
 - `dev-selection-assets/<session-id>/...`: snapshots
 - `agent-notes/<session-id>.json`: shared agent notes
+
+By default, `get-selection` returns the latest saved selection only.
+Use `--recent <n>` for a bounded recent history, or `--all` for the full saved selection collection.
 
 ## What to inspect in a selection
 

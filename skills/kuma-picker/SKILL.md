@@ -32,6 +32,9 @@ Skip this section if the extension is already loaded in Chrome.
    - Do not tell the user "this repo doesn't have `kuma-pickerd:*` scripts" unless you actually checked the root `package.json` or ran the command and saw it fail.
 2. Read the latest selection before doing anything else.
    - Default command: `npm run kuma-pickerd:get-selection`
+   - This now returns only the latest saved selection by default.
+   - Use `npm run kuma-pickerd:get-selection -- --recent 5` only when you need a bounded recent history.
+   - Use `npm run kuma-pickerd:get-selection -- --all` only when the user explicitly needs the full saved selection collection.
 3. If work begins from a saved selection, acknowledge the shared note.
    - Default command:
      `npm run kuma-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."`
