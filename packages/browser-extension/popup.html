@@ -21,6 +21,25 @@
         <div class="page-status-copy">
           <p id="page-status-label" class="page-status-label">Checking current page...</p>
           <p id="page-status-meta" class="page-status-meta"></p>
+          <div id="page-status-controls" class="page-status-controls is-hidden">
+            <span id="page-tab-id" class="page-tab-id"></span>
+            <button
+              id="copy-page-tab-id"
+              type="button"
+              class="icon-button"
+              aria-label="Copy current tab ID"
+              title="Copy current tab ID"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
+                />
+                <path
+                  d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
       </section>
 
@@ -42,6 +61,9 @@
         </button>
         <button id="inspect-element" type="button" class="button button-secondary">
           Pick Element Or Drag Area
+        </button>
+        <button id="inspect-with-job" type="button" class="button button-tertiary">
+          Pick With Job
         </button>
       </section>
 

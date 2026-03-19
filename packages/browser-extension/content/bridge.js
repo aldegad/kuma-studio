@@ -9,6 +9,10 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
     return globalThis.KumaPickerExtensionAgentActions ?? null;
   }
 
+  function getJobCardsApi() {
+    return globalThis.KumaPickerExtensionJobCards ?? null;
+  }
+
   async function sendPageHeartbeat() {
     try {
       await chrome.runtime.sendMessage({
@@ -40,7 +44,9 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
             return;
           }
 
-          getInteractiveApi().startInspectMode();
+          getInteractiveApi().startInspectMode({
+            withJob: message?.withJob === true,
+          });
           sendResponse({ ok: true });
           return;
         case "kuma-picker:browser-command":
@@ -70,6 +76,10 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
             message.message || (message.ok ? "Element saved." : "Failed to save the picked element."),
             message.ok ? "info" : "error",
           );
+          sendResponse({ ok: true });
+          return;
+        case "kuma-picker:job-card-event":
+          getJobCardsApi()?.applyJobCardEvent?.(message);
           sendResponse({ ok: true });
           return;
         default:

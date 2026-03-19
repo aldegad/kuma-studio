@@ -1,6 +1,11 @@
 async function handleCapturePage(daemonUrl, message) {
   const tab = await resolveTargetTab(message);
   const pageContext = await collectPageContext(tab.id);
+  pageContext.page = {
+    ...pageContext.page,
+    tabId: tab.id,
+    windowId: tab.windowId,
+  };
   const screenshotDataUrl = await captureTabScreenshot(tab.windowId);
   const selection = await saveSelectionToDaemon(daemonUrl, pageContext, screenshotDataUrl);
   await reportExtensionHeartbeatSafely(daemonUrl, {
@@ -33,6 +38,7 @@ async function handleStartInspect(daemonUrl, message) {
 
   const response = await sendMessageToTab(tab.id, {
     type: "kuma-picker:start-inspect",
+    withJob: message?.withJob === true,
   });
   if (!response?.ok) {
     await clearInspectState(tab.id);
@@ -46,7 +52,10 @@ async function handleStartInspect(daemonUrl, message) {
 
   return {
     ok: true,
-    message: "Inspect mode armed. Click the target element in the page.",
+    message:
+      message?.withJob === true
+        ? "Job pick mode armed. Pick the target first, then write the job."
+        : "Inspect mode armed. Click the target element in the page.",
   };
 }
 
@@ -71,14 +80,22 @@ async function handleInspectPicked(message, sender) {
   }
 
   const screenshot = await captureInspectScreenshot(windowId, message);
+  const pageContext = {
+    ...message.pageContext,
+    page: {
+      ...message.pageContext?.page,
+      tabId,
+      windowId,
+    },
+  };
   const selection = await saveSelectionToDaemon(
     inspectState.daemonUrl,
-    message.pageContext,
+    pageContext,
     screenshot,
   );
   await reportExtensionHeartbeatSafely(inspectState.daemonUrl, {
     source: "content-script:inspect-picked",
-    page: message.pageContext?.page,
+    page: pageContext?.page,
   });
 
   await clearInspectState(tabId);

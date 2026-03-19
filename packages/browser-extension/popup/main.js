@@ -17,12 +17,13 @@ function formatCurrentPageMeta(result) {
   return "";
 }
 
-async function sendBridgeMessage(type, daemonUrl = daemonUrlInput.value) {
+async function sendBridgeMessage(type, daemonUrl = daemonUrlInput.value, extra = {}) {
   const savedDaemonUrl = await writeDaemonUrl(daemonUrl);
   return chrome.runtime.sendMessage({
     type,
     daemonUrl: savedDaemonUrl,
     ...(await readActiveTab()),
+    ...extra,
   });
 }
 
@@ -36,6 +37,7 @@ async function refreshConnectionState(showFailure = false) {
     pageState: "checking",
     pageLabel: "Checking current page...",
     pageMeta: "",
+    pageTabId: null,
   });
 
   try {
@@ -51,6 +53,7 @@ async function refreshConnectionState(showFailure = false) {
         pageState: "unavailable",
         pageLabel: "Current page unavailable",
         pageMeta: error,
+        pageTabId: result?.currentPageTabId ?? null,
       });
 
       if (showFailure) {
@@ -70,6 +73,7 @@ async function refreshConnectionState(showFailure = false) {
       pageState: result?.currentPageReady === true ? "ready" : "unavailable",
       pageLabel: result?.currentPageReady === true ? "Current page ready" : "Current page unavailable",
       pageMeta: formatCurrentPageMeta(result),
+      pageTabId: result?.currentPageTabId ?? null,
     });
 
     if (showFailure) {
@@ -91,6 +95,7 @@ async function refreshConnectionState(showFailure = false) {
       pageState: "unavailable",
       pageLabel: "Current page unavailable",
       pageMeta: "The bridge is offline, so the current page could not be checked.",
+      pageTabId: null,
     });
 
     if (showFailure) {
@@ -103,12 +108,12 @@ async function refreshConnectionState(showFailure = false) {
   }
 }
 
-async function runAction(type, workingMessage, successMessage) {
+async function runAction(type, workingMessage, successMessage, extra = {}) {
   setBusyState(true);
   setFeedback(workingMessage, "working");
 
   try {
-    const result = await sendBridgeMessage(type);
+    const result = await sendBridgeMessage(type, daemonUrlInput.value, extra);
     if (!result?.ok) {
       throw new Error(result?.error || "The bridge did not return a result.");
     }
@@ -153,6 +158,19 @@ inspectElementButton.addEventListener("click", async () => {
     "kuma-picker:start-inspect",
     "Inspect mode armed. Click an element or drag an area in the page.",
     "Inspect mode armed. Click the target element or drag the area you want to save.",
+  );
+
+  if (ok) {
+    window.close();
+  }
+});
+
+inspectWithJobButton.addEventListener("click", async () => {
+  const ok = await runAction(
+    "kuma-picker:start-inspect",
+    "Job pick mode armed. Click an element or drag an area, then write the job.",
+    "Job pick mode armed. Pick the target first, then write the job you want the agent to handle.",
+    { withJob: true },
   );
 
   if (ok) {

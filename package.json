@@ -28,6 +28,7 @@
     "kuma-pickerd:get-scene": "node ./packages/server/src/cli.mjs get-scene --root ./example/next-host",
     "kuma-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection --root ./example/next-host",
     "kuma-pickerd:get-agent-note": "node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host",
+    "kuma-pickerd:get-job-card": "node ./packages/server/src/cli.mjs get-job-card --root ./example/next-host",
     "kuma-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host",
     "kuma-pickerd:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
     "kuma-pickerd:browser-context": "node ./packages/server/src/cli.mjs browser-context",
@@ -49,6 +50,7 @@
     "kuma-pickerd:browser-wait-for-dialog-close": "node ./packages/server/src/cli.mjs browser-wait-for-dialog-close",
     "kuma-pickerd:browser-query-dom": "node ./packages/server/src/cli.mjs browser-query-dom",
     "kuma-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host",
+    "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host",
     "kuma-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"
   },
   "devDependencies": {

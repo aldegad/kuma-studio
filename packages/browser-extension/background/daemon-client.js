@@ -107,6 +107,28 @@ function createSelectionPayload(pageContext, screenshot) {
     },
     element,
     elements: [element],
+    job:
+      pageContext.job && typeof pageContext.job === "object"
+        ? {
+            id:
+              typeof pageContext.job.id === "string" && pageContext.job.id.trim()
+                ? pageContext.job.id.trim()
+                : `job-${Date.now().toString(36)}`,
+            message: typeof pageContext.job.message === "string" ? pageContext.job.message.trim() : "",
+            createdAt:
+              typeof pageContext.job.createdAt === "string" && pageContext.job.createdAt.trim()
+                ? pageContext.job.createdAt
+                : capturedAt,
+            author:
+              typeof pageContext.job.author === "string" && pageContext.job.author.trim()
+                ? pageContext.job.author.trim()
+                : "user",
+            status:
+              pageContext.job.status === "in_progress" || pageContext.job.status === "completed"
+                ? pageContext.job.status
+                : "noted",
+          }
+        : null,
   };
 }
 

@@ -9,6 +9,35 @@ function normalizeRect(rect) {
   };
 }
 
+function normalizeJob(job) {
+  const candidate = job && typeof job === "object" ? job : null;
+  if (!candidate) {
+    return null;
+  }
+
+  const message = typeof candidate.message === "string" ? candidate.message.trim() : "";
+  if (!message) {
+    return null;
+  }
+
+  return {
+    id:
+      typeof candidate.id === "string" && candidate.id.trim()
+        ? candidate.id.trim()
+        : `job-${Date.now().toString(36)}`,
+    message,
+    createdAt:
+      typeof candidate.createdAt === "string" && candidate.createdAt.trim()
+        ? candidate.createdAt
+        : new Date().toISOString(),
+    author:
+      typeof candidate.author === "string" && candidate.author.trim()
+        ? candidate.author.trim()
+        : "user",
+    status: candidate.status === "in_progress" || candidate.status === "completed" ? candidate.status : "noted",
+  };
+}
+
 export function sanitizeSessionId(value) {
   if (typeof value !== "string") {
     return null;
@@ -239,8 +268,10 @@ export function normalizeDevSelection(record, sessionDefaults = {}) {
       url: typeof page.url === "string" ? page.url : "",
       pathname: typeof page.pathname === "string" ? page.pathname : "",
       title: typeof page.title === "string" ? page.title : "",
+      tabId: Number.isInteger(page.tabId) ? page.tabId : null,
     },
     session: normalizeSession(candidate.session, sessionDefaults),
+    job: normalizeJob(candidate.job),
     element: normalizedElements[normalizedElements.length - 1],
     elements: normalizedElements,
   };
