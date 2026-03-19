@@ -1,210 +1,206 @@
 (() => {
-var AgentPickerExtensionAgentGestureOverlay = (() => {
-  const ROOT_ID = "agent-picker-gesture-overlay-root";
-  const PAW_ASSET_PATHS = {
-    idle: "assets/gestures/kuma-paw-idle.svg",
-    press: "assets/gestures/kuma-paw-press.svg",
-    grab: "assets/gestures/kuma-paw-grab.svg",
-  };
-  const DEFAULT_SIZE = 88;
+  var AgentPickerExtensionAgentGestureOverlay = (() => {
+    const ROOT_ID = "agent-picker-gesture-overlay-root";
+    const CLICK_ASSET_PATH = "assets/gestures/kuma-paw-tap.png";
+    const SCROLL_ASSET_PATHS = {
+      grab: "assets/gestures/kuma-paw-grab.png",
+    };
+    const DEFAULT_SIZE = 88;
 
-  function clamp(value, min, max) {
-    return Math.min(max, Math.max(min, value));
-  }
-
-  function waitForAnimationFrame() {
-    return new Promise((resolvePromise) => {
-      window.requestAnimationFrame(() => resolvePromise());
-    });
-  }
-
-  async function waitForAnimationFrames(count) {
-    for (let index = 0; index < count; index += 1) {
-      await waitForAnimationFrame();
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
     }
-  }
 
-  function getRootElement() {
-    let root = document.getElementById(ROOT_ID);
-    if (root) {
+    function waitForAnimationFrame() {
+      return new Promise((resolvePromise) => {
+        window.requestAnimationFrame(() => resolvePromise());
+      });
+    }
+
+    async function waitForAnimationFrames(count) {
+      for (let index = 0; index < count; index += 1) {
+        await waitForAnimationFrame();
+      }
+    }
+
+    function getRootElement() {
+      let root = document.getElementById(ROOT_ID);
+      if (root) {
+        return root;
+      }
+
+      root = document.createElement("div");
+      root.id = ROOT_ID;
+      root.setAttribute("aria-hidden", "true");
+      Object.assign(root.style, {
+        position: "fixed",
+        inset: "0",
+        overflow: "hidden",
+        pointerEvents: "none",
+        zIndex: "2147483647",
+        userSelect: "none",
+        contain: "layout style paint",
+      });
+
+      const mountTarget = document.documentElement || document.body;
+      mountTarget?.appendChild(root);
       return root;
     }
 
-    root = document.createElement("div");
-    root.id = ROOT_ID;
-    root.setAttribute("aria-hidden", "true");
-    Object.assign(root.style, {
-      position: "fixed",
-      inset: "0",
-      overflow: "hidden",
-      pointerEvents: "none",
-      zIndex: "2147483647",
-      userSelect: "none",
-      contain: "layout style paint",
-    });
-
-    const mountTarget = document.documentElement || document.body;
-    mountTarget?.appendChild(root);
-    return root;
-  }
-
-  function getPawAssetUrl(kind) {
-    const assetPath = PAW_ASSET_PATHS[kind] ?? PAW_ASSET_PATHS.idle;
-    if (typeof chrome?.runtime?.getURL === "function") {
-      return chrome.runtime.getURL(assetPath);
+    function getPawAssetUrl(kind) {
+      const assetPath =
+        (kind === "click" ? CLICK_ASSET_PATH : null)
+        ?? SCROLL_ASSET_PATHS[kind]
+        ?? CLICK_ASSET_PATH;
+      if (typeof chrome?.runtime?.getURL === "function") {
+        return chrome.runtime.getURL(assetPath);
+      }
+      return assetPath;
     }
-    return assetPath;
-  }
 
-  function createPawElement(size, kind = "idle") {
-    const element = document.createElement("img");
-    element.src = getPawAssetUrl(kind);
-    element.alt = "";
-    element.draggable = false;
-    Object.assign(element.style, {
-      position: "fixed",
-      width: `${size}px`,
-      height: `${size}px`,
-      maxWidth: "none",
-      pointerEvents: "none",
-      opacity: "0",
-      willChange: "transform, opacity",
-      transformOrigin: "58% 68%",
-      filter: "drop-shadow(0 18px 28px rgba(72, 42, 10, 0.16))",
-    });
-    return element;
-  }
+    function createPawElement(size, kind = "click") {
+      const element = document.createElement("img");
+      element.src = getPawAssetUrl(kind);
+      element.alt = "";
+      element.draggable = false;
+      Object.assign(element.style, {
+        position: "fixed",
+        width: `${size}px`,
+        height: `${size}px`,
+        maxWidth: "none",
+        pointerEvents: "none",
+        opacity: "0",
+        willChange: "transform, opacity",
+        transformOrigin: kind === "grab" ? "58% 68%" : "50% 86%",
+        filter: "drop-shadow(0 18px 28px rgba(72, 42, 10, 0.16))",
+      });
+      return element;
+    }
 
-  function swapPawAsset(element, kind) {
-    element.src = getPawAssetUrl(kind);
-  }
+    async function playAnimation(element, keyframes, options) {
+      const root = getRootElement();
+      root.appendChild(element);
 
-  async function playAnimation(element, keyframes, options) {
-    const root = getRootElement();
-    root.appendChild(element);
+      try {
+        if (typeof element.animate !== "function") {
+          const finalFrame = keyframes[keyframes.length - 1] ?? {};
+          Object.assign(element.style, finalFrame);
+          await waitForAnimationFrames(1);
+          return;
+        }
 
-    try {
-      if (typeof element.animate !== "function") {
-        const finalFrame = keyframes[keyframes.length - 1] ?? {};
-        Object.assign(element.style, finalFrame);
-        await waitForAnimationFrames(1);
+        const animation = element.animate(keyframes, options);
+        await animation.finished.catch(() => { });
+      } finally {
+        element.remove();
+      }
+    }
+
+    async function playClickGesture(point) {
+      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
         return;
       }
 
-      const animation = element.animate(keyframes, options);
-      await animation.finished.catch(() => {});
-    } finally {
-      element.remove();
-    }
-  }
+      const size = DEFAULT_SIZE;
+      const left = clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10);
+      const top = clamp(point.y - size * 0.1, 10, window.innerHeight - size - 10);
+      const paw = createPawElement(size, "click");
+      paw.style.left = `${left}px`;
+      paw.style.top = `${top}px`;
 
-  async function playClickGesture(point) {
-    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
-      return;
-    }
-
-    const size = DEFAULT_SIZE;
-    const left = clamp(point.x - size * 0.62, 10, window.innerWidth - size - 10);
-    const top = clamp(point.y - size * 0.78, 10, window.innerHeight - size - 10);
-    const paw = createPawElement(size, "idle");
-    paw.style.left = `${left}px`;
-    paw.style.top = `${top}px`;
-
-    window.setTimeout(() => {
-      swapPawAsset(paw, "press");
-    }, 150);
-    window.setTimeout(() => {
-      swapPawAsset(paw, "idle");
-    }, 270);
-
-    await playAnimation(
-      paw,
+      await playAnimation(
+        paw,
       [
         {
           opacity: 0,
-          transform: "translate3d(28px, -10px, 0) rotate(-16deg) scale(0.96)",
+          transform: "translate3d(0, -5px, 0) scale(1)",
         },
         {
           opacity: 1,
-          transform: "translate3d(0, 0, 0) rotate(-10deg) scale(1)",
-          offset: 0.35,
+          transform: "translate3d(0, 0, 0) scale(1)",
+          offset: 0.1,
         },
         {
           opacity: 1,
-          transform: "translate3d(-4px, 4px, 0) rotate(-7deg) scale(0.9)",
-          offset: 0.54,
+          transform: "translate3d(0, 0, 0) scale(1)",
+          offset: 0.5,
         },
         {
           opacity: 1,
-          transform: "translate3d(0, -1px, 0) rotate(-11deg) scale(1.05)",
-          offset: 0.74,
+          transform: "translate3d(0, 0, 0) scale(0.9)",
+          offset: 0.65,
+        },
+        {
+          opacity: 1,
+          transform: "translate3d(0, 0, 0) scale(1)",
+          offset: 0.8,
         },
         {
           opacity: 0,
-          transform: "translate3d(-10px, 2px, 0) rotate(-14deg) scale(0.98)",
+          transform: "translate3d(0, 2px, 0) scale(1)",
+          },
+        ],
+        {
+          duration: 380,
+          easing: "cubic-bezier(0.2, 0.9, 0.28, 1)",
+          fill: "forwards",
         },
-      ],
-      {
-        duration: 420,
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-        fill: "forwards",
-      },
-    );
-  }
-
-  async function playScrollGesture(details) {
-    const deltaY = Number(details?.deltaY);
-    if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 18) {
-      return;
+      );
     }
 
-    const size = clamp(DEFAULT_SIZE + Math.abs(deltaY) * 0.03, 84, 116);
-    const travel = clamp(Math.abs(deltaY) * 0.2, 42, 156);
-    const movesUp = deltaY < 0;
-    const left = clamp(window.innerWidth - size - 26, 10, window.innerWidth - size - 10);
-    const startY = movesUp
-      ? clamp(window.innerHeight - size - 42, 14, window.innerHeight - size - 14)
-      : 24;
-    const endY = startY + (movesUp ? -travel : travel);
-    const paw = createPawElement(size, "grab");
-    paw.style.left = `${left}px`;
-    paw.style.top = `${startY}px`;
+    async function playScrollGesture(details) {
+      const deltaY = Number(details?.deltaY);
+      if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 18) {
+        return;
+      }
 
-    await playAnimation(
-      paw,
-      [
-        {
-          opacity: 0,
-          transform: `translate3d(0, ${movesUp ? 16 : -16}px, 0) rotate(${movesUp ? "-8deg" : "8deg"}) scale(0.96)`,
-        },
-        {
-          opacity: 0.95,
-          transform: "translate3d(0, 0, 0) rotate(0deg) scale(1)",
-          offset: 0.18,
-        },
-        {
-          opacity: 1,
-          transform: `translate3d(0, ${endY - startY}px, 0) rotate(${movesUp ? "-10deg" : "10deg"}) scale(0.93)`,
-          offset: 0.78,
-        },
-        {
-          opacity: 0,
-          transform: `translate3d(0, ${endY - startY}px, 0) rotate(${movesUp ? "-12deg" : "12deg"}) scale(1.02)`,
-        },
-      ],
-      {
-        duration: clamp(240 + Math.abs(deltaY) * 0.28, 280, 560),
-        easing: "cubic-bezier(0.2, 0.9, 0.25, 1)",
-        fill: "forwards",
-      },
-    );
-  }
+      const size = clamp(DEFAULT_SIZE + Math.abs(deltaY) * 0.03, 84, 116);
+      const travel = clamp(Math.abs(deltaY) * 0.2, 42, 156);
+      const movesUp = deltaY < 0;
+      const left = clamp(window.innerWidth - size - 26, 10, window.innerWidth - size - 10);
+      const startY = movesUp
+        ? clamp(window.innerHeight - size - 42, 14, window.innerHeight - size - 14)
+        : 24;
+      const endY = startY + (movesUp ? -travel : travel);
+      const paw = createPawElement(size, "grab");
+      paw.style.left = `${left}px`;
+      paw.style.top = `${startY}px`;
 
-  return {
-    playClickGesture,
-    playScrollGesture,
-  };
-})();
+      await playAnimation(
+        paw,
+        [
+          {
+            opacity: 0,
+            transform: `translate3d(0, ${movesUp ? 16 : -16}px, 0) rotate(${movesUp ? "-8deg" : "8deg"}) scale(0.96)`,
+          },
+          {
+            opacity: 0.95,
+            transform: "translate3d(0, 0, 0) rotate(0deg) scale(1)",
+            offset: 0.18,
+          },
+          {
+            opacity: 1,
+            transform: `translate3d(0, ${endY - startY}px, 0) rotate(${movesUp ? "-10deg" : "10deg"}) scale(0.93)`,
+            offset: 0.78,
+          },
+          {
+            opacity: 0,
+            transform: `translate3d(0, ${endY - startY}px, 0) rotate(${movesUp ? "-12deg" : "12deg"}) scale(1.02)`,
+          },
+        ],
+        {
+          duration: clamp(240 + Math.abs(deltaY) * 0.28, 280, 560),
+          easing: "cubic-bezier(0.2, 0.9, 0.25, 1)",
+          fill: "forwards",
+        },
+      );
+    }
 
-globalThis.AgentPickerExtensionAgentGestureOverlay = AgentPickerExtensionAgentGestureOverlay;
+    return {
+      playClickGesture,
+      playScrollGesture,
+    };
+  })();
+
+  globalThis.AgentPickerExtensionAgentGestureOverlay = AgentPickerExtensionAgentGestureOverlay;
 })();
