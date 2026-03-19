@@ -7,28 +7,10 @@ description: Read the latest Kuma Picker selection, screenshot, shared note stat
 
 Use Kuma Picker as a shared coordination workflow, not a private scratchpad.
 
-## Prerequisites — run once after skill registration
-
-If `~/.codex/extensions/kuma-picker-browser-extension/manifest.json` does not exist, the browser extension has not been installed yet. Run the following from the kuma-picker repo:
-
-```bash
-npm run extension:install          # copies the unpacked extension
-# or, to install both skill files and extension together:
-npm run skill:install
-```
-
-Then load the unpacked extension in Chrome:
-`chrome://extensions` → Developer mode → Load unpacked → `~/.codex/extensions/kuma-picker-browser-extension`
-
-Skip this section if the extension is already loaded in Chrome.
-
 ## Core workflow
 
 1. Find the command surface.
-   - Prefer host-root `kuma-pickerd:*` scripts in installed projects.
-   - In the standalone Kuma Picker repo, use the root scripts that target `example/next-host`.
-   - In this standalone repo, root `kuma-pickerd:*` scripts are expected to exist in the root `package.json`.
-   - Before saying scripts are missing, verify the root script list first. Do not guess from memory.
+   - Look for `kuma-pickerd:*` scripts in the project's `package.json`.
    - Do not tell the user "this repo doesn't have `kuma-pickerd:*` scripts" unless you actually checked the root `package.json` or ran the command and saw it fail.
 2. Read the latest selection before doing anything else.
    - Default command: `npm run kuma-pickerd:get-selection`
@@ -55,7 +37,7 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
    - Read `activeTabId`, `tabCount`, and `tabs[]` when multiple Chrome windows or tabs are open.
    - Prefer saying what you are checking right now over narrating a hypothetical blocker. For example: "I'll read the current browser session first."
 2. If the session is missing or stale, fix the bridge before continuing.
-   - Start the current daemon for this repo or host.
+   - Start the daemon with `npm run kuma-pickerd:serve`.
    - Reload the Chrome extension after extension code changes.
    - In the extension popup, point the daemon URL at the currently running daemon.
    - Browser control uses the daemon WebSocket bridge only.
@@ -106,14 +88,13 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 ## Response guardrails
 
 - Do not invent setup problems before checking the repo and command output.
-- In the standalone Kuma Picker repo, assume the root `kuma-pickerd:*` scripts are the starting point unless verification proves otherwise.
 - When you need a bridge or daemon, state the exact next command you are about to run instead of a reusable fallback speech.
 - If a command is unavailable, include the specific checked path or command in your explanation.
 
 ## Command and state details
 
 Read [references/commands.md](references/commands.md) when you need:
-- standalone vs installed-host command examples
+- command examples
 - the shared Kuma Picker state layout
 - what fields to inspect inside the saved selection payload
 - examples of when reselection is required

@@ -4,11 +4,6 @@
 
 Use the narrowest stable command surface available in the current project.
 Kuma Picker state now lives under `~/.codex/kuma-picker/` by default, or under `$CODEX_HOME/kuma-picker/` when `CODEX_HOME` is set. `KUMA_PICKER_STATE_HOME` overrides both.
-When installed with `npm run skill:install`, the unpacked Chrome extension is copied to `~/.codex/extensions/kuma-picker-browser-extension`, or to `$CODEX_HOME/extensions/kuma-picker-browser-extension` when `CODEX_HOME` is set.
-
-### Installed host project
-
-Prefer host-root wrapper scripts:
 
 ```bash
 npm run kuma-pickerd:serve
@@ -30,35 +25,6 @@ npm run kuma-pickerd:browser-refresh -- --url-contains "example.com"
 npm run kuma-pickerd:browser-refresh -- --url-contains "example.com" --bypass-cache
 npm run kuma-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
 npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind input-by-label --text "Site URL" --scope dialog
-npm run kuma-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
-npm run kuma-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
-npm run kuma-pickerd:clear-agent-note
-```
-
-### Standalone Kuma Picker repository
-
-Use the repo-root scripts, which target `example/next-host`:
-
-```bash
-npm run kuma-pickerd:serve
-npm run kuma-pickerd:get-selection
-npm run kuma-pickerd:get-selection -- --recent 5
-npm run kuma-pickerd:get-selection -- --all
-npm run kuma-pickerd:get-agent-note
-npm run kuma-pickerd:get-browser-session
-npm run kuma-pickerd:browser-context -- --url-contains "example.com"
-npm run kuma-pickerd:browser-dom -- --url-contains "example.com"
-npm run kuma-pickerd:browser-console -- --url-contains "example.com"
-npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
-npm run kuma-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
-npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps-file ./tmp/sequence.json
-npm run kuma-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
-npm run kuma-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
-npm run kuma-pickerd:browser-key -- --url-contains "example.com" --key Tab
-npm run kuma-pickerd:browser-refresh -- --url-contains "example.com"
-npm run kuma-pickerd:browser-refresh -- --url-contains "example.com" --bypass-cache
-npm run kuma-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
-npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind nearby-input --text "Site URL" --scope dialog
 npm run kuma-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run kuma-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."
 npm run kuma-pickerd:clear-agent-note

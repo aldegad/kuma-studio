@@ -32,12 +32,5 @@ git log --oneline --decorate -n 5
 ## Release Checklist
 
 - run `npm install`
-- run `npm run lint`
 - run `npm run test`
-- run `npm run build`
-- review the example design-lab items and shared `~/.codex/kuma-picker/scene.json` if board behavior changed
 - confirm `.github/workflows/secret-scan.yml` is still present
-
-## Example Host Boundaries
-
-`example/next-host/` is a smoke-test consumer of the shared engine. Keep it representative, but do not bake example-only assumptions back into `web/`, `tools/`, or `scripts/` unless they are intentional shared behavior.

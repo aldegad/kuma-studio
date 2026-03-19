@@ -1,13 +1,9 @@
 node_modules
-web/node_modules
 .artifacts
 coverage
 dist
 .DS_Store
 tmp/
 *.tsbuildinfo
-example/next-host/.next
-example/next-host/node_modules
-example/next-host/public/kuma-picker/drafts
-example/next-host/public/kuma-picker/page-imports
-example/next-host/.kuma-picker/
+.agent-picker/
+.kuma-picker/
