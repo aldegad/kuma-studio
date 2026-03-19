@@ -76,6 +76,24 @@ async function fetchJobCardFeed(daemonUrl) {
   return response.json();
 }
 
+async function writeJobCardUpdate(daemonUrl, payload) {
+  const response = await fetch(`${daemonUrl}/job-card`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to write the job card to ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
 function getSessionLabel(page) {
   try {
     const hostname = new URL(page.url).hostname;

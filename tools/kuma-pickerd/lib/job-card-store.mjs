@@ -56,6 +56,21 @@ function normalizePoint(point) {
   };
 }
 
+function normalizePosition(position) {
+  const candidate = position && typeof position === "object" ? position : {};
+  const left = typeof candidate.left === "number" && Number.isFinite(candidate.left) ? candidate.left : null;
+  const top = typeof candidate.top === "number" && Number.isFinite(candidate.top) ? candidate.top : null;
+
+  if (left == null || top == null) {
+    return null;
+  }
+
+  return {
+    left,
+    top,
+  };
+}
+
 function normalizeAnchor(anchor) {
   const candidate = anchor && typeof anchor === "object" ? anchor : {};
   const selector =
@@ -146,6 +161,7 @@ function normalizeCard(card, fallback = {}) {
         : "user";
   const target = normalizeTarget(candidate.target) ?? normalizeTarget(fallback.target);
   const anchor = normalizeAnchor(candidate.anchor) ?? normalizeAnchor(fallback.anchor);
+  const position = normalizePosition(candidate.position) ?? normalizePosition(fallback.position);
 
   return {
     id,
@@ -160,6 +176,7 @@ function normalizeCard(card, fallback = {}) {
     author,
     anchor,
     target,
+    position,
   };
 }
 

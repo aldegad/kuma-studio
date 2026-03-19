@@ -10,13 +10,14 @@
   const FALLBACK_TOP = 16;
   const CARD_WIDTH = 260;
   const DISMISSED_STORAGE_KEY = "kuma-picker:dismissed-job-cards";
-  const POSITION_STORAGE_KEY = "kuma-picker:job-card-positions";
 
   let rootElement = null;
   const cards = new Map();
   const dismissedCardIds = new Set();
   let dismissedCardState = loadDismissedCardState();
-  let persistedPositions = loadPersistedPositions();
+  let renderScheduled = false;
+  let followLayoutFrameId = null;
+  let followLayoutUntilMs = 0;
 
   function loadDismissedCardState() {
     try {
@@ -48,69 +49,26 @@
     }
   }
 
-  function loadPersistedPositions() {
-    try {
-      const raw = globalThis.localStorage?.getItem(POSITION_STORAGE_KEY);
-      if (!raw) {
-        return {};
-      }
-
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") {
-        return {};
-      }
-
-      return Object.fromEntries(
-        Object.entries(parsed).filter(([, value]) => {
-          return (
-            value &&
-            typeof value === "object" &&
-            typeof value.left === "number" &&
-            Number.isFinite(value.left) &&
-            typeof value.top === "number" &&
-            Number.isFinite(value.top)
-          );
-        }),
-      );
-    } catch {
-      return {};
-    }
-  }
-
-  function persistPositions() {
-    try {
-      globalThis.localStorage?.setItem(POSITION_STORAGE_KEY, JSON.stringify(persistedPositions));
-    } catch {
-      // Ignore storage quota or disabled storage.
-    }
-  }
-
-  function loadSavedPosition(cardId) {
-    if (typeof cardId !== "string" || !cardId) {
+  async function persistCardPosition(card, position) {
+    if (!card?.id || !card?.sessionId || !position) {
       return null;
     }
 
-    const saved = persistedPositions[cardId];
-    if (!saved || typeof saved !== "object") {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "kuma-picker:update-job-card-position",
+        id: card.id,
+        sessionId: card.sessionId,
+        position: {
+          left: position.left,
+          top: position.top,
+        },
+      });
+
+      return response?.ok === false ? null : response ?? null;
+    } catch {
       return null;
     }
-
-    return {
-      left: saved.left,
-      top: saved.top,
-    };
-  }
-
-  function saveCardPosition(cardId, position) {
-    if (typeof cardId !== "string" || !cardId || !position) {
-      return;
-    }
-
-    persistedPositions[cardId] = {
-      left: position.left,
-      top: position.top,
-    };
-    persistPositions();
   }
 
   function markCardDismissed(card) {
@@ -149,6 +107,38 @@
     rootElement.style.pointerEvents = "none";
     rootElement.style.zIndex = "2147483645";
     document.documentElement.appendChild(rootElement);
+  }
+
+  function scheduleRender() {
+    if (renderScheduled) {
+      return;
+    }
+
+    renderScheduled = true;
+    globalThis.requestAnimationFrame(() => {
+      renderScheduled = false;
+      render();
+    });
+  }
+
+  function followLayoutFor(durationMs = 1_500) {
+    const nextDeadline = Date.now() + durationMs;
+    followLayoutUntilMs = Math.max(followLayoutUntilMs, nextDeadline);
+
+    if (followLayoutFrameId != null) {
+      return;
+    }
+
+    const tick = () => {
+      followLayoutFrameId = null;
+      render();
+
+      if (Date.now() < followLayoutUntilMs) {
+        followLayoutFrameId = globalThis.requestAnimationFrame(tick);
+      }
+    };
+
+    followLayoutFrameId = globalThis.requestAnimationFrame(tick);
   }
 
   function statusLabel(status) {
@@ -395,7 +385,7 @@
       resultLabel,
       resultMessage,
       meta,
-      manualPosition: loadSavedPosition(card.id),
+      dragPosition: null,
     };
 
     attachDragHandlers(state, closeButton);
@@ -435,8 +425,23 @@
 
       state.element.style.cursor = "grab";
       state.header.style.cursor = "grab";
-      if (state.card?.id && state.manualPosition) {
-        saveCardPosition(state.card.id, state.manualPosition);
+      const persistedPosition = state.dragPosition
+        ? {
+            left: state.dragPosition.left,
+            top: state.dragPosition.top,
+          }
+        : null;
+      if (persistedPosition) {
+        state.card = {
+          ...state.card,
+          position: persistedPosition,
+        };
+        state.dragPosition = null;
+        void persistCardPosition(state.card, persistedPosition).then((nextCard) => {
+          if (nextCard?.id === state.card?.id) {
+            upsertCard(nextCard);
+          }
+        });
       }
       window.removeEventListener("pointermove", handlePointerMove, true);
       window.removeEventListener("pointerup", endDrag, true);
@@ -451,9 +456,9 @@
 
       const nextLeft = dragState.startLeft + (event.clientX - dragState.startX);
       const nextTop = dragState.startTop + (event.clientY - dragState.startY);
-      state.manualPosition = clampManualPosition(nextLeft, nextTop, state.element);
-      state.element.style.left = `${state.manualPosition.left}px`;
-      state.element.style.top = `${state.manualPosition.top}px`;
+      state.dragPosition = clampManualPosition(nextLeft, nextTop, state.element);
+      state.element.style.left = `${state.dragPosition.left}px`;
+      state.element.style.top = `${state.dragPosition.top}px`;
       event.preventDefault();
     };
 
@@ -483,9 +488,19 @@
   }
 
   function placeCard(state, fallbackIndex = 0) {
-    if (state.manualPosition) {
-      const clamped = clampManualPosition(state.manualPosition.left, state.manualPosition.top, state.element);
-      state.manualPosition = clamped;
+    const explicitPosition =
+      state.dragPosition ??
+      (state.card?.position &&
+      typeof state.card.position === "object" &&
+      typeof state.card.position.left === "number" &&
+      Number.isFinite(state.card.position.left) &&
+      typeof state.card.position.top === "number" &&
+      Number.isFinite(state.card.position.top)
+        ? state.card.position
+        : null);
+
+    if (explicitPosition) {
+      const clamped = clampManualPosition(explicitPosition.left, explicitPosition.top, state.element);
       state.element.style.left = `${clamped.left}px`;
       state.element.style.top = `${clamped.top}px`;
       return;
@@ -567,7 +582,6 @@
         ...existing.card,
         ...card,
       };
-      existing.manualPosition = existing.manualPosition ?? loadSavedPosition(card.id);
       if (!isCardDismissed(existing.card)) {
         dismissedCardIds.delete(card.id);
       }
@@ -583,6 +597,7 @@
     }
 
     render();
+    followLayoutFor();
   }
 
   function removeCard(cardId) {
@@ -607,11 +622,13 @@
     }
   }
 
-  window.addEventListener("scroll", () => {
-    render();
+  document.addEventListener("scroll", scheduleRender, true);
+  window.addEventListener("resize", scheduleRender);
+  window.addEventListener("load", () => {
+    followLayoutFor();
   });
-  window.addEventListener("resize", () => {
-    render();
+  window.addEventListener("pageshow", () => {
+    followLayoutFor();
   });
 
   globalThis.KumaPickerExtensionJobCards = {

@@ -330,7 +330,7 @@ describe("kuma-pickerd job cards", () => {
     const persistedInitial = store.write(initialCard, {
       id: initialCard.id,
       sessionId: initialCard.sessionId,
-    }) as { id: string; status: string };
+    }) as { id: string; status: string; updatedAt: string };
     const persistedUpdated = store.write(
       {
         sessionId: "session_20",
@@ -344,6 +344,24 @@ describe("kuma-pickerd job cards", () => {
         target: initialCard.target,
       },
     ) as { id: string; status: string; message: string; author: string };
+    const persistedMoved = store.write(
+      {
+        sessionId: "session_20",
+        position: {
+          left: 320,
+          top: 240,
+        },
+      },
+      {
+        id: initialCard.id,
+        sessionId: initialCard.sessionId,
+      },
+    ) as {
+      id: string;
+      position: { left: number; top: number };
+      updatedAt: string;
+      status: string;
+    };
 
     const feed = store.readAll() as { cards: Array<{ id: string; status: string }> };
 
@@ -353,6 +371,10 @@ describe("kuma-pickerd job cards", () => {
     expect(persistedUpdated.status).toBe("completed");
     expect(persistedUpdated.message).toBe("Updated the layout and spacing.");
     expect(persistedUpdated.author).toBe("codex");
+    expect(persistedMoved.id).toBe(initialCard.id);
+    expect(persistedMoved.position).toEqual({ left: 320, top: 240 });
+    expect(persistedMoved.updatedAt).toBe(persistedUpdated.updatedAt);
+    expect(persistedMoved.status).toBe("completed");
     expect(feed.cards).toHaveLength(1);
     expect(feed.cards[0].id).toBe(initialCard.id);
   });

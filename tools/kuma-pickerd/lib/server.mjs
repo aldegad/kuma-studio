@@ -393,13 +393,15 @@ export function createServer({ host, port, root }) {
             ? selectionStore.readSession(payload.sessionId.trim())
             : null;
         const cardFromSelection = selection ? buildJobCardFromSelection(selection) : null;
+        const preserveUpdatedAt = payload?.preserveUpdatedAt === true;
         const card = jobCardStore.write(
           {
             ...cardFromSelection,
             ...payload,
             target: payload?.target ?? cardFromSelection?.target ?? null,
             anchor: payload?.anchor ?? cardFromSelection?.anchor ?? null,
-            updatedAt: new Date().toISOString(),
+            position: payload?.position ?? cardFromSelection?.position ?? null,
+            updatedAt: preserveUpdatedAt ? undefined : new Date().toISOString(),
           },
           {
             id: cardFromSelection?.id ?? payload?.id ?? null,
@@ -407,6 +409,7 @@ export function createServer({ host, port, root }) {
             selectionId: cardFromSelection?.selectionId ?? payload?.selectionId ?? null,
             target: cardFromSelection?.target ?? null,
             anchor: cardFromSelection?.anchor ?? null,
+            position: cardFromSelection?.position ?? null,
             createdAt: cardFromSelection?.createdAt ?? payload?.createdAt ?? null,
             author: cardFromSelection?.author ?? payload?.author ?? null,
             requestMessage: cardFromSelection?.requestMessage ?? payload?.requestMessage ?? null,

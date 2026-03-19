@@ -105,6 +105,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "kuma-picker:inspect-picked":
           sendResponse(await handleInspectPicked(message, sender));
           return;
+        case "kuma-picker:update-job-card-position":
+          sendResponse(
+            await writeJobCardUpdate(daemonUrl, {
+              id: typeof message?.id === "string" ? message.id : null,
+              sessionId: typeof message?.sessionId === "string" ? message.sessionId : null,
+              position:
+                message?.position &&
+                typeof message.position === "object" &&
+                typeof message.position.left === "number" &&
+                Number.isFinite(message.position.left) &&
+                typeof message.position.top === "number" &&
+                Number.isFinite(message.position.top)
+                  ? {
+                      left: message.position.left,
+                      top: message.position.top,
+                    }
+                  : null,
+              preserveUpdatedAt: true,
+            }),
+          );
+          return;
         case "kuma-picker:cancel-inspect":
           if (sender.tab?.id) {
             await clearInspectState(sender.tab.id);
