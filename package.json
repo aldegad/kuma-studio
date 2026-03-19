@@ -2,33 +2,18 @@
   "name": "kuma-picker",
   "version": "0.1.0",
   "private": true,
-  "description": "Local visual workspace and selection bridge for coding agents.",
+  "description": "Browser extension and local daemon for visual UI selection bridging with coding agents.",
   "license": "MIT",
   "packageManager": "npm@10.9.0",
-  "workspaces": [
-    "example/next-host"
-  ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "postinstall": "node ./scripts/link-example-runtime.mjs",
-    "setup:example": "node ./scripts/link-example-runtime.mjs",
-    "dev": "node ./scripts/dev-example.mjs",
-    "dev:web": "npm run dev --workspace=kuma-picker-example-next-host",
-    "dev:daemon": "node ./packages/server/src/cli.mjs serve --root ./example/next-host",
-    "build": "node ./scripts/link-example-runtime.mjs && npm run build --workspace=kuma-picker-example-next-host",
-    "lint": "node ./scripts/link-example-runtime.mjs && npm run lint --workspace=kuma-picker-example-next-host",
-    "typecheck": "node ./scripts/link-example-runtime.mjs && npm run typecheck --workspace=kuma-picker-example-next-host",
     "test": "vitest run --passWithNoTests",
-    "skill:install": "node ./scripts/install-codex-skill.mjs",
-    "skill:update": "npm run skill:install",
-    "extension:install": "node ./scripts/install-extension.mjs",
-    "kuma-pickerd:serve": "node ./packages/server/src/cli.mjs serve --root ./example/next-host",
-    "kuma-pickerd:get-scene": "node ./packages/server/src/cli.mjs get-scene --root ./example/next-host",
-    "kuma-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection --root ./example/next-host",
-    "kuma-pickerd:get-agent-note": "node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host",
-    "kuma-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host",
+    "kuma-pickerd:serve": "node ./packages/server/src/cli.mjs serve",
+    "kuma-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection",
+    "kuma-pickerd:get-agent-note": "node ./packages/server/src/cli.mjs get-agent-note",
+    "kuma-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status",
     "kuma-pickerd:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
     "kuma-pickerd:browser-context": "node ./packages/server/src/cli.mjs browser-context",
     "kuma-pickerd:browser-dom": "node ./packages/server/src/cli.mjs browser-dom",
@@ -48,14 +33,11 @@
     "kuma-pickerd:browser-wait-for-selector": "node ./packages/server/src/cli.mjs browser-wait-for-selector",
     "kuma-pickerd:browser-wait-for-dialog-close": "node ./packages/server/src/cli.mjs browser-wait-for-dialog-close",
     "kuma-pickerd:browser-query-dom": "node ./packages/server/src/cli.mjs browser-query-dom",
-    "kuma-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host",
-    "kuma-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note --root ./example/next-host"
+    "kuma-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note",
+    "kuma-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note"
   },
   "devDependencies": {
     "@types/node": "25.3.5",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "typescript": "5.9.3",
     "vitest": "4.0.18"
   },
   "dependencies": {
