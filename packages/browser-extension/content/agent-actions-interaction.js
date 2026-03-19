@@ -11,6 +11,7 @@ var {
   resolveCommandTarget: coreResolveCommandTarget,
   resolveFillTarget: coreResolveFillTarget,
 } = globalThis.AgentPickerExtensionAgentActionCore;
+var gestureOverlay = globalThis.AgentPickerExtensionAgentGestureOverlay ?? null;
 
 var AgentPickerExtensionAgentActionInteraction = (() => {
   function waitForDelay(ms) {
@@ -30,9 +31,50 @@ var AgentPickerExtensionAgentActionInteraction = (() => {
     await waitForDelay(postActionDelayMs);
   }
 
-  function focusElement(target) {
+  function isRectMostlyVisible(rect) {
+    return (
+      rect.bottom >= 0 &&
+      rect.right >= 0 &&
+      rect.top <= window.innerHeight &&
+      rect.left <= window.innerWidth
+    );
+  }
+
+  function readElementCenter(rect) {
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }
+
+  async function waitForAnimationFrames(count) {
+    for (let index = 0; index < count; index += 1) {
+      await new Promise((resolvePromise) => {
+        window.requestAnimationFrame(() => resolvePromise());
+      });
+    }
+  }
+
+  async function focusElement(target) {
+    const beforeRect = target.getBoundingClientRect();
+    const shouldWatchScroll = !isRectMostlyVisible(beforeRect);
     target.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
     target.focus?.({ preventScroll: true });
+
+    if (!shouldWatchScroll) {
+      return;
+    }
+
+    await waitForAnimationFrames(2);
+
+    const afterRect = target.getBoundingClientRect();
+    const deltaY = afterRect.top - beforeRect.top;
+    if (Math.abs(deltaY) >= 18) {
+      await gestureOverlay?.playScrollGesture?.({
+        deltaY,
+        center: readElementCenter(afterRect),
+      });
+    }
   }
 
   function dispatchMouseEvent(target, type, clientX, clientY) {
@@ -163,12 +205,14 @@ var AgentPickerExtensionAgentActionInteraction = (() => {
       throw new Error("Failed to find a matching element to click in the active tab.");
     }
 
-    focusElement(target);
+    await focusElement(target);
     const before = readClickOutcome(target);
     const rect = target.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     let fallbackUsed = false;
+
+    await gestureOverlay?.playClickGesture?.({ x: centerX, y: centerY });
 
     if (target instanceof HTMLElement) {
       target.click();
@@ -193,7 +237,8 @@ var AgentPickerExtensionAgentActionInteraction = (() => {
 
   async function executeClickPointCommand(command) {
     const { x, y, target } = getPointTarget(command);
-    focusElement(target);
+    await focusElement(target);
+    await gestureOverlay?.playClickGesture?.({ x, y });
     dispatchClickSequence(target, x, y);
     await waitForPostActionDelay(command, 400);
 
@@ -211,7 +256,7 @@ var AgentPickerExtensionAgentActionInteraction = (() => {
     }
 
     const value = typeof command?.value === "string" ? command.value : "";
-    focusElement(target);
+    await focusElement(target);
 
     if (coreIsTextInputElement(target)) {
       setNativeValue(target, value);
