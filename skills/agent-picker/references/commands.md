@@ -20,6 +20,7 @@ npm run agent-pickerd:browser-dom -- --url-contains "example.com"
 npm run agent-pickerd:browser-console -- --url-contains "example.com"
 npm run agent-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
 npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
+npm run agent-pickerd:browser-sequence -- --url-contains "example.com" --steps-file ./tmp/sequence.json
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
 npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
@@ -46,6 +47,7 @@ npm run agent-pickerd:browser-dom -- --url-contains "example.com"
 npm run agent-pickerd:browser-console -- --url-contains "example.com"
 npm run agent-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
 npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
+npm run agent-pickerd:browser-sequence -- --url-contains "example.com" --steps-file ./tmp/sequence.json
 npm run agent-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
 npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab
@@ -77,8 +79,9 @@ Use these before relying on the Chrome extension bridge:
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
 - The CLI still uses the same `browser-*` commands, but they are now transported over WebSocket instead of the deprecated HTTP polling queue.
 - Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
-- Background tabs can also answer `browser-fill`, `browser-key`, `browser-refresh`, and `browser-click-point`.
+- Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, and `browser-click-point`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
+- Use `browser-sequence` when a dropdown or modal workflow should stay alive across multiple steps, and add per-step `assert` checks for postcondition verification.
 - Use the wait commands to verify save states instead of guessing from click timing alone.
 - Use `browser-query-dom` when a long DOM snapshot is too noisy and you need nearby or required field results.
 - Use `browser-console` to inspect recent `console.*`, `window.onerror`, and `unhandledrejection` events after a refresh or action.

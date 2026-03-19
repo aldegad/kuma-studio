@@ -35,6 +35,7 @@
     "agent-pickerd:browser-console": "node ./packages/server/src/cli.mjs browser-console",
     "agent-pickerd:browser-debugger-capture": "node ./packages/server/src/cli.mjs browser-debugger-capture",
     "agent-pickerd:browser-click": "node ./packages/server/src/cli.mjs browser-click",
+    "agent-pickerd:browser-sequence": "node ./packages/server/src/cli.mjs browser-sequence",
     "agent-pickerd:browser-click-point": "node ./packages/server/src/cli.mjs browser-click-point",
     "agent-pickerd:browser-fill": "node ./packages/server/src/cli.mjs browser-fill",
     "agent-pickerd:browser-key": "node ./packages/server/src/cli.mjs browser-key",

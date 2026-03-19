@@ -189,6 +189,7 @@ async function executeBrowserCommand(tab, command) {
       return captureDebuggerDiagnostics(tab, command);
     case "dom":
     case "click":
+    case "sequence":
     case "click-point":
     case "fill":
     case "key":

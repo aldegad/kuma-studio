@@ -15,6 +15,7 @@ import {
   commandBrowserKey,
   commandBrowserQueryDom,
   commandBrowserRefresh,
+  commandBrowserSequence,
   commandBrowserScreenshot,
   commandBrowserWaitForDownload,
   commandBrowserWaitForDialogClose,
@@ -49,6 +50,7 @@ Usage:
   node main.mjs browser-console (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-debugger-capture [--refresh] [--bypass-cache] [--capture-ms 3000] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] [--exact-text] [--role tab] [--within "설정 모드"] [--nth 1] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-sequence (--steps '[{"type":"click","text":"File","assert":{"type":"wait-for-selector","selector":"[role=\"menu\"]","timeoutMs":1200}},{"type":"click","text":"Export video"}]' | --steps-file ./tmp/sequence.json) (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-click-point --x 120 --y 240 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-key --key Tab [--shift] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
@@ -243,6 +245,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-click":
       await commandBrowserClick(options);
+      return;
+    case "browser-sequence":
+      await commandBrowserSequence(options);
       return;
     case "browser-click-point":
       await commandBrowserClickPoint(options);

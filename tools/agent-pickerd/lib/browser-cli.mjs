@@ -8,6 +8,7 @@ import {
   normalizeDaemonUrl,
   resolveBrowserTransportMode,
 } from "./browser-transport.mjs";
+import { readBrowserSequenceSteps } from "./browser-sequence.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";
 
 function getDaemonUrlFromOptions(options) {
@@ -296,6 +297,14 @@ export async function commandBrowserClick(options) {
     nth,
     exactText,
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 400),
+  });
+  process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
+}
+
+export async function commandBrowserSequence(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence",
+    steps: readBrowserSequenceSteps(options),
   });
   process.stdout.write(`${JSON.stringify(result.result ?? null, null, 2)}\n`);
 }

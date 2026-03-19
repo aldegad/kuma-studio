@@ -66,6 +66,7 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
    - `npm run agent-pickerd:browser-console -- --url-contains "example.com"`
    - `npm run agent-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000`
    - `npm run agent-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"`
+   - `npm run agent-pickerd:browser-sequence -- --url-contains "example.com" --steps-file ./tmp/sequence.json`
    - `npm run agent-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"`
    - `npm run agent-pickerd:browser-key -- --url-contains "example.com" --key Tab`
    - `npm run agent-pickerd:browser-refresh -- --url-contains "example.com"`
@@ -82,6 +83,7 @@ Use this when the user wants the Agent Picker Chrome extension to inspect a live
 
 - Never infer success from a click alone.
 - After any write action, verify the persisted state with a direct readback.
+- Prefer `browser-sequence` with per-step `assert` checks when menus or modal states can disappear between separate commands.
 - Prefer selector, role, and label targeting over text-only clicks when duplicate text may exist.
 - Use point clicks only after semantic targeting fails.
 

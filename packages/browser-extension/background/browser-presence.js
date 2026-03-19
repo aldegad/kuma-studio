@@ -6,6 +6,7 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "console",
   "debugger-capture",
   "click",
+  "sequence",
   "click-point",
   "fill",
   "key",

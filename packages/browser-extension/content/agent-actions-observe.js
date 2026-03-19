@@ -435,7 +435,113 @@ function executeQueryDomCommand(command) {
   };
 }
 
-async function executeBrowserCommand(command) {
+const SEQUENCE_STEP_TYPES = new Set([
+  "click",
+  "click-point",
+  "fill",
+  "key",
+  "wait-for-text",
+  "wait-for-text-disappear",
+  "wait-for-selector",
+  "wait-for-dialog-close",
+  "query-dom",
+  "measure",
+  "dom",
+  "console",
+]);
+
+const SEQUENCE_ASSERTION_TYPES = new Set([
+  "wait-for-text",
+  "wait-for-text-disappear",
+  "wait-for-selector",
+  "wait-for-dialog-close",
+]);
+
+function normalizeSequenceSteps(command) {
+  if (!Array.isArray(command?.steps) || command.steps.length === 0) {
+    throw new Error("The browser sequence command requires a non-empty steps array.");
+  }
+
+  return command.steps;
+}
+
+function normalizeSequenceAssertions(step) {
+  if (!Array.isArray(step?.assertions) || step.assertions.length === 0) {
+    return [];
+  }
+
+  return step.assertions;
+}
+
+async function executeSequenceAssertions(assertions, stepIndex) {
+  const results = [];
+
+  for (let assertionIndex = 0; assertionIndex < assertions.length; assertionIndex += 1) {
+    const assertion = assertions[assertionIndex];
+    const type = coreNormalizeText(assertion?.type).toLowerCase();
+    if (!SEQUENCE_ASSERTION_TYPES.has(type)) {
+      throw new Error(
+        `Sequence step ${stepIndex + 1} assertion ${assertionIndex + 1} uses unsupported type "${String(assertion?.type)}".`,
+      );
+    }
+
+    try {
+      const result = await executeBrowserCommandInternal({ ...assertion, type }, { allowSequence: false });
+      results.push({
+        index: assertionIndex + 1,
+        type,
+        result,
+      });
+    } catch (error) {
+      throw new Error(
+        `Sequence step ${stepIndex + 1} assertion ${assertionIndex + 1} (${type}) failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  return results;
+}
+
+async function executeSequenceCommand(command) {
+  const steps = normalizeSequenceSteps(command);
+  const completedSteps = [];
+
+  for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
+    const step = steps[stepIndex];
+    if (!step || typeof step !== "object" || Array.isArray(step)) {
+      throw new Error(`Sequence step ${stepIndex + 1} must be an object.`);
+    }
+
+    const type = coreNormalizeText(step?.type).toLowerCase();
+    if (!SEQUENCE_STEP_TYPES.has(type)) {
+      throw new Error(`Sequence step ${stepIndex + 1} uses unsupported type "${String(step?.type)}".`);
+    }
+
+    const { assertions, ...stepCommand } = step;
+
+    try {
+      const result = await executeBrowserCommandInternal({ ...stepCommand, type }, { allowSequence: false });
+      completedSteps.push({
+        index: stepIndex + 1,
+        type,
+        label: typeof step.label === "string" && step.label.trim() ? step.label.trim() : null,
+        result,
+        assertions: await executeSequenceAssertions(normalizeSequenceAssertions(step), stepIndex),
+      });
+    } catch (error) {
+      throw new Error(`Sequence step ${stepIndex + 1} (${type}) failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  return {
+    page: buildPageRecord(),
+    stepCount: completedSteps.length,
+    steps: completedSteps,
+  };
+}
+
+async function executeBrowserCommandInternal(command, options = {}) {
+  const allowSequence = options.allowSequence !== false;
   switch (command?.type) {
     case "context":
       return { pageContext: buildPageContext(getPageTargetElement()) };
@@ -451,6 +557,11 @@ async function executeBrowserCommand(command) {
       };
     case "click":
       return interactionExecuteClickCommand(command);
+    case "sequence":
+      if (!allowSequence) {
+        throw new Error("Nested browser-sequence commands are not supported.");
+      }
+      return executeSequenceCommand(command);
     case "click-point":
       return interactionExecuteClickPointCommand(command);
     case "fill":
@@ -472,6 +583,10 @@ async function executeBrowserCommand(command) {
     default:
       throw new Error(`Unsupported Agent Picker browser command: ${String(command?.type)}`);
   }
+}
+
+async function executeBrowserCommand(command) {
+  return executeBrowserCommandInternal(command, { allowSequence: true });
 }
 
 globalThis.AgentPickerExtensionAgentActions = { executeBrowserCommand };

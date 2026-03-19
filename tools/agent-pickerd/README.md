@@ -107,7 +107,7 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, `browser-click`,
-`browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-screenshot`,
+`browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane by default.
 
@@ -136,6 +136,7 @@ node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.c
 node ./packages/server/src/cli.mjs browser-console --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-debugger-capture --url-contains "ddalkkakposting.com" --refresh --bypass-cache --capture-ms 4000
 node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting.com" --role button --exact-text --text "다음"
+node ./packages/server/src/cli.mjs browser-sequence --url-contains "ddalkkakposting.com" --steps-file ./tmp/export-sequence.json
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
@@ -176,6 +177,8 @@ For browser commands:
 - use `browser-debugger-capture` when you need short-lived DevTools-level `Runtime`, `Log`, and `Network` diagnostics
 - add `--refresh --bypass-cache` to `browser-debugger-capture` for deploy verification and capture the next page-load failures
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
+- use `browser-sequence` when a menu, dropdown, or modal flow must stay alive across multiple clicks
+- add per-step `assert` checks in `browser-sequence` to verify that each write actually changed the UI before moving on
 - use `browser-wait-for-download` when the action should end in a real downloaded file path
 - use `browser-wait-for-text`, `browser-wait-for-text-disappear`, `browser-wait-for-selector`, and `browser-wait-for-dialog-close` to confirm save flows
 - use `browser-query-dom` for structured questions such as required fields, nearby inputs, menu state, selected options, tab state, or all textareas
