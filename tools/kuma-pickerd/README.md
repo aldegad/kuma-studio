@@ -23,16 +23,16 @@ Agents update the same source of truth through the CLI or the shared state files
 In the standalone repository:
 
 ```bash
-npm run dev
-```
-
-That starts both the bundled example host and the daemon with a matched URL/port configuration.
-
-If you want only the daemon:
-
-```bash
 npm run kuma-pickerd:serve
 ```
+
+If you also want the bundled test web, run this in a second terminal:
+
+```bash
+npm run dev:web
+```
+
+The test web lives under `example/next-host` and provides the bundled Sudoku, chat, and cafe automation surfaces.
 
 Direct CLI usage from the standalone repository:
 

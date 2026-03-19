@@ -2,13 +2,20 @@
   "name": "kuma-picker",
   "version": "0.1.0",
   "private": true,
-  "description": "Browser extension and local daemon for visual UI selection bridging with coding agents.",
+  "description": "Browser extension, local daemon, and bundled test web for visual UI selection bridging with coding agents.",
+  "workspaces": [
+    "example/next-host"
+  ],
   "license": "MIT",
   "packageManager": "npm@10.9.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "dev:web": "npm run dev --workspace=kuma-picker-example-next-host",
+    "build:web": "npm run build --workspace=kuma-picker-example-next-host",
+    "lint:web": "npm run lint --workspace=kuma-picker-example-next-host",
+    "typecheck:web": "npm run typecheck --workspace=kuma-picker-example-next-host",
     "test": "vitest run --passWithNoTests",
     "kuma-pickerd:serve": "node ./packages/server/src/cli.mjs serve",
     "kuma-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection",

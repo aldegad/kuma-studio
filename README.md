@@ -5,12 +5,14 @@
 # Kuma Picker
 
 Kuma Picker is a browser extension and local daemon for visual UI selection bridging with coding agents. Use the Chrome extension to pick elements on any page and coordinate work through `kuma-pickerd`.
+The repo also ships a bundled Next.js test web under `example/next-host` for browser automation smoke tests. The older design-lab and local embedding workflow are intentionally out of scope.
 
 ## Domains
 
 - `packages/browser-extension/`: unpacked Chrome extension that bridges arbitrary pages into `kuma-pickerd`
 - `packages/server/`: `kuma-pickerd` entrypoint shim
 - `tools/kuma-pickerd/`: local state daemon implementation
+- `example/next-host/`: bundled test web with Sudoku, chat, and cafe flows for extension-driven testing
 
 ## Getting Started
 
@@ -20,6 +22,12 @@ npm run kuma-pickerd:serve
 ```
 
 Load the unpacked extension from `packages/browser-extension/` in `chrome://extensions`, then point the extension popup at the running daemon URL (default `http://127.0.0.1:4312`).
+
+If you want the bundled test web too, run this in a second terminal:
+
+```bash
+npm run dev:web
+```
 
 ## Agent Workflow
 
@@ -39,8 +47,12 @@ Agent-specific guidance lives here:
 ## Common Commands
 
 - `npm run kuma-pickerd:serve`: start the local daemon
+- `npm run dev:web`: start the bundled test web
+- `npm run build:web`: build the bundled test web
+- `npm run typecheck:web`: typecheck the bundled test web
 - `npm run kuma-pickerd:get-selection`: read the latest saved selection
 - `npm run kuma-pickerd:get-agent-note`: read the latest agent note
+- `npm run kuma-pickerd:get-job-card`: read the latest browser work card
 - `npm run kuma-pickerd:get-extension-status`: show the latest browser extension heartbeat
 - `npm run kuma-pickerd:get-browser-session`: check browser bridge session
 - `npm run kuma-pickerd:browser-context`: get browser context from extension
