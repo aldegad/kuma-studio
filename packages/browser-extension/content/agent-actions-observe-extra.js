@@ -58,9 +58,12 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
         role: record.role,
         selector: record.selector,
         selectorPath: record.selectorPath,
+        focused: document.activeElement === element,
         value: record.value,
         displayValue,
         valuePreview: record.valuePreview,
+        selectionStart: record.selectionStart,
+        selectionEnd: record.selectionEnd,
         checked: record.checked,
         selectedValue: record.selectedValue,
         selectedValues: record.selectedValues,
@@ -273,16 +276,36 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       return filterSemanticMatches(Array.from(getQueryableRoot(scope).querySelectorAll("[role='tab']")).filter(isVisibleElement), text);
     }
 
+    function querySelectorState(scope, command) {
+      const selector = normalizeText(command?.selectorPath) || normalizeText(command?.selector);
+      if (!selector) {
+        throw new Error("browser-query-dom --kind selector-state requires --selector or --selector-path.");
+      }
+
+      const root = getQueryableRoot(scope);
+      const target = deps.findElementBySelectorWithinRoot(selector, root);
+      if (!(target instanceof Element)) {
+        throw new Error(`Failed to find an element that matches ${selector}.`);
+      }
+
+      return { selector, elements: [target] };
+    }
+
     function executeQueryDomCommand(command) {
       const kind = normalizeText(command?.kind).toLowerCase();
       const text = normalizeText(command?.text);
       const scope = command?.scope === "dialog" ? "dialog" : "page";
+      const selectorState = kind === "selector-state" ? querySelectorState(scope, command) : null;
 
       const queryMap = {
         "required-fields": { elements: queryRequiredFields(scope), serializer: serializeQueryResult },
         "all-textareas": { elements: queryAllTextareas(scope), serializer: serializeQueryResult },
         "nearby-input": { elements: text ? queryNearbyInput(scope, text) : null, serializer: serializeQueryResult, requiresText: true },
         "input-by-label": { elements: text ? queryInputByLabel(scope, text) : null, serializer: serializeQueryResult, requiresText: true },
+        "selector-state": {
+          elements: selectorState?.elements ?? null,
+          serializer: serializeQueryResult,
+        },
         "menu-state": {
           elements: text ? queryMenuState(scope, text) : null,
           serializer(element) {
@@ -331,6 +354,7 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
         page: buildPageRecord(),
         kind,
         scope,
+        selector: selectorState?.selector ?? null,
         count: definition.elements.length,
         results: definition.elements.map(definition.serializer),
       };
@@ -342,6 +366,11 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       "pointer-drag",
       "fill",
       "key",
+      "keydown",
+      "keyup",
+      "mousemove",
+      "mousedown",
+      "mouseup",
       "wait-for-text",
       "wait-for-text-disappear",
       "wait-for-selector",
@@ -357,6 +386,7 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       "wait-for-text-disappear",
       "wait-for-selector",
       "wait-for-dialog-close",
+      "selector-state",
     ]);
 
     function normalizeSequenceSteps(command) {
@@ -375,6 +405,31 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       return step.assertions;
     }
 
+    function assertSelectorState(assertion, actual, stepIndex, assertionIndex) {
+      const expectedEntries = Object.entries({
+        value: assertion?.value,
+        focused: typeof assertion?.focused === "boolean" ? assertion.focused : undefined,
+        selectionStart:
+          typeof assertion?.selectionStart === "number" && Number.isFinite(assertion.selectionStart)
+            ? assertion.selectionStart
+            : undefined,
+        selectionEnd:
+          typeof assertion?.selectionEnd === "number" && Number.isFinite(assertion.selectionEnd)
+            ? assertion.selectionEnd
+            : undefined,
+        textContent: typeof assertion?.textContent === "string" ? assertion.textContent : undefined,
+        visible: typeof assertion?.visible === "boolean" ? assertion.visible : undefined,
+      }).filter(([, value]) => value !== undefined);
+
+      for (const [field, expectedValue] of expectedEntries) {
+        if (actual?.[field] !== expectedValue) {
+          throw new Error(
+            `Sequence step ${stepIndex + 1} assertion ${assertionIndex + 1} (selector-state) expected ${field}=${JSON.stringify(expectedValue)} but got ${JSON.stringify(actual?.[field] ?? null)}.`,
+          );
+        }
+      }
+    }
+
     async function executeSequenceAssertions(assertions, stepIndex) {
       const results = [];
 
@@ -388,7 +443,19 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
         }
 
         try {
-          const result = await runNestedCommand({ ...assertion, type });
+          let result;
+          if (type === "selector-state") {
+            const selectorResult = executeQueryDomCommand({
+              ...assertion,
+              type: "query-dom",
+              kind: "selector-state",
+            });
+            const actual = Array.isArray(selectorResult?.results) ? selectorResult.results[0] ?? null : null;
+            assertSelectorState(assertion, actual, stepIndex, assertionIndex);
+            result = selectorResult;
+          } else {
+            result = await runNestedCommand({ ...assertion, type });
+          }
           results.push({
             index: assertionIndex + 1,
             type,

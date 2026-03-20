@@ -13,6 +13,10 @@ import {
   getMetrics,
 } from "./shooting-engine";
 
+function createMetricTestId(label: string) {
+  return `shooting-metric-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
+}
+
 // ─── Canvas renderer (pure 2D — no images needed) ───
 
 function syncResolution(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
@@ -459,7 +463,10 @@ function MetricCard({
   tone: "gold" | "cream" | "mint" | "rose";
 }) {
   return (
-    <div className={`kuma-metric kuma-metric-${tone} flex items-center justify-between gap-4`}>
+    <div
+      className={`kuma-metric kuma-metric-${tone} flex items-center justify-between gap-4`}
+      data-testid={createMetricTestId(label)}
+    >
       <span className="text-sm font-semibold">{label}</span>
       <span className="text-lg font-black tabular-nums">
         {value}

@@ -106,7 +106,7 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, `browser-click`,
-`browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
+`browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-navigate`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane.
 
@@ -122,6 +122,9 @@ node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --al
 node ./packages/server/src/cli.mjs get-job-card --root ./example/next-host
 node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host
 node ./packages/server/src/cli.mjs get-browser-session
+node ./packages/server/src/cli.mjs browser-navigate --url "http://localhost:3000"
+node ./packages/server/src/cli.mjs browser-navigate --url "http://localhost:3001" --new-tab
+node ./packages/server/src/cli.mjs browser-navigate --tab-id 123456 --url "http://localhost:3000"
 node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status in_progress --message "Implementing the requested UI change."
 node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status completed --message "Updated the picked element and verified the change."
 node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
@@ -163,11 +166,15 @@ node ./vendor/kuma-picker/packages/server/src/cli.mjs set-job-status --root . --
 
 For browser commands:
 
-- always provide `--tab-id`, `--url`, or `--url-contains`
+- `browser-navigate` requires `--url` as the destination URL and can target the active tab by default
+- add `--tab-id` to `browser-navigate` when you want to reuse a specific tab instead of the active one
+- add `--new-tab` to `browser-navigate` when you want Chrome to open a new tab for the destination URL
+- always provide `--tab-id`, `--url`, or `--url-contains` for all other browser commands
 - use `--tab-id` for a specific tab when you know the Chrome tab id
 - use `--url` for an exact tab URL match
 - use `--url-contains` for a looser match when the URL has changing query params
 - browser control is routed over the daemon's WebSocket control plane, not the old HTTP polling queue
+- use `browser-navigate` when the agent needs to open a dev server, docs page, or new browser tab before any DOM action is possible
 - use `browser-console` to read recent `console.*`, `window.onerror`, and `unhandledrejection` events from the target page
 - use `browser-debugger-capture` when you need short-lived DevTools-level `Runtime`, `Log`, and `Network` diagnostics
 - add `--refresh --bypass-cache` to `browser-debugger-capture` for deploy verification and capture the next page-load failures

@@ -84,6 +84,7 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
    - When `get-browser-session` reports more than one live tab, prefer `--tab-id` from that summary instead of relying on the current active tab.
 4. Use the narrowest targeted browser command that answers the question.
    - `npm run kuma-pickerd:browser-context -- --url-contains "example.com"`
+   - `npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"`
    - `npm run kuma-pickerd:browser-dom -- --url-contains "example.com"`
    - `npm run kuma-pickerd:browser-console -- --url-contains "example.com"`
    - `npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000`

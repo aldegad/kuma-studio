@@ -20,9 +20,12 @@ export function readCommandTargetOptions(options) {
   };
 }
 
-export function requireCommandTarget(options) {
+export function requireCommandTarget(options, { allowUntargeted = false } = {}) {
   const targets = readCommandTargetOptions(options);
   if (!targets.targetTabId && !targets.targetUrl && !targets.targetUrlContains) {
+    if (allowUntargeted) {
+      return targets;
+    }
     throw new Error("Browser commands require --tab-id, --url, or --url-contains.");
   }
 
@@ -31,6 +34,27 @@ export function requireCommandTarget(options) {
 
 function createRequestId() {
   return `browser-command-${randomUUID()}`;
+}
+
+function withBrowserRecoveryHint(message) {
+  const normalized = typeof message === "string" ? message.trim() : "";
+  if (!normalized) {
+    return "Browser command failed.";
+  }
+
+  if (normalized.includes("browser command tools are not loaded for this page yet")) {
+    return `${normalized} Refresh the target page once or retry after the content script reattaches.`;
+  }
+
+  if (normalized.includes("No active browser connection is available")) {
+    return `${normalized} Refresh the target page once so the extension can send a fresh presence heartbeat.`;
+  }
+
+  if (normalized.includes("socket closed before the command completed")) {
+    return `${normalized} If the page just reloaded, refresh the target page once and retry.`;
+  }
+
+  return normalized;
 }
 
 export async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {
@@ -74,11 +98,11 @@ function connectWebSocket(url) {
   });
 }
 
-export async function enqueueBrowserCommand(options, payload) {
+export async function enqueueBrowserCommand(options, payload, commandOptions = {}) {
   const daemonUrl = getDaemonUrlFromOptions(options);
   const timeoutMs = readNumber(options, "timeout-ms", 15_000);
   const controllerTimeoutMs = timeoutMs + 2_000;
-  const targets = requireCommandTarget(options);
+  const targets = requireCommandTarget(options, commandOptions);
   const requestId = createRequestId();
   const socket = await connectWebSocket(createBrowserSessionSocketUrl(daemonUrl));
 
@@ -90,7 +114,7 @@ export async function enqueueBrowserCommand(options, payload) {
       socket.close();
       rejectCommand(
         new Error(
-          `Timed out waiting for the browser command result after ${controllerTimeoutMs}ms. Keep the target tab open with the extension connected.`,
+          `Timed out waiting for the browser command result after ${controllerTimeoutMs}ms. Keep the target tab open with the extension connected. If the page just reloaded, refresh the target page once and retry.`,
         ),
       );
     }, controllerTimeoutMs);
@@ -129,7 +153,7 @@ export async function enqueueBrowserCommand(options, payload) {
           return;
         case "command.error":
           if (!message.requestId || message.requestId === requestId) {
-            settle(rejectCommand, new Error(message.error || "Browser command failed."));
+            settle(rejectCommand, new Error(withBrowserRecoveryHint(message.error || "Browser command failed.")));
           }
           return;
         default:
@@ -143,7 +167,7 @@ export async function enqueueBrowserCommand(options, payload) {
 
     socket.on("close", () => {
       if (!settled) {
-        settle(rejectCommand, new Error("Browser control socket closed before the command completed."));
+        settle(rejectCommand, new Error(withBrowserRecoveryHint("Browser control socket closed before the command completed.")));
       }
     });
 

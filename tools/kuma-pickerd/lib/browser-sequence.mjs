@@ -9,6 +9,11 @@ const SUPPORTED_SEQUENCE_STEP_TYPES = new Set([
   "pointer-drag",
   "fill",
   "key",
+  "keydown",
+  "keyup",
+  "mousemove",
+  "mousedown",
+  "mouseup",
   "wait-for-text",
   "wait-for-text-disappear",
   "wait-for-selector",
@@ -24,6 +29,7 @@ const SUPPORTED_SEQUENCE_ASSERTION_TYPES = new Set([
   "wait-for-text-disappear",
   "wait-for-selector",
   "wait-for-dialog-close",
+  "selector-state",
 ]);
 
 function parseJson(rawValue, sourceLabel) {

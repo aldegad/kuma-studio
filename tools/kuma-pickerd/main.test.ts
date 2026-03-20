@@ -112,17 +112,24 @@ describe("kuma-pickerd browser usage", () => {
 
     expect(output).toContain("browser-console");
     expect(output).toContain("browser-debugger-capture");
+    expect(output).toContain("browser-navigate");
     expect(output).toContain("browser-sequence");
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
+    expect(output).toContain("browser-download-permission");
     expect(output).toContain("--hold-ms 250");
+    expect(output).toContain("browser-keydown");
+    expect(output).toContain("browser-keyup");
+    expect(output).toContain("browser-mousemove");
+    expect(output).toContain("browser-mousedown");
+    expect(output).toContain("browser-mouseup");
     expect(output).toContain("get-job-card");
     expect(output).toContain("set-job-status");
     expect(output).not.toContain("get-agent-note");
     expect(output).not.toContain("set-agent-note");
     expect(output).not.toContain("clear-agent-note");
-    expect(output).toContain("menu-state|selected-option|tab-state");
+    expect(output).toContain("menu-state|selected-option|tab-state|selector-state");
   });
 });
 

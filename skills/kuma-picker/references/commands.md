@@ -18,6 +18,9 @@ npm run kuma-pickerd:get-selection -- --all
 npm run kuma-pickerd:get-job-card
 npm run kuma-pickerd:get-browser-session
 npm run kuma-pickerd:browser-context -- --url-contains "example.com"
+npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"
+npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3001" --new-tab
+npm run kuma-pickerd:browser-navigate -- --tab-id 123456 --url "http://localhost:3000"
 npm run kuma-pickerd:browser-dom -- --url-contains "example.com"
 npm run kuma-pickerd:browser-console -- --url-contains "example.com"
 npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
@@ -27,8 +30,17 @@ npm run kuma-pickerd:browser-click-point -- --url-contains "example.com" --x 420
 npm run kuma-pickerd:browser-pointer-drag -- --url-contains "example.com" --from-x 120 --from-y 260 --to-x 420 --to-y 260
 npm run kuma-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run kuma-pickerd:browser-key -- --url-contains "example.com" --key Tab
+npm run kuma-pickerd:browser-key -- --url-contains "example.com" --key ArrowLeft --hold-ms 400
+npm run kuma-pickerd:browser-keydown -- --url-contains "example.com" --selector "[data-testid='chat-input-1p']" --meta --key a
+npm run kuma-pickerd:browser-keyup -- --url-contains "example.com" --selector "[data-testid='chat-input-1p']" --meta --key a
+npm run kuma-pickerd:browser-mousedown -- --url-contains "example.com" --x 320 --y 460
+npm run kuma-pickerd:browser-mousemove -- --url-contains "example.com" --x 420 --y 460
+npm run kuma-pickerd:browser-mouseup -- --url-contains "example.com" --x 420 --y 460
+npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind selector-state --selector "[data-testid='chat-input-1p']"
+npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","assert":{"type":"selector-state","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","focused":true}}]'
 npm run kuma-pickerd:browser-refresh -- --url-contains "example.com"
 npm run kuma-pickerd:browser-refresh -- --url-contains "example.com" --bypass-cache
+npm run kuma-pickerd:browser-screenshot -- --tab-id 123 --file ./tmp/current-tab.png --restore-previous-active-tab
 npm run kuma-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
 npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind input-by-label --text "Site URL" --scope dialog
 npm run kuma-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
@@ -49,24 +61,33 @@ Use these before relying on the Chrome extension bridge:
 
 ## Browser command targeting
 
-- Always provide `--tab-id`, `--url`, or `--url-contains`.
+- `browser-navigate` requires `--url` as the destination URL and can use the active tab by default.
+- Add `--tab-id` to `browser-navigate` when you want to reuse a specific tab.
+- Add `--new-tab` to `browser-navigate` when you want Chrome to open a new tab.
+- Always provide `--tab-id`, `--url`, or `--url-contains` for all other browser commands.
 - Use `--tab-id <id>` when you know the exact Chrome tab id.
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
 - The CLI uses the same `browser-*` commands over the daemon WebSocket bridge.
+- Use `browser-navigate` before DOM inspection when the target page is not open yet.
 - Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
 - Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
 - Use `browser-sequence` when a dropdown or modal workflow should stay alive across multiple steps, and add per-step `assert` checks for postcondition verification.
 - Use the wait commands to verify save states instead of guessing from click timing alone.
 - Use `browser-query-dom` when a long DOM snapshot is too noisy and you need nearby or required field results.
+- Use `browser-query-dom --kind selector-state` when you need a small readback payload for one element's focused state, value, or selection range after a write.
 - Use `browser-console` to inspect recent `console.*`, `window.onerror`, and `unhandledrejection` events after a refresh or action.
 - Use `browser-debugger-capture` when page-level logs are not enough and you need `Runtime`, `Log`, or `Network` failures from a short debugger session.
 - Use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`.
+- Use `browser-key --hold-ms <ms>` for sustained input such as movement or firing in real-time UIs.
+- Use `browser-keydown` plus `browser-keyup` when modifier chords or press/release timing matters.
 - Use `browser-refresh` after deploys or config changes, and add `--bypass-cache` when you need a cache-bypassing reload.
 - Use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable.
+- Use `browser-mousedown`, `browser-mousemove`, and `browser-mouseup` when a surface needs explicit low-level pointer phases.
 - Use `browser-pointer-drag` when the UI needs a real drag gesture, such as canvas movement, sliders, or joystick-style controls.
 - `browser-screenshot` still requires the target tab to be active and focused.
+- Add `--restore-previous-active-tab` to `browser-screenshot` when you want the inspected tab to yield focus back to whatever the user was doing before the capture.
 
 ## Shared state layout
 

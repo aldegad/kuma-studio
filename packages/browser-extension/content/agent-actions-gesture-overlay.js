@@ -78,6 +78,12 @@
       root.appendChild(element);
 
       try {
+        if (document.visibilityState !== "visible") {
+          const finalFrame = keyframes[keyframes.length - 1] ?? {};
+          Object.assign(element.style, finalFrame);
+          return;
+        }
+
         if (typeof element.animate !== "function") {
           const finalFrame = keyframes[keyframes.length - 1] ?? {};
           Object.assign(element.style, finalFrame);

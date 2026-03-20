@@ -10,9 +10,16 @@ import {
   commandBrowserContext,
   commandBrowserDebuggerCapture,
   commandBrowserDom,
+  commandBrowserDownloadPermission,
   commandBrowserFill,
   commandBrowserGetLatestDownload,
   commandBrowserKey,
+  commandBrowserKeyDown,
+  commandBrowserKeyUp,
+  commandBrowserMouseDown,
+  commandBrowserMouseMove,
+  commandBrowserMouseUp,
+  commandBrowserNavigate,
   commandBrowserQueryDom,
   commandBrowserRefresh,
   commandBrowserSequence,
@@ -46,6 +53,7 @@ Usage:
   node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
   node main.mjs set-job-status --status in_progress --message "작업 중인 내용을 짧게 적기" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-navigate --url "https://example.com/page" [--tab-id 123] [--new-tab] [--background] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-console (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-debugger-capture [--refresh] [--bypass-cache] [--capture-ms 3000] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
@@ -54,16 +62,22 @@ Usage:
   node main.mjs browser-click-point --x 120 --y 240 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-pointer-drag ([--from-x 120 --from-y 240 --to-x 360 --to-y 240] | [--waypoints '[{"x":120,"y":240},{"x":240,"y":260},{"x":360,"y":240}]']) [--steps 12] [--duration-ms 280] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 120] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
-  node main.mjs browser-key --key Tab [--shift] [--hold-ms 250] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-key --key Tab [--shift] [--alt] [--ctrl] [--meta] [--hold-ms 250] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-keydown --key Shift [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] [--shift] [--alt] [--ctrl] [--meta] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-keyup --key Shift [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] [--shift] [--alt] [--ctrl] [--meta] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-mousemove --x 240 --y 360 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-mousedown --x 240 --y 360 [--button left|middle|right] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-mouseup --x 240 --y 360 [--button left|middle|right] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-refresh [--bypass-cache] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
-  node main.mjs browser-screenshot --file ./tmp/browser.png [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--scope page|dialog] [--x 120 --y 240 --width 300 --height 180] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--focus-tab-first] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-screenshot --file ./tmp/browser.png [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--scope page|dialog] [--x 120 --y 240 --width 300 --height 180] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--focus-tab-first] [--restore-previous-active-tab] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-wait-for-download [--filename-contains ".csv"] [--download-url-contains "export"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-get-latest-download [--filename-contains ".csv"] [--download-url-contains "export"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-download-permission (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-wait-for-text --text "Saved" (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-text-disappear --text "Saving..." (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-selector [--selector ".toast-success"] [--selector-path "body > div:nth-of-type(4)"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-wait-for-dialog-close (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
-  node main.mjs browser-query-dom --kind required-fields|all-textareas|nearby-input|input-by-label|menu-state|selected-option|tab-state (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--text "Site URL"] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-query-dom --kind required-fields|all-textareas|nearby-input|input-by-label|menu-state|selected-option|tab-state|selector-state (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--scope page|dialog] [--text "Site URL"] [--selector "#submit"] [--selector-path "form textarea:nth-of-type(1)"] [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs put-scene --file ./scene.json [--root .]
   node main.mjs add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   node main.mjs move-node --id node-01 --x 120 --y 80 [--root .]
@@ -355,6 +369,9 @@ export async function main(argv = process.argv.slice(2)) {
     case "browser-context":
       await commandBrowserContext(options);
       return;
+    case "browser-navigate":
+      await commandBrowserNavigate(options);
+      return;
     case "browser-dom":
       await commandBrowserDom(options);
       return;
@@ -382,6 +399,21 @@ export async function main(argv = process.argv.slice(2)) {
     case "browser-key":
       await commandBrowserKey(options);
       return;
+    case "browser-keydown":
+      await commandBrowserKeyDown(options);
+      return;
+    case "browser-keyup":
+      await commandBrowserKeyUp(options);
+      return;
+    case "browser-mousemove":
+      await commandBrowserMouseMove(options);
+      return;
+    case "browser-mousedown":
+      await commandBrowserMouseDown(options);
+      return;
+    case "browser-mouseup":
+      await commandBrowserMouseUp(options);
+      return;
     case "browser-refresh":
       await commandBrowserRefresh(options);
       return;
@@ -393,6 +425,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-get-latest-download":
       await commandBrowserGetLatestDownload(options);
+      return;
+    case "browser-download-permission":
+      await commandBrowserDownloadPermission(options);
       return;
     case "browser-wait-for-text":
       await commandBrowserWaitForText(options);

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 const STALE_AFTER_MS = 15_000;
-const MAX_CAPABILITIES = 16;
+const MAX_CAPABILITIES = 32;
 const MAX_TEXT_LENGTH = 2_000;
 
 export const MAX_COMMANDS = 100;
@@ -133,12 +133,14 @@ export function sanitizeCommandPayload(candidate) {
   const text = sanitizeString(candidate.text, 512);
   const value = typeof candidate.value === "string" ? candidate.value.slice(0, 4_000) : null;
   const key = sanitizeString(candidate.key, 64);
+  const button = sanitizeString(candidate.button, 16);
   const kind = sanitizeString(candidate.kind, 64);
   const role = sanitizeString(candidate.role, 64);
   const within = sanitizeString(candidate.within, 512);
   const scope = sanitizeString(candidate.scope, 32);
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
+  const navigationUrl = sanitizeString(candidate.navigationUrl, 2_000);
   const filenameContains = sanitizeString(candidate.filenameContains, 512);
   const downloadUrlContains = sanitizeString(candidate.downloadUrlContains, 2_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
@@ -164,8 +166,11 @@ export function sanitizeCommandPayload(candidate) {
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
     (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
 
-  if (!hasTarget) {
+  if (!hasTarget && type !== "navigate") {
     throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
+  }
+  if (type === "navigate" && !navigationUrl) {
+    throw new Error("Browser navigate commands require a navigationUrl.");
   }
 
   return {
@@ -176,12 +181,14 @@ export function sanitizeCommandPayload(candidate) {
     text,
     value,
     key,
+    button,
     kind,
     role,
     within,
     scope,
     targetUrl,
     targetUrlContains,
+    navigationUrl,
     filenameContains,
     downloadUrlContains,
     targetTabId,
@@ -198,6 +205,9 @@ export function sanitizeCommandPayload(candidate) {
     steps: sequenceSteps ?? (Number.isFinite(steps) && steps >= 1 ? Math.round(steps) : null),
     clipRect,
     focusTabFirst: candidate.focusTabFirst !== false,
+    restorePreviousActiveTab: candidate.restorePreviousActiveTab === true,
+    newTab: candidate.newTab === true,
+    active: candidate.active !== false,
     bypassCache: candidate.bypassCache === true,
     refreshBeforeCapture: candidate.refreshBeforeCapture === true,
     captureMs:
@@ -209,6 +219,9 @@ export function sanitizeCommandPayload(candidate) {
         ? Math.min(10_000, Math.round(durationMs))
         : null,
     shiftKey: candidate.shiftKey === true,
+    altKey: candidate.altKey === true,
+    ctrlKey: candidate.ctrlKey === true,
+    metaKey: candidate.metaKey === true,
     postActionDelayMs:
       Number.isFinite(postActionDelayMs) && postActionDelayMs >= 0
         ? Math.min(10_000, Math.round(postActionDelayMs))

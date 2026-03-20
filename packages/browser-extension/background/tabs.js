@@ -105,6 +105,10 @@ async function waitForTabReloadComplete(tabId, timeoutMs = 15_000) {
   });
 }
 
+async function waitForTabLoadComplete(tabId, timeoutMs = 15_000) {
+  return waitForTabReloadComplete(tabId, timeoutMs);
+}
+
 async function reloadTargetTab(tab, { bypassCache = false, timeoutMs = 15_000 } = {}) {
   if (!isResolvableTab(tab)) {
     throw new Error("Failed to resolve the target browser tab before reloading.");
@@ -117,6 +121,55 @@ async function reloadTargetTab(tab, { bypassCache = false, timeoutMs = 15_000 } 
   return {
     tab: reloadedTab,
     bypassCache,
+  };
+}
+
+async function navigateTargetTab(tab, { url, timeoutMs = 15_000 } = {}) {
+  if (!isResolvableTab(tab)) {
+    throw new Error("Failed to resolve the target browser tab before navigation.");
+  }
+
+  if (typeof url !== "string" || !url.trim()) {
+    throw new Error("Navigation requires a non-empty URL.");
+  }
+
+  const loadWait = waitForTabLoadComplete(tab.id, timeoutMs);
+  await chrome.tabs.update(tab.id, { url: url.trim() });
+  const navigatedTab = await loadWait;
+
+  return {
+    tab: navigatedTab,
+    url: url.trim(),
+  };
+}
+
+async function createTargetTab({ url, windowId, index, active = true, timeoutMs = 15_000 } = {}) {
+  if (typeof url !== "string" || !url.trim()) {
+    throw new Error("Opening a new tab requires a non-empty URL.");
+  }
+
+  const createdTab = await chrome.tabs.create({
+    url: url.trim(),
+    windowId,
+    index,
+    active,
+  });
+
+  if (!createdTab?.id) {
+    throw new Error("Failed to create a new browser tab.");
+  }
+
+  if (createdTab.status === "complete") {
+    return {
+      tab: createdTab,
+      url: url.trim(),
+    };
+  }
+
+  const loadedTab = await waitForTabLoadComplete(createdTab.id, timeoutMs);
+  return {
+    tab: loadedTab,
+    url: url.trim(),
   };
 }
 
@@ -134,6 +187,16 @@ async function focusTargetTab(tab) {
   await chrome.windows.update(tab.windowId, { focused: true });
   const activatedTab = await chrome.tabs.update(tab.id, { active: true });
   return activatedTab?.id ? activatedTab : chrome.tabs.get(tab.id);
+}
+
+async function restorePreviousActiveTab(tab) {
+  if (!isResolvableTab(tab)) {
+    return null;
+  }
+
+  await chrome.windows.update(tab.windowId, { focused: true });
+  const restoredTab = await chrome.tabs.update(tab.id, { active: true });
+  return restoredTab?.id ? restoredTab : chrome.tabs.get(tab.id);
 }
 
 async function waitForFocusedTargetTab(tab, attempts = 5, delayMs = 100) {
@@ -161,23 +224,37 @@ async function waitForFocusedTargetTab(tab, attempts = 5, delayMs = 100) {
   };
 }
 
-async function captureTargetTabScreenshot(tab, { focusTabFirst = true } = {}) {
+async function captureTargetTabScreenshot(tab, { focusTabFirst = true, restorePreviousActiveTab: restoreAfterCapture = false } = {}) {
+  const previouslyActiveTab = focusTabFirst && restoreAfterCapture ? await queryActiveTab().catch(() => null) : null;
   const targetTab = focusTabFirst ? await focusTargetTab(tab) : tab;
-  const focusedTarget = await waitForFocusedTargetTab(targetTab);
-  const confirmedTab = focusedTarget.tab;
-  const targetWindow = focusedTarget.window;
 
-  if (confirmedTab.active !== true) {
-    throw new Error("Failed to activate the target tab before taking a screenshot.");
+  try {
+    const focusedTarget = await waitForFocusedTargetTab(targetTab);
+    const confirmedTab = focusedTarget.tab;
+    const targetWindow = focusedTarget.window;
+
+    if (confirmedTab.active !== true) {
+      throw new Error("Failed to activate the target tab before taking a screenshot.");
+    }
+
+    return {
+      dataUrl: await captureTabScreenshot(confirmedTab.windowId),
+      tabId: confirmedTab.id,
+      windowId: confirmedTab.windowId,
+      focused: targetWindow.focused === true,
+      active: confirmedTab.active === true,
+      restoredTabId: null,
+    };
+  } finally {
+    if (
+      focusTabFirst &&
+      restoreAfterCapture &&
+      previouslyActiveTab?.id &&
+      previouslyActiveTab.id !== targetTab?.id
+    ) {
+      await restorePreviousActiveTab(previouslyActiveTab).catch(() => null);
+    }
   }
-
-  return {
-    dataUrl: await captureTabScreenshot(confirmedTab.windowId),
-    tabId: confirmedTab.id,
-    windowId: confirmedTab.windowId,
-    focused: targetWindow.focused === true,
-    active: confirmedTab.active === true,
-  };
 }
 
 function clamp(value, min, max) {

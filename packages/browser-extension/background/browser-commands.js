@@ -115,12 +115,16 @@ async function executeScreenshotBrowserCommand(tab, command) {
   const pageContext = await collectPageContext(tab.id);
   const capture = await captureTargetTabScreenshot(tab, {
     focusTabFirst: command?.focusTabFirst !== false,
+    restorePreviousActiveTab: command?.restorePreviousActiveTab === true,
   });
+  const viewportWidth = Number(pageContext?.viewport?.width) || 0;
+  const viewportHeight = Number(pageContext?.viewport?.height) || 0;
+  const devicePixelRatio = Number(pageContext?.viewport?.devicePixelRatio) || 1;
   let screenshot = {
     dataUrl: capture.dataUrl,
     mimeType: "image/png",
-    width: 0,
-    height: 0,
+    width: Math.max(0, Math.round(viewportWidth * devicePixelRatio)),
+    height: Math.max(0, Math.round(viewportHeight * devicePixelRatio)),
     capturedAt: new Date().toISOString(),
   };
   let clip = null;
@@ -184,6 +188,52 @@ async function executeRefreshBrowserCommand(tab, command) {
   };
 }
 
+async function executeNavigateBrowserCommand(tab, command) {
+  const navigationUrl = typeof command?.navigationUrl === "string" ? command.navigationUrl.trim() : "";
+  if (!navigationUrl) {
+    throw new Error("The navigate command requires a non-empty destination URL.");
+  }
+
+  let parsedUrl = null;
+  try {
+    parsedUrl = new URL(navigationUrl);
+  } catch {
+    throw new Error(`Invalid navigation URL: ${navigationUrl}`);
+  }
+
+  const timeoutMs = getRefreshTimeoutMs(command);
+  const navigationResult = command?.newTab === true
+    ? await createTargetTab({
+        url: parsedUrl.toString(),
+        windowId: tab?.windowId,
+        index: Number.isInteger(tab?.index) ? tab.index + 1 : undefined,
+        active: command?.active !== false,
+        timeoutMs,
+      })
+    : await navigateTargetTab(tab, {
+        url: parsedUrl.toString(),
+        timeoutMs,
+      });
+
+  let pageContext = null;
+  try {
+    pageContext = await collectPageContextWithRetry(navigationResult.tab.id);
+  } catch {
+    pageContext = null;
+  }
+
+  return {
+    page: pageContext?.page ?? createPageRecordFromTab(navigationResult.tab),
+    navigatedTabId: navigationResult.tab.id,
+    navigatedWindowId: navigationResult.tab.windowId ?? null,
+    requestedUrl: parsedUrl.toString(),
+    newTab: command?.newTab === true,
+    active: navigationResult.tab.active === true,
+    status: navigationResult.tab.status ?? null,
+    contentScriptReady: pageContext != null,
+  };
+}
+
 async function executeWaitForDownloadBrowserCommand(tab, command) {
   const pageContext = await collectPageContext(tab.id);
   const { filter, waitedMs, record, permission } = await waitForMatchingDownload(command, tab);
@@ -206,6 +256,15 @@ async function executeGetLatestDownloadBrowserCommand(tab, command) {
   };
 }
 
+async function executeDownloadPermissionBrowserCommand(tab) {
+  const pageContext = await collectPageContext(tab.id);
+  const permission = await getDownloadPermission(tab);
+  return {
+    page: pageContext.page,
+    permission: serializeDownloadPermission(permission),
+  };
+}
+
 async function executeBrowserCommand(tab, command) {
   switch (command?.type) {
     case "context":
@@ -214,6 +273,8 @@ async function executeBrowserCommand(tab, command) {
       };
     case "debugger-capture":
       return captureDebuggerDiagnostics(tab, command);
+    case "navigate":
+      return executeNavigateBrowserCommand(tab, command);
     case "dom":
     case "click":
     case "sequence":
@@ -221,6 +282,11 @@ async function executeBrowserCommand(tab, command) {
     case "pointer-drag":
     case "fill":
     case "key":
+    case "keydown":
+    case "keyup":
+    case "mousemove":
+    case "mousedown":
+    case "mouseup":
     case "console":
     case "wait-for-text":
     case "wait-for-text-disappear":
@@ -236,6 +302,8 @@ async function executeBrowserCommand(tab, command) {
       return executeWaitForDownloadBrowserCommand(tab, command);
     case "get-latest-download":
       return executeGetLatestDownloadBrowserCommand(tab, command);
+    case "download-permission":
+      return executeDownloadPermissionBrowserCommand(tab);
     default:
       throw new Error(`Unsupported Kuma Picker browser command: ${String(command?.type)}`);
   }

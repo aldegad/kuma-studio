@@ -87,6 +87,10 @@ async function getAutomaticDownloadPermission(tab = null) {
   }
 }
 
+async function getDownloadPermission(tab = null) {
+  return getAutomaticDownloadPermission(tab);
+}
+
 function createPermissionHint(permission) {
   if (!permission?.supported) {
     return null;

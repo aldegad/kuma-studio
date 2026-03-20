@@ -14,6 +14,36 @@ var {
 var gestureOverlay = globalThis.KumaPickerExtensionAgentGestureOverlay ?? null;
 
 var KumaPickerExtensionAgentActionInteraction = (() => {
+  const POINT_INTERACTIVE_SELECTOR = [
+    "button",
+    "a[href]",
+    "input",
+    "textarea",
+    "select",
+    "summary",
+    "label",
+    "[role='button']",
+    "[role='link']",
+    "[role='menuitem']",
+    "[role='tab']",
+    "[role='option']",
+    "[role='gridcell']",
+    "[aria-controls]",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(", ");
+
+  const pressedKeys = new Map();
+  let shortcutClipboardText = "";
+  let activePointerState = {
+    button: null,
+    buttons: 0,
+    target: null,
+    lastPoint: null,
+    downTarget: null,
+    downPoint: null,
+    moved: false,
+  };
+
   function waitForDelay(ms) {
     if (!(Number.isFinite(ms) && ms > 0)) {
       return Promise.resolve();
@@ -48,6 +78,10 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function waitForAnimationFrames(count) {
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+
     for (let index = 0; index < count; index += 1) {
       await new Promise((resolvePromise) => {
         window.requestAnimationFrame(() => resolvePromise());
@@ -87,6 +121,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
         clientX,
         clientY,
         view: window,
+        ...(arguments.length > 4 && arguments[4] && typeof arguments[4] === "object" ? arguments[4] : null),
       }),
     );
   }
@@ -103,6 +138,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     return {
       page: buildPageRecord(),
       ariaSelected: target.getAttribute?.("aria-selected") ?? null,
+      ariaExpanded: target.getAttribute?.("aria-expanded") ?? null,
       dataState: target.getAttribute?.("data-state") ?? null,
       open: target.hasAttribute?.("open") ?? false,
     };
@@ -119,9 +155,23 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       before.page?.url === after.page?.url &&
       before.page?.pathname === after.page?.pathname &&
       before.ariaSelected === after.ariaSelected &&
+      before.ariaExpanded === after.ariaExpanded &&
       before.dataState === after.dataState &&
       before.open === after.open
     );
+  }
+
+  function isLikelyNavigationClickTarget(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    if (target instanceof HTMLAnchorElement && typeof target.href === "string" && target.href) {
+      return true;
+    }
+
+    const anchor = target.closest?.("a[href]");
+    return anchor instanceof HTMLAnchorElement && typeof anchor.href === "string" && anchor.href.length > 0;
   }
 
   function getPointTarget(command) {
@@ -154,13 +204,13 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     element.value = value;
   }
 
-  function dispatchInputEvents(target, value) {
+  function dispatchInputEvents(target, value, inputType = "insertText") {
     const inputEvent =
       typeof InputEvent === "function"
         ? new InputEvent("input", {
             bubbles: true,
             composed: true,
-            inputType: "insertText",
+            inputType,
             data: value,
           })
         : new Event("input", { bubbles: true, composed: true });
@@ -204,7 +254,243 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     return { key: normalized, code: normalized.length === 1 ? `Key${normalized.toUpperCase()}` : normalized };
   }
 
-  function dispatchKeyboardEvent(target, type, key, shiftKey, code) {
+  function readKeyboardModifiers(command, stored = null) {
+    return {
+      shiftKey: stored?.shiftKey ?? (command?.shiftKey === true),
+      altKey: stored?.altKey ?? (command?.altKey === true),
+      ctrlKey: stored?.ctrlKey ?? (command?.ctrlKey === true),
+      metaKey: stored?.metaKey ?? (command?.metaKey === true),
+    };
+  }
+
+  function isPrimaryShortcutModifier(modifiers) {
+    return modifiers?.ctrlKey === true || modifiers?.metaKey === true;
+  }
+
+  async function writeShortcutClipboard(text) {
+    shortcutClipboardText = typeof text === "string" ? text : "";
+    try {
+      await navigator.clipboard?.writeText?.(shortcutClipboardText);
+    } catch {}
+    return shortcutClipboardText;
+  }
+
+  async function readShortcutClipboard() {
+    if (typeof shortcutClipboardText === "string" && shortcutClipboardText.length > 0) {
+      return shortcutClipboardText;
+    }
+
+    try {
+      const clipboardText = await navigator.clipboard?.readText?.();
+      shortcutClipboardText = typeof clipboardText === "string" ? clipboardText : "";
+    } catch {}
+
+    return shortcutClipboardText;
+  }
+
+  function dispatchClipboardEvent(target, type, text) {
+    const fallbackEvent = new Event(type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+
+    if (typeof ClipboardEvent !== "function" || typeof DataTransfer !== "function") {
+      target.dispatchEvent(fallbackEvent);
+      return;
+    }
+
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData("text/plain", text);
+
+    try {
+      const event = new ClipboardEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clipboardData: dataTransfer,
+      });
+      if (!event.clipboardData) {
+        Object.defineProperty(event, "clipboardData", { value: dataTransfer });
+      }
+      target.dispatchEvent(event);
+    } catch {
+      Object.defineProperty(fallbackEvent, "clipboardData", { value: dataTransfer });
+      target.dispatchEvent(fallbackEvent);
+    }
+  }
+
+  function readTextInputSelection(target) {
+    if (!coreIsTextInputElement(target)) {
+      return null;
+    }
+
+    const value = typeof target.value === "string" ? target.value : "";
+    const selectionStart = typeof target.selectionStart === "number" ? target.selectionStart : value.length;
+    const selectionEnd = typeof target.selectionEnd === "number" ? target.selectionEnd : selectionStart;
+    const start = Math.max(0, Math.min(selectionStart, selectionEnd, value.length));
+    const end = Math.max(0, Math.min(Math.max(selectionStart, selectionEnd), value.length));
+
+    return {
+      value,
+      start,
+      end,
+      selectedText: value.slice(start, end),
+    };
+  }
+
+  function replaceTextInputSelection(target, text, inputType) {
+    const selection = readTextInputSelection(target);
+    if (!selection) {
+      return false;
+    }
+
+    const nextText = typeof text === "string" ? text : "";
+    const nextValue = `${selection.value.slice(0, selection.start)}${nextText}${selection.value.slice(selection.end)}`;
+    setNativeValue(target, nextValue);
+    const nextCaret = selection.start + nextText.length;
+    target.setSelectionRange?.(nextCaret, nextCaret);
+    dispatchInputEvents(target, nextText, inputType);
+    return true;
+  }
+
+  function readContentEditableSelection(target) {
+    if (!(target instanceof HTMLElement) || !target.isContentEditable) {
+      return null;
+    }
+
+    const selection = window.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return null;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!target.contains(range.startContainer) || !target.contains(range.endContainer)) {
+      return null;
+    }
+
+    return {
+      selection,
+      range,
+      selectedText: selection.toString(),
+    };
+  }
+
+  function replaceContentEditableSelection(target, text, inputType) {
+    const selectionState = readContentEditableSelection(target);
+    if (!selectionState) {
+      return false;
+    }
+
+    const { selection, range } = selectionState;
+    range.deleteContents();
+    const nextText = typeof text === "string" ? text : "";
+    if (nextText.length > 0) {
+      const textNode = document.createTextNode(nextText);
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } else {
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    dispatchInputEvents(target, nextText, inputType);
+    return true;
+  }
+
+  function readShortcutSelectionText(target) {
+    const textInputSelection = readTextInputSelection(target);
+    if (textInputSelection) {
+      return textInputSelection.selectedText;
+    }
+
+    const contentEditableSelection = readContentEditableSelection(target);
+    if (contentEditableSelection) {
+      return contentEditableSelection.selectedText;
+    }
+
+    return null;
+  }
+
+  function replaceShortcutSelection(target, text, inputType) {
+    if (replaceTextInputSelection(target, text, inputType)) {
+      return true;
+    }
+
+    return replaceContentEditableSelection(target, text, inputType);
+  }
+
+  function selectAllContent(target) {
+    if (coreIsTextInputElement(target)) {
+      const valueLength = typeof target.value === "string" ? target.value.length : 0;
+      if (typeof target.setSelectionRange === "function") {
+        target.setSelectionRange(0, valueLength);
+      }
+      return true;
+    }
+
+    if (target instanceof HTMLElement && target.isContentEditable) {
+      const selection = window.getSelection?.();
+      if (!selection) {
+        return false;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return true;
+    }
+
+    return false;
+  }
+
+  async function applyKeyboardShortcut(target, key, modifiers) {
+    if (!isPrimaryShortcutModifier(modifiers)) {
+      return null;
+    }
+
+    const normalizedKey = String(key).toLowerCase();
+    if (normalizedKey === "a" && selectAllContent(target)) {
+      return { shortcut: "select-all" };
+    }
+
+    if (normalizedKey === "c") {
+      const copiedText = readShortcutSelectionText(target);
+      if (copiedText == null) {
+        return null;
+      }
+      dispatchClipboardEvent(target, "copy", copiedText);
+      await writeShortcutClipboard(copiedText);
+      return { shortcut: "copy", clipboardText: copiedText };
+    }
+
+    if (normalizedKey === "x") {
+      const cutText = readShortcutSelectionText(target);
+      if (cutText == null) {
+        return null;
+      }
+      dispatchClipboardEvent(target, "cut", cutText);
+      await writeShortcutClipboard(cutText);
+      replaceShortcutSelection(target, "", "deleteByCut");
+      return { shortcut: "cut", clipboardText: cutText };
+    }
+
+    if (normalizedKey === "v") {
+      const clipboardText = await readShortcutClipboard();
+      dispatchClipboardEvent(target, "paste", clipboardText);
+      if (!replaceShortcutSelection(target, clipboardText, "insertFromPaste")) {
+        return null;
+      }
+      return { shortcut: "paste", clipboardText };
+    }
+
+    return null;
+  }
+
+  function dispatchKeyboardEvent(target, type, key, modifiers, code) {
     return target.dispatchEvent(
       new KeyboardEvent(type, {
         key,
@@ -212,9 +498,57 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
         bubbles: true,
         cancelable: true,
         composed: true,
-        shiftKey,
+        shiftKey: modifiers?.shiftKey === true,
+        altKey: modifiers?.altKey === true,
+        ctrlKey: modifiers?.ctrlKey === true,
+        metaKey: modifiers?.metaKey === true,
       }),
     );
+  }
+
+  function resolveMouseButton(rawButton) {
+    const normalized = coreNormalizeText(rawButton)?.toLowerCase?.() ?? "left";
+    switch (normalized) {
+      case "middle":
+        return { name: "middle", button: 1, buttons: 4 };
+      case "right":
+        return { name: "right", button: 2, buttons: 2 };
+      default:
+        return { name: "left", button: 0, buttons: 1 };
+    }
+  }
+
+  function readViewportPoint(command, actionName) {
+    const x = Number(command?.x);
+    const y = Number(command?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error(`${actionName} requires finite x and y coordinates.`);
+    }
+
+    return { x, y };
+  }
+
+  function getInteractivePointTarget(point, actionName) {
+    const rawTarget = document.elementFromPoint(point.x, point.y);
+    if (!(rawTarget instanceof Element) || coreIsExtensionUiElement(rawTarget)) {
+      throw new Error(`Failed to find an interactive element for ${actionName} at the requested viewport coordinates.`);
+    }
+
+    const interactiveTarget =
+      rawTarget.closest?.(POINT_INTERACTIVE_SELECTOR) instanceof Element ? rawTarget.closest(POINT_INTERACTIVE_SELECTOR) : rawTarget;
+    if (!(interactiveTarget instanceof Element) || coreIsExtensionUiElement(interactiveTarget)) {
+      throw new Error(`Failed to find an interactive element for ${actionName} at the requested viewport coordinates.`);
+    }
+
+    return interactiveTarget;
+  }
+
+  function shouldSynthesizeClick(downTarget, upTarget) {
+    if (!(downTarget instanceof Element) || !(upTarget instanceof Element)) {
+      return false;
+    }
+
+    return downTarget === upTarget || downTarget.contains(upTarget) || upTarget.contains(downTarget);
   }
 
   async function executeClickCommand(command) {
@@ -229,6 +563,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     let fallbackUsed = false;
+    const navigationLikely = isLikelyNavigationClickTarget(target);
 
     await gestureOverlay?.playClickGesture?.({ x: centerX, y: centerY });
 
@@ -236,6 +571,19 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       target.click();
     } else {
       dispatchClickSequence(target, centerX, centerY);
+    }
+
+    if (target instanceof HTMLElement && document.contains(target)) {
+      target.focus?.({ preventScroll: true });
+    }
+
+    if (navigationLikely) {
+      return {
+        page: buildPageRecord(),
+        clickedElement: coreDescribeElementForCommand(target),
+        fallbackUsed,
+        navigationLikely,
+      };
     }
 
     await waitForDelay(Math.min(150, Math.max(50, Math.round((command?.postActionDelayMs ?? 400) / 2))));
@@ -250,14 +598,19 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       page: buildPageRecord(),
       clickedElement: coreDescribeElementForCommand(target),
       fallbackUsed,
+      navigationLikely,
     };
   }
 
   async function executeClickPointCommand(command) {
-    const { x, y, target } = getPointTarget(command);
+    const { x, y } = getPointTarget(command);
+    const target = getInteractivePointTarget({ x, y }, "click-point");
     await focusElement(target);
     await gestureOverlay?.playClickGesture?.({ x, y });
     dispatchClickSequence(target, x, y);
+    if (target instanceof HTMLElement && document.contains(target)) {
+      target.focus?.({ preventScroll: true });
+    }
     await waitForPostActionDelay(command, 400);
 
     return {
@@ -311,7 +664,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
     const key = normalizedKey.key;
     const code = normalizedKey.code;
-    const shiftKey = command?.shiftKey === true;
+    const modifiers = readKeyboardModifiers(command);
     const holdMs =
       typeof command?.holdMs === "number" && Number.isFinite(command.holdMs)
         ? Math.max(0, Math.min(10_000, Math.round(command.holdMs)))
@@ -324,14 +677,16 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       throw new Error("Failed to find a target element for the keyboard command.");
     }
 
-    target.focus?.({ preventScroll: true });
-    dispatchKeyboardEvent(target, "keydown", key, shiftKey, code);
-    dispatchKeyboardEvent(target, "keypress", key, shiftKey, code);
+    await focusElement(target);
+    dispatchKeyboardEvent(target, "keydown", key, modifiers, code);
+    if (!(modifiers.altKey || modifiers.ctrlKey || modifiers.metaKey)) {
+      dispatchKeyboardEvent(target, "keypress", key, modifiers, code);
+    }
 
-    let keyResult = null;
+    let keyResult = await applyKeyboardShortcut(target, key, modifiers);
     if (key === "Tab") {
-      const nextTarget = moveFocus(shiftKey);
-      keyResult = nextTarget ? { focusedElement: coreDescribeElementForCommand(nextTarget) } : null;
+      const nextTarget = moveFocus(modifiers.shiftKey === true);
+      keyResult = nextTarget ? { ...(keyResult ?? {}), focusedElement: coreDescribeElementForCommand(nextTarget) } : keyResult;
     } else if (key === "Enter") {
       if (target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) {
         target.click();
@@ -348,17 +703,97 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       await waitForDelay(holdMs);
     }
 
-    dispatchKeyboardEvent(target, "keyup", key, shiftKey, code);
+    dispatchKeyboardEvent(target, "keyup", key, modifiers, code);
     await waitForPostActionDelay(command, 100);
 
     return {
       page: buildPageRecord(),
       key,
       code,
-      shiftKey,
+      ...modifiers,
       holdMs,
       targetElement: coreDescribeElementForCommand(target),
       ...keyResult,
+    };
+  }
+
+  async function executeKeyDownCommand(command) {
+    const normalizedKey = normalizeKeyboardCommandKey(command?.key);
+    if (!normalizedKey?.key) {
+      throw new Error("The keydown command requires a non-empty key.");
+    }
+
+    const target =
+      coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
+      (document.activeElement instanceof Element
+        ? document.activeElement
+        : document.body instanceof Element
+          ? document.body
+          : document.documentElement);
+
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a target element for the keydown command.");
+    }
+
+    const modifiers = readKeyboardModifiers(command);
+    await focusElement(target);
+    dispatchKeyboardEvent(target, "keydown", normalizedKey.key, modifiers, normalizedKey.code);
+    const shortcutResult = await applyKeyboardShortcut(target, normalizedKey.key, modifiers);
+    pressedKeys.set(normalizedKey.code, {
+      key: normalizedKey.key,
+      code: normalizedKey.code,
+      ...modifiers,
+      target,
+    });
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      key: normalizedKey.key,
+      code: normalizedKey.code,
+      ...modifiers,
+      targetElement: coreDescribeElementForCommand(target),
+      ...(shortcutResult ?? {}),
+    };
+  }
+
+  async function executeKeyUpCommand(command) {
+    const normalizedKey = normalizeKeyboardCommandKey(command?.key);
+    if (!normalizedKey?.key) {
+      throw new Error("The keyup command requires a non-empty key.");
+    }
+
+    const stored = pressedKeys.get(normalizedKey.code) ?? null;
+    const target =
+      (stored?.target instanceof Element && document.contains(stored.target) ? stored.target : null) ??
+      coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
+      (document.activeElement instanceof Element
+        ? document.activeElement
+        : document.body instanceof Element
+          ? document.body
+          : document.documentElement);
+
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a target element for the keyup command.");
+    }
+
+    const modifiers = readKeyboardModifiers(command, stored);
+    dispatchKeyboardEvent(
+      target,
+      "keyup",
+      stored?.key ?? normalizedKey.key,
+      modifiers,
+      stored?.code ?? normalizedKey.code,
+    );
+    pressedKeys.delete(normalizedKey.code);
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      key: stored?.key ?? normalizedKey.key,
+      code: stored?.code ?? normalizedKey.code,
+      ...modifiers,
+      targetElement: coreDescribeElementForCommand(target),
     };
   }
 
@@ -456,6 +891,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       throw new Error("Failed to find a draggable element at the pointer-drag start coordinates.");
     }
 
+    await focusElement(target);
     await gestureOverlay?.playDragGesture?.({ from: start, to: end, durationMs });
 
     dispatchPointerEvent(target, "pointerdown", start.x, start.y, { button: 0, buttons: 1 });
@@ -486,12 +922,161 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+  async function executeMouseMoveCommand(command) {
+    const point = readViewportPoint(command, "mousemove");
+    const target =
+      activePointerState.buttons > 0 &&
+      activePointerState.target instanceof Element &&
+      document.contains(activePointerState.target)
+        ? activePointerState.target
+        : getInteractivePointTarget(point, "mousemove");
+
+    dispatchPointerEvent(target, "pointermove", point.x, point.y, {
+      button: activePointerState.button ?? 0,
+      buttons: activePointerState.buttons ?? 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    dispatchMouseEvent(target, "mousemove", point.x, point.y, {
+      button: activePointerState.button ?? 0,
+      buttons: activePointerState.buttons ?? 0,
+    });
+
+    activePointerState = {
+      ...activePointerState,
+      lastPoint: point,
+      target,
+      moved:
+        activePointerState.moved ||
+        (activePointerState.downPoint != null &&
+          (Math.abs(point.x - activePointerState.downPoint.x) > 3 ||
+            Math.abs(point.y - activePointerState.downPoint.y) > 3)),
+    };
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      point,
+      buttons: activePointerState.buttons ?? 0,
+      targetElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeMouseDownCommand(command) {
+    const point = readViewportPoint(command, "mousedown");
+    const buttonInfo = resolveMouseButton(command?.button);
+    const target = getInteractivePointTarget(point, "mousedown");
+
+    await focusElement(target);
+
+    dispatchPointerEvent(target, "pointerdown", point.x, point.y, {
+      button: buttonInfo.button,
+      buttons: buttonInfo.buttons,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    dispatchMouseEvent(target, "mousedown", point.x, point.y, {
+      button: buttonInfo.button,
+      buttons: buttonInfo.buttons,
+    });
+
+    activePointerState = {
+      button: buttonInfo.button,
+      buttons: buttonInfo.buttons,
+      target,
+      lastPoint: point,
+      downTarget: target,
+      downPoint: point,
+      moved: false,
+    };
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      point,
+      button: buttonInfo.name,
+      targetElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeMouseUpCommand(command) {
+    const point = readViewportPoint(command, "mouseup");
+    const fallbackButtonInfo = resolveMouseButton(command?.button);
+    const releaseTarget = getInteractivePointTarget(point, "mouseup");
+    const target =
+      activePointerState.target instanceof Element && document.contains(activePointerState.target)
+        ? activePointerState.target
+        : releaseTarget;
+    const button =
+      typeof activePointerState.button === "number"
+        ? activePointerState.button
+        : fallbackButtonInfo.button;
+    const buttonName =
+      activePointerState.buttons > 0
+        ? button === 2
+          ? "right"
+          : button === 1
+            ? "middle"
+            : "left"
+        : fallbackButtonInfo.name;
+
+    dispatchPointerEvent(target, "pointerup", point.x, point.y, {
+      button,
+      buttons: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    dispatchMouseEvent(target, "mouseup", point.x, point.y, {
+      button,
+      buttons: 0,
+    });
+
+    const synthesizedClick =
+      button === 0 &&
+      !activePointerState.moved &&
+      shouldSynthesizeClick(activePointerState.downTarget, releaseTarget);
+    if (synthesizedClick) {
+      dispatchMouseEvent(target, "click", point.x, point.y, {
+        button,
+        buttons: 0,
+        detail: 1,
+      });
+    }
+
+    activePointerState = {
+      button: null,
+      buttons: 0,
+      target: null,
+      lastPoint: point,
+      downTarget: null,
+      downPoint: null,
+      moved: false,
+    };
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      point,
+      button: buttonName,
+      targetElement: coreDescribeElementForCommand(target),
+      synthesizedClick,
+    };
+  }
+
   return {
     waitForDelay,
     executeClickCommand,
     executeClickPointCommand,
     executeFillCommand,
     executeKeyCommand,
+    executeKeyDownCommand,
+    executeKeyUpCommand,
+    executeMouseMoveCommand,
+    executeMouseDownCommand,
+    executeMouseUpCommand,
     executePointerDragCommand,
   };
 })();
