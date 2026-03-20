@@ -301,6 +301,15 @@ export function ShootingGameCanvas() {
     }
   }, []);
 
+  const startFreshRun = useCallback(() => {
+    restart(true);
+    stateRef.current.lastFrameTime = performance.now();
+  }, [restart]);
+
+  const resetToReady = useCallback(() => {
+    restart(false);
+  }, [restart]);
+
   // ─── Pointer events (touch + mouse) ───
   const getCanvasPos = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
     const canvas = canvasRef.current;
@@ -433,6 +442,33 @@ export function ShootingGameCanvas() {
         <h3 className="text-lg font-black tracking-tight text-[#41230a]">
           Real-Time Metrics
         </h3>
+
+        <div
+          className="rounded-[1.25rem] border border-[#8d6137]/14 bg-[#fff7e8] p-3"
+          data-testid="shooting-benchmark-controls"
+        >
+          <div className="text-[11px] font-black uppercase tracking-[0.24em] text-[#8b643d]">
+            Benchmark Controls
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              className="kuma-tool justify-center"
+              data-testid="shooting-start-button"
+              onClick={startFreshRun}
+            >
+              Start Run
+            </button>
+            <button
+              type="button"
+              className="kuma-tool justify-center"
+              data-testid="shooting-reset-button"
+              onClick={resetToReady}
+            >
+              Reset Stage
+            </button>
+          </div>
+        </div>
 
         <MetricCard label="FPS" value={metrics.fps} unit="fps" tone="gold" />
         <MetricCard label="Score" value={metrics.score} tone="cream" />

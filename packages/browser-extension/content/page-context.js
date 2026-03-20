@@ -258,7 +258,7 @@ function getElementState(element) {
   }
 
   if (element instanceof HTMLElement && element.isContentEditable) {
-    const value = element.textContent || "";
+    const value = typeof element.innerText === "string" && element.innerText.length > 0 ? element.innerText : element.textContent || "";
     return {
       ...baseState,
       value,

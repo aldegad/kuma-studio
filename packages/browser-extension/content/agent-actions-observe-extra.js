@@ -50,7 +50,9 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       const displayValue =
         element instanceof HTMLSelectElement
           ? normalizeText(Array.from(element.selectedOptions).map((option) => option.textContent).join(" ")) || null
-          : record.valuePreview ?? record.value ?? null;
+          : record.inputType === "contenteditable"
+            ? record.value ?? null
+            : record.valuePreview ?? record.value ?? null;
 
       return {
         label: record.label,
@@ -365,6 +367,7 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       "click-point",
       "pointer-drag",
       "fill",
+      "insert-text",
       "key",
       "keydown",
       "keyup",
