@@ -45,6 +45,11 @@ Treat this shared state as the source of truth for saved selections, snapshots, 
 
 ## Core workflow
 
+0. **Before any other step**, verify the daemon is reachable:
+   - Run `npm run kuma-pickerd:get-browser-session`.
+   - If the command fails or returns an error, stop and present the full
+     "First-time setup" steps to the user. Do not proceed until the daemon
+     responds successfully.
 1. Start from the shared Kuma Picker state home.
 2. Read the latest selection before doing anything else.
    - `npm run kuma-pickerd:get-selection`
