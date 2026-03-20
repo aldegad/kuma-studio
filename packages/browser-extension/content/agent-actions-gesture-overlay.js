@@ -2,9 +2,6 @@
   var KumaPickerExtensionAgentGestureOverlay = (() => {
     const ROOT_ID = "kuma-picker-gesture-overlay-root";
     const CLICK_ASSET_PATH = "assets/gestures/kuma-paw-tap.png";
-    const SCROLL_ASSET_PATHS = {
-      grab: "assets/gestures/kuma-paw-grab.png",
-    };
     const DEFAULT_SIZE = 88;
     const CLICK_SIZE = 70;
     const CLICK_HOTSPOT_Y = 0.25;
@@ -50,10 +47,7 @@
     }
 
     function getPawAssetUrl(kind) {
-      const assetPath =
-        (kind === "click" ? CLICK_ASSET_PATH : null)
-        ?? SCROLL_ASSET_PATHS[kind]
-        ?? CLICK_ASSET_PATH;
+      const assetPath = CLICK_ASSET_PATH;
       if (typeof chrome?.runtime?.getURL === "function") {
         return chrome.runtime.getURL(assetPath);
       }
@@ -73,7 +67,7 @@
         pointerEvents: "none",
         opacity: "0",
         willChange: "transform, opacity",
-        transformOrigin: kind === "grab" ? "58% 68%" : "50% 86%",
+        transformOrigin: "50% 86%",
         filter: "drop-shadow(0 18px 28px rgba(72, 42, 10, 0.16))",
       });
       return element;

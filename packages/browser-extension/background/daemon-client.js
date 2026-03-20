@@ -94,6 +94,31 @@ async function writeJobCardUpdate(daemonUrl, payload) {
   return response.json();
 }
 
+async function deleteJobCard(daemonUrl, sessionId) {
+  const normalizedSessionId = typeof sessionId === "string" ? sessionId.trim() : "";
+  if (!normalizedSessionId) {
+    throw new Error("A job card session id is required to delete the card.");
+  }
+
+  const response = await fetch(`${daemonUrl}/job-card?sessionId=${encodeURIComponent(normalizedSessionId)}`, {
+    method: "DELETE",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(responseText || `Failed to delete the job card from ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
 function getSessionLabel(page) {
   try {
     const hostname = new URL(page.url).hostname;

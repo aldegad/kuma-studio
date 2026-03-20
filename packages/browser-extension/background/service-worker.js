@@ -126,6 +126,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }),
           );
           return;
+        case "kuma-picker:dismiss-job-card":
+          sendResponse({
+            ok: true,
+            card: await deleteJobCard(
+              daemonUrl,
+              typeof message?.sessionId === "string" ? message.sessionId : null,
+            ),
+          });
+          return;
         case "kuma-picker:cancel-inspect":
           if (sender.tab?.id) {
             await clearInspectState(sender.tab.id);

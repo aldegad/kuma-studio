@@ -386,6 +386,9 @@ export function createServer({ host, port, root }) {
             status: cardFromSelection?.status ?? payload?.status ?? null,
           },
         );
+        if (card?.sessionId) {
+          selectionStore.syncJobForSession(card.sessionId, card);
+        }
         publishJobCard(card, "job-card-write", false);
         sendJson(response, 200, card);
         return;
@@ -405,6 +408,9 @@ export function createServer({ host, port, root }) {
           return;
         }
 
+        if (card.sessionId) {
+          selectionStore.syncJobForSession(card.sessionId, null);
+        }
         publishJobCard(card, "job-card-delete", true);
         sendJson(response, 200, card);
         return;

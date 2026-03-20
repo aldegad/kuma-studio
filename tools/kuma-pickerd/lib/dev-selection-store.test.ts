@@ -11,7 +11,9 @@ const PNG_DATA_URL =
 interface DevSelectionStoreModule {
   DevSelectionStore: new (root: string) => {
     readAsset(sessionId: string, fileName: string): { body: Uint8Array; mimeType: string } | null;
+    readSession(sessionId: string): unknown;
     deleteSession(sessionId: string): unknown;
+    syncJobForSession(sessionId: string, jobCard?: unknown): unknown;
     write(record: unknown): {
       element: {
         label?: string | null;
@@ -146,5 +148,49 @@ describe("DevSelectionStore snapshots", () => {
         path.join(stateHome, "dev-selection-assets", "session_02", "selection-01.png"),
       ),
     ).toBe(false);
+  });
+
+  it("syncs job status updates and clears dismissed jobs from the saved selection", async () => {
+    // @ts-expect-error local .mjs helper is runtime-tested here and has no native TS declaration.
+    const { DevSelectionStore } = (await import("./dev-selection-store.mjs")) as DevSelectionStoreModule;
+    const root = mkdtempSync(path.join(tmpdir(), "dev-selection-store-"));
+    tempRoots.push(root);
+    const stateHome = path.join(root, "state");
+    process.env.KUMA_PICKER_STATE_HOME = stateHome;
+
+    const store = new DevSelectionStore(root);
+    store.write({
+      ...createSelectionRecord("session_03"),
+      job: {
+        id: "job-03",
+        message: "Fix this spacing",
+        createdAt: "2026-03-11T00:00:00.000Z",
+        author: "user",
+        status: "noted",
+      },
+    });
+
+    store.syncJobForSession("session_03", {
+      id: "job-03",
+      requestMessage: "Fix this spacing",
+      status: "completed",
+      author: "codex",
+      createdAt: "2026-03-11T00:00:00.000Z",
+    });
+
+    expect(store.readSession("session_03")).toMatchObject({
+      job: {
+        id: "job-03",
+        message: "Fix this spacing",
+        status: "completed",
+        author: "codex",
+      },
+    });
+
+    store.syncJobForSession("session_03", null);
+
+    expect(store.readSession("session_03")).toMatchObject({
+      job: null,
+    });
   });
 });

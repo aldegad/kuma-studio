@@ -182,6 +182,101 @@ export class DevSelectionStore {
     return nextCollection;
   }
 
+  updateSession(sessionId, updater) {
+    const normalizedId = sanitizeSessionId(sessionId);
+    if (!normalizedId || typeof updater !== "function") {
+      return null;
+    }
+
+    this.ensureDirectory();
+    const current = this.readSession(normalizedId);
+    if (!current) {
+      return null;
+    }
+
+    const nextRecord = updater(current);
+    if (!nextRecord || typeof nextRecord !== "object") {
+      return null;
+    }
+
+    const normalized = normalizeDevSelection(nextRecord, {
+      id: current.session.id,
+      index: current.session.index,
+      label: current.session.label,
+      updatedAt: current.session.updatedAt,
+    });
+
+    writeFileSync(this.getSessionPath(normalizedId), `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+
+    const collection = this.readAll();
+    if (!collection) {
+      writeFileSync(this.selectionPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+      return normalized;
+    }
+
+    const nextSessions = collection.sessions.map((entry) => (entry.session.id === normalizedId ? normalized : entry));
+    const nextLatestSessionId =
+      collection.latestSessionId && nextSessions.some((entry) => entry.session.id === collection.latestSessionId)
+        ? collection.latestSessionId
+        : normalizedId;
+    const latestRecord =
+      nextSessions.find((entry) => entry.session.id === nextLatestSessionId) ??
+      nextSessions[nextSessions.length - 1] ??
+      normalized;
+    const nextCollection = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      latestSessionId: latestRecord.session.id,
+      sessions: nextSessions,
+    };
+
+    writeFileSync(this.collectionPath, `${JSON.stringify(nextCollection, null, 2)}\n`, "utf8");
+    if (latestRecord.session.id === normalizedId) {
+      writeFileSync(this.selectionPath, `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
+    } else {
+      writeFileSync(this.selectionPath, `${JSON.stringify(latestRecord, null, 2)}\n`, "utf8");
+    }
+
+    return normalized;
+  }
+
+  syncJobForSession(sessionId, jobCard = null) {
+    return this.updateSession(sessionId, (current) => ({
+      ...current,
+      session: {
+        ...current.session,
+        updatedAt: new Date().toISOString(),
+      },
+      job:
+        jobCard && typeof jobCard === "object"
+          ? {
+              id:
+                typeof jobCard.id === "string" && jobCard.id.trim()
+                  ? jobCard.id.trim()
+                  : current.job?.id ?? current.session.id,
+              message:
+                typeof jobCard.requestMessage === "string" && jobCard.requestMessage.trim()
+                  ? jobCard.requestMessage.trim()
+                  : current.job?.message ?? "",
+              createdAt:
+                typeof current.job?.createdAt === "string" && current.job.createdAt.trim()
+                  ? current.job.createdAt
+                  : typeof jobCard.createdAt === "string" && jobCard.createdAt.trim()
+                    ? jobCard.createdAt
+                    : current.capturedAt,
+              author:
+                typeof jobCard.author === "string" && jobCard.author.trim()
+                  ? jobCard.author.trim()
+                  : current.job?.author ?? "user",
+              status:
+                jobCard.status === "in_progress" || jobCard.status === "completed"
+                  ? jobCard.status
+                  : "noted",
+            }
+          : null,
+    }));
+  }
+
   write(record) {
     this.ensureDirectory();
     const collection = this.readAll();

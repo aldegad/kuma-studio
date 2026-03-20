@@ -71,6 +71,27 @@
     }
   }
 
+  async function deleteCardFromDaemon(card) {
+    if (!card?.sessionId) {
+      return null;
+    }
+
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: "kuma-picker:dismiss-job-card",
+        sessionId: card.sessionId,
+      });
+
+      if (response?.ok !== true) {
+        throw new Error(response?.error || "Failed to delete the job card.");
+      }
+
+      return response?.card ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   function markCardDismissed(card) {
     if (!card?.id) {
       return;
@@ -321,12 +342,17 @@
     closeButton.style.fontSize = "15px";
     closeButton.style.lineHeight = "1";
     closeButton.style.cursor = "pointer";
-    closeButton.addEventListener("click", () => {
-      markCardDismissed(card);
-      const state = cards.get(card.id);
-      if (state?.element) {
-        state.element.remove();
+    closeButton.addEventListener("click", async () => {
+      closeButton.disabled = true;
+      closeButton.style.opacity = "0.55";
+      const deletedCard = await deleteCardFromDaemon(card);
+      if (deletedCard?.id) {
+        removeCard(deletedCard.id);
+        return;
       }
+
+      closeButton.disabled = false;
+      closeButton.style.opacity = "1";
     });
 
     header.append(badge, time, closeButton);
