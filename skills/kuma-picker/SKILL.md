@@ -7,12 +7,45 @@ description: Read the latest Kuma Picker selection, screenshot, job state, and b
 
 Use Kuma Picker as a shared coordination workflow centered on the shared state home and the active browser bridge.
 
+## First-time setup
+
+If the daemon is not yet running or the extension is not installed, follow these steps:
+
+1. Install dependencies in the kuma-picker project root:
+   ```bash
+   npm install
+   ```
+2. Start the daemon:
+   ```bash
+   npm run kuma-pickerd:serve
+   ```
+   The daemon listens on `http://127.0.0.1:4312` by default.
+3. Load the Chrome extension:
+   - Open `chrome://extensions` and enable **Developer mode**.
+   - Click **Load unpacked** and select `packages/browser-extension/` from the kuma-picker repo.
+4. Connect the extension to the daemon:
+   - Click the Kuma Picker extension icon to open the popup.
+   - Set the daemon URL to `http://127.0.0.1:4312`.
+   - Refresh the target page so the content script reconnects.
+5. Verify the bridge:
+   ```bash
+   npm run kuma-pickerd:get-browser-session
+   ```
+   A successful response shows `tabCount >= 1` with `tabs[]`.
+
+## State home
+
+Kuma Picker resolves its shared state directory in this priority order:
+
+1. `KUMA_PICKER_STATE_HOME` — explicit override (highest priority)
+2. `$CODEX_HOME/kuma-picker/` — when `CODEX_HOME` is set (Codex compatibility)
+3. `~/.kuma-picker/` — platform-agnostic default
+
+Treat this shared state as the source of truth for saved selections, snapshots, and job cards.
+
 ## Core workflow
 
 1. Start from the shared Kuma Picker state home.
-   - Default location: `~/.codex/kuma-picker/`
-   - Respect `KUMA_PICKER_STATE_HOME` when it is set.
-   - Treat this shared state as the source of truth for saved selections, snapshots, and job cards.
 2. Read the latest selection before doing anything else.
    - Use the helper command examples from [references/commands.md](references/commands.md) when available.
    - This now returns only the latest saved selection by default.
@@ -43,7 +76,6 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 2. If the session is missing or stale, fix the bridge before continuing.
    - Start the daemon with `npm run kuma-pickerd:serve`.
    - Reload the Chrome extension after extension code changes.
-   - If Kuma Picker was installed via the Codex skill flow, the unpacked extension root is `/Users/soohongkim/.codex/extensions/kuma-picker-browser-extension`.
    - In the extension popup, point the daemon URL at the currently running daemon.
    - Browser control uses the daemon WebSocket bridge only.
    - If you are blocked, name the exact command you ran and the concrete failure. Do not replace that with a generic line about needing to "find where to launch the bridge command."
@@ -69,7 +101,7 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 5. Remember the current limitation.
    - DOM reads and clicks can target background tabs.
    - Screenshots will focus the requested target tab first, so prefer `--tab-id` or a precise URL target before capturing.
-   - If a live tab returns `Unsupported Kuma Picker browser command`, verify the unpacked extension at `/Users/soohongkim/.codex/extensions/kuma-picker-browser-extension` was reloaded and compare the live `capabilities` list from `get-browser-session`.
+   - If a live tab returns `Unsupported Kuma Picker browser command`, verify the unpacked extension was reloaded and compare the live `capabilities` list from `get-browser-session`.
 
 ## Browser write safety
 
@@ -88,7 +120,7 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 
 ## Selection hygiene
 
-- Treat `~/.codex/kuma-picker/` or `$CODEX_HOME/kuma-picker/` as shared state unless `KUMA_PICKER_STATE_HOME` overrides it.
+- Treat the resolved state home as shared state.
 - Prefer asking for a reselection over guessing when the saved element no longer matches the current UI.
 
 ## Response guardrails

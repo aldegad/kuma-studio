@@ -13,6 +13,10 @@ export function resolveKumaPickerStateDir() {
     return explicitStateHome;
   }
 
-  const codexHome = readEnvPath("CODEX_HOME") ?? resolve(os.homedir(), ".codex");
-  return resolve(codexHome, "kuma-picker");
+  const codexHome = readEnvPath("CODEX_HOME");
+  if (codexHome) {
+    return resolve(codexHome, "kuma-picker");
+  }
+
+  return resolve(os.homedir(), ".kuma-picker");
 }

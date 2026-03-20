@@ -7,6 +7,7 @@ Kuma Picker resolves its shared state directory in this priority order:
 1. `KUMA_PICKER_STATE_HOME` — explicit override (highest priority)
 2. `$CODEX_HOME/kuma-picker/` — when `CODEX_HOME` is set (Codex compatibility)
 3. `~/.kuma-picker/` — platform-agnostic default
+
 The shared state home is the primary source of truth.
 The command examples below are helper CLI examples for environments that already expose them.
 
@@ -112,7 +113,7 @@ If the user says `pick 1`, `selection 2`, `see pick3`, or similar:
 npm run kuma-pickerd:get-selection
 ```
 
-Read `job.message` from the latest selection. The page should already show a `메모 남김` card for that pick.
+Read `job.message` from the latest selection. The page should already show a card for that pick.
 
 ### During work
 
