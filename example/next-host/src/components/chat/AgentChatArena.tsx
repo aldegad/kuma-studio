@@ -1,8 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { MessageCircle, RefreshCcw, Send, Sparkles, Waves } from "lucide-react";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { MessageCircle, Paperclip, RefreshCcw, Send, Sparkles, Waves, X } from "lucide-react";
+import { type ChangeEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 
 import { KUMA_AGENT_CHAT_ICON_SRC } from "../../lib/kuma-assets";
 import { KumaSurfaceFrame } from "../lab/KumaSurfaceFrame";
@@ -15,7 +15,22 @@ type ChatMessage = {
   id: string;
   player: PlayerId;
   text: string;
+  attachments: ChatAttachment[];
   sentAt: string;
+};
+
+type ChatAttachment = {
+  id: string;
+  kind: "image" | "video";
+  name: string;
+  mimeType: string;
+  objectUrl: string;
+  sizeLabel: string;
+};
+
+type ComposerState = {
+  text: string;
+  attachments: ChatAttachment[];
 };
 
 const PLAYER_COPY: Record<
@@ -50,8 +65,65 @@ const PLAYER_COPY: Record<
   },
 };
 
-function createInitialDrafts(): Record<PlayerId, string> {
-  return Object.fromEntries(PLAYER_IDS.map((player) => [player, ""])) as Record<PlayerId, string>;
+function createInitialDrafts(): Record<PlayerId, ComposerState> {
+  return {
+    "1p": { text: "", attachments: [] },
+    "2p": { text: "", attachments: [] },
+  };
+}
+
+function formatAttachmentSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) {
+    return "0 B";
+  }
+
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createAttachmentFromFile(file: File): ChatAttachment | null {
+  if (file.type.startsWith("image/")) {
+    return {
+      id: `${file.name}-${file.lastModified}-image`,
+      kind: "image",
+      name: file.name,
+      mimeType: file.type,
+      objectUrl: URL.createObjectURL(file),
+      sizeLabel: formatAttachmentSize(file.size),
+    };
+  }
+
+  if (file.type.startsWith("video/")) {
+    return {
+      id: `${file.name}-${file.lastModified}-video`,
+      kind: "video",
+      name: file.name,
+      mimeType: file.type,
+      objectUrl: URL.createObjectURL(file),
+      sizeLabel: formatAttachmentSize(file.size),
+    };
+  }
+
+  return null;
+}
+
+function revokeAttachments(attachments: ChatAttachment[]) {
+  for (const attachment of attachments) {
+    URL.revokeObjectURL(attachment.objectUrl);
+  }
+}
+
+function collectAllAttachments(record: Record<PlayerId, ComposerState>, messages: ChatMessage[]) {
+  const draftAttachments = Object.values(record).flatMap((entry) => entry.attachments);
+  const messageAttachments = messages.flatMap((message) => message.attachments);
+  return [...draftAttachments, ...messageAttachments];
 }
 
 function nowLabel() {
@@ -62,23 +134,40 @@ function nowLabel() {
 }
 
 export function AgentChatArena() {
-  const [drafts, setDrafts] = useState<Record<PlayerId, string>>(createInitialDrafts);
+  const [drafts, setDrafts] = useState<Record<PlayerId, ComposerState>>(createInitialDrafts);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "seed-1",
       player: "1p",
       text: "Bridge check. 1P is online and ready to type through Kuma Picker.",
+      attachments: [],
       sentAt: nowLabel(),
     },
     {
       id: "seed-2",
       player: "2p",
       text: "2P connected. Let’s use this room to prove both skills and extension installs are healthy.",
+      attachments: [],
       sentAt: nowLabel(),
     },
   ]);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const previousMessageCountRef = useRef(messages.length);
+  const fileInputRefs = useRef<Record<PlayerId, HTMLInputElement | null>>({
+    "1p": null,
+    "2p": null,
+  });
+  const attachmentRegistryRef = useRef<ChatAttachment[]>([]);
+
+  useEffect(() => {
+    attachmentRegistryRef.current = collectAllAttachments(drafts, messages);
+  }, [drafts, messages]);
+
+  useEffect(() => {
+    return () => {
+      revokeAttachments(attachmentRegistryRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const transcript = transcriptRef.current;
@@ -103,13 +192,17 @@ export function AgentChatArena() {
   function updateDraft(player: PlayerId, nextValue: string) {
     setDrafts((current) => ({
       ...current,
-      [player]: nextValue,
+      [player]: {
+        ...current[player],
+        text: nextValue,
+      },
     }));
   }
 
   function sendMessage(player: PlayerId) {
-    const nextText = drafts[player].trim();
-    if (!nextText) {
+    const nextDraft = drafts[player];
+    const nextText = nextDraft.text.trim();
+    if (!nextText && nextDraft.attachments.length === 0) {
       return;
     }
 
@@ -119,13 +212,61 @@ export function AgentChatArena() {
         id: `${player}-${Date.now()}-${current.length}`,
         player,
         text: nextText,
+        attachments: nextDraft.attachments,
         sentAt: nowLabel(),
       },
     ]);
     setDrafts((current) => ({
       ...current,
-      [player]: "",
+      [player]: {
+        text: "",
+        attachments: [],
+      },
     }));
+  }
+
+  function handleAttachmentSelect(player: PlayerId, event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    const nextAttachments = files.map(createAttachmentFromFile).filter(Boolean) as ChatAttachment[];
+    if (nextAttachments.length === 0) {
+      event.target.value = "";
+      return;
+    }
+
+    setDrafts((current) => ({
+      ...current,
+      [player]: {
+        ...current[player],
+        attachments: [...current[player].attachments, ...nextAttachments],
+      },
+    }));
+
+    event.target.value = "";
+  }
+
+  function removeDraftAttachment(player: PlayerId, attachmentId: string) {
+    setDrafts((current) => {
+      const removed = current[player].attachments.find((attachment) => attachment.id === attachmentId) ?? null;
+      if (removed) {
+        URL.revokeObjectURL(removed.objectUrl);
+      }
+
+      return {
+        ...current,
+        [player]: {
+          ...current[player],
+          attachments: current[player].attachments.filter((attachment) => attachment.id !== attachmentId),
+        },
+      };
+    });
+  }
+
+  function openFilePicker(player: PlayerId) {
+    fileInputRefs.current[player]?.click();
   }
 
   function handleComposerKeyDown(
@@ -139,6 +280,7 @@ export function AgentChatArena() {
   }
 
   function resetRoom() {
+    revokeAttachments(collectAllAttachments(drafts, messages));
     setMessages([]);
     setDrafts(createInitialDrafts());
   }
@@ -193,7 +335,7 @@ export function AgentChatArena() {
                 <VisualPill
                   key={player}
                   label={PLAYER_COPY[player].shortLabel}
-                  value={drafts[player].trim() ? "Typing" : "Idle"}
+                  value={drafts[player].text.trim() || drafts[player].attachments.length > 0 ? "Typing" : "Idle"}
                   tone={PLAYER_COPY[player].tone}
                 />
               ))}
@@ -251,6 +393,16 @@ export function AgentChatArena() {
                     <article
                       className={`relative flex max-w-[84%] flex-col overflow-hidden rounded-[1.55rem] border border-[#8d6137]/12 px-4 py-3 shadow-[0_18px_34px_rgba(93,57,20,0.08)] ${PLAYER_COPY[message.player].bubbleClassName}`}
                     >
+                      {message.attachments.length > 0 ? (
+                        <div
+                          className="mb-3 grid gap-2"
+                          data-testid={`chat-message-attachments-${index + 1}`}
+                        >
+                          {message.attachments.map((attachment) => (
+                            <AttachmentPreview key={attachment.id} attachment={attachment} compact={false} />
+                          ))}
+                        </div>
+                      ) : null}
                       <p className="whitespace-pre-wrap text-sm leading-6 text-[#553114]">{message.text}</p>
                     </article>
 
@@ -277,10 +429,17 @@ export function AgentChatArena() {
                   <CompactComposer
                     key={player}
                     player={player}
-                    draft={drafts[player]}
+                    draft={drafts[player].text}
+                    attachments={drafts[player].attachments}
                     onChange={updateDraft}
+                    onAttach={handleAttachmentSelect}
+                    onOpenPicker={openFilePicker}
+                    onRemoveAttachment={removeDraftAttachment}
                     onSend={sendMessage}
                     onKeyDown={handleComposerKeyDown}
+                    inputRef={(element) => {
+                      fileInputRefs.current[player] = element;
+                    }}
                   />
                 ))}
               </div>
@@ -295,15 +454,25 @@ export function AgentChatArena() {
 function CompactComposer({
   player,
   draft,
+  attachments,
   onChange,
+  onAttach,
+  onOpenPicker,
+  onRemoveAttachment,
   onSend,
   onKeyDown,
+  inputRef,
 }: {
   player: PlayerId;
   draft: string;
+  attachments: ChatAttachment[];
   onChange: (player: PlayerId, nextValue: string) => void;
+  onAttach: (player: PlayerId, event: ChangeEvent<HTMLInputElement>) => void;
+  onOpenPicker: (player: PlayerId) => void;
+  onRemoveAttachment: (player: PlayerId, attachmentId: string) => void;
   onSend: (player: PlayerId) => void;
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>, player: PlayerId) => void;
+  inputRef: (element: HTMLInputElement | null) => void;
 }) {
   const copy = PLAYER_COPY[player];
 
@@ -317,7 +486,52 @@ function CompactComposer({
         </span>
       </div>
 
+      {attachments.length > 0 ? (
+        <div className="grid gap-1.5" data-testid={`chat-attachments-${player}`}>
+          {attachments.map((attachment) => (
+            <div
+              key={attachment.id}
+              className="rounded-[0.95rem] border border-[#8d6137]/10 bg-white/70 p-2"
+              data-testid={`chat-attachment-${player}-${attachment.id}`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <AttachmentPreview attachment={attachment} compact />
+                <button
+                  type="button"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[#8d6137]/12 bg-white/88 text-[#70461f]"
+                  aria-label={`Remove ${attachment.name}`}
+                  data-testid={`chat-remove-attachment-${player}-${attachment.id}`}
+                  onClick={() => onRemoveAttachment(player, attachment.id)}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex min-w-0 items-end gap-1.5">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*,video/*"
+          multiple
+          className="hidden"
+          data-testid={`chat-file-input-${player}`}
+          onChange={(event) => onAttach(player, event)}
+        />
+
+        <button
+          type="button"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#8d6137]/12 bg-white/82 text-[#5d3814] shadow-[0_10px_20px_rgba(93,57,20,0.1)] transition hover:-translate-y-0.5 hover:bg-white"
+          data-testid={`chat-attach-${player}`}
+          aria-label={`Attach image or video for ${player.toUpperCase()} dispatch`}
+          onClick={() => onOpenPicker(player)}
+        >
+          <Paperclip className="h-3.5 w-3.5" />
+        </button>
+
         <textarea
           rows={1}
           className="kuma-chat-input h-10 min-w-0 flex-1 resize-none overflow-hidden rounded-[0.95rem] border border-[#8d6137]/12 bg-white/92 px-2 py-1.5 text-[10px] leading-4 text-[#4f3013] shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] outline-none"
@@ -338,6 +552,45 @@ function CompactComposer({
         >
           <Send className="h-3.5 w-3.5" />
         </button>
+      </div>
+    </div>
+  );
+}
+
+function AttachmentPreview({
+  attachment,
+  compact,
+}: {
+  attachment: ChatAttachment;
+  compact: boolean;
+}) {
+  return (
+    <div className={`grid gap-2 ${compact ? "grid-cols-[72px_minmax(0,1fr)]" : "grid-cols-1"}`}>
+      {attachment.kind === "image" ? (
+        <img
+          src={attachment.objectUrl}
+          alt={attachment.name}
+          className={`rounded-[0.9rem] object-cover ${compact ? "h-[72px] w-[72px]" : "max-h-[220px] w-full"}`}
+        />
+      ) : (
+        <video
+          src={attachment.objectUrl}
+          controls
+          muted
+          playsInline
+          preload="metadata"
+          className={`rounded-[0.9rem] bg-[#2a1707] object-cover ${compact ? "h-[72px] w-[72px]" : "max-h-[220px] w-full"}`}
+        />
+      )}
+
+      <div className="min-w-0">
+        <div className="truncate text-[10px] font-black uppercase tracking-[0.22em] text-[#8c633d]">
+          {attachment.kind === "image" ? "Image" : "Video"}
+        </div>
+        <div className="mt-1 truncate text-xs font-semibold text-[#4f3013]">{attachment.name}</div>
+        <div className="mt-1 text-[11px] text-[#7a5835]">
+          {attachment.sizeLabel} · {attachment.mimeType}
+        </div>
       </div>
     </div>
   );
