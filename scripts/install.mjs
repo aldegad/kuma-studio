@@ -125,6 +125,22 @@ function ensureStateHome() {
   return stateHome;
 }
 
+function copyExtensionToGlobalPath() {
+  const codexHome = process.env.CODEX_HOME || resolve(os.homedir(), ".codex");
+  const extDest = resolve(codexHome, "extensions", "kuma-picker-browser-extension");
+  const extSrc = resolve(KUMA_ROOT, "packages", "browser-extension");
+
+  if (!existsSync(extSrc)) {
+    err(`Extension source not found: ${extSrc}`);
+    return null;
+  }
+
+  mkdirSync(extDest, { recursive: true });
+  cpSync(extSrc, extDest, { recursive: true });
+  log(`Extension copied to ${extDest}`);
+  return extDest;
+}
+
 function copySkillFiles(targetProject) {
   if (!targetProject) return;
 
@@ -191,8 +207,8 @@ function copySkillFiles(targetProject) {
   }
 }
 
-function printExtensionGuide() {
-  const extensionPath = resolve(KUMA_ROOT, "packages", "browser-extension");
+function printExtensionGuide(globalExtPath) {
+  const extensionPath = globalExtPath || resolve(KUMA_ROOT, "packages", "browser-extension");
   process.stdout.write(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║  ONE REMAINING STEP (requires human action in Chrome)          ║
@@ -212,13 +228,14 @@ function printExtensionGuide() {
 `);
 }
 
-function printSummary(stateHome) {
+function printSummary(stateHome, globalExtPath) {
+  const extPath = globalExtPath || resolve(KUMA_ROOT, "packages/browser-extension");
   process.stdout.write(`
 ── Kuma Picker install summary ──────────────────────────────────
   Repo:         ${KUMA_ROOT}
   State home:   ${stateHome}
   Daemon:       http://127.0.0.1:4312
-  Extension:    ${resolve(KUMA_ROOT, "packages/browser-extension")}
+  Extension:    ${extPath}
 ─────────────────────────────────────────────────────────────────
 
 To verify everything works:
@@ -236,9 +253,10 @@ const flags = parseArgs(process.argv.slice(2));
 checkNodeVersion();
 installDependencies();
 const stateHome = ensureStateHome();
+const globalExtPath = copyExtensionToGlobalPath();
 if (!flags.skipDaemon) {
   startDaemon();
 }
 copySkillFiles(flags.targetProject);
-printExtensionGuide();
-printSummary(stateHome);
+printExtensionGuide(globalExtPath);
+printSummary(stateHome, globalExtPath);

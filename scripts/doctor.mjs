@@ -102,6 +102,15 @@ check("browser_bridge", () => {
   }
 });
 
+check("global_extension", () => {
+  const codexHome = process.env.CODEX_HOME || resolve(os.homedir(), ".codex");
+  const extPath = resolve(codexHome, "extensions", "kuma-picker-browser-extension", "manifest.json");
+  if (!existsSync(extPath)) {
+    throw new Error(`Missing: ${resolve(codexHome, "extensions/kuma-picker-browser-extension")}. Run: npm run skill:install`);
+  }
+  return resolve(codexHome, "extensions", "kuma-picker-browser-extension");
+});
+
 check("skill_files", () => {
   const skillPath = resolve(KUMA_ROOT, "skills", "kuma-picker", "SKILL.md");
   if (!existsSync(skillPath)) {
@@ -131,10 +140,15 @@ if (jsonMode) {
       process.stdout.write("  Quick fix: npm install\n\n");
     } else if (failed.some((c) => c.name === "daemon_reachable")) {
       process.stdout.write("  Quick fix: npm run kuma-pickerd:serve &\n\n");
+    } else if (failed.some((c) => c.name === "global_extension")) {
+      process.stdout.write("  Quick fix: npm run skill:install\n\n");
     } else if (failed.some((c) => c.name === "extension_status" || c.name === "browser_bridge")) {
+      const codexHome = process.env.CODEX_HOME || resolve(os.homedir(), ".codex");
+      const globalExt = resolve(codexHome, "extensions", "kuma-picker-browser-extension");
+      const extFolder = existsSync(globalExt) ? globalExt : resolve(KUMA_ROOT, "packages/browser-extension");
       process.stdout.write(
         "  Quick fix: Load the extension in chrome://extensions (Developer mode → Load unpacked)\n" +
-          `  Extension folder: ${resolve(KUMA_ROOT, "packages/browser-extension")}\n\n`,
+          `  Extension folder: ${extFolder}\n\n`,
       );
     }
     process.exitCode = 1;
