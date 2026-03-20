@@ -22,6 +22,7 @@ npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"
 npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3001" --new-tab
 npm run kuma-pickerd:browser-navigate -- --tab-id 123456 --url "http://localhost:3000"
 npm run kuma-pickerd:browser-dom -- --url-contains "example.com"
+npm run kuma-pickerd:browser-eval -- --url-contains "example.com" --expression "document.title"
 npm run kuma-pickerd:browser-console -- --url-contains "example.com"
 npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
 npm run kuma-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
@@ -74,6 +75,7 @@ Use these before relying on the Chrome extension bridge:
 - Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
 - Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
+- Use `browser-eval --expression "..."` when a tiny page-context readback is clearer than a full DOM snapshot.
 - Use `browser-sequence` when a dropdown or modal workflow should stay alive across multiple steps, and add per-step `assert` checks for postcondition verification.
 - `browser-sequence` accepts `insertText` steps for cursor-position text insertion inside text inputs and `contenteditable` editors.
 - Use the wait commands to verify save states instead of guessing from click timing alone.

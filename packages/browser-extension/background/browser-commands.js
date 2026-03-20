@@ -265,6 +265,10 @@ async function executeDownloadPermissionBrowserCommand(tab) {
   };
 }
 
+async function executeEvalBrowserCommand(tab, command) {
+  return evaluateDebuggerExpression(tab, command);
+}
+
 async function executeBrowserCommand(tab, command) {
   switch (command?.type) {
     case "context":
@@ -275,6 +279,8 @@ async function executeBrowserCommand(tab, command) {
       return captureDebuggerDiagnostics(tab, command);
     case "navigate":
       return executeNavigateBrowserCommand(tab, command);
+    case "eval":
+      return executeEvalBrowserCommand(tab, command);
     case "dom":
     case "click":
     case "sequence":

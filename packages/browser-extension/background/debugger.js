@@ -100,6 +100,90 @@ function describeRemoteObject(remoteObject) {
   };
 }
 
+async function evaluateDebuggerExpression(tab, command = {}) {
+  if (!tab?.id) {
+    throw new Error("Failed to resolve the target browser tab for debugger evaluation.");
+  }
+
+  const expressionCandidate =
+    typeof command?.expression === "string"
+      ? command.expression
+      : typeof command?.text === "string"
+        ? command.text
+        : typeof command?.value === "string"
+          ? command.value
+          : "";
+  const expression = expressionCandidate.trim();
+  if (!expression) {
+    throw new Error("browser-eval requires --expression.");
+  }
+
+  const tabId = tab.id;
+  const debuggee = createDebuggerTarget(tabId);
+  let attached = false;
+
+  try {
+    try {
+      await chrome.debugger.attach(debuggee, DEBUGGER_PROTOCOL_VERSION);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        message.includes("Another debugger is already attached")
+          ? "Chrome DevTools or another debugger is already attached to this tab."
+          : `Failed to attach chrome.debugger: ${message}`,
+      );
+    }
+    attached = true;
+
+    await chrome.debugger.sendCommand(debuggee, "Runtime.enable");
+
+    const evaluation = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      userGesture: true,
+    });
+
+    let currentTab = null;
+    try {
+      currentTab = await chrome.tabs.get(tabId);
+    } catch {
+      currentTab = null;
+    }
+
+    if (evaluation?.exceptionDetails) {
+      return {
+        page: createPageRecordFromDebugTab(currentTab),
+        expression,
+        exception: {
+          text: normalizeDebuggerString(evaluation.exceptionDetails.text, 1_500),
+          lineNumber: Number.isFinite(evaluation.exceptionDetails.lineNumber) ? evaluation.exceptionDetails.lineNumber : null,
+          columnNumber: Number.isFinite(evaluation.exceptionDetails.columnNumber) ? evaluation.exceptionDetails.columnNumber : null,
+          exception: describeRemoteObject(evaluation.exceptionDetails.exception),
+        },
+        value: null,
+      };
+    }
+
+    return {
+      page: createPageRecordFromDebugTab(currentTab),
+      expression,
+      value:
+        "value" in (evaluation?.result ?? {})
+          ? summarizeDebuggerValue(evaluation.result.value)
+          : describeRemoteObject(evaluation?.result),
+    };
+  } finally {
+    if (attached) {
+      try {
+        await chrome.debugger.detach(debuggee);
+      } catch {
+        // Ignore detach races after evaluation completion.
+      }
+    }
+  }
+}
+
 function createPageRecordFromDebugTab(tab) {
   const url = typeof tab?.url === "string" ? tab.url : null;
   let pathname = null;

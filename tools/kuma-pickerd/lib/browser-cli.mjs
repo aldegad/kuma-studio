@@ -58,6 +58,21 @@ export async function commandBrowserDom(options) {
   printJson(result.result ?? null);
 }
 
+export async function commandBrowserEval(options) {
+  const expression = readOptionalString(options, "expression");
+  if (!expression) {
+    throw new Error("browser-eval requires --expression.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "eval",
+    expression,
+    text: expression,
+    value: expression,
+  });
+  printJson(result.result ?? null);
+}
+
 export async function commandBrowserConsole(options) {
   const result = await enqueueBrowserCommand(options, {
     type: "console",

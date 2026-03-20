@@ -3,6 +3,7 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "context",
   "navigate",
   "dom",
+  "eval",
   "console",
   "debugger-capture",
   "click",

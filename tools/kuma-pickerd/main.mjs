@@ -10,6 +10,7 @@ import {
   commandBrowserContext,
   commandBrowserDebuggerCapture,
   commandBrowserDom,
+  commandBrowserEval,
   commandBrowserDownloadPermission,
   commandBrowserFill,
   commandBrowserGetLatestDownload,
@@ -55,6 +56,7 @@ Usage:
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-navigate --url "https://example.com/page" [--tab-id 123] [--new-tab] [--background] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-eval --expression "document.title" (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-console (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-debugger-capture [--refresh] [--bypass-cache] [--capture-ms 3000] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] [--exact-text] [--role tab] [--within "설정 모드"] [--nth 1] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
@@ -374,6 +376,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-dom":
       await commandBrowserDom(options);
+      return;
+    case "browser-eval":
+      await commandBrowserEval(options);
       return;
     case "browser-console":
       await commandBrowserConsole(options);

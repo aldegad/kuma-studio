@@ -132,6 +132,7 @@ export function sanitizeCommandPayload(candidate) {
   const label = sanitizeString(candidate.label, 512);
   const text = sanitizeString(candidate.text, 512);
   const value = typeof candidate.value === "string" ? candidate.value.slice(0, 4_000) : null;
+  const expression = typeof candidate.expression === "string" ? candidate.expression.slice(0, 8_000) : null;
   const key = sanitizeString(candidate.key, 64);
   const button = sanitizeString(candidate.button, 16);
   const kind = sanitizeString(candidate.kind, 64);
@@ -180,6 +181,7 @@ export function sanitizeCommandPayload(candidate) {
     label,
     text,
     value,
+    expression,
     key,
     button,
     kind,

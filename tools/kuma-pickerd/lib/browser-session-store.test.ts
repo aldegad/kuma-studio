@@ -330,6 +330,42 @@ describe("BrowserSessionStore", () => {
     );
   });
 
+  it("preserves eval expression payloads when dispatching websocket commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-06b",
+      command: {
+        type: "eval",
+        targetUrlContains: "localhost:3000/contenteditable-lab",
+        expression: "document.title",
+        text: "document.title",
+        value: "document.title",
+      },
+    });
+
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-06b",
+        command: expect.objectContaining({
+          type: "eval",
+          targetUrlContains: "localhost:3000/contenteditable-lab",
+          expression: "document.title",
+          text: "document.title",
+          value: "document.title",
+        }),
+      }),
+    );
+  });
+
   it("preserves advanced interaction payloads for key hold and pointer drag commands", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();

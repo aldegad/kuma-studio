@@ -87,6 +87,102 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       };
     }
 
+    function serializeEvalValue(value, depth = 0, seen = new WeakSet()) {
+      if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return value ?? null;
+      }
+
+      if (typeof value === "bigint") {
+        return { kind: "bigint", value: String(value) };
+      }
+
+      if (typeof value === "undefined") {
+        return { kind: "undefined" };
+      }
+
+      if (typeof value === "symbol") {
+        return { kind: "symbol", value: String(value) };
+      }
+
+      if (typeof value === "function") {
+        return { kind: "function", name: value.name || null };
+      }
+
+      if (depth >= 4) {
+        return { kind: "max-depth" };
+      }
+
+      if (value instanceof Element) {
+        return {
+          kind: "element",
+          element: describeElementForCommand(value),
+        };
+      }
+
+      if (value instanceof Error) {
+        return {
+          kind: "error",
+          name: value.name,
+          message: value.message,
+        };
+      }
+
+      if (value instanceof Date) {
+        return {
+          kind: "date",
+          value: value.toISOString(),
+        };
+      }
+
+      if (Array.isArray(value)) {
+        return value.slice(0, 50).map((entry) => serializeEvalValue(entry, depth + 1, seen));
+      }
+
+      if (typeof value === "object") {
+        if (seen.has(value)) {
+          return { kind: "circular" };
+        }
+
+        seen.add(value);
+        const entries = Object.entries(value).slice(0, 50);
+        return Object.fromEntries(entries.map(([key, entry]) => [key, serializeEvalValue(entry, depth + 1, seen)]));
+      }
+
+      return String(value);
+    }
+
+    async function executeEvalCommand(command) {
+      const expressionCandidate =
+        typeof command?.expression === "string"
+          ? command.expression
+          : typeof command?.text === "string"
+            ? command.text
+            : typeof command?.value === "string"
+              ? command.value
+              : "";
+      const expression = expressionCandidate.trim();
+      if (!expression) {
+        throw new Error("browser-eval requires --expression.");
+      }
+
+      const AsyncFunction = Object.getPrototypeOf(async function noop() {}).constructor;
+      let evaluator;
+
+      try {
+        evaluator = new AsyncFunction("window", "document", "globalThis", "page", `return (${expression});`);
+      } catch {
+        evaluator = new AsyncFunction("window", "document", "globalThis", "page", expression);
+      }
+
+      const value = await evaluator(window, document, globalThis, buildPageRecord());
+
+      return {
+        page: buildPageRecord(),
+        expression,
+        value: serializeEvalValue(value),
+      };
+    }
+
     function getAssociatedLabelSummary(element) {
       return typeof getAssociatedLabelTexts === "function"
         ? getAssociatedLabelTexts(element).map((entry) => normalizeText(entry)).filter(Boolean)
@@ -513,6 +609,7 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
     }
 
     return {
+      executeEvalCommand,
       executeMeasureCommand,
       executeQueryDomCommand,
       executeSequenceCommand,

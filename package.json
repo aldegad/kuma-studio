@@ -25,6 +25,7 @@
     "kuma-pickerd:browser-context": "node ./packages/server/src/cli.mjs browser-context",
     "kuma-pickerd:browser-navigate": "node ./packages/server/src/cli.mjs browser-navigate",
     "kuma-pickerd:browser-dom": "node ./packages/server/src/cli.mjs browser-dom",
+    "kuma-pickerd:browser-eval": "node ./packages/server/src/cli.mjs browser-eval",
     "kuma-pickerd:browser-console": "node ./packages/server/src/cli.mjs browser-console",
     "kuma-pickerd:browser-debugger-capture": "node ./packages/server/src/cli.mjs browser-debugger-capture",
     "kuma-pickerd:browser-click": "node ./packages/server/src/cli.mjs browser-click",

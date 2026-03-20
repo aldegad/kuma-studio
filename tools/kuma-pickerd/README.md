@@ -105,7 +105,7 @@ That directory currently includes:
 `/health` now reports the active browser transport mode as `browserTransport`.
 The default is `websocket`.
 
-Browser control commands such as `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, `browser-click`,
+Browser control commands such as `browser-context`, `browser-dom`, `browser-eval`, `browser-console`, `browser-debugger-capture`, `browser-click`,
 `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-navigate`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane.
@@ -129,6 +129,7 @@ node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --s
 node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status completed --message "Updated the picked element and verified the change."
 node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.com"
+node ./packages/server/src/cli.mjs browser-eval --url-contains "ddalkkakposting.com" --expression "document.title"
 node ./packages/server/src/cli.mjs browser-console --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-debugger-capture --url-contains "ddalkkakposting.com" --refresh --bypass-cache --capture-ms 4000
 node ./packages/server/src/cli.mjs browser-click --url-contains "ddalkkakposting.com" --role button --exact-text --text "다음"
@@ -175,6 +176,7 @@ For browser commands:
 - use `--url-contains` for a looser match when the URL has changing query params
 - browser control is routed over the daemon's WebSocket control plane, not the old HTTP polling queue
 - use `browser-navigate` when the agent needs to open a dev server, docs page, or new browser tab before any DOM action is possible
+- use `browser-eval --expression "..."` when you need a small explicit page-context readback instead of a larger DOM snapshot
 - use `browser-console` to read recent `console.*`, `window.onerror`, and `unhandledrejection` events from the target page
 - use `browser-debugger-capture` when you need short-lived DevTools-level `Runtime`, `Log`, and `Network` diagnostics
 - add `--refresh --bypass-cache` to `browser-debugger-capture` for deploy verification and capture the next page-load failures

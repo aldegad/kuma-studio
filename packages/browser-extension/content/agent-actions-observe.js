@@ -157,6 +157,8 @@ executeBrowserCommandInternal = async function executeBrowserCommandInternal(com
       return { pageContext: buildPageContext(getPageTargetElement()) };
     case "dom":
       return { domSnapshot: coreBuildDomSnapshot() };
+    case "eval":
+      return observeExtras.executeEvalCommand(command);
     case "console":
       return {
         page: buildPageRecord(),

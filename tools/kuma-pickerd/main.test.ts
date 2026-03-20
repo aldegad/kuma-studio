@@ -107,10 +107,11 @@ function createSelectionRecord(sessionId: string, index: number, jobMessage?: st
 }
 
 describe("kuma-pickerd browser usage", () => {
-  it("prints the console, debugger capture, sequence, refresh, download, and semantic DOM query commands in help output", () => {
+  it("prints the console, eval, debugger capture, sequence, refresh, download, and semantic DOM query commands in help output", () => {
     const output = runCli(["--help"], process.cwd());
 
     expect(output).toContain("browser-console");
+    expect(output).toContain("browser-eval");
     expect(output).toContain("browser-debugger-capture");
     expect(output).toContain("browser-navigate");
     expect(output).toContain("browser-sequence");
