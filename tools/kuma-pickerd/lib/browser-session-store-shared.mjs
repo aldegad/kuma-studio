@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 const STALE_AFTER_MS = 15_000;
-const MAX_CAPABILITIES = 16;
+const MAX_CAPABILITIES = 32;
 const MAX_TEXT_LENGTH = 2_000;
 
 export const MAX_COMMANDS = 100;
@@ -133,6 +133,7 @@ export function sanitizeCommandPayload(candidate) {
   const text = sanitizeString(candidate.text, 512);
   const value = typeof candidate.value === "string" ? candidate.value.slice(0, 4_000) : null;
   const key = sanitizeString(candidate.key, 64);
+  const button = sanitizeString(candidate.button, 16);
   const kind = sanitizeString(candidate.kind, 64);
   const role = sanitizeString(candidate.role, 64);
   const within = sanitizeString(candidate.within, 512);
@@ -176,6 +177,7 @@ export function sanitizeCommandPayload(candidate) {
     text,
     value,
     key,
+    button,
     kind,
     role,
     within,

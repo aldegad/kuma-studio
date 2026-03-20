@@ -34,11 +34,11 @@ Current reality:
 
 - [x] `browser-key --hold-ms` supports sustained key input.
 - [x] `browser-pointer-drag` works for repeated real-time interaction.
-- [ ] Add `browser-keydown`.
-- [ ] Add `browser-keyup`.
-- [ ] Add `browser-mousemove`.
-- [ ] Add `browser-mousedown`.
-- [ ] Add `browser-mouseup`.
+- [x] Add `browser-keydown`.
+- [x] Add `browser-keyup`.
+- [x] Add `browser-mousemove`.
+- [x] Add `browser-mousedown`.
+- [x] Add `browser-mouseup`.
 - [ ] Add key chord support for common combos like copy/paste/select-all.
 
 ### B. Bridge reliability
@@ -86,17 +86,28 @@ These bundled surfaces should be the default benchmark set for Phase 1.
 
 ### Agent chat
 
-- [ ] Fill `1P` composer.
-- [ ] Send a message.
-- [ ] Read the new bubble back from the transcript.
+- [x] Fill `1P` composer.
+- [x] Send a message.
+- [x] Read the new bubble back from the transcript.
 - [ ] Reset the room and verify the cleared state.
+
+Latest benchmark note:
+
+- 2026-03-20: verified on `/agent-chat` that `browser-fill` + `browser-click` can write a composer message, send it, and read the new transcript line back from DOM text.
+- 2026-03-20: navigation-triggering clicks such as `back-to-apps` and surface-card links now return immediately instead of timing out while the page route changes.
 
 ### Sudoku
 
-- [ ] Select an editable cell.
-- [ ] Enter a number by keyboard.
-- [ ] Verify the value changed.
-- [ ] Repeat across multiple cells without stale-target drift.
+- [x] Select an editable cell.
+- [x] Enter a number by keyboard.
+- [x] Verify the value changed.
+- [x] Repeat across multiple cells without stale-target drift.
+
+Latest benchmark note:
+
+- 2026-03-20: `browser-mousedown` + `browser-mouseup` now synthesize a real click when the pointer stays on the same interactive target.
+- 2026-03-20: point-target resolution now climbs to the nearest interactive ancestor, which fixed grid-cell selection on nested spans.
+- 2026-03-20: verified on `/sudoku` that `mousedown/up` selects a cell and `keydown/up` persists a numeric write on the focused editable cell.
 
 ### Cafe control room
 
@@ -113,6 +124,10 @@ These bundled surfaces should be the default benchmark set for Phase 1.
 - [x] Move with pointer drag.
 - [x] Survive repeated control cycles after refresh.
 - [x] Observe live metric increases through DOM/screenshot checks.
+
+Latest benchmark note:
+
+- 2026-03-20: after navigating in from the launcher, `/shooting` still accepted `browser-key --hold-ms` and `browser-pointer-drag`, with live readback showing `Shots Fired 21` and `Total Inputs 64`.
 
 ## Exit criteria for Phase 1
 

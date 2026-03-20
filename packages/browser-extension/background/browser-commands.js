@@ -221,6 +221,11 @@ async function executeBrowserCommand(tab, command) {
     case "pointer-drag":
     case "fill":
     case "key":
+    case "keydown":
+    case "keyup":
+    case "mousemove":
+    case "mousedown":
+    case "mouseup":
     case "console":
     case "wait-for-text":
     case "wait-for-text-disappear":

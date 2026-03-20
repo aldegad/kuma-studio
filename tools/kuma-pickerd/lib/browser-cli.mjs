@@ -178,6 +178,103 @@ export async function commandBrowserKey(options) {
   printJson(result.result ?? null);
 }
 
+export async function commandBrowserKeyDown(options) {
+  const key = readOptionalString(options, "key");
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const text = readOptionalString(options, "text");
+
+  if (!key) {
+    throw new Error("browser-keydown requires --key.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "keydown",
+    key,
+    selector,
+    selectorPath,
+    text,
+    shiftKey: options["shift"] === true,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserKeyUp(options) {
+  const key = readOptionalString(options, "key");
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
+  const text = readOptionalString(options, "text");
+
+  if (!key) {
+    throw new Error("browser-keyup requires --key.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "keyup",
+    key,
+    selector,
+    selectorPath,
+    text,
+    shiftKey: options["shift"] === true,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserMouseMove(options) {
+  const x = readNumber(options, "x", null);
+  const y = readNumber(options, "y", null);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error("browser-mousemove requires --x and --y.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "mousemove",
+    x,
+    y,
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserMouseDown(options) {
+  const x = readNumber(options, "x", null);
+  const y = readNumber(options, "y", null);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error("browser-mousedown requires --x and --y.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "mousedown",
+    x,
+    y,
+    button: readOptionalString(options, "button"),
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserMouseUp(options) {
+  const x = readNumber(options, "x", null);
+  const y = readNumber(options, "y", null);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error("browser-mouseup requires --x and --y.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "mouseup",
+    x,
+    y,
+    button: readOptionalString(options, "button"),
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
+  });
+  printJson(result.result ?? null);
+}
+
 export async function commandBrowserRefresh(options) {
   const result = await enqueueBrowserCommand(options, {
     type: "refresh",

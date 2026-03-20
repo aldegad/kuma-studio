@@ -22,6 +22,11 @@ var {
   executeClickPointCommand: interactionExecuteClickPointCommand,
   executeFillCommand: interactionExecuteFillCommand,
   executeKeyCommand: interactionExecuteKeyCommand,
+  executeKeyDownCommand: interactionExecuteKeyDownCommand,
+  executeKeyUpCommand: interactionExecuteKeyUpCommand,
+  executeMouseMoveCommand: interactionExecuteMouseMoveCommand,
+  executeMouseDownCommand: interactionExecuteMouseDownCommand,
+  executeMouseUpCommand: interactionExecuteMouseUpCommand,
   executePointerDragCommand: interactionExecutePointerDragCommand,
 } = globalThis.KumaPickerExtensionAgentActionInteraction;
 var {
@@ -172,6 +177,16 @@ executeBrowserCommandInternal = async function executeBrowserCommandInternal(com
       return interactionExecuteFillCommand(command);
     case "key":
       return interactionExecuteKeyCommand(command);
+    case "keydown":
+      return interactionExecuteKeyDownCommand(command);
+    case "keyup":
+      return interactionExecuteKeyUpCommand(command);
+    case "mousemove":
+      return interactionExecuteMouseMoveCommand(command);
+    case "mousedown":
+      return interactionExecuteMouseDownCommand(command);
+    case "mouseup":
+      return interactionExecuteMouseUpCommand(command);
     case "pointer-drag":
       return interactionExecutePointerDragCommand(command);
     case "wait-for-text":

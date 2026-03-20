@@ -14,6 +14,35 @@ var {
 var gestureOverlay = globalThis.KumaPickerExtensionAgentGestureOverlay ?? null;
 
 var KumaPickerExtensionAgentActionInteraction = (() => {
+  const POINT_INTERACTIVE_SELECTOR = [
+    "button",
+    "a[href]",
+    "input",
+    "textarea",
+    "select",
+    "summary",
+    "label",
+    "[role='button']",
+    "[role='link']",
+    "[role='menuitem']",
+    "[role='tab']",
+    "[role='option']",
+    "[role='gridcell']",
+    "[aria-controls]",
+    "[tabindex]:not([tabindex='-1'])",
+  ].join(", ");
+
+  const pressedKeys = new Map();
+  let activePointerState = {
+    button: null,
+    buttons: 0,
+    target: null,
+    lastPoint: null,
+    downTarget: null,
+    downPoint: null,
+    moved: false,
+  };
+
   function waitForDelay(ms) {
     if (!(Number.isFinite(ms) && ms > 0)) {
       return Promise.resolve();
@@ -87,6 +116,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
         clientX,
         clientY,
         view: window,
+        ...(arguments.length > 4 && arguments[4] && typeof arguments[4] === "object" ? arguments[4] : null),
       }),
     );
   }
@@ -122,6 +152,19 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       before.dataState === after.dataState &&
       before.open === after.open
     );
+  }
+
+  function isLikelyNavigationClickTarget(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    if (target instanceof HTMLAnchorElement && typeof target.href === "string" && target.href) {
+      return true;
+    }
+
+    const anchor = target.closest?.("a[href]");
+    return anchor instanceof HTMLAnchorElement && typeof anchor.href === "string" && anchor.href.length > 0;
   }
 
   function getPointTarget(command) {
@@ -217,6 +260,51 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     );
   }
 
+  function resolveMouseButton(rawButton) {
+    const normalized = coreNormalizeText(rawButton)?.toLowerCase?.() ?? "left";
+    switch (normalized) {
+      case "middle":
+        return { name: "middle", button: 1, buttons: 4 };
+      case "right":
+        return { name: "right", button: 2, buttons: 2 };
+      default:
+        return { name: "left", button: 0, buttons: 1 };
+    }
+  }
+
+  function readViewportPoint(command, actionName) {
+    const x = Number(command?.x);
+    const y = Number(command?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error(`${actionName} requires finite x and y coordinates.`);
+    }
+
+    return { x, y };
+  }
+
+  function getInteractivePointTarget(point, actionName) {
+    const rawTarget = document.elementFromPoint(point.x, point.y);
+    if (!(rawTarget instanceof Element) || coreIsExtensionUiElement(rawTarget)) {
+      throw new Error(`Failed to find an interactive element for ${actionName} at the requested viewport coordinates.`);
+    }
+
+    const interactiveTarget =
+      rawTarget.closest?.(POINT_INTERACTIVE_SELECTOR) instanceof Element ? rawTarget.closest(POINT_INTERACTIVE_SELECTOR) : rawTarget;
+    if (!(interactiveTarget instanceof Element) || coreIsExtensionUiElement(interactiveTarget)) {
+      throw new Error(`Failed to find an interactive element for ${actionName} at the requested viewport coordinates.`);
+    }
+
+    return interactiveTarget;
+  }
+
+  function shouldSynthesizeClick(downTarget, upTarget) {
+    if (!(downTarget instanceof Element) || !(upTarget instanceof Element)) {
+      return false;
+    }
+
+    return downTarget === upTarget || downTarget.contains(upTarget) || upTarget.contains(downTarget);
+  }
+
   async function executeClickCommand(command) {
     const target = coreResolveCommandTarget(command);
     if (!(target instanceof Element)) {
@@ -229,6 +317,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     let fallbackUsed = false;
+    const navigationLikely = isLikelyNavigationClickTarget(target);
 
     await gestureOverlay?.playClickGesture?.({ x: centerX, y: centerY });
 
@@ -236,6 +325,15 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       target.click();
     } else {
       dispatchClickSequence(target, centerX, centerY);
+    }
+
+    if (navigationLikely) {
+      return {
+        page: buildPageRecord(),
+        clickedElement: coreDescribeElementForCommand(target),
+        fallbackUsed,
+        navigationLikely,
+      };
     }
 
     await waitForDelay(Math.min(150, Math.max(50, Math.round((command?.postActionDelayMs ?? 400) / 2))));
@@ -250,6 +348,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       page: buildPageRecord(),
       clickedElement: coreDescribeElementForCommand(target),
       fallbackUsed,
+      navigationLikely,
     };
   }
 
@@ -359,6 +458,82 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       holdMs,
       targetElement: coreDescribeElementForCommand(target),
       ...keyResult,
+    };
+  }
+
+  async function executeKeyDownCommand(command) {
+    const normalizedKey = normalizeKeyboardCommandKey(command?.key);
+    if (!normalizedKey?.key) {
+      throw new Error("The keydown command requires a non-empty key.");
+    }
+
+    const target =
+      coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
+      (document.activeElement instanceof Element
+        ? document.activeElement
+        : document.body instanceof Element
+          ? document.body
+          : document.documentElement);
+
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a target element for the keydown command.");
+    }
+
+    target.focus?.({ preventScroll: true });
+    dispatchKeyboardEvent(target, "keydown", normalizedKey.key, command?.shiftKey === true, normalizedKey.code);
+    pressedKeys.set(normalizedKey.code, {
+      key: normalizedKey.key,
+      code: normalizedKey.code,
+      shiftKey: command?.shiftKey === true,
+      target,
+    });
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      key: normalizedKey.key,
+      code: normalizedKey.code,
+      shiftKey: command?.shiftKey === true,
+      targetElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeKeyUpCommand(command) {
+    const normalizedKey = normalizeKeyboardCommandKey(command?.key);
+    if (!normalizedKey?.key) {
+      throw new Error("The keyup command requires a non-empty key.");
+    }
+
+    const stored = pressedKeys.get(normalizedKey.code) ?? null;
+    const target =
+      (stored?.target instanceof Element && document.contains(stored.target) ? stored.target : null) ??
+      coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
+      (document.activeElement instanceof Element
+        ? document.activeElement
+        : document.body instanceof Element
+          ? document.body
+          : document.documentElement);
+
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a target element for the keyup command.");
+    }
+
+    dispatchKeyboardEvent(
+      target,
+      "keyup",
+      stored?.key ?? normalizedKey.key,
+      stored?.shiftKey ?? (command?.shiftKey === true),
+      stored?.code ?? normalizedKey.code,
+    );
+    pressedKeys.delete(normalizedKey.code);
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      key: stored?.key ?? normalizedKey.key,
+      code: stored?.code ?? normalizedKey.code,
+      shiftKey: stored?.shiftKey ?? (command?.shiftKey === true),
+      targetElement: coreDescribeElementForCommand(target),
     };
   }
 
@@ -486,12 +661,161 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+  async function executeMouseMoveCommand(command) {
+    const point = readViewportPoint(command, "mousemove");
+    const target =
+      activePointerState.buttons > 0 &&
+      activePointerState.target instanceof Element &&
+      document.contains(activePointerState.target)
+        ? activePointerState.target
+        : getInteractivePointTarget(point, "mousemove");
+
+    dispatchPointerEvent(target, "pointermove", point.x, point.y, {
+      button: activePointerState.button ?? 0,
+      buttons: activePointerState.buttons ?? 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    dispatchMouseEvent(target, "mousemove", point.x, point.y, {
+      button: activePointerState.button ?? 0,
+      buttons: activePointerState.buttons ?? 0,
+    });
+
+    activePointerState = {
+      ...activePointerState,
+      lastPoint: point,
+      target,
+      moved:
+        activePointerState.moved ||
+        (activePointerState.downPoint != null &&
+          (Math.abs(point.x - activePointerState.downPoint.x) > 3 ||
+            Math.abs(point.y - activePointerState.downPoint.y) > 3)),
+    };
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      point,
+      buttons: activePointerState.buttons ?? 0,
+      targetElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeMouseDownCommand(command) {
+    const point = readViewportPoint(command, "mousedown");
+    const buttonInfo = resolveMouseButton(command?.button);
+    const target = getInteractivePointTarget(point, "mousedown");
+
+    target.focus?.({ preventScroll: true });
+
+    dispatchPointerEvent(target, "pointerdown", point.x, point.y, {
+      button: buttonInfo.button,
+      buttons: buttonInfo.buttons,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    dispatchMouseEvent(target, "mousedown", point.x, point.y, {
+      button: buttonInfo.button,
+      buttons: buttonInfo.buttons,
+    });
+
+    activePointerState = {
+      button: buttonInfo.button,
+      buttons: buttonInfo.buttons,
+      target,
+      lastPoint: point,
+      downTarget: target,
+      downPoint: point,
+      moved: false,
+    };
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      point,
+      button: buttonInfo.name,
+      targetElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeMouseUpCommand(command) {
+    const point = readViewportPoint(command, "mouseup");
+    const fallbackButtonInfo = resolveMouseButton(command?.button);
+    const releaseTarget = getInteractivePointTarget(point, "mouseup");
+    const target =
+      activePointerState.target instanceof Element && document.contains(activePointerState.target)
+        ? activePointerState.target
+        : releaseTarget;
+    const button =
+      typeof activePointerState.button === "number"
+        ? activePointerState.button
+        : fallbackButtonInfo.button;
+    const buttonName =
+      activePointerState.buttons > 0
+        ? button === 2
+          ? "right"
+          : button === 1
+            ? "middle"
+            : "left"
+        : fallbackButtonInfo.name;
+
+    dispatchPointerEvent(target, "pointerup", point.x, point.y, {
+      button,
+      buttons: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+      isPrimary: true,
+    });
+    dispatchMouseEvent(target, "mouseup", point.x, point.y, {
+      button,
+      buttons: 0,
+    });
+
+    const synthesizedClick =
+      button === 0 &&
+      !activePointerState.moved &&
+      shouldSynthesizeClick(activePointerState.downTarget, releaseTarget);
+    if (synthesizedClick) {
+      dispatchMouseEvent(target, "click", point.x, point.y, {
+        button,
+        buttons: 0,
+        detail: 1,
+      });
+    }
+
+    activePointerState = {
+      button: null,
+      buttons: 0,
+      target: null,
+      lastPoint: point,
+      downTarget: null,
+      downPoint: null,
+      moved: false,
+    };
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      point,
+      button: buttonName,
+      targetElement: coreDescribeElementForCommand(target),
+      synthesizedClick,
+    };
+  }
+
   return {
     waitForDelay,
     executeClickCommand,
     executeClickPointCommand,
     executeFillCommand,
     executeKeyCommand,
+    executeKeyDownCommand,
+    executeKeyUpCommand,
+    executeMouseMoveCommand,
+    executeMouseDownCommand,
+    executeMouseUpCommand,
     executePointerDragCommand,
   };
 })();
