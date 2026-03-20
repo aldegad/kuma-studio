@@ -7,31 +7,61 @@ description: Read the latest Kuma Picker selection, screenshot, job state, and b
 
 Use Kuma Picker as a shared coordination workflow centered on the shared state home and the active browser bridge.
 
-## First-time setup
+## Installation (agent-executable)
 
-If the daemon is not yet running or the extension is not installed, follow these steps:
+When the user asks to install Kuma Picker (e.g. "스킬 설치해줘", "install kuma-picker",
+"이거 깔아줘"), run the automated installer. Do NOT ask the user to do these steps manually.
 
-1. Install dependencies in the kuma-picker project root:
-   ```bash
-   npm install
-   ```
-2. Start the daemon:
-   ```bash
-   npm run kuma-pickerd:serve
-   ```
-   The daemon listens on `http://127.0.0.1:4312` by default.
-3. Load the Chrome extension:
-   - Open `chrome://extensions` and enable **Developer mode**.
-   - Click **Load unpacked** and select `packages/browser-extension/` from the kuma-picker repo.
-4. Connect the extension to the daemon:
-   - Click the Kuma Picker extension icon to open the popup.
-   - Set the daemon URL to `http://127.0.0.1:4312`.
-   - Refresh the target page so the content script reconnects.
-5. Verify the bridge:
-   ```bash
-   npm run kuma-pickerd:get-browser-session
-   ```
-   A successful response shows `tabCount >= 1` with `tabs[]`.
+### Quick path — one command does everything
+
+```bash
+npm run skill:install
+```
+
+This handles: dependency install, daemon start, state home creation, and prints the
+one human-required step (Chrome extension loading).
+
+### If installing into another project
+
+```bash
+npm run skill:install -- --target-project /path/to/their/project
+```
+
+This additionally copies skill files into `.claude/skills/kuma-picker/` and injects
+`kuma-pickerd:*` scripts into the target project's `package.json`.
+
+### Health check — run when anything seems broken
+
+```bash
+npm run skill:doctor
+```
+
+Returns a checklist of what's working and what's not. Use `--json` for machine-readable output.
+
+### The one human step
+
+The Chrome extension cannot be installed by an agent. After running the installer,
+tell the user exactly this:
+
+> Chrome 익스텐션 하나만 직접 로드해주세요:
+> 1. chrome://extensions 열기
+> 2. 우측 상단 "개발자 모드" 켜기
+> 3. "압축해제된 확장 프로그램을 로드합니다" 클릭
+> 4. `packages/browser-extension/` 폴더 선택
+> 5. 아무 페이지에서 새로고침 한 번
+
+Then verify the bridge:
+```bash
+npm run kuma-pickerd:get-browser-session
+```
+
+### Post-install verification protocol
+
+After install, always run these in order:
+1. `npm run skill:doctor` — all checks should pass except possibly `extension_status` and `browser_bridge` (those need the human step)
+2. If `daemon_reachable` fails → `npm run kuma-pickerd:serve &`
+3. If `extension_status` fails → remind the user about the Chrome extension step above
+4. If `browser_bridge` fails but extension is loaded → tell user to refresh the target page
 
 ## State home
 

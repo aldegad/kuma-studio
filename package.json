@@ -49,7 +49,9 @@
     "kuma-pickerd:browser-wait-for-selector": "node ./packages/server/src/cli.mjs browser-wait-for-selector",
     "kuma-pickerd:browser-wait-for-dialog-close": "node ./packages/server/src/cli.mjs browser-wait-for-dialog-close",
     "kuma-pickerd:browser-query-dom": "node ./packages/server/src/cli.mjs browser-query-dom",
-    "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status"
+    "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
+    "skill:install": "node ./scripts/install.mjs",
+    "skill:doctor": "node ./scripts/doctor.mjs"
   },
   "devDependencies": {
     "@types/node": "25.3.5",
