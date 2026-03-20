@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { AgentNoteStore } from "./lib/agent-note-store.mjs";
 import {
   commandBrowserClick,
   commandBrowserClickPoint,
@@ -32,7 +31,6 @@ import { BrowserExtensionStatusStore } from "./lib/browser-extension-status-stor
 import { DevSelectionStore } from "./lib/dev-selection-store.mjs";
 import { normalizeViewport } from "./lib/scene-schema.mjs";
 import { SceneStore } from "./lib/scene-store.mjs";
-import { resolveAgentNoteSessionId } from "./lib/session-resolvers.mjs";
 
 const DEFAULT_DAEMON_URL = "http://127.0.0.1:4312";
 
@@ -43,13 +41,10 @@ Usage:
   node main.mjs serve [--host 127.0.0.1] [--port 4312] [--root .]
   node main.mjs get-scene [--root .]
   node main.mjs get-selection [--session-id session-01] [--recent 5 | --all] [--root .]
-  node main.mjs get-agent-note [--session-id session-01] [--root .]
   node main.mjs get-job-card [--session-id session-01] [--daemon-url http://127.0.0.1:4312]
   node main.mjs get-extension-status [--root .]
   node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
-  node main.mjs set-agent-note --author codex --status fixed --message "Updated the picked element." [--session-id session-01] [--selection-id selector-path] [--root .]
   node main.mjs set-job-status --status in_progress --message "작업 중인 내용을 짧게 적기" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
-  node main.mjs clear-agent-note [--session-id session-01] [--root .]
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-console (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
@@ -74,10 +69,6 @@ Usage:
   node main.mjs move-node --id node-01 --x 120 --y 80 [--root .]
   node main.mjs remove-node --id node-01 [--root .]
 `);
-}
-
-function resolveAgentNoteSessionIdFromOptions(root, options, allowGlobalFallback = false) {
-  return resolveAgentNoteSessionId(root, readOptionalString(options, "session-id"), allowGlobalFallback);
 }
 
 function resolveSelectionSessionId(root, options) {
@@ -249,13 +240,6 @@ function commandGetSelection(options) {
   process.stdout.write(`${JSON.stringify(selection ?? null, null, 2)}\n`);
 }
 
-function commandGetAgentNote(options) {
-  const root = typeof options.root === "string" ? options.root : ".";
-  const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
-  const agentNoteStore = new AgentNoteStore(root);
-  process.stdout.write(`${JSON.stringify(sessionId ? agentNoteStore.readSession(sessionId) : null, null, 2)}\n`);
-}
-
 async function commandGetJobCard(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const sessionId = resolveSelectionSessionId(root, options);
@@ -267,23 +251,6 @@ function commandGetExtensionStatus(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const extensionStatusStore = new BrowserExtensionStatusStore(root);
   process.stdout.write(`${JSON.stringify(extensionStatusStore.readSummary(), null, 2)}\n`);
-}
-
-function commandSetAgentNote(options) {
-  const root = typeof options.root === "string" ? options.root : ".";
-  const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
-  const agentNoteStore = new AgentNoteStore(root);
-  const note = agentNoteStore.write(
-    {
-      sessionId,
-      selectionId: readOptionalString(options, "selection-id"),
-      author: requireString(options, "author"),
-      status: requireString(options, "status"),
-      message: requireString(options, "message"),
-    },
-    { sessionId },
-  );
-  process.stdout.write(`${JSON.stringify(note, null, 2)}\n`);
 }
 
 async function commandSetJobStatus(options) {
@@ -302,13 +269,6 @@ async function commandSetJobStatus(options) {
   };
 
   process.stdout.write(`${JSON.stringify(await writeJobCardToDaemon(daemonUrl, payload), null, 2)}\n`);
-}
-
-function commandClearAgentNote(options) {
-  const root = typeof options.root === "string" ? options.root : ".";
-  const sessionId = resolveAgentNoteSessionIdFromOptions(root, options, true);
-  const agentNoteStore = new AgentNoteStore(root);
-  process.stdout.write(`${JSON.stringify(sessionId ? agentNoteStore.deleteSession(sessionId) : null, null, 2)}\n`);
 }
 
 function commandPutScene(options) {
@@ -380,9 +340,6 @@ export async function main(argv = process.argv.slice(2)) {
     case "get-selection":
       commandGetSelection(options);
       return;
-    case "get-agent-note":
-      commandGetAgentNote(options);
-      return;
     case "get-job-card":
       await commandGetJobCard(options);
       return;
@@ -392,14 +349,8 @@ export async function main(argv = process.argv.slice(2)) {
     case "get-browser-session":
       await commandGetBrowserSession(options);
       return;
-    case "set-agent-note":
-      commandSetAgentNote(options);
-      return;
     case "set-job-status":
       await commandSetJobStatus(options);
-      return;
-    case "clear-agent-note":
-      commandClearAgentNote(options);
       return;
     case "browser-context":
       await commandBrowserContext(options);

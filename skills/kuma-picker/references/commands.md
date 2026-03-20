@@ -2,15 +2,15 @@
 
 ## Command surface
 
-Use the narrowest stable command surface available in the current project.
 Kuma Picker state now lives under `~/.codex/kuma-picker/` by default, or under `$CODEX_HOME/kuma-picker/` when `CODEX_HOME` is set. `KUMA_PICKER_STATE_HOME` overrides both.
+The shared state home is the primary source of truth.
+The command examples below are helper CLI examples for environments that already expose them.
 
 ```bash
 npm run kuma-pickerd:serve
 npm run kuma-pickerd:get-selection
 npm run kuma-pickerd:get-selection -- --recent 5
 npm run kuma-pickerd:get-selection -- --all
-npm run kuma-pickerd:get-agent-note
 npm run kuma-pickerd:get-job-card
 npm run kuma-pickerd:get-browser-session
 npm run kuma-pickerd:browser-context -- --url-contains "example.com"
@@ -30,7 +30,6 @@ npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind in
 npm run kuma-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
 npm run kuma-pickerd:set-job-status -- --status in_progress --message "Implementing the requested change."
 npm run kuma-pickerd:set-job-status -- --status completed --message "Updated the picked element and verified the change."
-npm run kuma-pickerd:clear-agent-note
 ```
 
 ## Browser bridge checks
@@ -50,7 +49,7 @@ Use these before relying on the Chrome extension bridge:
 - Use `--tab-id <id>` when you know the exact Chrome tab id.
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
-- The CLI still uses the same `browser-*` commands, but they are now transported over WebSocket instead of the deprecated HTTP polling queue.
+- The CLI uses the same `browser-*` commands over the daemon WebSocket bridge.
 - Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
 - Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
@@ -74,7 +73,6 @@ Treat these as shared coordination files under the Kuma Picker state home:
 - `dev-selections/<session-id>.json`: saved session payload
 - `dev-selection-assets/<session-id>/...`: snapshots
 - `job-cards.json`: latest browser work-card feed
-- `agent-notes/<session-id>.json`: shared agent notes
 
 By default, `get-selection` returns the latest saved selection only.
 Use `--recent <n>` for a bounded recent history, or `--all` for the full saved selection collection.
@@ -124,7 +122,4 @@ npm run kuma-pickerd:set-job-status -- --status in_progress --message "Implement
 npm run kuma-pickerd:set-job-status -- --status completed --message "Updated the picked element and verified the change."
 ```
 
-### Compatibility note
-
-- `agent-note` still exists for legacy coordination or non-UI workflows.
-- For extension-first picked UI work, prefer `Pick With Job` plus `set-job-status`.
+For extension-first picked UI work, prefer `Pick With Job` plus `set-job-status`.

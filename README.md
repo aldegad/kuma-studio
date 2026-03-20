@@ -31,12 +31,12 @@ npm run dev:web
 
 ## Agent Workflow
 
-Kuma Picker has a shared selection and note model so multiple coding agents can coordinate.
+Kuma Picker has a shared selection and job-card model so multiple coding agents can coordinate.
 
 - latest selection: `npm run kuma-pickerd:get-selection`
-- latest note: `npm run kuma-pickerd:get-agent-note`
+- latest work card: `npm run kuma-pickerd:get-job-card`
 - browser extension status: `npm run kuma-pickerd:get-extension-status`
-- update note: `npm run kuma-pickerd:set-agent-note -- --author codex --status in_progress --message "..."`
+- update work card: `npm run kuma-pickerd:set-job-status -- --status in_progress --message "..."`
 
 Agent-specific guidance lives here:
 
@@ -51,7 +51,6 @@ Agent-specific guidance lives here:
 - `npm run build:web`: build the bundled test web
 - `npm run typecheck:web`: typecheck the bundled test web
 - `npm run kuma-pickerd:get-selection`: read the latest saved selection
-- `npm run kuma-pickerd:get-agent-note`: read the latest agent note
 - `npm run kuma-pickerd:get-job-card`: read the latest browser work card
 - `npm run kuma-pickerd:get-extension-status`: show the latest browser extension heartbeat
 - `npm run kuma-pickerd:get-browser-session`: check browser bridge session

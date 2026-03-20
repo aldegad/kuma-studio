@@ -101,22 +101,6 @@ export function encodeSceneEvent(scene, source) {
   })}\n\n`;
 }
 
-export function encodeAgentNoteEvent(note, source, deleted = false) {
-  const sessionId = typeof note?.sessionId === "string" ? note.sessionId : null;
-  if (!sessionId) {
-    throw new Error("Agent note event requires sessionId");
-  }
-
-  return `event: agent-note\ndata: ${JSON.stringify({
-    type: "agent-note.updated",
-    source,
-    sessionId,
-    deleted: Boolean(deleted),
-    updatedAt: typeof note?.updatedAt === "string" ? note.updatedAt : undefined,
-    note: deleted ? null : note,
-  })}\n\n`;
-}
-
 export function encodeJobCardEvent(card, source, deleted = false) {
   const id = typeof card?.id === "string" ? card.id : null;
   if (!id) {

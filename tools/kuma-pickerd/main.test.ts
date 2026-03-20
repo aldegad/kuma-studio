@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -106,51 +106,6 @@ function createSelectionRecord(sessionId: string, index: number, jobMessage?: st
   };
 }
 
-describe("kuma-pickerd note fallback", () => {
-  const tempRoots: string[] = [];
-
-  afterEach(() => {
-    delete process.env.KUMA_PICKER_STATE_HOME;
-    for (const root of tempRoots.splice(0)) {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("writes a global picker note when no selection session exists", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-main-"));
-    tempRoots.push(root);
-    const stateHome = path.join(root, "state");
-
-    const output = runCli(
-      ["set-agent-note", "--root", root, "--author", "codex", "--status", "acknowledged", "--message", "hello"],
-      root,
-      { ...process.env, KUMA_PICKER_STATE_HOME: stateHome },
-    );
-
-    const note = JSON.parse(output) as {
-      sessionId: string;
-      message: string;
-    };
-
-    expect(note.sessionId).toBe("global-note");
-    expect(note.message).toBe("hello");
-    expect(existsSync(path.join(stateHome, "agent-notes", "global-note.json"))).toBe(true);
-
-    const persisted = JSON.parse(
-      readFileSync(path.join(stateHome, "agent-notes", "global-note.json"), "utf8"),
-    ) as { sessionId: string };
-    expect(persisted.sessionId).toBe("global-note");
-
-    const getOutput = runCli(["get-agent-note", "--root", root], root, {
-      ...process.env,
-      KUMA_PICKER_STATE_HOME: stateHome,
-    });
-    const fetched = JSON.parse(getOutput) as { sessionId: string; message: string };
-    expect(fetched.sessionId).toBe("global-note");
-    expect(fetched.message).toBe("hello");
-  });
-});
-
 describe("kuma-pickerd browser usage", () => {
   it("prints the console, debugger capture, sequence, refresh, download, and semantic DOM query commands in help output", () => {
     const output = runCli(["--help"], process.cwd());
@@ -163,6 +118,9 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-get-latest-download");
     expect(output).toContain("get-job-card");
     expect(output).toContain("set-job-status");
+    expect(output).not.toContain("get-agent-note");
+    expect(output).not.toContain("set-agent-note");
+    expect(output).not.toContain("clear-agent-note");
     expect(output).toContain("menu-state|selected-option|tab-state");
   });
 });

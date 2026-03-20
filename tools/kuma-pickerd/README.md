@@ -7,11 +7,9 @@ It is responsible for:
 - reading and writing saved selections under `dev-selection*.json`
 - storing selection snapshots under `dev-selection-assets/`
 - storing shared job-card overlay state under `job-cards.json`
-- storing per-session agent notes under `agent-notes/`
-- falling back to a shared global picker note when a note is posted before any selection exists
 - validating scene payloads
 - watching files and publishing SSE updates
-- exposing selection and agent note endpoints
+- exposing selection and job-card endpoints
 - brokering live browser-session presence and browser control commands for the Chrome extension
 - providing a CLI for agents and local tooling
 
@@ -73,7 +71,6 @@ That directory currently includes:
 - `dev-selections.json` for the session collection index
 - `dev-selections/<session-id>.json` for each saved selection session
 - `dev-selection-assets/<session-id>/...` for saved snapshots
-- `agent-notes/<session-id>.json` for shared per-session agent notes
 - `job-cards.json` for the recent browser work-card feed
 - `browser-extension-status.json` for the latest browser extension presence/status snapshot
 
@@ -84,7 +81,6 @@ That directory currently includes:
 - `GET /health`
 - `GET /scene`
 - `PATCH /scene/meta`
-- `GET /agent-note`
 - `GET /job-card`
 - `GET /browser-session`
 - `GET /extension-status`
@@ -98,10 +94,8 @@ That directory currently includes:
 - `POST /dev-selection`
 - `DELETE /dev-selection`
 - `DELETE /dev-selection/session?sessionId=...`
-- `POST /agent-note`
 - `POST /job-card`
 - `POST /extension-status`
-- `DELETE /agent-note`
 - `DELETE /job-card`
 
 ## WebSocket API
@@ -125,13 +119,11 @@ node ./packages/server/src/cli.mjs get-scene --root ./example/next-host
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --recent 5
 node ./packages/server/src/cli.mjs get-selection --root ./example/next-host --all
-node ./packages/server/src/cli.mjs get-agent-note --root ./example/next-host
 node ./packages/server/src/cli.mjs get-job-card --root ./example/next-host
 node ./packages/server/src/cli.mjs get-extension-status --root ./example/next-host
 node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status in_progress --message "Implementing the requested UI change."
 node ./packages/server/src/cli.mjs set-job-status --root ./example/next-host --status completed --message "Updated the picked element and verified the change."
-node ./packages/server/src/cli.mjs set-agent-note --root ./example/next-host --author codex --status fixed --message "Updated the selected element."
 node ./packages/server/src/cli.mjs browser-context --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-dom --url-contains "ddalkkakposting.com"
 node ./packages/server/src/cli.mjs browser-console --url-contains "ddalkkakposting.com"
@@ -163,7 +155,6 @@ Installed host project:
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-scene --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-selection --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-selection --root . --recent 5
-node ./vendor/kuma-picker/packages/server/src/cli.mjs get-agent-note --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-job-card --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-extension-status --root .
 node ./vendor/kuma-picker/packages/server/src/cli.mjs get-browser-session

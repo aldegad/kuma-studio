@@ -123,7 +123,7 @@
     promptInputElement = document.createElement("textarea");
     promptInputElement.setAttribute(UI_ATTRIBUTE, "true");
     promptInputElement.rows = 3;
-    promptInputElement.placeholder = "Describe the job for this picked area or element.";
+    promptInputElement.placeholder = "Describe the job here. Press Enter to save, Shift+Enter for a new line.";
     promptInputElement.style.width = "100%";
     promptInputElement.style.padding = "12px 13px";
     promptInputElement.style.border = "1px solid #dbe5ea";
@@ -180,7 +180,7 @@
     });
 
     promptInputElement.addEventListener("keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         resolveJobPrompt(promptInputElement.value);
       }

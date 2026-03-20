@@ -13,18 +13,17 @@
 - Do not claim `kuma-pickerd:*` scripts are missing unless you checked the root `package.json` or ran the command and saw it fail.
 - Prefer concrete status updates like "I'll run `npm run kuma-pickerd:get-browser-session` now" over generic bridge-triage preambles.
 
-## Agent Notes
+## Job Cards
 
-- When you begin work from a saved selection, acknowledge it in the shared note channel.
-- Use `npm run kuma-pickerd:set-agent-note -- --author codex --status acknowledged --message "Read the selection and investigating."`
-- Update the note while working with `acknowledged`, `in_progress`, `fixed`, or `needs_reselect`.
-- Use `needs_reselect` when the saved selection no longer matches the current UI or code path.
+- When you begin work from a saved selection, update the shared work card instead of writing a separate note.
+- Use `npm run kuma-pickerd:set-job-status -- --status in_progress --message "Read the selection and investigating."`
+- Use `completed` when the visible work is done and verified.
+- If the saved selection no longer matches the current UI or code path, ask for a reselection instead of inventing a separate note state.
 
 ## Final Loop
 
-- If you changed code for a picked element, leave a final agent note before replying.
+- If you changed code for a picked element, leave a final job-card update before replying.
 - Include what changed, whether you verified it, and whether reselection is needed.
-- Clear stale notes only when they would actively mislead the next agent.
 
 ## Repo Discipline
 

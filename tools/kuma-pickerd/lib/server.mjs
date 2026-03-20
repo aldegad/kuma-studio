@@ -1,7 +1,6 @@
 import http from "node:http";
 import { WebSocketServer } from "ws";
 
-import { AgentNoteStore, watchAgentNotes } from "./agent-note-store.mjs";
 import { BrowserSessionStore } from "./browser-session-store.mjs";
 import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mjs";
 import { DevSelectionStore } from "./dev-selection-store.mjs";
@@ -18,7 +17,6 @@ import {
   sendNoContent,
   sendSocketJson,
 } from "./server-support.mjs";
-import { resolveAgentNoteSessionId } from "./session-resolvers.mjs";
 
 export function createServer({ host, port, root }) {
   const broker = new SceneEventBroker();
@@ -28,7 +26,6 @@ export function createServer({ host, port, root }) {
     },
   });
   const selectionStore = new DevSelectionStore(root);
-  const agentNoteStore = new AgentNoteStore(root);
   const jobCardStore = new JobCardStore(root);
   const extensionStatusStore = new BrowserExtensionStatusStore(root);
   const browserSessionStore = new BrowserSessionStore();
@@ -38,9 +35,6 @@ export function createServer({ host, port, root }) {
 
   const stopWatching = watchSceneFile(store, (scene, source) => {
     broker.publishScene(scene, source);
-  });
-  const stopWatchingAgentNotes = watchAgentNotes(agentNoteStore, (note, source, deleted) => {
-    broker.publishAgentNote(note, source, deleted);
   });
   const socketServer = new WebSocketServer({ noServer: true });
   const socketStates = new Map();
@@ -251,18 +245,6 @@ export function createServer({ host, port, root }) {
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/agent-note") {
-      const sessionId = resolveAgentNoteSessionId(root, url.searchParams.get("sessionId"), true);
-      const note = sessionId ? agentNoteStore.readSession(sessionId) : null;
-      if (!note) {
-        sendNoContent(response);
-        return;
-      }
-
-      sendJson(response, 200, note);
-      return;
-    }
-
     if (request.method === "GET" && url.pathname === "/job-card") {
       const sessionId = url.searchParams.get("sessionId");
       const feed = jobCardStore.readAll();
@@ -351,15 +333,10 @@ export function createServer({ host, port, root }) {
       if (request.method === "DELETE" && url.pathname === "/dev-selection/session") {
         const sessionId = url.searchParams.get("sessionId");
         const selection = selectionStore.deleteSession(sessionId);
-        const deletedNote = agentNoteStore.deleteSession(sessionId);
         const deletedCard = jobCardStore.deleteBySession(sessionId);
         if (!selection) {
           sendNoContent(response);
           return;
-        }
-
-        if (deletedNote) {
-          broker.publishAgentNote(deletedNote, "selection-session-delete", true);
         }
 
         if (deletedCard) {
@@ -374,15 +351,6 @@ export function createServer({ host, port, root }) {
         const selection = selectionStore.write(await readJsonBody(request));
         writeJobCardFromSelection(selection, "selection-write");
         sendJson(response, 200, selection);
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/agent-note") {
-        const payload = await readJsonBody(request);
-        const fallbackSessionId = resolveAgentNoteSessionId(root, payload?.sessionId ?? null, true);
-        const note = agentNoteStore.write(payload, { sessionId: fallbackSessionId });
-        broker.publishAgentNote(note, "agent-note-write");
-        sendJson(response, 200, note);
         return;
       }
 
@@ -426,19 +394,6 @@ export function createServer({ host, port, root }) {
       if (request.method === "POST" && url.pathname === "/extension-status") {
         extensionStatusStore.write(await readJsonBody(request));
         sendJson(response, 200, extensionStatusStore.readSummary());
-        return;
-      }
-
-      if (request.method === "DELETE" && url.pathname === "/agent-note") {
-        const sessionId = resolveAgentNoteSessionId(root, url.searchParams.get("sessionId"), true);
-        const note = sessionId ? agentNoteStore.deleteSession(sessionId) : null;
-        if (!note) {
-          sendNoContent(response);
-          return;
-        }
-
-        broker.publishAgentNote(note, "agent-note-delete", true);
-        sendJson(response, 200, note);
         return;
       }
 
@@ -507,7 +462,6 @@ export function createServer({ host, port, root }) {
 
   server.on("close", () => {
     stopWatching();
-    stopWatchingAgentNotes();
     clearInterval(pingInterval);
     socketServer.close();
   });

@@ -110,7 +110,9 @@ function normalizeCard(card, fallback = {}) {
   const updatedAt =
     typeof candidate.updatedAt === "string" && candidate.updatedAt.trim()
       ? candidate.updatedAt
-      : currentTimestamp();
+      : typeof fallback.updatedAt === "string" && fallback.updatedAt.trim()
+        ? fallback.updatedAt
+        : currentTimestamp();
   const id =
     typeof candidate.id === "string" && candidate.id.trim()
       ? candidate.id.trim()

@@ -19,7 +19,6 @@
     "test": "vitest run --passWithNoTests",
     "kuma-pickerd:serve": "node ./packages/server/src/cli.mjs serve",
     "kuma-pickerd:get-selection": "node ./packages/server/src/cli.mjs get-selection",
-    "kuma-pickerd:get-agent-note": "node ./packages/server/src/cli.mjs get-agent-note",
     "kuma-pickerd:get-job-card": "node ./packages/server/src/cli.mjs get-job-card",
     "kuma-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status",
     "kuma-pickerd:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
@@ -42,9 +41,7 @@
     "kuma-pickerd:browser-wait-for-selector": "node ./packages/server/src/cli.mjs browser-wait-for-selector",
     "kuma-pickerd:browser-wait-for-dialog-close": "node ./packages/server/src/cli.mjs browser-wait-for-dialog-close",
     "kuma-pickerd:browser-query-dom": "node ./packages/server/src/cli.mjs browser-query-dom",
-    "kuma-pickerd:set-agent-note": "node ./packages/server/src/cli.mjs set-agent-note",
-    "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
-    "kuma-pickerd:clear-agent-note": "node ./packages/server/src/cli.mjs clear-agent-note"
+    "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status"
   },
   "devDependencies": {
     "@types/node": "25.3.5",
