@@ -38,6 +38,7 @@ npm run kuma-pickerd:browser-mousemove -- --url-contains "example.com" --x 420 -
 npm run kuma-pickerd:browser-mouseup -- --url-contains "example.com" --x 420 --y 460
 npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind selector-state --selector "[data-testid='chat-input-1p']"
 npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","assert":{"type":"selector-state","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","focused":true}}]'
+npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"editor\"]","value":"Line 1\nLine 2"},{"type":"key","key":"Enter"},{"type":"insertText","text":"Line 3","assert":{"type":"selector-state","selector":"[data-testid=\"editor\"]","value":"Line 1\nLine 2\nLine 3"}}]'
 npm run kuma-pickerd:browser-refresh -- --url-contains "example.com"
 npm run kuma-pickerd:browser-refresh -- --url-contains "example.com" --bypass-cache
 npm run kuma-pickerd:browser-screenshot -- --tab-id 123 --file ./tmp/current-tab.png --restore-previous-active-tab
@@ -74,6 +75,7 @@ Use these before relying on the Chrome extension bridge:
 - Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
 - Use `browser-sequence` when a dropdown or modal workflow should stay alive across multiple steps, and add per-step `assert` checks for postcondition verification.
+- `browser-sequence` accepts `insertText` steps for cursor-position text insertion inside text inputs and `contenteditable` editors.
 - Use the wait commands to verify save states instead of guessing from click timing alone.
 - Use `browser-query-dom` when a long DOM snapshot is too noisy and you need nearby or required field results.
 - Use `browser-query-dom --kind selector-state` when you need a small readback payload for one element's focused state, value, or selection range after a write.

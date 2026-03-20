@@ -219,6 +219,32 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
   }
 
+  function normalizeLineBreaks(value) {
+    return String(value ?? "").replace(/\r\n?/g, "\n");
+  }
+
+  function createContentEditableFragment(value) {
+    const fragment = document.createDocumentFragment();
+    const normalizedValue = normalizeLineBreaks(value);
+    const lines = normalizedValue.split("\n");
+    let lastNode = null;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (line.length > 0) {
+        lastNode = document.createTextNode(line);
+        fragment.appendChild(lastNode);
+      }
+
+      if (index < lines.length - 1) {
+        lastNode = document.createElement("br");
+        fragment.appendChild(lastNode);
+      }
+    }
+
+    return { fragment, lastNode };
+  }
+
   function getFocusableElements() {
     return Array.from(document.querySelectorAll(coreFocusableSelector)).filter(coreIsVisibleElement);
   }
@@ -376,8 +402,36 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+  function ensureContentEditableSelection(target) {
+    const existing = readContentEditableSelection(target);
+    if (existing) {
+      return existing;
+    }
+
+    if (!(target instanceof HTMLElement) || !target.isContentEditable) {
+      return null;
+    }
+
+    const selection = window.getSelection?.();
+    if (!selection) {
+      return null;
+    }
+
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    return {
+      selection,
+      range,
+      selectedText: "",
+    };
+  }
+
   function replaceContentEditableSelection(target, text, inputType) {
-    const selectionState = readContentEditableSelection(target);
+    const selectionState = ensureContentEditableSelection(target);
     if (!selectionState) {
       return false;
     }
@@ -386,9 +440,11 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     range.deleteContents();
     const nextText = typeof text === "string" ? text : "";
     if (nextText.length > 0) {
-      const textNode = document.createTextNode(nextText);
-      range.insertNode(textNode);
-      range.setStartAfter(textNode);
+      const { fragment, lastNode } = createContentEditableFragment(nextText);
+      range.insertNode(fragment);
+      if (lastNode) {
+        range.setStartAfter(lastNode);
+      }
       range.collapse(true);
       selection.removeAllRanges();
       selection.addRange(range);
@@ -398,6 +454,34 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       selection.addRange(range);
     }
     dispatchInputEvents(target, nextText, inputType);
+    return true;
+  }
+
+  function setContentEditableValue(target, value) {
+    if (!(target instanceof HTMLElement) || !target.isContentEditable) {
+      return false;
+    }
+
+    const nextValue = typeof value === "string" ? value : "";
+    const { fragment, lastNode } = createContentEditableFragment(nextValue);
+    target.replaceChildren(fragment);
+
+    const selection = window.getSelection?.();
+    if (!selection) {
+      dispatchInputEvents(target, nextValue);
+      return true;
+    }
+
+    const range = document.createRange();
+    if (lastNode && target.contains(lastNode)) {
+      range.setStartAfter(lastNode);
+    } else {
+      range.selectNodeContents(target);
+    }
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    dispatchInputEvents(target, nextValue);
     return true;
   }
 
@@ -421,6 +505,18 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     }
 
     return replaceContentEditableSelection(target, text, inputType);
+  }
+
+  function insertLineBreakAtSelection(target) {
+    if (target instanceof HTMLTextAreaElement) {
+      return replaceTextInputSelection(target, "\n", "insertLineBreak");
+    }
+
+    if (target instanceof HTMLElement && target.isContentEditable) {
+      return replaceContentEditableSelection(target, "\n", "insertLineBreak");
+    }
+
+    return false;
   }
 
   function selectAllContent(target) {
@@ -496,6 +592,34 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
         key,
         code,
         bubbles: true,
+        cancelable: true,
+        composed: true,
+        shiftKey: modifiers?.shiftKey === true,
+        altKey: modifiers?.altKey === true,
+        ctrlKey: modifiers?.ctrlKey === true,
+        metaKey: modifiers?.metaKey === true,
+      }),
+    );
+  }
+
+  function shouldMirrorKeyboardEventToWindow(target) {
+    if (!(target instanceof Element)) {
+      return false;
+    }
+
+    if (coreIsTextInputElement(target)) {
+      return false;
+    }
+
+    return !(target instanceof HTMLElement && target.isContentEditable);
+  }
+
+  function dispatchKeyboardEventToWindow(type, key, modifiers, code) {
+    return window.dispatchEvent(
+      new KeyboardEvent(type, {
+        key,
+        code,
+        bubbles: false,
         cancelable: true,
         composed: true,
         shiftKey: modifiers?.shiftKey === true,
@@ -643,8 +767,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       target.value = value;
       dispatchInputEvents(target, value);
     } else if (target instanceof HTMLElement && target.isContentEditable) {
-      target.textContent = value;
-      dispatchInputEvents(target, value);
+      setContentEditableValue(target, value);
     }
 
     await waitForPostActionDelay(command, 100);
@@ -653,6 +776,34 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       filledElement: coreDescribeElementForCommand(target),
       label: typeof command?.label === "string" ? coreNormalizeText(command.label) || null : null,
       value,
+    };
+  }
+
+  async function executeInsertTextCommand(command) {
+    const target =
+      coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
+      (document.activeElement instanceof Element
+        ? document.activeElement
+        : document.body instanceof Element
+          ? document.body
+          : document.documentElement);
+
+    if (!(target instanceof Element) || (!coreIsTextInputElement(target) && !(target instanceof HTMLElement && target.isContentEditable))) {
+      throw new Error("Failed to find a focused text input or contenteditable target for insert-text.");
+    }
+
+    const text = typeof command?.text === "string" ? command.text : typeof command?.value === "string" ? command.value : "";
+    await focusElement(target);
+
+    if (!replaceShortcutSelection(target, text, "insertText")) {
+      throw new Error("Failed to insert text at the current cursor position.");
+    }
+
+    await waitForPostActionDelay(command, 100);
+    return {
+      page: buildPageRecord(),
+      text,
+      targetElement: coreDescribeElementForCommand(target),
     };
   }
 
@@ -679,8 +830,14 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
     await focusElement(target);
     dispatchKeyboardEvent(target, "keydown", key, modifiers, code);
+    if (shouldMirrorKeyboardEventToWindow(target)) {
+      dispatchKeyboardEventToWindow("keydown", key, modifiers, code);
+    }
     if (!(modifiers.altKey || modifiers.ctrlKey || modifiers.metaKey)) {
       dispatchKeyboardEvent(target, "keypress", key, modifiers, code);
+      if (shouldMirrorKeyboardEventToWindow(target)) {
+        dispatchKeyboardEventToWindow("keypress", key, modifiers, code);
+      }
     }
 
     let keyResult = await applyKeyboardShortcut(target, key, modifiers);
@@ -688,7 +845,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       const nextTarget = moveFocus(modifiers.shiftKey === true);
       keyResult = nextTarget ? { ...(keyResult ?? {}), focusedElement: coreDescribeElementForCommand(nextTarget) } : keyResult;
     } else if (key === "Enter") {
-      if (target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) {
+      if (!(modifiers.altKey || modifiers.ctrlKey || modifiers.metaKey) && insertLineBreakAtSelection(target)) {
+        keyResult = { ...(keyResult ?? {}), shortcut: "insert-line-break" };
+      } else if (target instanceof HTMLButtonElement || target instanceof HTMLAnchorElement) {
         target.click();
       } else if (target instanceof HTMLElement && target.getAttribute("role") === "button") {
         target.click();
@@ -704,6 +863,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     }
 
     dispatchKeyboardEvent(target, "keyup", key, modifiers, code);
+    if (shouldMirrorKeyboardEventToWindow(target)) {
+      dispatchKeyboardEventToWindow("keyup", key, modifiers, code);
+    }
     await waitForPostActionDelay(command, 100);
 
     return {
@@ -738,6 +900,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const modifiers = readKeyboardModifiers(command);
     await focusElement(target);
     dispatchKeyboardEvent(target, "keydown", normalizedKey.key, modifiers, normalizedKey.code);
+    if (shouldMirrorKeyboardEventToWindow(target)) {
+      dispatchKeyboardEventToWindow("keydown", normalizedKey.key, modifiers, normalizedKey.code);
+    }
     const shortcutResult = await applyKeyboardShortcut(target, normalizedKey.key, modifiers);
     pressedKeys.set(normalizedKey.code, {
       key: normalizedKey.key,
@@ -785,6 +950,14 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       modifiers,
       stored?.code ?? normalizedKey.code,
     );
+    if (shouldMirrorKeyboardEventToWindow(target)) {
+      dispatchKeyboardEventToWindow(
+        "keyup",
+        stored?.key ?? normalizedKey.key,
+        modifiers,
+        stored?.code ?? normalizedKey.code,
+      );
+    }
     pressedKeys.delete(normalizedKey.code);
     await waitForPostActionDelay(command, 0);
 
@@ -1071,6 +1244,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     executeClickCommand,
     executeClickPointCommand,
     executeFillCommand,
+    executeInsertTextCommand,
     executeKeyCommand,
     executeKeyDownCommand,
     executeKeyUpCommand,

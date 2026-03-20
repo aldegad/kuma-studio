@@ -21,6 +21,7 @@ var {
   executeClickCommand: interactionExecuteClickCommand,
   executeClickPointCommand: interactionExecuteClickPointCommand,
   executeFillCommand: interactionExecuteFillCommand,
+  executeInsertTextCommand: interactionExecuteInsertTextCommand,
   executeKeyCommand: interactionExecuteKeyCommand,
   executeKeyDownCommand: interactionExecuteKeyDownCommand,
   executeKeyUpCommand: interactionExecuteKeyUpCommand,
@@ -175,6 +176,8 @@ executeBrowserCommandInternal = async function executeBrowserCommandInternal(com
       return interactionExecuteClickPointCommand(command);
     case "fill":
       return interactionExecuteFillCommand(command);
+    case "insert-text":
+      return interactionExecuteInsertTextCommand(command);
     case "key":
       return interactionExecuteKeyCommand(command);
     case "keydown":

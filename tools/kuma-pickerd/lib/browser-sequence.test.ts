@@ -75,6 +75,22 @@ describe("browser sequence parsing", () => {
     ]);
   });
 
+  it("normalizes insertText aliases for sequence steps", () => {
+    const steps = normalizeBrowserSequenceDefinition([
+      {
+        type: "insertText",
+        text: "Line 2",
+      },
+    ]);
+
+    expect(steps).toEqual([
+      {
+        type: "insert-text",
+        text: "Line 2",
+      },
+    ]);
+  });
+
   it("reads a sequence from a file option", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-sequence-"));
     tempRoots.push(root);

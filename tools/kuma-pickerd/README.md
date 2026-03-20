@@ -181,6 +181,7 @@ For browser commands:
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
 - use `browser-sequence` when a menu, dropdown, or modal flow must stay alive across multiple clicks
 - add per-step `assert` checks in `browser-sequence` to verify that each write actually changed the UI before moving on
+- `browser-sequence` also accepts `insertText` steps when you need to keep the current caret position in a text input or `contenteditable` editor
 - use `browser-wait-for-download` when the action should end in a real downloaded file path
 - use `browser-wait-for-text`, `browser-wait-for-text-disappear`, `browser-wait-for-selector`, and `browser-wait-for-dialog-close` to confirm save flows
 - use `browser-query-dom` for structured questions such as required fields, nearby inputs, menu state, selected options, tab state, or all textareas

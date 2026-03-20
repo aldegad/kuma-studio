@@ -8,6 +8,7 @@ const SUPPORTED_SEQUENCE_STEP_TYPES = new Set([
   "click-point",
   "pointer-drag",
   "fill",
+  "insert-text",
   "key",
   "keydown",
   "keyup",
@@ -85,7 +86,9 @@ function normalizeStep(step, stepIndex) {
     throw new Error(`browser-sequence step ${stepIndex + 1} must be an object.`);
   }
 
-  const type = typeof step.type === "string" ? step.type.trim() : "";
+  const rawType = typeof step.type === "string" ? step.type.trim() : "";
+  const compactType = rawType.replace(/[\s_-]+/g, "").toLowerCase();
+  const type = compactType === "inserttext" ? "insert-text" : rawType;
   if (!type) {
     throw new Error(`browser-sequence step ${stepIndex + 1} requires a type.`);
   }
