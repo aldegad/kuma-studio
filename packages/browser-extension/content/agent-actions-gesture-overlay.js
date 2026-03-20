@@ -201,9 +201,63 @@
       );
     }
 
+    async function playDragGesture(details) {
+      const from = details?.from;
+      const to = details?.to;
+      if (
+        !from || !to ||
+        !Number.isFinite(from.x) || !Number.isFinite(from.y) ||
+        !Number.isFinite(to.x) || !Number.isFinite(to.y)
+      ) {
+        return;
+      }
+
+      const durationMs = Math.max(200, Math.min(10_000, Number(details?.durationMs) || 500));
+      const size = DEFAULT_SIZE;
+      const paw = createPawElement(size, "grab");
+      const startLeft = clamp(from.x - size * 0.58, 10, window.innerWidth - size - 10);
+      const startTop = clamp(from.y - size * 0.68, 10, window.innerHeight - size - 10);
+      paw.style.left = `${startLeft}px`;
+      paw.style.top = `${startTop}px`;
+
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const animDuration = Math.min(durationMs, 1200);
+
+      await playAnimation(
+        paw,
+        [
+          {
+            opacity: 0,
+            transform: "translate3d(0, 0, 0) scale(0.9)",
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(1)",
+            offset: 0.1,
+          },
+          {
+            opacity: 1,
+            transform: `translate3d(${dx}px, ${dy}px, 0) scale(0.95)`,
+            offset: 0.85,
+          },
+          {
+            opacity: 0,
+            transform: `translate3d(${dx}px, ${dy}px, 0) scale(1)`,
+          },
+        ],
+        {
+          duration: animDuration,
+          easing: "cubic-bezier(0.2, 0.8, 0.3, 1)",
+          fill: "forwards",
+        },
+      );
+    }
+
     return {
       playClickGesture,
       playScrollGesture,
+      playDragGesture,
     };
   })();
 

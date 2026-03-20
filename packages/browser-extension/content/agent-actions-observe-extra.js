@@ -339,6 +339,7 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
     const SEQUENCE_STEP_TYPES = new Set([
       "click",
       "click-point",
+      "pointer-drag",
       "fill",
       "key",
       "wait-for-text",

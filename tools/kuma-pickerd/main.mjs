@@ -6,6 +6,7 @@ import { AgentNoteStore } from "./lib/agent-note-store.mjs";
 import {
   commandBrowserClick,
   commandBrowserClickPoint,
+  commandBrowserPointerDrag,
   commandBrowserConsole,
   commandBrowserContext,
   commandBrowserDebuggerCapture,
@@ -419,6 +420,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-click-point":
       await commandBrowserClickPoint(options);
+      return;
+    case "browser-pointer-drag":
+      await commandBrowserPointerDrag(options);
       return;
     case "browser-fill":
       await commandBrowserFill(options);

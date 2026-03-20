@@ -6,6 +6,7 @@ import { readOptionalString } from "./cli-options.mjs";
 const SUPPORTED_SEQUENCE_STEP_TYPES = new Set([
   "click",
   "click-point",
+  "pointer-drag",
   "fill",
   "key",
   "wait-for-text",

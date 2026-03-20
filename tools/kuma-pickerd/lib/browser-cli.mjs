@@ -99,6 +99,37 @@ export async function commandBrowserClickPoint(options) {
   printJson(result.result ?? null);
 }
 
+export async function commandBrowserPointerDrag(options) {
+  const fromX = readNumber(options, "from-x", null);
+  const fromY = readNumber(options, "from-y", null);
+  const toX = readNumber(options, "to-x", null);
+  const toY = readNumber(options, "to-y", null);
+  const waypointsJson = readOptionalString(options, "waypoints");
+
+  let waypoints = null;
+  if (waypointsJson) {
+    try {
+      waypoints = JSON.parse(waypointsJson);
+    } catch (error) {
+      throw new Error(`Failed to parse --waypoints JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!Array.isArray(waypoints) || waypoints.length < 2) {
+      throw new Error("--waypoints must be a JSON array with at least 2 points.");
+    }
+  } else if (!Number.isFinite(fromX) || !Number.isFinite(fromY) || !Number.isFinite(toX) || !Number.isFinite(toY)) {
+    throw new Error("browser-pointer-drag requires (--from-x, --from-y, --to-x, --to-y) or --waypoints.");
+  }
+
+  const result = await enqueueBrowserCommand(options, {
+    type: "pointer-drag",
+    ...(waypoints ? { waypoints } : { fromX, fromY, toX, toY }),
+    durationMs: readNumber(options, "duration-ms", 500),
+    steps: readNumber(options, "steps", null),
+    postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
+  });
+  printJson(result.result ?? null);
+}
+
 export async function commandBrowserFill(options) {
   const value = typeof options.value === "string" ? options.value : null;
   const selector = readOptionalString(options, "selector");

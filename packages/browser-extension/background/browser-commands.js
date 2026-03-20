@@ -191,6 +191,7 @@ async function executeBrowserCommand(tab, command) {
     case "click":
     case "sequence":
     case "click-point":
+    case "pointer-drag":
     case "fill":
     case "key":
     case "console":

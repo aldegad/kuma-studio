@@ -332,12 +332,137 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+  function parseWaypoints(command) {
+    const waypoints = command?.waypoints;
+    if (Array.isArray(waypoints) && waypoints.length >= 2) {
+      const parsed = waypoints.map((wp, i) => {
+        const x = Number(wp?.x);
+        const y = Number(wp?.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          throw new Error(`pointer-drag waypoint ${i + 1} requires finite x and y.`);
+        }
+        return { x, y };
+      });
+      return parsed;
+    }
+
+    const fromX = Number(command?.fromX ?? command?.from?.x);
+    const fromY = Number(command?.fromY ?? command?.from?.y);
+    const toX = Number(command?.toX ?? command?.to?.x);
+    const toY = Number(command?.toY ?? command?.to?.y);
+
+    if (!Number.isFinite(fromX) || !Number.isFinite(fromY)) {
+      throw new Error("pointer-drag requires finite from coordinates or waypoints.");
+    }
+    if (!Number.isFinite(toX) || !Number.isFinite(toY)) {
+      throw new Error("pointer-drag requires finite to coordinates or waypoints.");
+    }
+
+    return [{ x: fromX, y: fromY }, { x: toX, y: toY }];
+  }
+
+  function computeSegmentLengths(waypoints) {
+    const lengths = [];
+    let total = 0;
+    for (let i = 1; i < waypoints.length; i++) {
+      const dx = waypoints[i].x - waypoints[i - 1].x;
+      const dy = waypoints[i].y - waypoints[i - 1].y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      lengths.push(len);
+      total += len;
+    }
+    return { lengths, total };
+  }
+
+  function interpolateWaypoints(waypoints, t) {
+    if (t <= 0) return waypoints[0];
+    if (t >= 1) return waypoints[waypoints.length - 1];
+
+    const { lengths, total } = computeSegmentLengths(waypoints);
+    if (total === 0) return waypoints[0];
+
+    let targetDist = t * total;
+    for (let i = 0; i < lengths.length; i++) {
+      if (targetDist <= lengths[i]) {
+        const segT = lengths[i] > 0 ? targetDist / lengths[i] : 0;
+        return {
+          x: waypoints[i].x + (waypoints[i + 1].x - waypoints[i].x) * segT,
+          y: waypoints[i].y + (waypoints[i + 1].y - waypoints[i].y) * segT,
+        };
+      }
+      targetDist -= lengths[i];
+    }
+    return waypoints[waypoints.length - 1];
+  }
+
+  function dispatchPointerEvent(target, type, clientX, clientY, extra) {
+    const EventCtor = typeof PointerEvent === "function" ? PointerEvent : MouseEvent;
+    target.dispatchEvent(
+      new EventCtor(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX,
+        clientY,
+        view: window,
+        ...extra,
+      }),
+    );
+  }
+
+  async function executePointerDragCommand(command) {
+    const waypoints = parseWaypoints(command);
+    const durationMs = Math.max(0, Math.min(10_000, Number(command?.durationMs) || 500));
+    const steps = Math.max(
+      2,
+      Math.min(600, Math.round(Number(command?.steps) || durationMs / 16)),
+    );
+    const stepDelay = durationMs / steps;
+    const start = waypoints[0];
+    const end = waypoints[waypoints.length - 1];
+
+    const target = document.elementFromPoint(start.x, start.y);
+    if (!(target instanceof Element) || coreIsExtensionUiElement(target)) {
+      throw new Error("Failed to find a draggable element at the pointer-drag start coordinates.");
+    }
+
+    await gestureOverlay?.playDragGesture?.({ from: start, to: end, durationMs });
+
+    dispatchPointerEvent(target, "pointerdown", start.x, start.y, { button: 0, buttons: 1 });
+    dispatchMouseEvent(target, "mousedown", start.x, start.y);
+
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const point = interpolateWaypoints(waypoints, t);
+      dispatchPointerEvent(target, "pointermove", point.x, point.y, { button: 0, buttons: 1 });
+      dispatchMouseEvent(target, "mousemove", point.x, point.y);
+      if (stepDelay > 0) {
+        await waitForDelay(stepDelay);
+      }
+    }
+
+    dispatchPointerEvent(target, "pointerup", end.x, end.y, { button: 0, buttons: 0 });
+    dispatchMouseEvent(target, "mouseup", end.x, end.y);
+
+    await waitForPostActionDelay(command, 0);
+
+    return {
+      page: buildPageRecord(),
+      dragFrom: start,
+      dragTo: end,
+      waypointCount: waypoints.length,
+      durationMs,
+      steps,
+    };
+  }
+
   return {
     waitForDelay,
     executeClickCommand,
     executeClickPointCommand,
     executeFillCommand,
     executeKeyCommand,
+    executePointerDragCommand,
   };
 })();
 

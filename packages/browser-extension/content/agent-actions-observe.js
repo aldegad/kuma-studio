@@ -22,6 +22,7 @@ var {
   executeClickPointCommand: interactionExecuteClickPointCommand,
   executeFillCommand: interactionExecuteFillCommand,
   executeKeyCommand: interactionExecuteKeyCommand,
+  executePointerDragCommand: interactionExecutePointerDragCommand,
 } = globalThis.KumaPickerExtensionAgentActionInteraction;
 var {
   createObserveExtras,
@@ -171,6 +172,8 @@ executeBrowserCommandInternal = async function executeBrowserCommandInternal(com
       return interactionExecuteFillCommand(command);
     case "key":
       return interactionExecuteKeyCommand(command);
+    case "pointer-drag":
+      return interactionExecutePointerDragCommand(command);
     case "wait-for-text":
       return executeWaitForTextCommand(command, true);
     case "wait-for-text-disappear":
