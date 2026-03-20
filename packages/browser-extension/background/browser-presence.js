@@ -1,6 +1,7 @@
 const knownBrowserTabs = new Map();
 const BROWSER_COMMAND_CAPABILITIES = [
   "context",
+  "navigate",
   "dom",
   "console",
   "debugger-capture",

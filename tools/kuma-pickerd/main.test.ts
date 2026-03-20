@@ -112,6 +112,7 @@ describe("kuma-pickerd browser usage", () => {
 
     expect(output).toContain("browser-console");
     expect(output).toContain("browser-debugger-capture");
+    expect(output).toContain("browser-navigate");
     expect(output).toContain("browser-sequence");
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-wait-for-download");

@@ -55,6 +55,7 @@ Agent-specific guidance lives here:
 - `npm run kuma-pickerd:get-extension-status`: show the latest browser extension heartbeat
 - `npm run kuma-pickerd:get-browser-session`: check browser bridge session
 - `npm run kuma-pickerd:browser-context`: get browser context from extension
+- `npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"`: navigate the current browser session to a URL
 - `npm run kuma-pickerd:browser-dom`: read DOM from extension
 - `npm run kuma-pickerd:browser-click -- --text "Next"`: click element via extension
 - `npm run kuma-pickerd:browser-pointer-drag -- --from-x 120 --from-y 260 --to-x 420 --to-y 260`: drag across the page via extension

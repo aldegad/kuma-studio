@@ -20,9 +20,12 @@ export function readCommandTargetOptions(options) {
   };
 }
 
-export function requireCommandTarget(options) {
+export function requireCommandTarget(options, { allowUntargeted = false } = {}) {
   const targets = readCommandTargetOptions(options);
   if (!targets.targetTabId && !targets.targetUrl && !targets.targetUrlContains) {
+    if (allowUntargeted) {
+      return targets;
+    }
     throw new Error("Browser commands require --tab-id, --url, or --url-contains.");
   }
 
@@ -95,11 +98,11 @@ function connectWebSocket(url) {
   });
 }
 
-export async function enqueueBrowserCommand(options, payload) {
+export async function enqueueBrowserCommand(options, payload, commandOptions = {}) {
   const daemonUrl = getDaemonUrlFromOptions(options);
   const timeoutMs = readNumber(options, "timeout-ms", 15_000);
   const controllerTimeoutMs = timeoutMs + 2_000;
-  const targets = requireCommandTarget(options);
+  const targets = requireCommandTarget(options, commandOptions);
   const requestId = createRequestId();
   const socket = await connectWebSocket(createBrowserSessionSocketUrl(daemonUrl));
 

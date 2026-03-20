@@ -14,6 +14,9 @@ npm run kuma-pickerd:get-selection -- --all
 npm run kuma-pickerd:get-job-card
 npm run kuma-pickerd:get-browser-session
 npm run kuma-pickerd:browser-context -- --url-contains "example.com"
+npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"
+npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3001" --new-tab
+npm run kuma-pickerd:browser-navigate -- --tab-id 123456 --url "http://localhost:3000"
 npm run kuma-pickerd:browser-dom -- --url-contains "example.com"
 npm run kuma-pickerd:browser-console -- --url-contains "example.com"
 npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
@@ -55,11 +58,15 @@ Use these before relying on the Chrome extension bridge:
 
 ## Browser command targeting
 
-- Always provide `--tab-id`, `--url`, or `--url-contains`.
+- `browser-navigate` requires `--url` as the destination URL and can use the active tab by default.
+- Add `--tab-id` to `browser-navigate` when you want to reuse a specific tab.
+- Add `--new-tab` to `browser-navigate` when you want Chrome to open a new tab.
+- Always provide `--tab-id`, `--url`, or `--url-contains` for all other browser commands.
 - Use `--tab-id <id>` when you know the exact Chrome tab id.
 - Use `--url <full-url>` for an exact match.
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
 - The CLI uses the same `browser-*` commands over the daemon WebSocket bridge.
+- Use `browser-navigate` before DOM inspection when the target page is not open yet.
 - Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
 - Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.

@@ -19,6 +19,7 @@ import {
   commandBrowserMouseDown,
   commandBrowserMouseMove,
   commandBrowserMouseUp,
+  commandBrowserNavigate,
   commandBrowserQueryDom,
   commandBrowserRefresh,
   commandBrowserSequence,
@@ -52,6 +53,7 @@ Usage:
   node main.mjs get-browser-session [--daemon-url http://127.0.0.1:4312]
   node main.mjs set-job-status --status in_progress --message "작업 중인 내용을 짧게 적기" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
   node main.mjs browser-context (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
+  node main.mjs browser-navigate --url "https://example.com/page" [--tab-id 123] [--new-tab] [--background] [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-dom (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-console (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-debugger-capture [--refresh] [--bypass-cache] [--capture-ms 3000] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
@@ -366,6 +368,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-context":
       await commandBrowserContext(options);
+      return;
+    case "browser-navigate":
+      await commandBrowserNavigate(options);
       return;
     case "browser-dom":
       await commandBrowserDom(options);

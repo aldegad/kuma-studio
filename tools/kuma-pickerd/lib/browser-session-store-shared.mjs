@@ -140,6 +140,7 @@ export function sanitizeCommandPayload(candidate) {
   const scope = sanitizeString(candidate.scope, 32);
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
+  const navigationUrl = sanitizeString(candidate.navigationUrl, 2_000);
   const filenameContains = sanitizeString(candidate.filenameContains, 512);
   const downloadUrlContains = sanitizeString(candidate.downloadUrlContains, 2_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
@@ -165,8 +166,11 @@ export function sanitizeCommandPayload(candidate) {
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
     (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
 
-  if (!hasTarget) {
+  if (!hasTarget && type !== "navigate") {
     throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
+  }
+  if (type === "navigate" && !navigationUrl) {
+    throw new Error("Browser navigate commands require a navigationUrl.");
   }
 
   return {
@@ -184,6 +188,7 @@ export function sanitizeCommandPayload(candidate) {
     scope,
     targetUrl,
     targetUrlContains,
+    navigationUrl,
     filenameContains,
     downloadUrlContains,
     targetTabId,
@@ -201,6 +206,8 @@ export function sanitizeCommandPayload(candidate) {
     clipRect,
     focusTabFirst: candidate.focusTabFirst !== false,
     restorePreviousActiveTab: candidate.restorePreviousActiveTab === true,
+    newTab: candidate.newTab === true,
+    active: candidate.active !== false,
     bypassCache: candidate.bypassCache === true,
     refreshBeforeCapture: candidate.refreshBeforeCapture === true,
     captureMs:

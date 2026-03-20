@@ -479,4 +479,39 @@ describe("BrowserSessionStore", () => {
       }),
     );
   });
+
+  it("allows untargeted navigate commands through a single browser connection", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-11",
+      command: {
+        type: "navigate",
+        navigationUrl: "http://localhost:3000",
+        newTab: true,
+      },
+    });
+
+    expect(browserSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-11",
+        command: expect.objectContaining({
+          type: "navigate",
+          navigationUrl: "http://localhost:3000",
+          newTab: true,
+          targetTabId: null,
+          targetUrl: null,
+          targetUrlContains: null,
+        }),
+      }),
+    );
+  });
 });

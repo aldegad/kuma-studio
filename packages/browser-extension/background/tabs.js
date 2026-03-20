@@ -105,6 +105,10 @@ async function waitForTabReloadComplete(tabId, timeoutMs = 15_000) {
   });
 }
 
+async function waitForTabLoadComplete(tabId, timeoutMs = 15_000) {
+  return waitForTabReloadComplete(tabId, timeoutMs);
+}
+
 async function reloadTargetTab(tab, { bypassCache = false, timeoutMs = 15_000 } = {}) {
   if (!isResolvableTab(tab)) {
     throw new Error("Failed to resolve the target browser tab before reloading.");
@@ -117,6 +121,55 @@ async function reloadTargetTab(tab, { bypassCache = false, timeoutMs = 15_000 } 
   return {
     tab: reloadedTab,
     bypassCache,
+  };
+}
+
+async function navigateTargetTab(tab, { url, timeoutMs = 15_000 } = {}) {
+  if (!isResolvableTab(tab)) {
+    throw new Error("Failed to resolve the target browser tab before navigation.");
+  }
+
+  if (typeof url !== "string" || !url.trim()) {
+    throw new Error("Navigation requires a non-empty URL.");
+  }
+
+  const loadWait = waitForTabLoadComplete(tab.id, timeoutMs);
+  await chrome.tabs.update(tab.id, { url: url.trim() });
+  const navigatedTab = await loadWait;
+
+  return {
+    tab: navigatedTab,
+    url: url.trim(),
+  };
+}
+
+async function createTargetTab({ url, windowId, index, active = true, timeoutMs = 15_000 } = {}) {
+  if (typeof url !== "string" || !url.trim()) {
+    throw new Error("Opening a new tab requires a non-empty URL.");
+  }
+
+  const createdTab = await chrome.tabs.create({
+    url: url.trim(),
+    windowId,
+    index,
+    active,
+  });
+
+  if (!createdTab?.id) {
+    throw new Error("Failed to create a new browser tab.");
+  }
+
+  if (createdTab.status === "complete") {
+    return {
+      tab: createdTab,
+      url: url.trim(),
+    };
+  }
+
+  const loadedTab = await waitForTabLoadComplete(createdTab.id, timeoutMs);
+  return {
+    tab: loadedTab,
+    url: url.trim(),
   };
 }
 

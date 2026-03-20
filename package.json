@@ -23,6 +23,7 @@
     "kuma-pickerd:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status",
     "kuma-pickerd:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
     "kuma-pickerd:browser-context": "node ./packages/server/src/cli.mjs browser-context",
+    "kuma-pickerd:browser-navigate": "node ./packages/server/src/cli.mjs browser-navigate",
     "kuma-pickerd:browser-dom": "node ./packages/server/src/cli.mjs browser-dom",
     "kuma-pickerd:browser-console": "node ./packages/server/src/cli.mjs browser-console",
     "kuma-pickerd:browser-debugger-capture": "node ./packages/server/src/cli.mjs browser-debugger-capture",

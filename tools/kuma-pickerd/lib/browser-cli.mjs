@@ -28,6 +28,29 @@ export async function commandBrowserContext(options) {
   printJson(result.result ?? null);
 }
 
+export async function commandBrowserNavigate(options) {
+  const navigationUrl = readOptionalString(options, "url");
+  if (!navigationUrl) {
+    throw new Error("browser-navigate requires --url.");
+  }
+
+  const result = await enqueueBrowserCommand(
+    {
+      ...options,
+      url: undefined,
+      "url-contains": undefined,
+    },
+    {
+      type: "navigate",
+      navigationUrl,
+      newTab: options["new-tab"] === true,
+      active: options["background"] !== true,
+    },
+    { allowUntargeted: true },
+  );
+  printJson(result.result ?? null);
+}
+
 export async function commandBrowserDom(options) {
   const result = await enqueueBrowserCommand(options, {
     type: "dom",
