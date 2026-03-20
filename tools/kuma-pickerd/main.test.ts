@@ -116,6 +116,7 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
+    expect(output).toContain("--hold-ms 250");
     expect(output).toContain("get-job-card");
     expect(output).toContain("set-job-status");
     expect(output).not.toContain("get-agent-note");

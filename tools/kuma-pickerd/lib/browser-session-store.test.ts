@@ -330,6 +330,70 @@ describe("BrowserSessionStore", () => {
     );
   });
 
+  it("preserves advanced interaction payloads for key hold and pointer drag commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-07",
+      command: {
+        type: "key",
+        targetUrlContains: "localhost:3000/shooting",
+        key: "z",
+        holdMs: 900,
+      },
+    });
+
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-07",
+        command: expect.objectContaining({
+          type: "key",
+          key: "z",
+          holdMs: 900,
+        }),
+      }),
+    );
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-08",
+      command: {
+        type: "pointer-drag",
+        targetUrlContains: "localhost:3000/shooting",
+        fromX: 357,
+        fromY: 710,
+        toX: 275,
+        toY: 710,
+        steps: 18,
+        durationMs: 800,
+      },
+    });
+
+    expect(browserSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-08",
+        command: expect.objectContaining({
+          type: "pointer-drag",
+          fromX: 357,
+          fromY: 710,
+          toX: 275,
+          toY: 710,
+          steps: 18,
+          durationMs: 800,
+        }),
+      }),
+    );
+  });
+
   it("rejects untargeted websocket browser commands", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();
@@ -344,7 +408,7 @@ describe("BrowserSessionStore", () => {
         type: "command.request",
         requestId: "browser-command-test-07",
         command: {
-          type: "dom",
+        type: "dom",
         },
       }),
     ).toThrow("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");

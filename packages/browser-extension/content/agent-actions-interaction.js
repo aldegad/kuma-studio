@@ -187,10 +187,28 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     return nextTarget;
   }
 
-  function dispatchKeyboardEvent(target, type, key, shiftKey) {
+  function normalizeKeyboardCommandKey(rawKey) {
+    const normalized = coreNormalizeText(rawKey);
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized === "Space" || normalized === "Spacebar") {
+      return { key: " ", code: "Space" };
+    }
+
+    if (normalized === "Esc") {
+      return { key: "Escape", code: "Escape" };
+    }
+
+    return { key: normalized, code: normalized.length === 1 ? `Key${normalized.toUpperCase()}` : normalized };
+  }
+
+  function dispatchKeyboardEvent(target, type, key, shiftKey, code) {
     return target.dispatchEvent(
       new KeyboardEvent(type, {
         key,
+        code,
         bubbles: true,
         cancelable: true,
         composed: true,
@@ -286,12 +304,18 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function executeKeyCommand(command) {
-    const key = coreNormalizeText(command?.key);
-    if (!key) {
+    const normalizedKey = normalizeKeyboardCommandKey(command?.key);
+    if (!normalizedKey?.key) {
       throw new Error("The key command requires a non-empty key.");
     }
 
+    const key = normalizedKey.key;
+    const code = normalizedKey.code;
     const shiftKey = command?.shiftKey === true;
+    const holdMs =
+      typeof command?.holdMs === "number" && Number.isFinite(command.holdMs)
+        ? Math.max(0, Math.min(10_000, Math.round(command.holdMs)))
+        : 0;
     const target =
       coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
       (document.body instanceof Element ? document.body : document.documentElement);
@@ -301,8 +325,8 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     }
 
     target.focus?.({ preventScroll: true });
-    dispatchKeyboardEvent(target, "keydown", key, shiftKey);
-    dispatchKeyboardEvent(target, "keypress", key, shiftKey);
+    dispatchKeyboardEvent(target, "keydown", key, shiftKey, code);
+    dispatchKeyboardEvent(target, "keypress", key, shiftKey, code);
 
     let keyResult = null;
     if (key === "Tab") {
@@ -320,13 +344,19 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       target.blur();
     }
 
-    dispatchKeyboardEvent(target, "keyup", key, shiftKey);
+    if (holdMs > 0) {
+      await waitForDelay(holdMs);
+    }
+
+    dispatchKeyboardEvent(target, "keyup", key, shiftKey, code);
     await waitForPostActionDelay(command, 100);
 
     return {
       page: buildPageRecord(),
       key,
+      code,
       shiftKey,
+      holdMs,
       targetElement: coreDescribeElementForCommand(target),
       ...keyResult,
     };

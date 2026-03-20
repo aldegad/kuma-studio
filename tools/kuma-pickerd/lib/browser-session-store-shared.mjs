@@ -94,6 +94,29 @@ function sanitizeClipRect(candidate) {
   };
 }
 
+function sanitizeWaypoints(candidate) {
+  if (!Array.isArray(candidate) || candidate.length < 2) {
+    return null;
+  }
+
+  const points = candidate
+    .map((entry) => {
+      const x = Number(entry?.x);
+      const y = Number(entry?.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        return null;
+      }
+
+      return {
+        x: Math.max(0, Math.round(x)),
+        y: Math.max(0, Math.round(y)),
+      };
+    })
+    .filter(Boolean);
+
+  return points.length >= 2 ? points : null;
+}
+
 export function sanitizeCommandPayload(candidate) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Browser command payload must be an object.");
@@ -111,17 +134,31 @@ export function sanitizeCommandPayload(candidate) {
   const value = typeof candidate.value === "string" ? candidate.value.slice(0, 4_000) : null;
   const key = sanitizeString(candidate.key, 64);
   const kind = sanitizeString(candidate.kind, 64);
+  const role = sanitizeString(candidate.role, 64);
+  const within = sanitizeString(candidate.within, 512);
   const scope = sanitizeString(candidate.scope, 32);
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
+  const filenameContains = sanitizeString(candidate.filenameContains, 512);
+  const downloadUrlContains = sanitizeString(candidate.downloadUrlContains, 2_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
   const captureMs = Number(candidate.captureMs);
   const timeoutMs = Number(candidate.timeoutMs);
+  const holdMs = Number(candidate.holdMs);
+  const durationMs = Number(candidate.durationMs);
+  const steps = Number(candidate.steps);
+  const nth = Number(candidate.nth);
   const targetTabId = sanitizeOptionalInteger(candidate.targetTabId);
   const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
   const x = Number(candidate.x);
   const y = Number(candidate.y);
+  const fromX = Number(candidate.fromX);
+  const fromY = Number(candidate.fromY);
+  const toX = Number(candidate.toX);
+  const toY = Number(candidate.toY);
   const clipRect = sanitizeClipRect(candidate.clipRect);
+  const waypoints = sanitizeWaypoints(candidate.waypoints);
+  const sequenceSteps = Array.isArray(candidate.steps) ? cloneValue(candidate.steps) : null;
   const hasTarget =
     Number.isInteger(targetTabId) ||
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
@@ -140,19 +177,36 @@ export function sanitizeCommandPayload(candidate) {
     value,
     key,
     kind,
+    role,
+    within,
     scope,
     targetUrl,
     targetUrlContains,
+    filenameContains,
+    downloadUrlContains,
     targetTabId,
     resolvedTargetTabId,
+    nth: Number.isFinite(nth) && nth >= 1 ? Math.round(nth) : null,
+    exactText: candidate.exactText === true,
     x: Number.isFinite(x) ? Math.max(0, Math.round(x)) : null,
     y: Number.isFinite(y) ? Math.max(0, Math.round(y)) : null,
+    fromX: Number.isFinite(fromX) ? Math.max(0, Math.round(fromX)) : null,
+    fromY: Number.isFinite(fromY) ? Math.max(0, Math.round(fromY)) : null,
+    toX: Number.isFinite(toX) ? Math.max(0, Math.round(toX)) : null,
+    toY: Number.isFinite(toY) ? Math.max(0, Math.round(toY)) : null,
+    waypoints,
+    steps: sequenceSteps ?? (Number.isFinite(steps) && steps >= 1 ? Math.round(steps) : null),
     clipRect,
+    focusTabFirst: candidate.focusTabFirst !== false,
     bypassCache: candidate.bypassCache === true,
     refreshBeforeCapture: candidate.refreshBeforeCapture === true,
     captureMs:
       Number.isFinite(captureMs) && captureMs >= 0
         ? Math.min(30_000, Math.round(captureMs))
+        : null,
+    durationMs:
+      Number.isFinite(durationMs) && durationMs >= 0
+        ? Math.min(10_000, Math.round(durationMs))
         : null,
     shiftKey: candidate.shiftKey === true,
     postActionDelayMs:
@@ -162,6 +216,10 @@ export function sanitizeCommandPayload(candidate) {
     timeoutMs:
       Number.isFinite(timeoutMs) && timeoutMs > 0
         ? Math.min(120_000, Math.round(timeoutMs))
+        : null,
+    holdMs:
+      Number.isFinite(holdMs) && holdMs >= 0
+        ? Math.min(10_000, Math.round(holdMs))
         : null,
   };
 }

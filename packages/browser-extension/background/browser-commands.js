@@ -1,3 +1,12 @@
+const CONTENT_SCRIPT_UNAVAILABLE_ERROR =
+  "This page does not accept the Kuma Picker content script. Try a regular website tab instead of a browser-internal page.";
+const COMMAND_TOOLS_NOT_READY_ERROR = "The Kuma Picker browser command tools are not loaded for this page yet.";
+
+function isTransientContentScriptError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message === CONTENT_SCRIPT_UNAVAILABLE_ERROR || message === COMMAND_TOOLS_NOT_READY_ERROR;
+}
+
 async function collectPageContext(tabId) {
   const response = await sendMessageToTab(tabId, {
     type: "kuma-picker:collect-page",
@@ -12,26 +21,41 @@ async function collectPageContext(tabId) {
 
 async function sendAgentCommandToTab(tabId, command) {
   let response = null;
+  let lastError = null;
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    response = await sendMessageToTab(tabId, {
-      type: "kuma-picker:browser-command",
-      command,
-    });
+    try {
+      response = await sendMessageToTab(tabId, {
+        type: "kuma-picker:browser-command",
+        command,
+      });
+    } catch (error) {
+      lastError = error;
+      if (!isTransientContentScriptError(error)) {
+        break;
+      }
+
+      await ensureBrowserCommandBridge(tabId);
+      await waitForDelay(150);
+      continue;
+    }
 
     if (response?.ok) {
       return response.result ?? null;
     }
 
-    if (response?.error !== "The Kuma Picker browser command tools are not loaded for this page yet.") {
+    if (response?.error !== COMMAND_TOOLS_NOT_READY_ERROR) {
       break;
     }
 
+    await ensureBrowserCommandBridge(tabId);
     await waitForDelay(150);
   }
 
   if (!response?.ok) {
-    throw new Error(response?.error || "The active tab rejected the browser command.");
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(response?.error || "The active tab rejected the browser command.");
   }
 
   return response.result ?? null;
@@ -45,9 +69,12 @@ async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
       return await collectPageContext(tabId);
     } catch (error) {
       lastError = error;
-      if (attempt < attempts - 1) {
+      if (attempt < attempts - 1 && isTransientContentScriptError(error)) {
+        await ensureBrowserCommandBridge(tabId);
         await waitForDelay(delayMs);
+        continue;
       }
+      break;
     }
   }
 

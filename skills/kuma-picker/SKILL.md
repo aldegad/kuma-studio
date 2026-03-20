@@ -43,6 +43,7 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 2. If the session is missing or stale, fix the bridge before continuing.
    - Start the daemon with `npm run kuma-pickerd:serve`.
    - Reload the Chrome extension after extension code changes.
+   - If Kuma Picker was installed via the Codex skill flow, the unpacked extension root is `/Users/soohongkim/.codex/extensions/kuma-picker-browser-extension`.
    - In the extension popup, point the daemon URL at the currently running daemon.
    - Browser control uses the daemon WebSocket bridge only.
    - If you are blocked, name the exact command you ran and the concrete failure. Do not replace that with a generic line about needing to "find where to launch the bridge command."
@@ -68,7 +69,7 @@ Use this when the user wants the Kuma Picker Chrome extension to inspect a live 
 5. Remember the current limitation.
    - DOM reads and clicks can target background tabs.
    - Screenshots will focus the requested target tab first, so prefer `--tab-id` or a precise URL target before capturing.
-   - If a live tab returns `Unsupported Kuma Picker browser command`, verify the unpacked extension was reloaded and compare the live `capabilities` list from `get-browser-session`.
+   - If a live tab returns `Unsupported Kuma Picker browser command`, verify the unpacked extension at `/Users/soohongkim/.codex/extensions/kuma-picker-browser-extension` was reloaded and compare the live `capabilities` list from `get-browser-session`.
 
 ## Browser write safety
 

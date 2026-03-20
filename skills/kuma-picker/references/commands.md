@@ -40,7 +40,8 @@ Use these before relying on the Chrome extension bridge:
 - Browser control uses the daemon WebSocket endpoint only.
 - If the response is missing, stale, or from the wrong project, start the correct daemon and repoint the extension popup to that daemon URL.
 - If the response reports `tabCount > 1`, inspect `tabs[]` and pick the right `activeTabId` or explicit `tabId` before sending browser commands.
-- After extension code changes, reload the unpacked extension in `chrome://extensions`.
+- If Kuma Picker was installed through the Codex skill flow, the unpacked extension root is `/Users/soohongkim/.codex/extensions/kuma-picker-browser-extension`.
+- After extension code changes, reload that unpacked extension in `chrome://extensions`.
 - After changing the daemon URL in the popup, refresh the target page once so the content script reconnects.
 
 ## Browser command targeting

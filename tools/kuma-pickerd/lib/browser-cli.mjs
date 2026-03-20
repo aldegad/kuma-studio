@@ -172,6 +172,7 @@ export async function commandBrowserKey(options) {
     selectorPath,
     text,
     shiftKey: options["shift"] === true,
+    holdMs: readNumber(options, "hold-ms", null),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
   });
   printJson(result.result ?? null);

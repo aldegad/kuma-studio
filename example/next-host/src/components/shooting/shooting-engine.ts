@@ -74,6 +74,7 @@ export interface GameState {
   frame: number;
   wave: number;
   waveTimer: number;
+  started: boolean;
   gameOver: boolean;
   paused: boolean;
   /** frames since game start (for metrics) */
@@ -103,12 +104,12 @@ const PLAYER_SPEED = 6;
 const PLAYER_FIRE_RATE = 6; // frames between shots
 const INVINCIBLE_DURATION = 90; // frames after hit
 
-const ENEMY_SPAWN_INTERVAL_BASE = 80; // frames
+const ENEMY_SPAWN_INTERVAL_BASE = 170; // frames
 const WAVE_DURATION = 600; // frames per wave
 
 // ─── Factory ───
 
-export function createInitialState(): GameState {
+export function createInitialState(started = false): GameState {
   return {
     player: {
       x: CANVAS_W / 2,
@@ -132,6 +133,7 @@ export function createInitialState(): GameState {
     frame: 0,
     wave: 1,
     waveTimer: 0,
+    started,
     gameOver: false,
     paused: false,
     totalFrames: 0,
@@ -166,6 +168,11 @@ export function createInputState(): InputState {
 // ─── Tick ───
 
 export function tick(state: GameState, input: InputState): GameState {
+  if (!state.started) {
+    state.lastFrameTime = performance.now();
+    return state;
+  }
+
   if (state.gameOver || state.paused) return state;
 
   const now = performance.now();
@@ -231,8 +238,9 @@ export function tick(state: GameState, input: InputState): GameState {
   }
 
   // ─── Spawn enemies ───
-  const spawnInterval = Math.max(20, ENEMY_SPAWN_INTERVAL_BASE - state.wave * 5);
-  if (state.frame % spawnInterval === 0) {
+  const spawnInterval = Math.max(80, ENEMY_SPAWN_INTERVAL_BASE - state.wave * 2);
+  const maxActiveEnemies = Math.min(5, 2 + Math.floor(state.wave / 3));
+  if (state.enemies.length < maxActiveEnemies && state.frame % spawnInterval === 0) {
     spawnEnemy(state);
   }
 
@@ -382,7 +390,12 @@ function firePlayerBullets(state: GameState) {
 let nextEnemyId = 1;
 
 function spawnEnemy(state: GameState) {
-  const kinds: EnemyKind[] = state.wave < 3 ? ["grunt"] : state.wave < 6 ? ["grunt", "grunt", "spreader"] : ["grunt", "spreader", "bomber"];
+  const kinds: EnemyKind[] =
+    state.wave < 3
+      ? ["grunt"]
+      : state.wave < 6
+        ? ["grunt", "grunt", "grunt", "grunt", "spreader"]
+        : ["grunt", "grunt", "grunt", "spreader", "bomber"];
   const kind = kinds[Math.floor(Math.random() * kinds.length)];
 
   const configs: Record<EnemyKind, { w: number; h: number; hp: number }> = {
@@ -402,7 +415,7 @@ function spawnEnemy(state: GameState) {
     width: cfg.w,
     height: cfg.h,
     kind,
-    fireCooldown: 30 + Math.floor(Math.random() * 60),
+    fireCooldown: 60 + Math.floor(Math.random() * 70),
     age: 0,
     phase: 0,
   });
@@ -430,45 +443,45 @@ function spawnBoss(state: GameState) {
 function updateEnemy(e: Enemy, state: GameState) {
   switch (e.kind) {
     case "grunt":
-      e.y += 1.5 + state.wave * 0.1;
-      e.x += Math.sin(e.age * 0.04) * 1.5;
+      e.y += 0.8 + state.wave * 0.05;
+      e.x += Math.sin(e.age * 0.04) * 0.9;
       e.fireCooldown--;
       if (e.fireCooldown <= 0) {
         enemyFireSingle(state, e);
-        e.fireCooldown = 80 - state.wave * 2;
+        e.fireCooldown = Math.max(95, 145 - state.wave * 2);
       }
       break;
 
     case "spreader":
-      e.y += 1.0 + state.wave * 0.05;
-      e.x += Math.sin(e.age * 0.03) * 2;
+      e.y += 0.62 + state.wave * 0.035;
+      e.x += Math.sin(e.age * 0.03) * 1.25;
       e.fireCooldown--;
       if (e.fireCooldown <= 0) {
-        enemyFireSpread(state, e, 5);
-        e.fireCooldown = 100 - state.wave * 3;
+        enemyFireSpread(state, e, 3);
+        e.fireCooldown = Math.max(110, 170 - state.wave * 3);
       }
       break;
 
     case "bomber":
-      e.y += 2.0;
+      e.y += 1.0;
       e.fireCooldown--;
       if (e.fireCooldown <= 0) {
         enemyFireAimed(state, e);
-        e.fireCooldown = 50;
+        e.fireCooldown = 105;
       }
       break;
 
     case "boss":
       // Move to center then oscillate
       if (e.y < 80) {
-        e.y += 0.8;
+        e.y += 0.55;
       } else {
-        e.x += Math.sin(e.age * 0.015) * 2.5;
+        e.x += Math.sin(e.age * 0.015) * 1.5;
         e.phase++;
         // Multiple attack patterns
-        if (e.phase % 30 === 0) enemyFireSpread(state, e, 8 + Math.floor(state.wave / 3));
-        if (e.phase % 45 === 0) enemyFireAimed(state, e);
-        if (e.phase % 60 === 0) enemyFireSpiral(state, e);
+        if (e.phase % 60 === 0) enemyFireSpread(state, e, 4 + Math.floor(state.wave / 5));
+        if (e.phase % 90 === 0) enemyFireAimed(state, e);
+        if (e.phase % 135 === 0) enemyFireSpiral(state, e);
       }
       break;
   }
@@ -477,7 +490,7 @@ function updateEnemy(e: Enemy, state: GameState) {
 function enemyFireSingle(state: GameState, e: Enemy) {
   state.bullets.push({
     x: e.x, y: e.y + e.height / 2,
-    vx: 0, vy: 4 + state.wave * 0.2,
+    vx: 0, vy: 1.95 + state.wave * 0.08,
     radius: 4, color: "#ef5350", fromPlayer: false,
   });
 }
@@ -485,7 +498,7 @@ function enemyFireSingle(state: GameState, e: Enemy) {
 function enemyFireSpread(state: GameState, e: Enemy, count: number) {
   const angleStep = Math.PI / (count - 1);
   const startAngle = Math.PI / 2 - (angleStep * (count - 1)) / 2;
-  const speed = 3 + state.wave * 0.15;
+  const speed = 1.65 + state.wave * 0.05;
   for (let i = 0; i < count; i++) {
     const angle = startAngle + i * angleStep;
     state.bullets.push({
@@ -502,7 +515,7 @@ function enemyFireAimed(state: GameState, e: Enemy) {
   const dx = p.x - e.x;
   const dy = p.y - e.y;
   const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-  const speed = 5 + state.wave * 0.15;
+  const speed = 2.35 + state.wave * 0.07;
   state.bullets.push({
     x: e.x, y: e.y + e.height / 2,
     vx: (dx / dist) * speed,
@@ -512,8 +525,8 @@ function enemyFireAimed(state: GameState, e: Enemy) {
 }
 
 function enemyFireSpiral(state: GameState, e: Enemy) {
-  const count = 12;
-  const speed = 2.5;
+  const count = 8;
+  const speed = 1.55;
   const offset = e.phase * 0.1;
   for (let i = 0; i < count; i++) {
     const angle = offset + (i / count) * Math.PI * 2;

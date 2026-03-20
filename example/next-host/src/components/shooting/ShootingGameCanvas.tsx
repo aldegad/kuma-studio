@@ -254,6 +254,24 @@ function drawGame(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillStyle = "#ffd54f";
     ctx.font = "bold 14px monospace";
     ctx.fillText("Tap to restart", CANVAS_W / 2, CANVAS_H / 2 + 70);
+  } else if (!state.started) {
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+    ctx.fillStyle = "#fffaf0";
+    ctx.font = "bold 30px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("TAP TO START", CANVAS_W / 2, CANVAS_H / 2 - 46);
+
+    ctx.fillStyle = "#ffd54f";
+    ctx.font = "bold 14px monospace";
+    ctx.fillText("First tap arms the stage", CANVAS_W / 2, CANVAS_H / 2 - 6);
+    ctx.fillText("then drag or press arrows / Z", CANVAS_W / 2, CANVAS_H / 2 + 18);
+
+    ctx.fillStyle = "#bbdefb";
+    ctx.font = "bold 13px monospace";
+    ctx.fillText("Slower bullets, lighter waves", CANVAS_W / 2, CANVAS_H / 2 + 60);
   }
 }
 
@@ -265,8 +283,18 @@ export function ShootingGameCanvas() {
   const inputRef = useRef<InputState>(createInputState());
   const [metrics, setMetrics] = useState(() => getMetrics(stateRef.current));
 
-  const restart = useCallback(() => {
-    stateRef.current = createInitialState();
+  const restart = useCallback((started = false) => {
+    stateRef.current = createInitialState(started);
+    inputRef.current = createInputState();
+    setMetrics(getMetrics(stateRef.current));
+  }, []);
+
+  const startGame = useCallback(() => {
+    const state = stateRef.current;
+    if (!state.started) {
+      state.started = true;
+      state.lastFrameTime = performance.now();
+    }
   }, []);
 
   // ─── Pointer events (touch + mouse) ───
@@ -288,14 +316,19 @@ export function ShootingGameCanvas() {
     if (!pos) return;
 
     if (stateRef.current.gameOver) {
-      restart();
-      return;
+      restart(true);
+    } else {
+      startGame();
     }
 
     inputRef.current.pointer = pos;
     inputRef.current.pointerDown = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [getCanvasPos, restart]);
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      // Synthetic pointer events may not have a captureable native pointer.
+    }
+  }, [getCanvasPos, restart, startGame]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!inputRef.current.pointerDown) return;
@@ -320,8 +353,12 @@ export function ShootingGameCanvas() {
       const k = keyMap[e.key];
       if (k) {
         e.preventDefault();
+        if (stateRef.current.gameOver) {
+          restart(true);
+        } else {
+          startGame();
+        }
         inputRef.current.keys[k] = true;
-        if (k === "fire" && stateRef.current.gameOver) restart();
       }
     };
 
@@ -336,7 +373,7 @@ export function ShootingGameCanvas() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [restart]);
+  }, [restart, startGame]);
 
   // ─── Game loop ───
   useEffect(() => {
