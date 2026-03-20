@@ -20,6 +20,7 @@ npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --
 npm run kuma-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
 npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps-file ./tmp/sequence.json
 npm run kuma-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
+npm run kuma-pickerd:browser-pointer-drag -- --url-contains "example.com" --from-x 120 --from-y 260 --to-x 420 --to-y 260
 npm run kuma-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
 npm run kuma-pickerd:browser-key -- --url-contains "example.com" --key Tab
 npm run kuma-pickerd:browser-refresh -- --url-contains "example.com"
@@ -51,7 +52,7 @@ Use these before relying on the Chrome extension bridge:
 - Use `--url-contains <partial-url>` when query params or hashes are unstable.
 - The CLI still uses the same `browser-*` commands, but they are now transported over WebSocket instead of the deprecated HTTP polling queue.
 - Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
-- Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, and `browser-click-point`.
+- Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
 - Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
 - Use `browser-sequence` when a dropdown or modal workflow should stay alive across multiple steps, and add per-step `assert` checks for postcondition verification.
 - Use the wait commands to verify save states instead of guessing from click timing alone.
@@ -61,6 +62,7 @@ Use these before relying on the Chrome extension bridge:
 - Use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`.
 - Use `browser-refresh` after deploys or config changes, and add `--bypass-cache` when you need a cache-bypassing reload.
 - Use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable.
+- Use `browser-pointer-drag` when the UI needs a real drag gesture, such as canvas movement, sliders, or joystick-style controls.
 - `browser-screenshot` still requires the target tab to be active and focused.
 
 ## Shared state layout

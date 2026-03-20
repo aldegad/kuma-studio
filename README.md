@@ -12,7 +12,7 @@ The repo also ships a bundled Next.js test web under `example/next-host` for bro
 - `packages/browser-extension/`: unpacked Chrome extension that bridges arbitrary pages into `kuma-pickerd`
 - `packages/server/`: `kuma-pickerd` entrypoint shim
 - `tools/kuma-pickerd/`: local state daemon implementation
-- `example/next-host/`: bundled test web with Sudoku, chat, and cafe flows for extension-driven testing
+- `example/next-host/`: bundled test web with Sudoku, chat, cafe, and shooting flows for extension-driven testing
 
 ## Getting Started
 
@@ -58,6 +58,7 @@ Agent-specific guidance lives here:
 - `npm run kuma-pickerd:browser-context`: get browser context from extension
 - `npm run kuma-pickerd:browser-dom`: read DOM from extension
 - `npm run kuma-pickerd:browser-click -- --text "Next"`: click element via extension
+- `npm run kuma-pickerd:browser-pointer-drag -- --from-x 120 --from-y 260 --to-x 420 --to-y 260`: drag across the page via extension
 - `npm run kuma-pickerd:browser-screenshot -- --file ./tmp/shot.png`: take screenshot via extension
 - `npm run test`: run daemon unit tests
 

@@ -7,6 +7,7 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "click",
   "sequence",
   "click-point",
+  "pointer-drag",
   "fill",
   "key",
   "refresh",

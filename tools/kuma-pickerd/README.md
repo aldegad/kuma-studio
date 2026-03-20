@@ -32,7 +32,7 @@ If you also want the bundled test web, run this in a second terminal:
 npm run dev:web
 ```
 
-The test web lives under `example/next-host` and provides the bundled Sudoku, chat, and cafe automation surfaces.
+The test web lives under `example/next-host` and provides the bundled Sudoku, chat, cafe, and shooting automation surfaces.
 
 Direct CLI usage from the standalone repository:
 
@@ -112,7 +112,7 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, `browser-click`,
-`browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-screenshot`,
+`browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane.
 
@@ -141,6 +141,7 @@ node ./packages/server/src/cli.mjs browser-sequence --url-contains "ddalkkakpost
 node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
+node ./packages/server/src/cli.mjs browser-pointer-drag --url-contains "localhost:3000/shooting" --from-x 280 --from-y 520 --to-x 640 --to-y 520 --steps 18
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com"
@@ -189,6 +190,7 @@ For browser commands:
 - use `browser-refresh` to reload the target tab after deploys or settings changes
 - add `--bypass-cache` to `browser-refresh` when you want a cache-bypassing reload during verification
 - use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
+- use `browser-pointer-drag` when a canvas, slider, joystick, or drag-only surface needs a continuous pointer path instead of a discrete click
 - visible-tab screenshots still require the page to be the active focused tab in Chrome
 
 For saved selections:
