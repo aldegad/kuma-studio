@@ -200,6 +200,7 @@ export function sanitizeCommandPayload(candidate) {
     steps: sequenceSteps ?? (Number.isFinite(steps) && steps >= 1 ? Math.round(steps) : null),
     clipRect,
     focusTabFirst: candidate.focusTabFirst !== false,
+    restorePreviousActiveTab: candidate.restorePreviousActiveTab === true,
     bypassCache: candidate.bypassCache === true,
     refreshBeforeCapture: candidate.refreshBeforeCapture === true,
     captureMs:
@@ -211,6 +212,9 @@ export function sanitizeCommandPayload(candidate) {
         ? Math.min(10_000, Math.round(durationMs))
         : null,
     shiftKey: candidate.shiftKey === true,
+    altKey: candidate.altKey === true,
+    ctrlKey: candidate.ctrlKey === true,
+    metaKey: candidate.metaKey === true,
     postActionDelayMs:
       Number.isFinite(postActionDelayMs) && postActionDelayMs >= 0
         ? Math.min(10_000, Math.round(postActionDelayMs))

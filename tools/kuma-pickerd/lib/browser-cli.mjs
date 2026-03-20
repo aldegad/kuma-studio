@@ -3,6 +3,15 @@ import { printJson, printScreenshotResult } from "./browser-cli-output.mjs";
 import { readBrowserSequenceSteps } from "./browser-sequence.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";
 
+function readKeyboardModifierFlags(options) {
+  return {
+    shiftKey: options["shift"] === true,
+    altKey: options["alt"] === true,
+    ctrlKey: options["ctrl"] === true,
+    metaKey: options["meta"] === true,
+  };
+}
+
 export async function commandGetBrowserSession(options) {
   const daemonUrl = getDaemonUrlFromOptions(options);
   const session = await fetchJson(`${daemonUrl}/browser-session`, {
@@ -171,7 +180,7 @@ export async function commandBrowserKey(options) {
     selector,
     selectorPath,
     text,
-    shiftKey: options["shift"] === true,
+    ...readKeyboardModifierFlags(options),
     holdMs: readNumber(options, "hold-ms", null),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
   });
@@ -194,7 +203,7 @@ export async function commandBrowserKeyDown(options) {
     selector,
     selectorPath,
     text,
-    shiftKey: options["shift"] === true,
+    ...readKeyboardModifierFlags(options),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
   });
   printJson(result.result ?? null);
@@ -216,7 +225,7 @@ export async function commandBrowserKeyUp(options) {
     selector,
     selectorPath,
     text,
-    shiftKey: options["shift"] === true,
+    ...readKeyboardModifierFlags(options),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
   });
   printJson(result.result ?? null);
@@ -321,6 +330,13 @@ export async function commandBrowserGetLatestDownload(options) {
   printJson(result.result ?? null);
 }
 
+export async function commandBrowserDownloadPermission(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "download-permission",
+  });
+  printJson(result.result ?? null);
+}
+
 export async function commandBrowserWaitForTextDisappear(options) {
   const text = readOptionalString(options, "text");
   if (!text) {
@@ -363,6 +379,8 @@ export async function commandBrowserQueryDom(options) {
   const kind = readOptionalString(options, "kind");
   const text = readOptionalString(options, "text");
   const scope = readOptionalString(options, "scope");
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
 
   if (!kind) {
     throw new Error("browser-query-dom requires --kind.");
@@ -371,12 +389,17 @@ export async function commandBrowserQueryDom(options) {
   if ((kind === "nearby-input" || kind === "input-by-label" || kind === "menu-state" || kind === "selected-option" || kind === "tab-state") && !text) {
     throw new Error(`browser-query-dom --kind ${kind} requires --text.`);
   }
+  if (kind === "selector-state" && !selector && !selectorPath) {
+    throw new Error("browser-query-dom --kind selector-state requires --selector or --selector-path.");
+  }
 
   const result = await enqueueBrowserCommand(options, {
     type: "query-dom",
     kind,
     text,
     scope,
+    selector,
+    selectorPath,
   });
   printJson(result.result ?? null);
 }
@@ -403,6 +426,7 @@ export async function commandBrowserScreenshot(options) {
   const result = await enqueueBrowserCommand(options, {
     type: "screenshot",
     focusTabFirst: options["focus-tab-first"] !== false,
+    restorePreviousActiveTab: options["restore-previous-active-tab"] === true,
     selector,
     selectorPath,
     scope,

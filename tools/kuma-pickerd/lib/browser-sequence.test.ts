@@ -43,6 +43,38 @@ describe("browser sequence parsing", () => {
     ]);
   });
 
+  it("accepts selector-state assertions for lightweight write verification", () => {
+    const steps = normalizeBrowserSequenceDefinition([
+      {
+        type: "fill",
+        selector: "[data-testid='chat-input-1p']",
+        value: "hello",
+        assert: {
+          type: "selector-state",
+          selector: "[data-testid='chat-input-1p']",
+          value: "hello",
+          focused: true,
+        },
+      },
+    ]);
+
+    expect(steps).toEqual([
+      {
+        type: "fill",
+        selector: "[data-testid='chat-input-1p']",
+        value: "hello",
+        assertions: [
+          {
+            type: "selector-state",
+            selector: "[data-testid='chat-input-1p']",
+            value: "hello",
+            focused: true,
+          },
+        ],
+      },
+    ]);
+  });
+
   it("reads a sequence from a file option", () => {
     const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-sequence-"));
     tempRoots.push(root);

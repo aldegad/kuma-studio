@@ -136,6 +136,16 @@ async function focusTargetTab(tab) {
   return activatedTab?.id ? activatedTab : chrome.tabs.get(tab.id);
 }
 
+async function restorePreviousActiveTab(tab) {
+  if (!isResolvableTab(tab)) {
+    return null;
+  }
+
+  await chrome.windows.update(tab.windowId, { focused: true });
+  const restoredTab = await chrome.tabs.update(tab.id, { active: true });
+  return restoredTab?.id ? restoredTab : chrome.tabs.get(tab.id);
+}
+
 async function waitForFocusedTargetTab(tab, attempts = 5, delayMs = 100) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const [targetWindow, refreshedTab] = await Promise.all([
@@ -161,23 +171,37 @@ async function waitForFocusedTargetTab(tab, attempts = 5, delayMs = 100) {
   };
 }
 
-async function captureTargetTabScreenshot(tab, { focusTabFirst = true } = {}) {
+async function captureTargetTabScreenshot(tab, { focusTabFirst = true, restorePreviousActiveTab: restoreAfterCapture = false } = {}) {
+  const previouslyActiveTab = focusTabFirst && restoreAfterCapture ? await queryActiveTab().catch(() => null) : null;
   const targetTab = focusTabFirst ? await focusTargetTab(tab) : tab;
-  const focusedTarget = await waitForFocusedTargetTab(targetTab);
-  const confirmedTab = focusedTarget.tab;
-  const targetWindow = focusedTarget.window;
 
-  if (confirmedTab.active !== true) {
-    throw new Error("Failed to activate the target tab before taking a screenshot.");
+  try {
+    const focusedTarget = await waitForFocusedTargetTab(targetTab);
+    const confirmedTab = focusedTarget.tab;
+    const targetWindow = focusedTarget.window;
+
+    if (confirmedTab.active !== true) {
+      throw new Error("Failed to activate the target tab before taking a screenshot.");
+    }
+
+    return {
+      dataUrl: await captureTabScreenshot(confirmedTab.windowId),
+      tabId: confirmedTab.id,
+      windowId: confirmedTab.windowId,
+      focused: targetWindow.focused === true,
+      active: confirmedTab.active === true,
+      restoredTabId: null,
+    };
+  } finally {
+    if (
+      focusTabFirst &&
+      restoreAfterCapture &&
+      previouslyActiveTab?.id &&
+      previouslyActiveTab.id !== targetTab?.id
+    ) {
+      await restorePreviousActiveTab(previouslyActiveTab).catch(() => null);
+    }
   }
-
-  return {
-    dataUrl: await captureTabScreenshot(confirmedTab.windowId),
-    tabId: confirmedTab.id,
-    windowId: confirmedTab.windowId,
-    focused: targetWindow.focused === true,
-    active: confirmedTab.active === true,
-  };
 }
 
 function clamp(value, min, max) {

@@ -69,6 +69,8 @@ var KumaPickerExtensionAgentActionCore = (() => {
       textPreview: record.textPreview,
       value: record.value ?? null,
       valuePreview: record.valuePreview ?? null,
+      selectionStart: typeof record.selectionStart === "number" ? record.selectionStart : null,
+      selectionEnd: typeof record.selectionEnd === "number" ? record.selectionEnd : null,
       checked: typeof record.checked === "boolean" ? record.checked : null,
       selectedValue: record.selectedValue ?? null,
       selectedValues: Array.isArray(record.selectedValues) ? record.selectedValues : [],
@@ -221,7 +223,7 @@ var KumaPickerExtensionAgentActionCore = (() => {
     }
     try {
       const target = document.querySelector(selector);
-      return isVisibleElement(target) ? target : target ?? null;
+      return isVisibleElement(target) ? target : null;
     } catch {
       return null;
     }
@@ -297,6 +299,15 @@ var KumaPickerExtensionAgentActionCore = (() => {
     return matches[nth - 1].element;
   }
 
+  function getClosestVisibleCommandTarget(element) {
+    if (!(element instanceof Element)) {
+      return null;
+    }
+
+    const closest = element.closest(COMMAND_INTERACTIVE_SELECTOR);
+    return closest instanceof Element && isVisibleElement(closest) ? closest : null;
+  }
+
   function findElementByTextWithConstraints(text, command, root = document.body || document.documentElement) {
     const normalizedNeedle = normalizeText(text);
     if (!normalizedNeedle) {
@@ -313,7 +324,26 @@ var KumaPickerExtensionAgentActionCore = (() => {
       .filter((entry) => entry.score > 0)
       .sort((left, right) => right.score - left.score || left.text.length - right.text.length);
 
-    return selectNthMatch(candidates, command, "browser-click target");
+    const directMatch = selectNthMatch(candidates, command, "browser-click target");
+    if (directMatch) {
+      return directMatch;
+    }
+
+    const textAnchor = findElementByTextWithinRoot(text, root);
+    if (!(textAnchor instanceof Element)) {
+      return null;
+    }
+
+    const closestTarget = getClosestVisibleCommandTarget(textAnchor);
+    if (!closestTarget) {
+      return null;
+    }
+
+    if (!matchesRequestedRole(closestTarget, command?.role)) {
+      return null;
+    }
+
+    return closestTarget;
   }
 
   function resolveCommandTarget(command, options = {}) {

@@ -39,30 +39,30 @@ Current reality:
 - [x] Add `browser-mousemove`.
 - [x] Add `browser-mousedown`.
 - [x] Add `browser-mouseup`.
-- [ ] Add key chord support for common combos like copy/paste/select-all.
+- [x] Add key chord support for common combos like copy/paste/select-all.
 
 ### B. Bridge reliability
 
 - [x] Reattach browser command tools after refresh when content scripts are briefly unavailable.
 - [x] Preserve advanced command payloads through the daemon bridge.
-- [ ] Add consistent write-path auto-focus before interaction commands.
-- [ ] Add an optional "restore previous active tab" flow after focused write actions.
-- [ ] Add clearer transient-error reporting for refresh/reconnect races.
-- [ ] Benchmark repeated refresh -> write -> verify loops on the same tab.
+- [x] Add consistent write-path auto-focus before interaction commands.
+- [x] Add an optional "restore previous active tab" flow after focused write actions.
+- [x] Add clearer transient-error reporting for refresh/reconnect races.
+- [x] Benchmark repeated refresh -> write -> verify loops on the same tab.
 
 ### C. Verification and readback
 
 - [x] `browser-dom`, `browser-console`, and `browser-screenshot` are usable for post-action checks.
-- [ ] Add a lighter-weight assert/readback helper for write-after-read verification.
-- [ ] Make `browser-sequence` less verbose for write + assert loops.
-- [ ] Prefer deterministic test ids or visible metric hooks in test apps where verification is noisy.
+- [x] Add a lighter-weight assert/readback helper for write-after-read verification.
+- [x] Make `browser-sequence` less verbose for write + assert loops.
+- [x] Prefer deterministic test ids or visible metric hooks in test apps where verification is noisy.
 
 ### D. Ergonomics
 
 - [x] Document the installed extension root for Codex skill installs.
-- [ ] Add examples for sustained key/mouse interaction to the command docs.
-- [ ] Add "when to use Kuma vs Playwright" guidance to maintainer docs.
-- [ ] Define a small benchmark scorecard template so regressions are easy to spot.
+- [x] Add examples for sustained key/mouse interaction to the command docs.
+- [x] Add "when to use Kuma vs Playwright" guidance to maintainer docs.
+- [x] Define a small benchmark scorecard template so regressions are easy to spot.
 
 ## Benchmark surfaces
 
@@ -80,21 +80,30 @@ These bundled surfaces should be the default benchmark set for Phase 1.
 
 ### Lab home
 
-- [ ] Click a surface card by semantic target.
-- [ ] Navigate into a surface and verify URL/title.
-- [ ] Capture a screenshot after navigation.
+- [x] Click a surface card by semantic target.
+- [x] Navigate into a surface and verify URL/title.
+- [x] Capture a screenshot after navigation.
+
+Latest benchmark note:
+
+- 2026-03-20: verified on `/` that a surface card can be opened by visible text alone; `browser-click --text 'Kuma Dispatch Chat' --exact-text` resolved the correct launcher card and navigated into `/agent-chat`.
+- 2026-03-20: page screenshot after launcher navigation now reports real dimensions again (`3456x1800` on the current retina viewport) instead of `0x0`.
 
 ### Agent chat
 
 - [x] Fill `1P` composer.
 - [x] Send a message.
 - [x] Read the new bubble back from the transcript.
-- [ ] Reset the room and verify the cleared state.
+- [x] Reset the room and verify the cleared state.
 
 Latest benchmark note:
 
 - 2026-03-20: verified on `/agent-chat` that `browser-fill` + `browser-click` can write a composer message, send it, and read the new transcript line back from DOM text.
 - 2026-03-20: navigation-triggering clicks such as `back-to-apps` and surface-card links now return immediately instead of timing out while the page route changes.
+- 2026-03-20: `chat-reset` returns the room to a clean state, with both composers cleared and the transcript back to `No dispatches`.
+- 2026-03-20: `Meta + A`, `Meta + C`, `Meta + V`, and `Meta + X` now work on the composer textareas, with readback confirming copy from `1P`, paste into `2P`, and cut clearing `1P`.
+- 2026-03-20: `browser-query-dom --kind selector-state` now gives focused/value/selection readback for a specific target, which makes composer write verification much lighter than a full DOM dump.
+- 2026-03-20: `browser-sequence` now accepts `selector-state` assertions, so a single `fill` step can verify focused/value/selection postconditions without a separate manual readback command.
 
 ### Sudoku
 
@@ -108,14 +117,24 @@ Latest benchmark note:
 - 2026-03-20: `browser-mousedown` + `browser-mouseup` now synthesize a real click when the pointer stays on the same interactive target.
 - 2026-03-20: point-target resolution now climbs to the nearest interactive ancestor, which fixed grid-cell selection on nested spans.
 - 2026-03-20: verified on `/sudoku` that `mousedown/up` selects a cell and `keydown/up` persists a numeric write on the focused editable cell.
+- 2026-03-20: repeated `refresh -> click -> keydown/up -> readback` loops now hold focus on the clicked cell and persist values across consecutive runs on the same tab.
 
 ### Cafe control room
 
-- [ ] Switch tabs.
-- [ ] Open and close the station menu.
-- [ ] Open the seasonal dialog.
-- [ ] Save the dialog and wait for toast confirmation.
+- [x] Switch tabs.
+- [x] Open and close the station menu.
+- [x] Open the seasonal dialog.
+- [x] Save the dialog and wait for toast confirmation.
 - [ ] Trigger the CSV export and verify the download.
+
+Latest benchmark note:
+
+- 2026-03-20: verified on `/cafe-control-room` that offscreen `browser-click` works again in a hidden tab after skipping hidden-tab animation waits.
+- 2026-03-20: `tab-state` and `menu-state` checks work on the tab strip and the custom `Crew Station` combobox.
+- 2026-03-20: generic text click now selects `Bakery Shelf` reliably, and `selected-option` readback confirms the combobox value changed.
+- 2026-03-20: hidden selector fallback is fixed; clicking `[data-testid="download-receipts"]` while `Orders` is active now correctly fails instead of targeting a hidden panel node.
+- 2026-03-20: dialog flow passed end-to-end with `browser-fill --label 'Drink Name'`, save click, toast appearance, and toast disappearance.
+- 2026-03-20: `browser-download-permission` now exposes Chrome's automatic-download state directly, and current CSV export verification is still blocked by `ask` mode for `http://localhost:3000`.
 
 ### Shooting range
 
@@ -128,6 +147,7 @@ Latest benchmark note:
 Latest benchmark note:
 
 - 2026-03-20: after navigating in from the launcher, `/shooting` still accepted `browser-key --hold-ms` and `browser-pointer-drag`, with live readback showing `Shots Fired 21` and `Total Inputs 64`.
+- 2026-03-20: the shooting metrics panel now exposes deterministic test ids such as `shooting-metric-shots-fired`, so noisy real-time checks can use `selector-state` instead of full-page text scraping.
 
 ## Exit criteria for Phase 1
 
@@ -136,6 +156,19 @@ Phase 1 is considered done when:
 - all five benchmark surfaces pass their baseline scenarios
 - Kuma Picker can cover the common low-level input cases without leaning on app adapters
 - the remaining delta versus Playwright is small enough that app-specific helpers feel additive, not compensatory
+
+Latest reliability note:
+
+- 2026-03-20: bridge errors now include recovery hints for the three most common transient cases: missing live browser presence, content tools not reattached yet, and command socket close/timeout after a page reload.
+- 2026-03-20: `browser-screenshot --restore-previous-active-tab` now returns focus to the tab that was active before the capture, which prevents long inspections from stealing the user's working tab.
+
+## Benchmark scorecard template
+
+Use this lightweight template whenever a primitive changes:
+
+| Date | Surface | Scenario | Commands used | Expected result | Actual result | Pass |
+| --- | --- | --- | --- | --- | --- | --- |
+| YYYY-MM-DD | `/agent-chat` | copy + paste between composers | `browser-fill`, `browser-keydown`, `browser-keyup` | source copied, target replaced, source cleared on cut | short factual summary | yes/no |
 
 ## Phase 2 candidates
 

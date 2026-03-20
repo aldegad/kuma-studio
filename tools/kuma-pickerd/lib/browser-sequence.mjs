@@ -29,6 +29,7 @@ const SUPPORTED_SEQUENCE_ASSERTION_TYPES = new Set([
   "wait-for-text-disappear",
   "wait-for-selector",
   "wait-for-dialog-close",
+  "selector-state",
 ]);
 
 function parseJson(rawValue, sourceLabel) {

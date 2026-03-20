@@ -115,12 +115,16 @@ async function executeScreenshotBrowserCommand(tab, command) {
   const pageContext = await collectPageContext(tab.id);
   const capture = await captureTargetTabScreenshot(tab, {
     focusTabFirst: command?.focusTabFirst !== false,
+    restorePreviousActiveTab: command?.restorePreviousActiveTab === true,
   });
+  const viewportWidth = Number(pageContext?.viewport?.width) || 0;
+  const viewportHeight = Number(pageContext?.viewport?.height) || 0;
+  const devicePixelRatio = Number(pageContext?.viewport?.devicePixelRatio) || 1;
   let screenshot = {
     dataUrl: capture.dataUrl,
     mimeType: "image/png",
-    width: 0,
-    height: 0,
+    width: Math.max(0, Math.round(viewportWidth * devicePixelRatio)),
+    height: Math.max(0, Math.round(viewportHeight * devicePixelRatio)),
     capturedAt: new Date().toISOString(),
   };
   let clip = null;
@@ -206,6 +210,15 @@ async function executeGetLatestDownloadBrowserCommand(tab, command) {
   };
 }
 
+async function executeDownloadPermissionBrowserCommand(tab) {
+  const pageContext = await collectPageContext(tab.id);
+  const permission = await getDownloadPermission(tab);
+  return {
+    page: pageContext.page,
+    permission: serializeDownloadPermission(permission),
+  };
+}
+
 async function executeBrowserCommand(tab, command) {
   switch (command?.type) {
     case "context":
@@ -241,6 +254,8 @@ async function executeBrowserCommand(tab, command) {
       return executeWaitForDownloadBrowserCommand(tab, command);
     case "get-latest-download":
       return executeGetLatestDownloadBrowserCommand(tab, command);
+    case "download-permission":
+      return executeDownloadPermissionBrowserCommand(tab);
     default:
       throw new Error(`Unsupported Kuma Picker browser command: ${String(command?.type)}`);
   }

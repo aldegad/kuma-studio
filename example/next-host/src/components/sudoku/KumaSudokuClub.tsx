@@ -18,6 +18,10 @@ function createEmptyNotes() {
   return Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => [] as number[]));
 }
 
+function getTargetPosition(selected: CellPosition, target?: CellPosition) {
+  return target ?? selected;
+}
+
 export function KumaSudokuClub() {
   const initialGame = useMemo<SudokuGame>(() => generateSudokuGame(), []);
   const [game, setGame] = useState<SudokuGame>(initialGame);
@@ -104,8 +108,8 @@ export function KumaSudokuClub() {
     }, 0);
   }
 
-  function updateCell(value: number) {
-    const { row, col } = selected;
+  function updateCell(value: number, target?: CellPosition) {
+    const { row, col } = getTargetPosition(selected, target);
     if (puzzle[row][col] !== 0) {
       return;
     }
@@ -148,8 +152,8 @@ export function KumaSudokuClub() {
     );
   }
 
-  function clearCell() {
-    const { row, col } = selected;
+  function clearCell(target?: CellPosition) {
+    const { row, col } = getTargetPosition(selected, target);
     if (puzzle[row][col] !== 0) {
       return;
     }
@@ -176,13 +180,21 @@ export function KumaSudokuClub() {
     );
   }
 
-  function applyHint() {
-    const { row, col } = selected;
+  function applyHint(target?: CellPosition) {
+    const { row, col } = getTargetPosition(selected, target);
     if (puzzle[row][col] !== 0) {
       return;
     }
 
-    updateCell(solution[row][col]);
+    updateCell(solution[row][col], { row, col });
+  }
+
+  function clearSelectedCell() {
+    clearCell();
+  }
+
+  function applySelectedHint() {
+    applyHint();
   }
 
   function moveSelection(nextRow: number, nextCol: number) {
@@ -194,16 +206,17 @@ export function KumaSudokuClub() {
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>, row: number, col: number) {
     setSelected({ row, col });
+    const target = { row, col };
 
     if (event.key >= "1" && event.key <= "9") {
       event.preventDefault();
-      updateCell(Number(event.key));
+      updateCell(Number(event.key), target);
       return;
     }
 
     if (event.key === "Backspace" || event.key === "Delete" || event.key === "0") {
       event.preventDefault();
-      clearCell();
+      clearCell(target);
       return;
     }
 
@@ -396,10 +409,10 @@ export function KumaSudokuClub() {
                     <Pencil className="h-4 w-4" />
                     {noteMode ? "Notes On" : "Notes Off"}
                   </button>
-                  <button type="button" className="kuma-tool" onClick={clearCell}>
+                  <button type="button" className="kuma-tool" onClick={clearSelectedCell}>
                     Clear
                   </button>
-                  <button type="button" className="kuma-tool" onClick={applyHint}>
+                  <button type="button" className="kuma-tool" onClick={applySelectedHint}>
                     Hint
                   </button>
                   <button type="button" className="kuma-tool" onClick={resetGame}>

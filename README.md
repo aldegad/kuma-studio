@@ -64,6 +64,7 @@ Agent-specific guidance lives here:
 ## Docs
 
 - [docs/BROWSER-CONTROL-CHECKLIST.md](./docs/BROWSER-CONTROL-CHECKLIST.md)
+- [docs/PLAYWRIGHT-PARITY-BENCHMARK.md](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md)
 - [docs/maintainers.md](./docs/maintainers.md)
 - [tools/kuma-pickerd/README.md](./tools/kuma-pickerd/README.md)
 - [packages/browser-extension/README.md](./packages/browser-extension/README.md)

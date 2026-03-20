@@ -116,6 +116,7 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
+    expect(output).toContain("browser-download-permission");
     expect(output).toContain("--hold-ms 250");
     expect(output).toContain("browser-keydown");
     expect(output).toContain("browser-keyup");
@@ -127,7 +128,7 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).not.toContain("get-agent-note");
     expect(output).not.toContain("set-agent-note");
     expect(output).not.toContain("clear-agent-note");
-    expect(output).toContain("menu-state|selected-option|tab-state");
+    expect(output).toContain("menu-state|selected-option|tab-state|selector-state");
   });
 });
 

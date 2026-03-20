@@ -126,7 +126,9 @@ export class BrowserSessionStore {
         );
       }
 
-      throw new Error("No active browser connection is available.");
+      throw new Error(
+        "No active browser connection is available. Refresh the target page once so the extension can send a fresh presence heartbeat.",
+      );
     }
 
     const command = {

@@ -413,4 +413,70 @@ describe("BrowserSessionStore", () => {
       }),
     ).toThrow("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
   });
+
+  it("adds a refresh hint when no live browser connection is available", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const controllerSend = vi.fn();
+
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    expect(() =>
+      store.dispatchControllerCommand("controller-1", {
+        type: "command.request",
+        requestId: "browser-command-test-09",
+        command: {
+          type: "dom",
+          targetTabId: 1140012187,
+        },
+      }),
+    ).toThrow("Refresh the target page once so the extension can send a fresh presence heartbeat.");
+  });
+
+  it("preserves screenshot focus restoration options when dispatching websocket commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.recordBrowserPresence("browser-1", {
+      type: "presence.update",
+      source: "content-script:page-heartbeat",
+      page: {
+        url: "http://localhost:3000/shooting",
+        pathname: "/shooting",
+        title: "Kuma Test Lab",
+      },
+      activeTabId: 1140012187,
+      visible: false,
+      focused: false,
+      capabilities: ["screenshot"],
+      lastSeenAt: new Date().toISOString(),
+    });
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-10",
+      command: {
+        type: "screenshot",
+        targetTabId: 1140012187,
+        focusTabFirst: true,
+        restorePreviousActiveTab: true,
+      },
+    });
+
+    expect(browserSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-10",
+        command: expect.objectContaining({
+          type: "screenshot",
+          focusTabFirst: true,
+          restorePreviousActiveTab: true,
+        }),
+      }),
+    );
+  });
 });

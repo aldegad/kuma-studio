@@ -19,6 +19,7 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "screenshot",
   "wait-for-download",
   "get-latest-download",
+  "download-permission",
   "wait-for-text",
   "wait-for-text-disappear",
   "wait-for-selector",

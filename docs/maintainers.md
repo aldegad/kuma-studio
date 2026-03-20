@@ -34,3 +34,21 @@ git log --oneline --decorate -n 5
 - run `npm install`
 - run `npm run test`
 - confirm `.github/workflows/secret-scan.yml` is still present
+
+## Kuma Vs Playwright
+
+Prefer Kuma Picker when you need:
+
+- shared browser state across agents
+- background-tab DOM reads or debugging
+- job-card coordination tied to a picked UI surface
+- lightweight browser commands inside the existing daemon workflow
+
+Prefer Playwright when you need:
+
+- full browser ownership in a fresh session
+- deep app-specific scripting with custom helper code
+- flows that depend on Playwright-only browser contexts, tracing, or auth setup
+
+During Phase 1 browser-control work, benchmark Kuma first on the bundled test apps.
+Reach for Playwright when the comparison itself is the task, or when Kuma is missing a primitive that should be designed explicitly instead of improvised ad hoc.
