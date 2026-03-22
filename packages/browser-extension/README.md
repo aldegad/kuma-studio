@@ -35,22 +35,16 @@ the page to be the currently focused tab.
 2. open `chrome://extensions`
 3. enable `Developer mode`
 4. click `Load unpacked`
-5. choose one of these folders:
+5. choose the `packages/browser-extension` folder from the cloned repo
 
-```text
-packages/browser-extension
-~/.codex/extensions/kuma-picker-browser-extension
-```
-
-If you installed Kuma Picker with `npm run skill:install`, prefer the `~/.codex/extensions/kuma-picker-browser-extension` copy so Chrome can keep using a stable global path.
-That core install does not add any files to your app repo, and it does not enable the experimental embedded picker/provider mode by default.
+Chrome loads the extension directly from the repo. When you `git pull`, the extension updates automatically.
 
 ## Start The Bridge
 
-From the standalone repo root:
+From the repo root:
 
 ```bash
-npm run kuma-pickerd:serve
+node packages/server/src/cli.mjs serve
 ```
 
 That gives the extension a stable default bridge at:
@@ -69,13 +63,13 @@ http://127.0.0.1:4312
 6. read the latest saved context from the repo root:
 
 ```bash
-npm run kuma-pickerd:get-selection
+node packages/server/src/cli.mjs get-selection
 ```
 
 To check whether the daemon has seen this extension recently, run:
 
 ```bash
-npm run kuma-pickerd:get-extension-status
+node packages/server/src/cli.mjs get-extension-status
 ```
 
 To inspect or control the active tab from a local agent, keep the target page

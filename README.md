@@ -19,16 +19,16 @@ The repo also ships a bundled Next.js test web under `example/next-host` for bro
 The fastest way to set up everything:
 
 ```bash
-npm run skill:install
+node scripts/install.mjs
 ```
 
-This installs dependencies, starts the daemon, and tells you the one remaining step (loading the Chrome extension). See [INSTALL.md](./INSTALL.md) for details.
+This installs dependencies, starts the daemon, installs the global skill (`~/.claude/skills/kuma-picker/`), and tells you the one remaining step (loading the Chrome extension). See [INSTALL.md](./INSTALL.md) for details.
 
 **Manual setup** (if you prefer step by step):
 
 ```bash
 npm install
-npm run kuma-pickerd:serve
+node packages/server/src/cli.mjs serve
 ```
 
 Load the unpacked extension from `packages/browser-extension/` in `chrome://extensions`, then point the extension popup at the running daemon URL (default `http://127.0.0.1:4312`).
@@ -36,7 +36,7 @@ Load the unpacked extension from `packages/browser-extension/` in `chrome://exte
 **Health check:**
 
 ```bash
-npm run skill:doctor
+node scripts/doctor.mjs
 ```
 
 If you want the bundled test web too, run this in a second terminal:

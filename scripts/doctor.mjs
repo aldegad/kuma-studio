@@ -11,7 +11,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
@@ -54,12 +54,12 @@ check("daemon_reachable", () => {
   try {
     const out = run(`node ./packages/server/src/cli.mjs get-browser-session 2>&1`);
     if (out.includes("ECONNREFUSED") || out.includes("fetch failed")) {
-      throw new Error("Daemon not running. Run: npm run kuma-pickerd:serve");
+      throw new Error("Daemon not running. Run: node ./packages/server/src/cli.mjs serve");
     }
     return "http://127.0.0.1:4312";
   } catch (e) {
     if (e.message.includes("Daemon not running")) throw e;
-    throw new Error("Daemon not running. Run: npm run kuma-pickerd:serve");
+    throw new Error("Daemon not running. Run: node ./packages/server/src/cli.mjs serve");
   }
 });
 
@@ -102,21 +102,20 @@ check("browser_bridge", () => {
   }
 });
 
-check("global_extension", () => {
-  const codexHome = process.env.CODEX_HOME || resolve(os.homedir(), ".codex");
-  const extPath = resolve(codexHome, "extensions", "kuma-picker-browser-extension", "manifest.json");
-  if (!existsSync(extPath)) {
-    throw new Error(`Missing: ${resolve(codexHome, "extensions/kuma-picker-browser-extension")}. Run: npm run skill:install`);
+check("global_skill", () => {
+  const skillPath = resolve(os.homedir(), ".claude", "skills", "kuma-picker", "SKILL.md");
+  if (!existsSync(skillPath)) {
+    throw new Error(`Missing: ${skillPath}. Run: node scripts/install.mjs`);
   }
-  return resolve(codexHome, "extensions", "kuma-picker-browser-extension");
+  return skillPath;
 });
 
-check("skill_files", () => {
-  const skillPath = resolve(KUMA_ROOT, "skills", "kuma-picker", "SKILL.md");
-  if (!existsSync(skillPath)) {
-    throw new Error(`Missing: ${skillPath}`);
+check("extension_source", () => {
+  const extPath = resolve(KUMA_ROOT, "packages", "browser-extension", "manifest.json");
+  if (!existsSync(extPath)) {
+    throw new Error(`Missing: ${resolve(KUMA_ROOT, "packages/browser-extension")}`);
   }
-  return "present";
+  return resolve(KUMA_ROOT, "packages", "browser-extension");
 });
 
 // ── Output ────────────────────────────────────────────────────────────────
@@ -135,20 +134,16 @@ if (jsonMode) {
   const failed = checks.filter((c) => !c.ok);
   if (failed.length > 0) {
     process.stdout.write(`\n  ${failed.length} issue(s) found. Fix them in order above.\n\n`);
-    // Provide the single command that fixes the most common case
     if (failed.some((c) => c.name === "node_modules")) {
       process.stdout.write("  Quick fix: npm install\n\n");
     } else if (failed.some((c) => c.name === "daemon_reachable")) {
-      process.stdout.write("  Quick fix: npm run kuma-pickerd:serve &\n\n");
-    } else if (failed.some((c) => c.name === "global_extension")) {
-      process.stdout.write("  Quick fix: npm run skill:install\n\n");
+      process.stdout.write(`  Quick fix: node ${resolve(KUMA_ROOT, "packages/server/src/cli.mjs")} serve &\n\n`);
+    } else if (failed.some((c) => c.name === "global_skill")) {
+      process.stdout.write(`  Quick fix: node ${resolve(KUMA_ROOT, "scripts/install.mjs")}\n\n`);
     } else if (failed.some((c) => c.name === "extension_status" || c.name === "browser_bridge")) {
-      const codexHome = process.env.CODEX_HOME || resolve(os.homedir(), ".codex");
-      const globalExt = resolve(codexHome, "extensions", "kuma-picker-browser-extension");
-      const extFolder = existsSync(globalExt) ? globalExt : resolve(KUMA_ROOT, "packages/browser-extension");
       process.stdout.write(
         "  Quick fix: Load the extension in chrome://extensions (Developer mode → Load unpacked)\n" +
-          `  Extension folder: ${extFolder}\n\n`,
+          `  Extension folder: ${resolve(KUMA_ROOT, "packages/browser-extension")}\n\n`,
       );
     }
     process.exitCode = 1;

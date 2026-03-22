@@ -6,7 +6,7 @@ Kuma Picker. If you are a human reading this, just ask your agent to install it.
 ## TL;DR for agents
 
 ```bash
-npm run skill:install
+node scripts/install.mjs
 ```
 
 Done. The only remaining step requires human action in Chrome (see below).
@@ -17,20 +17,27 @@ Done. The only remaining step requires human action in Chrome (see below).
 |------|------|------------|
 | 1 | Check Node.js >= 20 | Yes |
 | 2 | `npm install` | Yes (skipped if node_modules exists) |
-| 3 | Start `kuma-pickerd` daemon on `:4312` | Yes (background process) |
-| 4 | Create `~/.kuma-picker/` state home | Yes |
-| 5 | Load Chrome extension | **No — human required** |
+| 3 | Create `~/.kuma-picker/` state home | Yes |
+| 4 | Install global skill to `~/.claude/skills/kuma-picker/` | Yes |
+| 5 | Start `kuma-pickerd` daemon on `:4312` | Yes (background process) |
+| 6 | Load Chrome extension | **No — human required** |
 
-## Installing into another project
+## Architecture
 
-When a user wants Kuma Picker in their own project:
+```
+kuma-picker repo (cloned once)
+  ├── packages/browser-extension/     ← Chrome loads directly from here
+  ├── packages/server/src/cli.mjs     ← daemon + all CLI commands
+  └── tools/kuma-pickerd/             ← state management
 
-```bash
-npm run skill:install -- --target-project /path/to/their/project
+~/.claude/skills/kuma-picker/         ← global skill (all projects see it)
+  └── SKILL.md                        ← knows the repo path
+
+~/.kuma-picker/                       ← shared state (selections, job cards)
 ```
 
-This copies skill files to `.claude/skills/kuma-picker/` in the target project
-and injects `kuma-pickerd:*` npm scripts into the target `package.json`.
+No files are copied into target projects. No npm scripts are injected.
+The global skill points agents to the repo. Everything runs from the repo.
 
 ## The one human step
 
@@ -40,26 +47,27 @@ After automated setup, tell the user:
 > 1. `chrome://extensions` 열기
 > 2. 우측 상단 **개발자 모드** 켜기
 > 3. **압축해제된 확장 프로그램을 로드합니다** 클릭
-> 4. `packages/browser-extension/` 폴더 선택
+> 4. kuma-picker 레포의 `packages/browser-extension/` 폴더 선택
 > 5. 아무 페이지에서 새로고침 한 번
 
 ## Health check
 
 ```bash
-npm run skill:doctor
+node scripts/doctor.mjs
 ```
 
 Outputs a checklist:
 
 ```
 ── Kuma Picker Doctor ──────────────────────────────
-  ✓ node_version      v22.x.x
-  ✓ node_modules      installed
+  ✓ node_version       v22.x.x
+  ✓ node_modules       installed
   ✓ daemon_reachable   http://127.0.0.1:4312
   ✓ state_home         /home/user/.kuma-picker
   ✗ extension_status   No heartbeat. Load the extension...
   ✗ browser_bridge     No live tabs. Open a page...
-  ✓ skill_files        present
+  ✓ global_skill       ~/.claude/skills/kuma-picker/SKILL.md
+  ✓ extension_source   packages/browser-extension
 ```
 
 Use `--json` for machine-readable output.
@@ -67,23 +75,22 @@ Use `--json` for machine-readable output.
 ## Troubleshooting decision tree
 
 ```
-skill:doctor fails?
-  ├─ node_modules missing     → npm install
-  ├─ daemon_reachable fails   → npm run kuma-pickerd:serve &
+doctor fails?
+  ├─ node_modules missing     → npm install (from repo root)
+  ├─ daemon_reachable fails   → node packages/server/src/cli.mjs serve &
   ├─ extension_status fails   → remind human to load extension
   ├─ browser_bridge fails     → remind human to refresh page
-  └─ skill_files missing      → npm run skill:install
+  ├─ global_skill missing     → node scripts/install.mjs
+  └─ extension_source missing → check repo integrity (git status)
 ```
 
-## Architecture (for agents that need context)
+## Updating
 
-```
-Chrome Extension  ←WebSocket→  kuma-pickerd daemon  ←Files→  ~/.kuma-picker/
-     (human)                     (agent starts)              (shared state)
-                                       ↑
-                                 npm run kuma-pickerd:*
-                                   (agent reads/writes)
+```bash
+cd ~/kuma-picker && git pull && npm install
+node scripts/install.mjs
 ```
 
-The agent controls everything except the Chrome extension.
-The human does exactly one thing: load the extension.
+`git pull` updates daemon, extension, and skill source all at once.
+The installer re-stamps the global skill with the latest content.
+Chrome auto-reloads the extension from the same folder.

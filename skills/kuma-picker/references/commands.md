@@ -1,101 +1,89 @@
 # Kuma Picker commands
 
-## State home resolution
-
-Kuma Picker resolves its shared state directory in this priority order:
-
-1. `KUMA_PICKER_STATE_HOME` — explicit override (highest priority)
-2. `$CODEX_HOME/kuma-picker/` — when `CODEX_HOME` is set (Codex compatibility)
-3. `~/.kuma-picker/` — platform-agnostic default
-The shared state home is the primary source of truth.
-The command examples below are helper CLI examples for environments that already expose them.
+All commands use the CLI directly:
 
 ```bash
-npm run kuma-pickerd:serve
-npm run kuma-pickerd:get-selection
-npm run kuma-pickerd:get-selection -- --recent 5
-npm run kuma-pickerd:get-selection -- --all
-npm run kuma-pickerd:get-job-card
-npm run kuma-pickerd:get-browser-session
-npm run kuma-pickerd:browser-context -- --url-contains "example.com"
-npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"
-npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3001" --new-tab
-npm run kuma-pickerd:browser-navigate -- --tab-id 123456 --url "http://localhost:3000"
-npm run kuma-pickerd:browser-dom -- --url-contains "example.com"
-npm run kuma-pickerd:browser-eval -- --url-contains "example.com" --expression "document.title"
-npm run kuma-pickerd:browser-console -- --url-contains "example.com"
-npm run kuma-pickerd:browser-debugger-capture -- --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
-npm run kuma-pickerd:browser-click -- --url-contains "example.com" --role tab --exact-text --text "Next"
-npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps-file ./tmp/sequence.json
-npm run kuma-pickerd:browser-click-point -- --url-contains "example.com" --x 420 --y 360
-npm run kuma-pickerd:browser-pointer-drag -- --url-contains "example.com" --from-x 120 --from-y 260 --to-x 420 --to-y 260
-npm run kuma-pickerd:browser-fill -- --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
-npm run kuma-pickerd:browser-key -- --url-contains "example.com" --key Tab
-npm run kuma-pickerd:browser-key -- --url-contains "example.com" --key ArrowLeft --hold-ms 400
-npm run kuma-pickerd:browser-keydown -- --url-contains "example.com" --selector "[data-testid='chat-input-1p']" --meta --key a
-npm run kuma-pickerd:browser-keyup -- --url-contains "example.com" --selector "[data-testid='chat-input-1p']" --meta --key a
-npm run kuma-pickerd:browser-mousedown -- --url-contains "example.com" --x 320 --y 460
-npm run kuma-pickerd:browser-mousemove -- --url-contains "example.com" --x 420 --y 460
-npm run kuma-pickerd:browser-mouseup -- --url-contains "example.com" --x 420 --y 460
-npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind selector-state --selector "[data-testid='chat-input-1p']"
-npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","assert":{"type":"selector-state","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","focused":true}}]'
-npm run kuma-pickerd:browser-sequence -- --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"editor\"]","value":"Line 1\nLine 2"},{"type":"key","key":"Enter"},{"type":"insertText","text":"Line 3","assert":{"type":"selector-state","selector":"[data-testid=\"editor\"]","value":"Line 1\nLine 2\nLine 3"}}]'
-npm run kuma-pickerd:browser-refresh -- --url-contains "example.com"
-npm run kuma-pickerd:browser-refresh -- --url-contains "example.com" --bypass-cache
-npm run kuma-pickerd:browser-screenshot -- --tab-id 123 --file ./tmp/current-tab.png --restore-previous-active-tab
-npm run kuma-pickerd:browser-wait-for-text -- --url-contains "example.com" --text "Saved" --scope dialog
-npm run kuma-pickerd:browser-query-dom -- --url-contains "example.com" --kind input-by-label --text "Site URL" --scope dialog
-npm run kuma-pickerd:browser-screenshot -- --url-contains "example.com" --file ./tmp/current-tab.png
-npm run kuma-pickerd:set-job-status -- --status in_progress --message "Implementing the requested change."
-npm run kuma-pickerd:set-job-status -- --status completed --message "Updated the picked element and verified the change."
+node __KUMA_PICKER_REPO__/packages/server/src/cli.mjs <command> [args]
+```
+
+Shorthand used below: `kuma-cli` = `node __KUMA_PICKER_REPO__/packages/server/src/cli.mjs`
+
+## State home resolution
+
+1. `KUMA_PICKER_STATE_HOME` — explicit override (highest priority)
+2. `$CODEX_HOME/kuma-picker/` — when `CODEX_HOME` is set
+3. `~/.kuma-picker/` — default
+
+## Command examples
+
+```bash
+kuma-cli serve
+kuma-cli get-selection
+kuma-cli get-selection --recent 5
+kuma-cli get-selection --all
+kuma-cli get-job-card
+kuma-cli get-browser-session
+kuma-cli browser-context --url-contains "example.com"
+kuma-cli browser-navigate --url "http://localhost:3000"
+kuma-cli browser-navigate --url "http://localhost:3001" --new-tab
+kuma-cli browser-navigate --tab-id 123456 --url "http://localhost:3000"
+kuma-cli browser-dom --url-contains "example.com"
+kuma-cli browser-eval --url-contains "example.com" --expression "document.title"
+kuma-cli browser-console --url-contains "example.com"
+kuma-cli browser-debugger-capture --url-contains "example.com" --refresh --bypass-cache --capture-ms 4000
+kuma-cli browser-click --url-contains "example.com" --role tab --exact-text --text "Next"
+kuma-cli browser-sequence --url-contains "example.com" --steps-file ./tmp/sequence.json
+kuma-cli browser-click-point --url-contains "example.com" --x 420 --y 360
+kuma-cli browser-pointer-drag --url-contains "example.com" --from-x 120 --from-y 260 --to-x 420 --to-y 260
+kuma-cli browser-fill --url-contains "example.com" --label "Site URL" --value "https://example.com/privacy"
+kuma-cli browser-key --url-contains "example.com" --key Tab
+kuma-cli browser-key --url-contains "example.com" --key ArrowLeft --hold-ms 400
+kuma-cli browser-keydown --url-contains "example.com" --selector "[data-testid='chat-input-1p']" --meta --key a
+kuma-cli browser-keyup --url-contains "example.com" --selector "[data-testid='chat-input-1p']" --meta --key a
+kuma-cli browser-mousedown --url-contains "example.com" --x 320 --y 460
+kuma-cli browser-mousemove --url-contains "example.com" --x 420 --y 460
+kuma-cli browser-mouseup --url-contains "example.com" --x 420 --y 460
+kuma-cli browser-query-dom --url-contains "example.com" --kind selector-state --selector "[data-testid='chat-input-1p']"
+kuma-cli browser-sequence --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","assert":{"type":"selector-state","selector":"[data-testid=\"chat-input-1p\"]","value":"hello","focused":true}}]'
+kuma-cli browser-sequence --url-contains "example.com" --steps '[{"type":"fill","selector":"[data-testid=\"editor\"]","value":"Line 1\nLine 2"},{"type":"key","key":"Enter"},{"type":"insertText","text":"Line 3","assert":{"type":"selector-state","selector":"[data-testid=\"editor\"]","value":"Line 1\nLine 2\nLine 3"}}]'
+kuma-cli browser-refresh --url-contains "example.com"
+kuma-cli browser-refresh --url-contains "example.com" --bypass-cache
+kuma-cli browser-screenshot --tab-id 123 --file ./tmp/current-tab.png --restore-previous-active-tab
+kuma-cli browser-wait-for-text --url-contains "example.com" --text "Saved" --scope dialog
+kuma-cli browser-query-dom --url-contains "example.com" --kind input-by-label --text "Site URL" --scope dialog
+kuma-cli browser-screenshot --url-contains "example.com" --file ./tmp/current-tab.png
+kuma-cli set-job-status --status in_progress --message "Implementing the requested change."
+kuma-cli set-job-status --status completed --message "Updated the picked element and verified the change."
 ```
 
 ## Browser bridge checks
 
-Use these before relying on the Chrome extension bridge:
-
-- `npm run kuma-pickerd:get-browser-session`
+- `kuma-cli get-browser-session`
 - Browser control uses the daemon WebSocket endpoint only.
-- If the response is missing, stale, or from the wrong project, start the correct daemon and repoint the extension popup to that daemon URL.
-- If the response reports `tabCount > 1`, inspect `tabs[]` and pick the right `activeTabId` or explicit `tabId` before sending browser commands.
+- If missing or stale, start the daemon and repoint the extension popup.
+- If `tabCount > 1`, inspect `tabs[]` and pick the right `tabId`.
 - After extension code changes, reload the unpacked extension in `chrome://extensions`.
-- After changing the daemon URL in the popup, refresh the target page once so the content script reconnects.
 
 ## Browser command targeting
 
-- `browser-navigate` requires `--url` as the destination URL and can use the active tab by default.
-- Add `--tab-id` to `browser-navigate` when you want to reuse a specific tab.
-- Add `--new-tab` to `browser-navigate` when you want Chrome to open a new tab.
-- Always provide `--tab-id`, `--url`, or `--url-contains` for all other browser commands.
-- Use `--tab-id <id>` when you know the exact Chrome tab id.
-- Use `--url <full-url>` for an exact match.
-- Use `--url-contains <partial-url>` when query params or hashes are unstable.
-- The CLI uses the same `browser-*` commands over the daemon WebSocket bridge.
-- Use `browser-navigate` before DOM inspection when the target page is not open yet.
-- Background tabs can answer `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, and `browser-click`.
-- Background tabs can also answer `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
-- Use `browser-fill --label "..."` when a form field is easier to target by its visible label.
-- Use `browser-eval --expression "..."` when a tiny page-context readback is clearer than a full DOM snapshot.
-- Use `browser-sequence` when a dropdown or modal workflow should stay alive across multiple steps, and add per-step `assert` checks for postcondition verification.
-- `browser-sequence` accepts `insertText` steps for cursor-position text insertion inside text inputs and `contenteditable` editors.
-- Use the wait commands to verify save states instead of guessing from click timing alone.
-- Use `browser-query-dom` when a long DOM snapshot is too noisy and you need nearby or required field results.
-- Use `browser-query-dom --kind selector-state` when you need a small readback payload for one element's focused state, value, or selection range after a write.
-- Use `browser-console` to inspect recent `console.*`, `window.onerror`, and `unhandledrejection` events after a refresh or action.
-- Use `browser-debugger-capture` when page-level logs are not enough and you need `Runtime`, `Log`, or `Network` failures from a short debugger session.
-- Use `browser-key` for simple keys like `Tab`, `Enter`, or `Escape`.
-- Use `browser-key --hold-ms <ms>` for sustained input such as movement or firing in real-time UIs.
-- Use `browser-keydown` plus `browser-keyup` when modifier chords or press/release timing matters.
-- Use `browser-refresh` after deploys or config changes, and add `--bypass-cache` when you need a cache-bypassing reload.
-- Use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable.
-- Use `browser-mousedown`, `browser-mousemove`, and `browser-mouseup` when a surface needs explicit low-level pointer phases.
-- Use `browser-pointer-drag` when the UI needs a real drag gesture, such as canvas movement, sliders, or joystick-style controls.
-- `browser-screenshot` still requires the target tab to be active and focused.
-- Add `--restore-previous-active-tab` to `browser-screenshot` when you want the inspected tab to yield focus back to whatever the user was doing before the capture.
+- `browser-navigate` requires `--url` as the destination. Add `--tab-id` to reuse a tab, `--new-tab` to open a new one.
+- All other browser commands need `--tab-id`, `--url`, or `--url-contains`.
+- Background tabs support `browser-context`, `browser-dom`, `browser-console`, `browser-debugger-capture`, `browser-click`, `browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-click-point`, and `browser-pointer-drag`.
+- Use `browser-fill --label "..."` for form fields by visible label.
+- Use `browser-eval --expression "..."` for small page-context readbacks.
+- Use `browser-sequence` with per-step `assert` for multi-step workflows.
+- Use `browser-query-dom --kind selector-state` for focused state, value, or selection range readbacks.
+- Use `browser-console` for recent `console.*`, `window.onerror`, and `unhandledrejection` events.
+- Use `browser-debugger-capture` for `Runtime`, `Log`, or `Network` failures from a short debugger session.
+- Use `browser-key --hold-ms <ms>` for sustained input.
+- Use `browser-keydown`/`browser-keyup` for modifier chords.
+- Use `browser-mousedown`/`browser-mousemove`/`browser-mouseup` for low-level pointer phases.
+- Use `browser-pointer-drag` for real drag gestures.
+- Screenshots require the target tab to be active. Add `--restore-previous-active-tab` to yield focus back.
 
 ## Shared state layout
 
-Treat these as shared coordination files under the Kuma Picker state home:
+Under the state home:
 
 - `dev-selection.json`: latest saved selection
 - `dev-selections.json`: session index
@@ -103,52 +91,38 @@ Treat these as shared coordination files under the Kuma Picker state home:
 - `dev-selection-assets/<session-id>/...`: snapshots
 - `job-cards.json`: latest browser work-card feed
 
-By default, `get-selection` returns the latest saved selection only.
-Use `--recent <n>` for a bounded recent history, or `--all` for the full saved selection collection.
+By default, `get-selection` returns the latest only. Use `--recent <n>` or `--all`.
 
 ## What to inspect in a selection
 
-Prioritize these fields:
-
-- `page.url`
-- `page.title`
+- `page.url`, `page.title`
 - `session.id`
-- `element.selector`
-- `element.selectorPath`
-- `element.rect`
-- `element.textPreview`
-- `element.outerHTMLSnippet`
+- `element.selector`, `element.selectorPath`, `element.rect`
+- `element.textPreview`, `element.outerHTMLSnippet`
 - `element.snapshot.assetUrl`
 - `elements[]` when the user refers to a numbered pick
 
 ## Numbered pick mapping
 
-If the user says `pick 1`, `selection 2`, `see pick3`, or similar:
-
+If the user says `pick 1`, `selection 2`, etc.:
 1. Read the latest selection.
 2. Use `elements[index - 1]`.
-3. If the index is out of bounds, say so and ask for a new pick.
+3. If out of bounds, say so and ask for a new pick.
 
 ## Job card workflow
 
 ### Pick With Job saved
-
 ```bash
-npm run kuma-pickerd:get-selection
+kuma-cli get-selection
 ```
-
-Read `job.message` from the latest selection. The page should already show a `메모 남김` card for that pick.
+Read `job.message`. The page should already show a `메모 남김` card.
 
 ### During work
-
 ```bash
-npm run kuma-pickerd:set-job-status -- --status in_progress --message "Implementing the requested change."
+kuma-cli set-job-status --status in_progress --message "Implementing the requested change."
 ```
 
 ### Finished
-
 ```bash
-npm run kuma-pickerd:set-job-status -- --status completed --message "Updated the picked element and verified the change."
+kuma-cli set-job-status --status completed --message "Updated the picked element and verified the change."
 ```
-
-For extension-first picked UI work, prefer `Pick With Job` plus `set-job-status`.

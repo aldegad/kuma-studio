@@ -4,24 +4,20 @@
  * Kuma Picker automated installer.
  *
  * Designed to be run BY an agent, not by a human.
- * Handles: npm install, daemon launch, skill file copy, and
- * prints the one remaining human step (Chrome extension loading).
+ * Handles: npm install, daemon launch, state home creation,
+ * and global skill installation (~/.claude/skills/kuma-picker/).
  *
  * Usage:
- *   node scripts/install.mjs [--target-project /path/to/project] [--skip-daemon]
- *
- * When --target-project is given, the script also vendors a CLI shim and
- * skill files into that project so kuma-pickerd commands work from there.
+ *   node scripts/install.mjs [--skip-daemon]
  */
 
 import { execSync, spawn } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve, relative, dirname } from "node:path";
+import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const KUMA_ROOT = resolve(__dirname, "..");
 
 // ---------------------------------------------------------------------------
@@ -39,7 +35,7 @@ function err(msg) {
 function run(cmd, opts = {}) {
   try {
     return execSync(cmd, { cwd: KUMA_ROOT, stdio: "pipe", ...opts }).toString().trim();
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -47,9 +43,6 @@ function run(cmd, opts = {}) {
 function parseArgs(argv) {
   const flags = {};
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--target-project" && argv[i + 1]) {
-      flags.targetProject = resolve(argv[++i]);
-    }
     if (argv[i] === "--skip-daemon") {
       flags.skipDaemon = true;
     }
@@ -88,7 +81,6 @@ function installDependencies() {
 function isDaemonRunning() {
   try {
     const res = run(`node ./packages/server/src/cli.mjs get-browser-session 2>&1`);
-    // If daemon is not running, the command errors or returns connection refused.
     return res !== null && !res.includes("ECONNREFUSED") && !res.includes("fetch failed");
   } catch {
     return false;
@@ -125,28 +117,9 @@ function ensureStateHome() {
   return stateHome;
 }
 
-function copyExtensionToGlobalPath() {
-  const codexHome = process.env.CODEX_HOME || resolve(os.homedir(), ".codex");
-  const extDest = resolve(codexHome, "extensions", "kuma-picker-browser-extension");
-  const extSrc = resolve(KUMA_ROOT, "packages", "browser-extension");
-
-  if (!existsSync(extSrc)) {
-    err(`Extension source not found: ${extSrc}`);
-    return null;
-  }
-
-  mkdirSync(extDest, { recursive: true });
-  cpSync(extSrc, extDest, { recursive: true });
-  log(`Extension copied to ${extDest}`);
-  return extDest;
-}
-
-function copySkillFiles(targetProject) {
-  if (!targetProject) return;
-
-  // Copy skill files into target project's .claude/skills/kuma-picker/
+function installGlobalSkill() {
   const skillSrc = resolve(KUMA_ROOT, "skills", "kuma-picker");
-  const skillDest = resolve(targetProject, ".claude", "skills", "kuma-picker");
+  const skillDest = resolve(os.homedir(), ".claude", "skills", "kuma-picker");
 
   if (!existsSync(skillSrc)) {
     err(`Skill source not found: ${skillSrc}`);
@@ -155,60 +128,25 @@ function copySkillFiles(targetProject) {
 
   mkdirSync(skillDest, { recursive: true });
   cpSync(skillSrc, skillDest, { recursive: true });
-  log(`Skill files copied to ${skillDest}`);
 
-  // Inject kuma-pickerd:serve and kuma-pickerd:get-selection scripts into
-  // the target project's package.json so that npm run kuma-pickerd:* works.
-  const targetPkgPath = resolve(targetProject, "package.json");
-  if (existsSync(targetPkgPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(targetPkgPath, "utf-8"));
-      const cliPath = relative(targetProject, resolve(KUMA_ROOT, "packages/server/src/cli.mjs"));
-      const scripts = pkg.scripts || {};
-      let changed = false;
-
-      const essentialScripts = [
-        "kuma-pickerd:serve",
-        "kuma-pickerd:get-selection",
-        "kuma-pickerd:get-job-card",
-        "kuma-pickerd:get-extension-status",
-        "kuma-pickerd:get-browser-session",
-        "kuma-pickerd:set-job-status",
-        "kuma-pickerd:browser-context",
-        "kuma-pickerd:browser-navigate",
-        "kuma-pickerd:browser-dom",
-        "kuma-pickerd:browser-click",
-        "kuma-pickerd:browser-screenshot",
-        "kuma-pickerd:browser-refresh",
-        "kuma-pickerd:browser-sequence",
-        "kuma-pickerd:browser-fill",
-        "kuma-pickerd:browser-key",
-        "kuma-pickerd:browser-eval",
-        "kuma-pickerd:browser-console",
-        "kuma-pickerd:browser-query-dom",
-      ];
-
-      for (const name of essentialScripts) {
-        const cmd = name.replace("kuma-pickerd:", "");
-        if (!scripts[name]) {
-          scripts[name] = `node ${cliPath} ${cmd}`;
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        pkg.scripts = scripts;
-        writeFileSync(targetPkgPath, JSON.stringify(pkg, null, 2) + "\n");
-        log(`Injected kuma-pickerd scripts into ${targetPkgPath}`);
-      }
-    } catch (e) {
-      err(`Could not update target package.json: ${e.message}`);
-    }
+  // Stamp the repo path into the installed SKILL.md
+  const skillMdPath = resolve(skillDest, "SKILL.md");
+  if (existsSync(skillMdPath)) {
+    const content = readFileSync(skillMdPath, "utf-8");
+    writeFileSync(skillMdPath, content.replaceAll("__KUMA_PICKER_REPO__", KUMA_ROOT));
   }
+  // Also stamp references/commands.md
+  const cmdsMdPath = resolve(skillDest, "references", "commands.md");
+  if (existsSync(cmdsMdPath)) {
+    const content = readFileSync(cmdsMdPath, "utf-8");
+    writeFileSync(cmdsMdPath, content.replaceAll("__KUMA_PICKER_REPO__", KUMA_ROOT));
+  }
+
+  log(`Global skill installed to ${skillDest} (repo: ${KUMA_ROOT})`);
 }
 
-function printExtensionGuide(globalExtPath) {
-  const extensionPath = globalExtPath || resolve(KUMA_ROOT, "packages", "browser-extension");
+function printExtensionGuide() {
+  const extensionPath = resolve(KUMA_ROOT, "packages", "browser-extension");
   process.stdout.write(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║  ONE REMAINING STEP (requires human action in Chrome)          ║
@@ -228,18 +166,18 @@ function printExtensionGuide(globalExtPath) {
 `);
 }
 
-function printSummary(stateHome, globalExtPath) {
-  const extPath = globalExtPath || resolve(KUMA_ROOT, "packages/browser-extension");
+function printSummary(stateHome) {
   process.stdout.write(`
 ── Kuma Picker install summary ──────────────────────────────────
   Repo:         ${KUMA_ROOT}
   State home:   ${stateHome}
   Daemon:       http://127.0.0.1:4312
-  Extension:    ${extPath}
+  Extension:    ${resolve(KUMA_ROOT, "packages/browser-extension")}
+  Global skill: ~/.claude/skills/kuma-picker/
 ─────────────────────────────────────────────────────────────────
 
 To verify everything works:
-  npm run kuma-pickerd:get-browser-session
+  node ${resolve(KUMA_ROOT, "packages/server/src/cli.mjs")} get-browser-session
 
 `);
 }
@@ -253,10 +191,9 @@ const flags = parseArgs(process.argv.slice(2));
 checkNodeVersion();
 installDependencies();
 const stateHome = ensureStateHome();
-const globalExtPath = copyExtensionToGlobalPath();
+installGlobalSkill();
 if (!flags.skipDaemon) {
   startDaemon();
 }
-copySkillFiles(flags.targetProject);
-printExtensionGuide(globalExtPath);
-printSummary(stateHome, globalExtPath);
+printExtensionGuide();
+printSummary(stateHome);
