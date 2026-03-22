@@ -18,5 +18,5 @@ export function resolveKumaPickerStateDir() {
     return resolve(codexHome, "kuma-picker");
   }
 
-  return resolve(os.homedir(), ".kuma-picker");
+  return resolve(os.homedir(), ".codex", "kuma-picker");
 }

@@ -17,10 +17,11 @@ Done. The only remaining step requires human action in Chrome (see below).
 |------|------|------------|
 | 1 | Check Node.js >= 20 | Yes |
 | 2 | `npm install` | Yes (skipped if node_modules exists) |
-| 3 | Create `~/.kuma-picker/` state home | Yes |
-| 4 | Install global skill to `~/.claude/skills/kuma-picker/` | Yes |
-| 5 | Start `kuma-pickerd` daemon on `:4312` | Yes (background process) |
-| 6 | Load Chrome extension | **No — human required** |
+| 3 | Create shared state home (`$CODEX_HOME/kuma-picker/` or `~/.codex/kuma-picker/`) | Yes |
+| 4 | Install Codex skill to `~/.codex/skills/kuma-picker/` | Yes |
+| 5 | Install Claude skill to `~/.claude/skills/kuma-picker/` | Yes |
+| 6 | Start `kuma-pickerd` daemon on `:4312` | Yes (background process) |
+| 7 | Load Chrome extension | **No — human required** |
 
 ## Architecture
 
@@ -30,10 +31,13 @@ kuma-picker repo (cloned once)
   ├── packages/server/src/cli.mjs     ← daemon + all CLI commands
   └── tools/kuma-pickerd/             ← state management
 
-~/.claude/skills/kuma-picker/         ← global skill (all projects see it)
+~/.codex/skills/kuma-picker/          ← Codex global skill
   └── SKILL.md                        ← knows the repo path
 
-~/.kuma-picker/                       ← shared state (selections, job cards)
+~/.claude/skills/kuma-picker/         ← Claude global skill
+  └── SKILL.md                        ← points to the same repo
+
+~/.codex/kuma-picker/                 ← shared state
 ```
 
 No files are copied into target projects. No npm scripts are injected.
@@ -63,10 +67,11 @@ Outputs a checklist:
   ✓ node_version       v22.x.x
   ✓ node_modules       installed
   ✓ daemon_reachable   http://127.0.0.1:4312
-  ✓ state_home         /home/user/.kuma-picker
+  ✓ state_home         /home/user/.codex/kuma-picker
   ✗ extension_status   No heartbeat. Load the extension...
   ✗ browser_bridge     No live tabs. Open a page...
-  ✓ global_skill       ~/.claude/skills/kuma-picker/SKILL.md
+  ✓ codex_skill       ~/.codex/skills/kuma-picker/SKILL.md
+  ✓ claude_skill      ~/.claude/skills/kuma-picker/SKILL.md
   ✓ extension_source   packages/browser-extension
 ```
 

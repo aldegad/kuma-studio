@@ -101,7 +101,6 @@ node ./packages/server/src/cli.mjs set-job-status --status completed --message "
 - screenshots are captured from the visible viewport, not the entire scrollable page
 - dragged area captures are cropped from the visible viewport screenshot before they are saved
 - `Pick With Job` creates a 3-step work card on the target page: `메모 남김` → `작업 중` → `작업 완료`
-- the extension talks to the same daemon and state files as the embedded provider mode
 - selection saves still use the daemon's HTTP endpoints, but browser control uses the daemon's WebSocket endpoint at `/browser-session/socket`
 - extension status remains best-effort presence data: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last status becomes stale
 - the popup `Test Bridge` action now separates daemon health from WebSocket readiness so startup errors are easier to diagnose
