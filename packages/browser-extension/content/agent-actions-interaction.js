@@ -34,7 +34,10 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
   const pressedKeys = new Map();
   let shortcutClipboardText = "";
+  let nextPointerHoldId = 1;
+  let activePointerHolds = [];
   let activePointerState = {
+    id: null,
     button: null,
     buttons: 0,
     target: null,
@@ -92,7 +95,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   async function focusElement(target) {
     const beforeRect = target.getBoundingClientRect();
     const shouldWatchScroll = !isRectMostlyVisible(beforeRect);
-    target.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    if (shouldWatchScroll) {
+      target.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
+    }
     target.focus?.({ preventScroll: true });
 
     if (!shouldWatchScroll) {
@@ -1063,6 +1068,39 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+  function resolveMouseCommandTarget(command, actionName) {
+    const hasSelectorTargeting =
+      (typeof command?.selector === "string" && command.selector.trim()) ||
+      (typeof command?.selectorPath === "string" && command.selectorPath.trim()) ||
+      (typeof command?.text === "string" && command.text.trim());
+    const selectorTarget = hasSelectorTargeting ? coreResolveCommandTarget(command, { allowFocusedElement: false }) : null;
+    if (selectorTarget instanceof Element) {
+      const point = getElementCenterPoint(selectorTarget, { x: 0, y: 0 });
+      return {
+        target: selectorTarget,
+        point,
+        usesSelectorTarget: true,
+      };
+    }
+
+    const point = readViewportPoint(command, actionName);
+    return {
+      target: getInteractivePointTarget(point, actionName),
+      point,
+      usesSelectorTarget: false,
+    };
+  }
+
+  function findPointerHoldByTarget(target, button) {
+    for (let index = activePointerHolds.length - 1; index >= 0; index -= 1) {
+      const hold = activePointerHolds[index];
+      if (hold.target === target && (button == null || hold.button === button)) {
+        return hold;
+      }
+    }
+    return null;
+  }
+
   async function executePointerDragCommand(command) {
     const waypoints = parseWaypoints(command);
     const durationMs = Math.max(0, Math.min(10_000, Number(command?.durationMs) || 500));
@@ -1143,7 +1181,20 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
             Math.abs(point.y - activePointerState.downPoint.y) > 3)),
     };
     if ((activePointerState.buttons ?? 0) > 0) {
-      gestureOverlay?.moveHeldGesture?.(getElementCenterPoint(target, point));
+      gestureOverlay?.moveHeldGesture?.(getElementCenterPoint(target, point), activePointerState.id ?? "default");
+      activePointerHolds = activePointerHolds.map((hold) =>
+        hold.id === activePointerState.id
+          ? {
+              ...hold,
+              lastPoint: point,
+              target,
+              moved:
+                hold.moved ||
+                (hold.downPoint != null &&
+                  (Math.abs(point.x - hold.downPoint.x) > 3 || Math.abs(point.y - hold.downPoint.y) > 3)),
+            }
+          : hold,
+      );
     }
     await waitForPostActionDelay(command, 0);
 
@@ -1156,13 +1207,13 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function executeMouseDownCommand(command) {
-    const point = readViewportPoint(command, "mousedown");
     const buttonInfo = resolveMouseButton(command?.button);
-    const target = getInteractivePointTarget(point, "mousedown");
+    const { point, target } = resolveMouseCommandTarget(command, "mousedown");
     const gesturePoint = getElementCenterPoint(target, point);
+    const holdId = `hold-${nextPointerHoldId++}`;
 
     await focusElement(target);
-    await gestureOverlay?.holdClickGesture?.(gesturePoint);
+    await gestureOverlay?.holdClickGesture?.(gesturePoint, holdId);
 
     dispatchPointerEvent(target, "pointerdown", point.x, point.y, {
       button: buttonInfo.button,
@@ -1176,7 +1227,8 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       buttons: buttonInfo.buttons,
     });
 
-    activePointerState = {
+    const holdState = {
+      id: holdId,
       button: buttonInfo.button,
       buttons: buttonInfo.buttons,
       target,
@@ -1185,6 +1237,8 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       downPoint: point,
       moved: false,
     };
+    activePointerHolds = [...activePointerHolds, holdState];
+    activePointerState = holdState;
     await waitForPostActionDelay(command, 0);
 
     return {
@@ -1196,19 +1250,22 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function executeMouseUpCommand(command) {
-    const point = readViewportPoint(command, "mouseup");
     const fallbackButtonInfo = resolveMouseButton(command?.button);
-    const releaseTarget = getInteractivePointTarget(point, "mouseup");
+    const { point, target: resolvedTarget, usesSelectorTarget } = resolveMouseCommandTarget(command, "mouseup");
+    const releaseTarget = usesSelectorTarget ? resolvedTarget : getInteractivePointTarget(point, "mouseup");
+    const holdState =
+      findPointerHoldByTarget(resolvedTarget, fallbackButtonInfo.button) ??
+      (activePointerState.id != null ? activePointerHolds.find((hold) => hold.id === activePointerState.id) ?? null : null);
     const target =
-      activePointerState.target instanceof Element && document.contains(activePointerState.target)
-        ? activePointerState.target
+      holdState?.target instanceof Element && document.contains(holdState.target)
+        ? holdState.target
         : releaseTarget;
     const button =
-      typeof activePointerState.button === "number"
-        ? activePointerState.button
+      typeof holdState?.button === "number"
+        ? holdState.button
         : fallbackButtonInfo.button;
     const buttonName =
-      activePointerState.buttons > 0
+      (holdState?.buttons ?? activePointerState.buttons) > 0
         ? button === 2
           ? "right"
           : button === 1
@@ -1228,12 +1285,12 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       button,
       buttons: 0,
     });
-    await gestureOverlay?.releaseHeldGesture?.(gesturePoint);
+    await gestureOverlay?.releaseHeldGesture?.(gesturePoint, holdState?.id ?? activePointerState.id ?? "default");
 
     const synthesizedClick =
       button === 0 &&
-      !activePointerState.moved &&
-      shouldSynthesizeClick(activePointerState.downTarget, releaseTarget);
+      !(holdState?.moved ?? activePointerState.moved) &&
+      shouldSynthesizeClick(holdState?.downTarget ?? activePointerState.downTarget, releaseTarget);
     if (synthesizedClick) {
       dispatchMouseEvent(target, "click", point.x, point.y, {
         button,
@@ -1242,15 +1299,18 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       });
     }
 
-    activePointerState = {
-      button: null,
-      buttons: 0,
-      target: null,
-      lastPoint: point,
-      downTarget: null,
-      downPoint: null,
-      moved: false,
-    };
+    activePointerHolds = activePointerHolds.filter((hold) => hold.id !== holdState?.id);
+    activePointerState =
+      activePointerHolds.at(-1) ?? {
+        id: null,
+        button: null,
+        buttons: 0,
+        target: null,
+        lastPoint: point,
+        downTarget: null,
+        downPoint: null,
+        moved: false,
+      };
     await waitForPostActionDelay(command, 0);
 
     return {

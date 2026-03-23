@@ -5,8 +5,9 @@
     const DEFAULT_SIZE = 88;
     const CLICK_SIZE = 70;
     const CLICK_HOTSPOT_Y = 0.25;
+    const HOLD_HOTSPOT_Y = 0.5;
     let recordingGestureDurationMultiplier = 1;
-    let activeHoldGesture = null;
+    const activeHoldGestures = new Map();
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -79,6 +80,13 @@
       return {
         left: clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10),
         top: clamp(point.y - size * CLICK_HOTSPOT_Y, 10, window.innerHeight - size - 10),
+      };
+    }
+
+    function getHoldPlacement(point, size = CLICK_SIZE) {
+      return {
+        left: clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10),
+        top: clamp(point.y - size * HOLD_HOTSPOT_Y, 10, window.innerHeight - size - 10),
       };
     }
 
@@ -169,18 +177,19 @@
       );
     }
 
-    async function holdClickGesture(point) {
+    async function holdClickGesture(point, holdId = "default") {
       if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
         return;
       }
 
       const root = getRootElement();
       const size = CLICK_SIZE;
-      const { left, top } = getClickPlacement(point, size);
+      const { left, top } = getHoldPlacement(point, size);
 
-      if (activeHoldGesture?.element instanceof Element) {
-        activeHoldGesture.element.remove();
-        activeHoldGesture = null;
+      const existingHold = activeHoldGestures.get(holdId);
+      if (existingHold?.element instanceof Element) {
+        existingHold.element.remove();
+        activeHoldGestures.delete(holdId);
       }
 
       const paw = createPawElement(size, "click");
@@ -193,10 +202,10 @@
         transform: "translate3d(0, 0, 0) scale(0.9)",
       };
 
-      activeHoldGesture = {
+      activeHoldGestures.set(holdId, {
         element: paw,
         size,
-      };
+      });
 
       if (document.visibilityState !== "visible" || typeof paw.animate !== "function") {
         applyElementFrame(paw, finalFrame);
@@ -231,14 +240,15 @@
         },
       );
       await animation.finished.catch(() => { });
-      if (activeHoldGesture?.element === paw) {
+      if (activeHoldGestures.get(holdId)?.element === paw) {
         applyElementFrame(paw, finalFrame);
       }
     }
 
-    function moveHeldGesture(point) {
+    function moveHeldGesture(point, holdId = "default") {
+      const hold = activeHoldGestures.get(holdId);
       if (
-        !(activeHoldGesture?.element instanceof Element) ||
+        !(hold?.element instanceof Element) ||
         !point ||
         !Number.isFinite(point.x) ||
         !Number.isFinite(point.y)
@@ -246,21 +256,22 @@
         return;
       }
 
-      const { left, top } = getClickPlacement(point, activeHoldGesture.size ?? CLICK_SIZE);
-      activeHoldGesture.element.style.left = `${left}px`;
-      activeHoldGesture.element.style.top = `${top}px`;
+      const { left, top } = getHoldPlacement(point, hold.size ?? CLICK_SIZE);
+      hold.element.style.left = `${left}px`;
+      hold.element.style.top = `${top}px`;
     }
 
-    async function releaseHeldGesture(point) {
-      if (!(activeHoldGesture?.element instanceof Element)) {
+    async function releaseHeldGesture(point, holdId = "default") {
+      const hold = activeHoldGestures.get(holdId);
+      if (!(hold?.element instanceof Element)) {
         return;
       }
 
-      const { element, size } = activeHoldGesture;
-      activeHoldGesture = null;
+      const { element, size } = hold;
+      activeHoldGestures.delete(holdId);
 
       if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
-        const { left, top } = getClickPlacement(point, size ?? CLICK_SIZE);
+        const { left, top } = getHoldPlacement(point, size ?? CLICK_SIZE);
         element.style.left = `${left}px`;
         element.style.top = `${top}px`;
       }
@@ -297,12 +308,21 @@
       element.remove();
     }
 
-    function clearHeldGesture() {
-      if (!(activeHoldGesture?.element instanceof Element)) {
+    function clearHeldGesture(holdId) {
+      if (holdId == null) {
+        for (const hold of activeHoldGestures.values()) {
+          hold.element?.remove?.();
+        }
+        activeHoldGestures.clear();
         return;
       }
-      activeHoldGesture.element.remove();
-      activeHoldGesture = null;
+
+      const hold = activeHoldGestures.get(holdId);
+      if (!(hold?.element instanceof Element)) {
+        return;
+      }
+      hold.element.remove();
+      activeHoldGestures.delete(holdId);
     }
 
     async function playScrollGesture(details) {

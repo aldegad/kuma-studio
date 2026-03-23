@@ -288,15 +288,18 @@ export async function commandBrowserMouseMove(options) {
 export async function commandBrowserMouseDown(options) {
   const x = readNumber(options, "x", null);
   const y = readNumber(options, "y", null);
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
 
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error("browser-mousedown requires --x and --y.");
+  if ((!Number.isFinite(x) || !Number.isFinite(y)) && !selector && !selectorPath) {
+    throw new Error("browser-mousedown requires --x and --y, or --selector/--selector-path.");
   }
 
   const result = await enqueueBrowserCommand(options, {
     type: "mousedown",
-    x,
-    y,
+    ...(Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {}),
+    selector,
+    selectorPath,
     button: readOptionalString(options, "button"),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
   });
@@ -306,15 +309,18 @@ export async function commandBrowserMouseDown(options) {
 export async function commandBrowserMouseUp(options) {
   const x = readNumber(options, "x", null);
   const y = readNumber(options, "y", null);
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
 
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error("browser-mouseup requires --x and --y.");
+  if ((!Number.isFinite(x) || !Number.isFinite(y)) && !selector && !selectorPath) {
+    throw new Error("browser-mouseup requires --x and --y, or --selector/--selector-path.");
   }
 
   const result = await enqueueBrowserCommand(options, {
     type: "mouseup",
-    x,
-    y,
+    ...(Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {}),
+    selector,
+    selectorPath,
     button: readOptionalString(options, "button"),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
   });
