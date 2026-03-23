@@ -1,5 +1,6 @@
 "use client";
 
+import type { ComponentProps } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
@@ -7,10 +8,14 @@ import { ChevronRight } from "lucide-react";
 import {
   KUMA_AGENT_CHAT_ICON_SRC,
   KUMA_CAFE_ICON_SRC,
+  KUMA_PIANO_ICON_SRC,
+  KUMA_RICHTEXT_ICON_SRC,
   KUMA_SHOOTING_ICON_SRC,
   KUMA_SUDOKU_ICON_SRC,
   KUMA_TEST_CONNECT_ICON_SRC,
 } from "../../lib/kuma-assets";
+
+type ImageSrc = ComponentProps<typeof Image>["src"];
 
 const TEST_SURFACES: Array<{
   id: string;
@@ -20,7 +25,7 @@ const TEST_SURFACES: Array<{
   status: string;
   version: string;
   accentClassName: string;
-  iconSrc: string;
+  iconSrc: ImageSrc;
 }> = [
   {
     id: "sudoku",
@@ -43,6 +48,16 @@ const TEST_SURFACES: Array<{
     iconSrc: KUMA_AGENT_CHAT_ICON_SRC,
   },
   {
+    id: "richtext",
+    href: "/contenteditable-lab",
+    name: "Kuma Rich Text Forge",
+    subtitle: "Contenteditable input, toolbar formatting, plain-text and HTML readback",
+    status: "Ready for rich-text automation",
+    version: "v1.2 editor surface",
+    accentClassName: "kuma-app-row-richtext",
+    iconSrc: KUMA_RICHTEXT_ICON_SRC,
+  },
+  {
     id: "cafe",
     href: "/cafe-control-room",
     name: "Kuma Cafe Control Room",
@@ -61,6 +76,16 @@ const TEST_SURFACES: Array<{
     version: "v1.0 reactivity surface",
     accentClassName: "kuma-app-row-shooting",
     iconSrc: KUMA_SHOOTING_ICON_SRC,
+  },
+  {
+    id: "piano",
+    href: "/piano",
+    name: "Kuma Piano Deck",
+    subtitle: "Polyphonic piano, chord presets, keyboard mapping, and Web Audio playback",
+    status: "Ready for audio interaction tests",
+    version: "v1.0 harmony surface",
+    accentClassName: "kuma-app-row-piano",
+    iconSrc: KUMA_PIANO_ICON_SRC,
   },
 ];
 
@@ -106,8 +131,9 @@ export function KumaTestLab() {
               Apps
             </h1>
             <p className="mt-4 max-w-[54ch] text-[16px] leading-8 text-[#5c5c5c]">
-              Four test apps are ready for Kuma Picker flows. Open the icon you want and run the
-              full browser test inside its dedicated screen.
+              Six test apps are ready for Kuma Picker flows. Open the icon you want and run the
+              full browser test inside its dedicated screen, from slow forms to rich-text editors,
+              canvas combat, and audio interaction.
             </p>
           </div>
 
@@ -166,7 +192,7 @@ function AppIcon({
   src,
   alt,
 }: {
-  src: string;
+  src: ImageSrc;
   alt: string;
 }) {
   return (

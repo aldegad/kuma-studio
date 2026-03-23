@@ -180,4 +180,4 @@ For long play sessions, agents should:
 | `kuma-assets.ts` | +1 line | Icon constant |
 | `KumaTestLab.tsx` | +10 lines | Launcher registration |
 | `globals.css` | +5 lines | Icon shadow style |
-| `kuma-shooting-icon.png` | — | Placeholder icon |
+| `kuma-assets.ts` + generated art asset | — | Shared launcher and surface icon wiring |
