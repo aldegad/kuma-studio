@@ -1142,6 +1142,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const target = getInteractivePointTarget(point, "mousedown");
 
     await focusElement(target);
+    await gestureOverlay?.playClickGesture?.({ x: point.x, y: point.y });
 
     dispatchPointerEvent(target, "pointerdown", point.x, point.y, {
       button: buttonInfo.button,
