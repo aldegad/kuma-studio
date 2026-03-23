@@ -17,11 +17,18 @@ const pageStatusMetaElement = document.getElementById("page-status-meta");
 const pageStatusControlsElement = document.getElementById("page-status-controls");
 const pageTabIdElement = document.getElementById("page-tab-id");
 const copyPageTabIdButton = document.getElementById("copy-page-tab-id");
+const liveCaptureStatusElement = document.getElementById("live-capture-status");
+const liveCaptureDotElement = document.getElementById("live-capture-dot");
+const liveCaptureLabelElement = document.getElementById("live-capture-label");
+const liveCaptureMetaElement = document.getElementById("live-capture-meta");
+const startLiveCaptureButton = document.getElementById("start-live-capture");
+const stopLiveCaptureButton = document.getElementById("stop-live-capture");
 const feedbackElement = document.getElementById("feedback");
 const lastSavedElement = document.getElementById("last-saved");
 let isBusy = false;
 let isConnected = false;
 let isCurrentPageReady = false;
+let isLiveCaptureActive = false;
 let currentPageTabId = null;
 
 function syncButtonState() {
@@ -29,6 +36,8 @@ function syncButtonState() {
   capturePageButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectElementButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectWithJobButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
+  startLiveCaptureButton.disabled = isBusy || !isConnected || !isCurrentPageReady || isLiveCaptureActive;
+  stopLiveCaptureButton.disabled = isBusy || !isLiveCaptureActive;
 }
 
 function setBusyState(busyState) {
@@ -61,6 +70,15 @@ function setCurrentPageTabId(tabId) {
   pageStatusControlsElement.classList.toggle("is-hidden", !hasTabId);
   pageTabIdElement.textContent = hasTabId ? `Tab ID ${currentPageTabId}` : "";
   copyPageTabIdButton.disabled = !hasTabId;
+}
+
+function setLiveCaptureState({ state = "idle", label = "", meta = "", active = false }) {
+  isLiveCaptureActive = active === true;
+  liveCaptureStatusElement.dataset.state = state;
+  liveCaptureDotElement.className = `status-dot status-dot-${state === "recording" ? "checking" : state === "error" ? "error" : "connected"}`;
+  liveCaptureLabelElement.textContent = label;
+  liveCaptureMetaElement.textContent = meta;
+  syncButtonState();
 }
 
 async function copyCurrentPageTabId() {

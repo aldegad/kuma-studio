@@ -1,7 +1,12 @@
 import { enqueueBrowserCommand, fetchJson, getDaemonUrlFromOptions } from "./browser-command-client.mjs";
 import { printJson, printScreenshotResult } from "./browser-cli-output.mjs";
 export { commandBrowserSetFiles } from "./browser-cli-files.mjs";
-export { commandBrowserRecordStart, commandBrowserRecordStop } from "./browser-cli-recording.mjs";
+export {
+  commandBrowserLiveCaptureState,
+  commandBrowserLiveCaptureStop,
+  commandBrowserRecordStart,
+  commandBrowserRecordStop,
+} from "./browser-cli-recording.mjs";
 import { readBrowserSequenceSteps } from "./browser-sequence.mjs";
 import { readKeyboardModifierFlags } from "./browser-cli-shared.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";

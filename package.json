@@ -36,6 +36,8 @@
     "kuma-pickerd:browser-set-files": "node ./packages/server/src/cli.mjs browser-set-files",
     "kuma-pickerd:browser-record-start": "node ./packages/server/src/cli.mjs browser-record-start",
     "kuma-pickerd:browser-record-stop": "node ./packages/server/src/cli.mjs browser-record-stop",
+    "kuma-pickerd:browser-live-capture-state": "node ./packages/server/src/cli.mjs browser-live-capture-state",
+    "kuma-pickerd:browser-live-capture-stop": "node ./packages/server/src/cli.mjs browser-live-capture-stop",
     "kuma-pickerd:browser-key": "node ./packages/server/src/cli.mjs browser-key",
     "kuma-pickerd:browser-keydown": "node ./packages/server/src/cli.mjs browser-keydown",
     "kuma-pickerd:browser-keyup": "node ./packages/server/src/cli.mjs browser-keyup",

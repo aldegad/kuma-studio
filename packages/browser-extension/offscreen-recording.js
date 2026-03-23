@@ -21,6 +21,15 @@ function selectSupportedRecordingMimeType() {
   return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
 }
 
+function sanitizeDataUrlMimeType(mimeType) {
+  const candidate = typeof mimeType === "string" ? mimeType.trim().toLowerCase() : "";
+  if (!candidate) {
+    return "application/octet-stream";
+  }
+
+  return candidate.split(";")[0] || "application/octet-stream";
+}
+
 function clearRenderTimer(recording) {
   if (recording?.renderTimerId) {
     clearInterval(recording.renderTimerId);
@@ -132,7 +141,11 @@ function blobToDataUrl(blob) {
 
       resolvePromise(reader.result);
     };
-    reader.readAsDataURL(blob);
+    reader.readAsDataURL(
+      new Blob([blob], {
+        type: sanitizeDataUrlMimeType(blob.type),
+      }),
+    );
   });
 }
 

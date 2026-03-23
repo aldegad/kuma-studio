@@ -14,6 +14,8 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "set-files",
   "record-start",
   "record-stop",
+  "live-capture-state",
+  "live-capture-stop",
   "key",
   "keydown",
   "keyup",

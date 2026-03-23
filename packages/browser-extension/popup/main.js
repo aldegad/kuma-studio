@@ -27,6 +27,24 @@ async function sendBridgeMessage(type, daemonUrl = daemonUrlInput.value, extra =
   });
 }
 
+function getLiveCaptureTargetTabId() {
+  if (Number.isInteger(currentPageTabId)) {
+    return currentPageTabId;
+  }
+
+  throw new Error("No current page tab is available for live capture.");
+}
+
+async function requestLiveCaptureStreamId() {
+  if (typeof chrome.tabCapture?.getMediaStreamId !== "function") {
+    throw new Error("This Chrome build does not expose tab capture in the extension popup.");
+  }
+
+  return chrome.tabCapture.getMediaStreamId({
+    targetTabId: getLiveCaptureTargetTabId(),
+  });
+}
+
 async function refreshConnectionState(showFailure = false) {
   const daemonUrl = await writeDaemonUrl(daemonUrlInput.value);
   setConnectionState({
@@ -108,6 +126,41 @@ async function refreshConnectionState(showFailure = false) {
   }
 }
 
+function formatLiveCaptureMeta(result) {
+  if (result?.active === true && result?.recording?.page?.title) {
+    return `${result.recording.page.title} · ${result.recording.fps}fps`;
+  }
+
+  if (result?.active === true && result?.recording?.filename) {
+    return result.recording.filename;
+  }
+
+  return "Start from this popup to record the current tab at full frame rate.";
+}
+
+async function refreshLiveCaptureState() {
+  try {
+    const result = await sendBridgeMessage("kuma-picker:get-live-capture-state", daemonUrlInput.value);
+    if (!result?.ok) {
+      throw new Error(result?.error || "The bridge did not return the live capture state.");
+    }
+
+    setLiveCaptureState({
+      state: result.active === true ? "recording" : "idle",
+      label: result.active === true ? "Live capture recording" : "Live capture idle",
+      meta: formatLiveCaptureMeta(result),
+      active: result.active === true,
+    });
+  } catch (error) {
+    setLiveCaptureState({
+      state: "error",
+      label: "Live capture unavailable",
+      meta: error instanceof Error ? error.message : String(error),
+      active: false,
+    });
+  }
+}
+
 async function runAction(type, workingMessage, successMessage, extra = {}) {
   setBusyState(true);
   setFeedback(workingMessage, "working");
@@ -136,12 +189,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   setFeedback("", "idle");
   setBusyState(true);
   await refreshConnectionState(false);
+  await refreshLiveCaptureState();
   setBusyState(false);
 });
 
 connectDaemonButton.addEventListener("click", async () => {
   setBusyState(true);
   await refreshConnectionState(true);
+  await refreshLiveCaptureState();
   setBusyState(false);
 });
 
@@ -175,6 +230,63 @@ inspectWithJobButton.addEventListener("click", async () => {
 
   if (ok) {
     window.close();
+  }
+});
+
+startLiveCaptureButton.addEventListener("click", async () => {
+  setBusyState(true);
+  setFeedback("Requesting tab capture access...", "working");
+
+  try {
+    const streamId = await requestLiveCaptureStreamId();
+    setFeedback("Starting live capture...", "working");
+    const result = await sendBridgeMessage("kuma-picker:start-live-capture", daemonUrlInput.value, {
+      tabId: getLiveCaptureTargetTabId(),
+      streamId,
+    });
+    if (!result?.ok) {
+      throw new Error(result?.error || "The bridge did not return a result.");
+    }
+
+    setFeedback(result.message || "Live capture started.", "success");
+    await refreshLiveCaptureState();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setFeedback(message, "error");
+    setLiveCaptureState({
+      state: "error",
+      label: "Live capture failed to start",
+      meta: message,
+      active: false,
+    });
+  } finally {
+    setBusyState(false);
+  }
+});
+
+stopLiveCaptureButton.addEventListener("click", async () => {
+  setBusyState(true);
+  setFeedback("Stopping live capture...", "working");
+
+  try {
+    const result = await sendBridgeMessage("kuma-picker:stop-live-capture", daemonUrlInput.value);
+    if (!result?.ok) {
+      throw new Error(result?.error || "The bridge did not return a result.");
+    }
+
+    setFeedback(result.message || "Live capture saved.", "success");
+    await refreshLiveCaptureState();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setFeedback(message, "error");
+    setLiveCaptureState({
+      state: "error",
+      label: "Live capture failed to stop",
+      meta: message,
+      active: true,
+    });
+  } finally {
+    setBusyState(false);
   }
 });
 

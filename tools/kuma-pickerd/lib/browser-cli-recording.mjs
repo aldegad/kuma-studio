@@ -39,3 +39,17 @@ export async function commandBrowserRecordStop(options) {
   });
   printJson(result.result ?? null);
 }
+
+export async function commandBrowserLiveCaptureState(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "live-capture-state",
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserLiveCaptureStop(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "live-capture-stop",
+  });
+  printJson(result.result ?? null);
+}
