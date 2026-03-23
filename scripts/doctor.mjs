@@ -4,7 +4,7 @@
  * Kuma Picker health check (doctor).
  *
  * Agents run this to diagnose what's working and what needs fixing.
- * Exits 0 if everything is healthy, 1 if any check fails.
+ * Exits 0 if everything is healthy, 1 if any required check fails.
  *
  * Usage:
  *   node scripts/doctor.mjs [--json]
@@ -22,21 +22,17 @@ const jsonMode = process.argv.includes("--json");
 
 const checks = [];
 
-function check(name, fn) {
+function check(name, fn, { level = "required" } = {}) {
   try {
     const result = fn();
-    checks.push({ name, ok: true, detail: result || "OK" });
+    checks.push({ name, ok: true, detail: result || "OK", level });
   } catch (e) {
-    checks.push({ name, ok: false, detail: e.message || String(e) });
+    checks.push({ name, ok: false, detail: e.message || String(e), level });
   }
 }
 
 function run(cmd) {
   return execSync(cmd, { cwd: KUMA_ROOT, stdio: "pipe", timeout: 10000 }).toString().trim();
-}
-
-function resolveCodexHome() {
-  return process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME) : resolve(os.homedir(), ".codex");
 }
 
 // ── Checks ────────────────────────────────────────────────────────────────
@@ -70,8 +66,7 @@ check("daemon_reachable", () => {
 check("state_home", () => {
   const stateHome =
     process.env.KUMA_PICKER_STATE_HOME ||
-    (process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME, "kuma-picker") : null) ||
-    resolve(os.homedir(), ".codex", "kuma-picker");
+    resolve(os.homedir(), ".kuma-picker");
   if (!existsSync(stateHome)) {
     throw new Error(`Missing: ${stateHome}. Run: node scripts/install.mjs`);
   }
@@ -106,14 +101,6 @@ check("browser_bridge", () => {
   }
 });
 
-check("codex_skill", () => {
-  const skillPath = resolve(resolveCodexHome(), "skills", "kuma-picker", "SKILL.md");
-  if (!existsSync(skillPath)) {
-    throw new Error(`Missing: ${skillPath}. Run: node scripts/install.mjs`);
-  }
-  return skillPath;
-});
-
 check("claude_skill", () => {
   const skillPath = resolve(os.homedir(), ".claude", "skills", "kuma-picker", "SKILL.md");
   if (!existsSync(skillPath)) {
@@ -121,6 +108,14 @@ check("claude_skill", () => {
   }
   return skillPath;
 });
+
+check("codex_skill", () => {
+  const skillPath = resolve(os.homedir(), ".codex", "skills", "kuma-picker", "SKILL.md");
+  if (!existsSync(skillPath)) {
+    throw new Error(`Missing: ${skillPath}. Run: node scripts/install.mjs --also-codex`);
+  }
+  return skillPath;
+}, { level: "optional" });
 
 check("extension_source", () => {
   const extPath = resolve(KUMA_ROOT, "packages", "browser-extension", "manifest.json");
@@ -138,19 +133,24 @@ if (jsonMode) {
   const maxName = Math.max(...checks.map((c) => c.name.length));
   process.stdout.write("\n── Kuma Picker Doctor ──────────────────────────────\n\n");
   for (const c of checks) {
-    const icon = c.ok ? "✓" : "✗";
+    const icon = c.ok ? "✓" : c.level === "optional" ? "⚠" : "✗";
+    const suffix = !c.ok && c.level === "optional" ? " (optional)" : "";
     const pad = " ".repeat(maxName - c.name.length);
-    process.stdout.write(`  ${icon} ${c.name}${pad}  ${c.detail}\n`);
+    process.stdout.write(`  ${icon} ${c.name}${pad}  ${c.detail}${suffix}\n`);
   }
 
-  const failed = checks.filter((c) => !c.ok);
+  const failed = checks.filter((c) => !c.ok && c.level === "required");
+  const warned = checks.filter((c) => !c.ok && c.level === "optional");
+  if (warned.length > 0) {
+    process.stdout.write(`\n  ${warned.length} optional warning(s).\n`);
+  }
   if (failed.length > 0) {
     process.stdout.write(`\n  ${failed.length} issue(s) found. Fix them in order above.\n\n`);
     if (failed.some((c) => c.name === "node_modules")) {
       process.stdout.write("  Quick fix: npm install\n\n");
     } else if (failed.some((c) => c.name === "daemon_reachable")) {
       process.stdout.write(`  Quick fix: node ${resolve(KUMA_ROOT, "packages/server/src/cli.mjs")} serve &\n\n`);
-    } else if (failed.some((c) => c.name === "codex_skill" || c.name === "claude_skill")) {
+    } else if (failed.some((c) => c.name === "claude_skill" || c.name === "codex_skill")) {
       process.stdout.write(`  Quick fix: node ${resolve(KUMA_ROOT, "scripts/install.mjs")}\n\n`);
     } else if (failed.some((c) => c.name === "extension_status" || c.name === "browser_bridge")) {
       process.stdout.write(

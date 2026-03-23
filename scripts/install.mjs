@@ -5,10 +5,10 @@
  *
  * Designed to be run BY an agent, not by a human.
  * Handles: npm install, daemon launch, state home creation,
- * and global skill installation for Codex and Claude.
+ * and global skill installation for the active agent.
  *
  * Usage:
- *   node scripts/install.mjs [--skip-daemon]
+ *   node scripts/install.mjs [--skip-daemon] [--also-codex] [--also-claude]
  */
 
 import { execSync, spawn } from "node:child_process";
@@ -46,8 +46,23 @@ function parseArgs(argv) {
     if (argv[i] === "--skip-daemon") {
       flags.skipDaemon = true;
     }
+    if (argv[i] === "--also-codex") {
+      flags.alsoCodex = true;
+    }
+    if (argv[i] === "--also-claude") {
+      flags.alsoClaude = true;
+    }
   }
   return flags;
+}
+
+// ---------------------------------------------------------------------------
+// Detect which agent is running this installer
+// ---------------------------------------------------------------------------
+
+function detectActiveAgent() {
+  if (process.env.CODEX_HOME || process.env.CODEX) return "codex";
+  return "claude";
 }
 
 // ---------------------------------------------------------------------------
@@ -105,8 +120,7 @@ function startDaemon() {
 function ensureStateHome() {
   const stateHome =
     process.env.KUMA_PICKER_STATE_HOME ||
-    (process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME, "kuma-picker") : null) ||
-    resolve(os.homedir(), ".codex", "kuma-picker");
+    resolve(os.homedir(), ".kuma-picker");
 
   if (!existsSync(stateHome)) {
     mkdirSync(stateHome, { recursive: true });
@@ -117,42 +131,49 @@ function ensureStateHome() {
   return stateHome;
 }
 
-function installSkillCopy(skillSrc, skillDest) {
-  mkdirSync(skillDest, { recursive: true });
-  cpSync(skillSrc, skillDest, { recursive: true });
-
-  const skillMdPath = resolve(skillDest, "SKILL.md");
-  if (existsSync(skillMdPath)) {
-    const content = readFileSync(skillMdPath, "utf-8");
-    writeFileSync(skillMdPath, content.replaceAll("__KUMA_PICKER_REPO__", KUMA_ROOT));
-  }
-
-  const cmdsMdPath = resolve(skillDest, "references", "commands.md");
-  if (existsSync(cmdsMdPath)) {
-    const content = readFileSync(cmdsMdPath, "utf-8");
-    writeFileSync(cmdsMdPath, content.replaceAll("__KUMA_PICKER_REPO__", KUMA_ROOT));
-  }
-}
-
-function installGlobalSkills() {
+function installSkillCopy(destDir) {
   const skillSrc = resolve(KUMA_ROOT, "skills", "kuma-picker");
-
   if (!existsSync(skillSrc)) {
     err(`Skill source not found: ${skillSrc}`);
     return;
   }
 
-  const codexHome = process.env.CODEX_HOME
-    ? resolve(process.env.CODEX_HOME)
-    : resolve(os.homedir(), ".codex");
-  const codexSkillDest = resolve(codexHome, "skills", "kuma-picker");
-  const claudeSkillDest = resolve(os.homedir(), ".claude", "skills", "kuma-picker");
+  mkdirSync(destDir, { recursive: true });
+  cpSync(skillSrc, destDir, { recursive: true });
 
-  installSkillCopy(skillSrc, codexSkillDest);
-  installSkillCopy(skillSrc, claudeSkillDest);
+  // Stamp the repo path into the installed SKILL.md
+  const skillMdPath = resolve(destDir, "SKILL.md");
+  if (existsSync(skillMdPath)) {
+    const content = readFileSync(skillMdPath, "utf-8");
+    writeFileSync(skillMdPath, content.replaceAll("__KUMA_PICKER_REPO__", KUMA_ROOT));
+  }
+  // Also stamp references/commands.md
+  const cmdsMdPath = resolve(destDir, "references", "commands.md");
+  if (existsSync(cmdsMdPath)) {
+    const content = readFileSync(cmdsMdPath, "utf-8");
+    writeFileSync(cmdsMdPath, content.replaceAll("__KUMA_PICKER_REPO__", KUMA_ROOT));
+  }
 
-  log(`Global skill installed to ${codexSkillDest} (repo: ${KUMA_ROOT})`);
-  log(`Global skill installed to ${claudeSkillDest} (repo: ${KUMA_ROOT})`);
+  log(`Skill installed to ${destDir} (repo: ${KUMA_ROOT})`);
+}
+
+function installGlobalSkills(activeAgent, flags) {
+  const claudeDest = resolve(os.homedir(), ".claude", "skills", "kuma-picker");
+  const codexDest = resolve(os.homedir(), ".codex", "skills", "kuma-picker");
+
+  if (activeAgent === "claude") {
+    // Claude is primary — always install Claude skill
+    installSkillCopy(claudeDest);
+    if (flags.alsoCodex) {
+      installSkillCopy(codexDest);
+    }
+  } else {
+    // Codex is primary — always install Codex skill
+    installSkillCopy(codexDest);
+    if (flags.alsoClaude) {
+      installSkillCopy(claudeDest);
+    }
+  }
 }
 
 function printExtensionGuide() {
@@ -176,15 +197,16 @@ function printExtensionGuide() {
 `);
 }
 
-function printSummary(stateHome) {
+function printSummary(stateHome, activeAgent) {
   process.stdout.write(`
 ── Kuma Picker install summary ──────────────────────────────────
   Repo:         ${KUMA_ROOT}
+  Active agent: ${activeAgent}
   State home:   ${stateHome}
   Daemon:       http://127.0.0.1:4312
   Extension:    ${resolve(KUMA_ROOT, "packages/browser-extension")}
-  Codex skill:   ${process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME, "skills", "kuma-picker") : "~/.codex/skills/kuma-picker/"}
-  Claude skill:  ~/.claude/skills/kuma-picker/
+  Claude skill: ~/.claude/skills/kuma-picker/
+  Codex skill:  ~/.codex/skills/kuma-picker/
 ─────────────────────────────────────────────────────────────────
 
 To verify everything works:
@@ -198,13 +220,14 @@ To verify everything works:
 // ---------------------------------------------------------------------------
 
 const flags = parseArgs(process.argv.slice(2));
+const activeAgent = detectActiveAgent();
 
 checkNodeVersion();
 installDependencies();
 const stateHome = ensureStateHome();
-installGlobalSkills();
+installGlobalSkills(activeAgent, flags);
 if (!flags.skipDaemon) {
   startDaemon();
 }
 printExtensionGuide();
-printSummary(stateHome);
+printSummary(stateHome, activeAgent);

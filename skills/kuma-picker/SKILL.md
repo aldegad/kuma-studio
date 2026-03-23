@@ -61,8 +61,7 @@ node __KUMA_PICKER_REPO__/packages/server/src/cli.mjs get-browser-session
 Kuma Picker resolves its shared state directory in this priority order:
 
 1. `KUMA_PICKER_STATE_HOME` — explicit override (highest priority)
-2. `$CODEX_HOME/kuma-picker/` — when `CODEX_HOME` is set
-3. `~/.codex/kuma-picker/` — default
+2. `~/.kuma-picker/` — shared default for Claude and Codex
 
 ## Core workflow
 
