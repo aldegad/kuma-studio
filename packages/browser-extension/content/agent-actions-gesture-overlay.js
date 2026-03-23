@@ -5,6 +5,7 @@
     const DEFAULT_SIZE = 88;
     const CLICK_SIZE = 70;
     const CLICK_HOTSPOT_Y = 0.25;
+    let recordingGestureDurationMultiplier = 1;
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -146,7 +147,7 @@
           },
         ],
         {
-          duration: 380,
+          duration: Math.round(380 * recordingGestureDurationMultiplier),
           easing: "ease-in-out",
           fill: "forwards",
         },
@@ -194,7 +195,7 @@
           },
         ],
         {
-          duration: clamp(240 + Math.abs(deltaY) * 0.28, 280, 560),
+          duration: Math.round(clamp(240 + Math.abs(deltaY) * 0.28, 280, 560) * recordingGestureDurationMultiplier),
           easing: "cubic-bezier(0.2, 0.9, 0.25, 1)",
           fill: "forwards",
         },
@@ -247,17 +248,22 @@
           },
         ],
         {
-          duration: animDuration,
+          duration: Math.round(animDuration * recordingGestureDurationMultiplier),
           easing: "cubic-bezier(0.2, 0.8, 0.3, 1)",
           fill: "forwards",
         },
       );
     }
 
+    function setRecordingMode(active) {
+      recordingGestureDurationMultiplier = active === true ? 3 : 1;
+    }
+
     return {
       playClickGesture,
       playScrollGesture,
       playDragGesture,
+      setRecordingMode,
     };
   })();
 

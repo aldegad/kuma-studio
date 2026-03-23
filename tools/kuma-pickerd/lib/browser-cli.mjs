@@ -1,64 +1,10 @@
-import { accessSync, constants } from "node:fs";
-import { resolve } from "node:path";
-
 import { enqueueBrowserCommand, fetchJson, getDaemonUrlFromOptions } from "./browser-command-client.mjs";
 import { printJson, printScreenshotResult } from "./browser-cli-output.mjs";
+export { commandBrowserSetFiles } from "./browser-cli-files.mjs";
+export { commandBrowserRecordStart, commandBrowserRecordStop } from "./browser-cli-recording.mjs";
 import { readBrowserSequenceSteps } from "./browser-sequence.mjs";
+import { readKeyboardModifierFlags } from "./browser-cli-shared.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";
-
-function readKeyboardModifierFlags(options) {
-  return {
-    shiftKey: options["shift"] === true,
-    altKey: options["alt"] === true,
-    ctrlKey: options["ctrl"] === true,
-    metaKey: options["meta"] === true,
-  };
-}
-
-function readFilesOption(options) {
-  const rawFiles = readOptionalString(options, "files");
-  if (!rawFiles) {
-    return [];
-  }
-
-  if (rawFiles.startsWith("[")) {
-    let parsed = null;
-    try {
-      parsed = JSON.parse(rawFiles);
-    } catch (error) {
-      throw new Error(`Failed to parse --files JSON: ${error instanceof Error ? error.message : String(error)}`);
-    }
-
-    if (!Array.isArray(parsed)) {
-      throw new Error("--files JSON must be an array of file paths.");
-    }
-
-    return parsed
-      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-      .filter(Boolean);
-  }
-
-  return rawFiles
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-}
-
-function normalizeLocalFilePaths(files) {
-  if (!Array.isArray(files) || files.length === 0) {
-    throw new Error("browser-set-files requires --files.");
-  }
-
-  return files.map((filePath) => {
-    const absolutePath = resolve(filePath);
-    try {
-      accessSync(absolutePath, constants.R_OK);
-    } catch {
-      throw new Error(`File is not readable: ${absolutePath}`);
-    }
-    return absolutePath;
-  });
-}
 
 export async function commandGetBrowserSession(options) {
   const daemonUrl = getDaemonUrlFromOptions(options);
@@ -245,25 +191,6 @@ export async function commandBrowserFill(options) {
     label,
     text,
     scope,
-    postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
-  });
-  printJson(result.result ?? null);
-}
-
-export async function commandBrowserSetFiles(options) {
-  const selector = readOptionalString(options, "selector");
-  const selectorPath = readOptionalString(options, "selector-path");
-
-  if (!selector && !selectorPath) {
-    throw new Error("browser-set-files requires --selector or --selector-path.");
-  }
-
-  const files = normalizeLocalFilePaths(readFilesOption(options));
-  const result = await enqueueBrowserCommand(options, {
-    type: "set-files",
-    selector,
-    selectorPath,
-    files,
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 100),
   });
   printJson(result.result ?? null);

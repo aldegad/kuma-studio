@@ -283,6 +283,10 @@ async function executeBrowserCommand(tab, command) {
       return executeEvalBrowserCommand(tab, command);
     case "set-files":
       return setFileInputFiles(tab, command);
+    case "record-start":
+      return startTabRecording(tab, command);
+    case "record-stop":
+      return stopTabRecording(tab, command);
     case "dom":
     case "click":
     case "sequence":

@@ -118,6 +118,8 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-sequence");
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-set-files");
+    expect(output).toContain("browser-record-start");
+    expect(output).toContain("browser-record-stop");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
     expect(output).toContain("browser-download-permission");
@@ -149,6 +151,20 @@ describe("kuma-pickerd browser usage", () => {
     ).toThrow(/browser-set-files requires --files/i);
 
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it("validates browser-record-start arguments before contacting the daemon", () => {
+    expect(() =>
+      runCli(["browser-record-start", "--url-contains", "example.com", "--fps", "0"], process.cwd()),
+    ).toThrow(/browser-record-start --fps must be a positive integer/i);
+
+    expect(() =>
+      runCli(["browser-record-start", "--url-contains", "example.com", "--fps", "10"], process.cwd()),
+    ).toThrow(/currently supports up to 2fps/i);
+
+    expect(() =>
+      runCli(["browser-record-start", "--url-contains", "example.com", "--speed-multiplier", "0"], process.cwd()),
+    ).toThrow(/browser-record-start --speed-multiplier must be a positive number/i);
   });
 });
 

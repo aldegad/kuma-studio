@@ -752,6 +752,10 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
     const value = typeof command?.value === "string" ? command.value : "";
     await focusElement(target);
+    const rect = target.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    await gestureOverlay?.playClickGesture?.({ x: centerX, y: centerY });
 
     if (coreIsTextInputElement(target)) {
       setNativeValue(target, value);

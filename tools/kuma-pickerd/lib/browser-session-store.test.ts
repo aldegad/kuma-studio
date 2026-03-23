@@ -364,6 +364,58 @@ describe("BrowserSessionStore", () => {
     );
   });
 
+  it("preserves recording options when dispatching websocket commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.recordBrowserPresence("browser-1", {
+      type: "presence.update",
+      source: "content-script:page-heartbeat",
+      page: {
+        url: "http://localhost:3000/video",
+        pathname: "/video",
+        title: "Video",
+      },
+      activeTabId: 991,
+      visible: true,
+      focused: true,
+      capabilities: ["record-start", "record-stop"],
+      lastSeenAt: new Date().toISOString(),
+    });
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-06c",
+        command: {
+          type: "record-start",
+          targetTabId: 991,
+          fps: 2,
+          speedMultiplier: 3,
+          filename: "kuma-picker-recordings/test.webm",
+          restorePreviousActiveTab: true,
+        },
+    });
+
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-06c",
+        command: expect.objectContaining({
+          type: "record-start",
+          targetTabId: 991,
+          fps: 2,
+          speedMultiplier: 3,
+          filename: "kuma-picker-recordings/test.webm",
+          restorePreviousActiveTab: true,
+        }),
+      }),
+    );
+  });
+
   it("preserves eval expression payloads when dispatching websocket commands", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();

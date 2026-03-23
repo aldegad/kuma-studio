@@ -154,10 +154,13 @@ export function sanitizeCommandPayload(candidate) {
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const navigationUrl = sanitizeString(candidate.navigationUrl, 2_000);
+  const filename = sanitizeString(candidate.filename, 512);
   const filenameContains = sanitizeString(candidate.filenameContains, 512);
   const downloadUrlContains = sanitizeString(candidate.downloadUrlContains, 2_000);
   const postActionDelayMs = Number(candidate.postActionDelayMs);
   const captureMs = Number(candidate.captureMs);
+  const fps = Number(candidate.fps);
+  const speedMultiplier = Number(candidate.speedMultiplier);
   const timeoutMs = Number(candidate.timeoutMs);
   const holdMs = Number(candidate.holdMs);
   const durationMs = Number(candidate.durationMs);
@@ -204,6 +207,7 @@ export function sanitizeCommandPayload(candidate) {
     targetUrl,
     targetUrlContains,
     navigationUrl,
+    filename,
     filenameContains,
     downloadUrlContains,
     targetTabId,
@@ -226,6 +230,14 @@ export function sanitizeCommandPayload(candidate) {
     active: candidate.active !== false,
     bypassCache: candidate.bypassCache === true,
     refreshBeforeCapture: candidate.refreshBeforeCapture === true,
+    fps:
+      Number.isFinite(fps) && fps >= 1
+        ? Math.min(2, Math.round(fps))
+        : null,
+    speedMultiplier:
+      Number.isFinite(speedMultiplier) && speedMultiplier > 0
+        ? Math.min(8, Math.max(0.25, speedMultiplier))
+        : null,
     captureMs:
       Number.isFinite(captureMs) && captureMs >= 0
         ? Math.min(30_000, Math.round(captureMs))
@@ -410,7 +422,7 @@ export function doesCommandMatchClaimant(command, claimant = {}) {
     return false;
   }
 
-  if (command.type === "screenshot") {
+  if (command.type === "screenshot" || command.type === "record-start") {
     return claimantVisible && claimantFocused;
   }
 

@@ -106,7 +106,7 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-eval`, `browser-console`, `browser-debugger-capture`, `browser-click`,
-`browser-sequence`, `browser-fill`, `browser-set-files`, `browser-key`, `browser-refresh`, `browser-navigate`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
+`browser-sequence`, `browser-fill`, `browser-set-files`, `browser-record-start`, `browser-record-stop`, `browser-key`, `browser-refresh`, `browser-navigate`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane.
 
@@ -140,6 +140,8 @@ node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.
 node ./packages/server/src/cli.mjs browser-pointer-drag --url-contains "localhost:3000/shooting" --from-x 280 --from-y 520 --to-x 640 --to-y 520 --steps 18
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
 node ./packages/server/src/cli.mjs browser-set-files --url-contains "facebook.com" --selector "input[type=file]" --files "/tmp/image.png"
+node ./packages/server/src/cli.mjs browser-record-start --url-contains "facebook.com" --fps 5 --speed-multiplier 3
+node ./packages/server/src/cli.mjs browser-record-stop --url-contains "facebook.com"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com"
 node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com" --bypass-cache
@@ -183,6 +185,8 @@ For browser commands:
 - add `--refresh --bypass-cache` to `browser-debugger-capture` for deploy verification and capture the next page-load failures
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
 - use `browser-set-files --selector "input[type=file]" --files "/absolute/path/to/image.png"` when a real file input must receive local files
+- use `browser-record-start` before a reproduction flow and `browser-record-stop` after it when you want Chrome to save a sped-up `.webm` debugging clip in the downloads folder
+- the current visible-tab recorder is capped at `2fps` because Chrome's `tabs.MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND` limit for `captureVisibleTab` is `2`
 - use `browser-sequence` when a menu, dropdown, or modal flow must stay alive across multiple clicks
 - add per-step `assert` checks in `browser-sequence` to verify that each write actually changed the UI before moving on
 - `browser-sequence` also accepts `insertText` steps when you need to keep the current caret position in a text input or `contenteditable` editor
@@ -195,6 +199,7 @@ For browser commands:
 - use `browser-click-point` when DOM targeting is awkward and viewport coordinates are acceptable
 - use `browser-pointer-drag` when a canvas, slider, joystick, or drag-only surface needs a continuous pointer path instead of a discrete click
 - visible-tab screenshots still require the page to be the active focused tab in Chrome
+- browser recordings keep refocusing the target tab while recording so the generated video keeps its duration
 
 For saved selections:
 

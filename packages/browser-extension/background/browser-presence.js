@@ -12,6 +12,8 @@ const BROWSER_COMMAND_CAPABILITIES = [
   "pointer-drag",
   "fill",
   "set-files",
+  "record-start",
+  "record-stop",
   "key",
   "keydown",
   "keyup",

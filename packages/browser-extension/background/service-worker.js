@@ -105,6 +105,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "kuma-picker:inspect-picked":
           sendResponse(await handleInspectPicked(message, sender));
           return;
+        case "kuma-picker:recording-finished":
+          sendResponse(await handleRecordingFinished(message));
+          return;
         case "kuma-picker:update-job-card-position":
           sendResponse(
             await writeJobCardUpdate(daemonUrl, {

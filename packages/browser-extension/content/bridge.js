@@ -82,6 +82,10 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
           getJobCardsApi()?.applyJobCardEvent?.(message);
           sendResponse({ ok: true });
           return;
+        case "kuma-picker:recording-overlay-mode":
+          globalThis.KumaPickerExtensionAgentGestureOverlay?.setRecordingMode?.(message.active === true);
+          sendResponse({ ok: true });
+          return;
         default:
           sendResponse({
             ok: false,
