@@ -8,3 +8,5 @@ tmp/
 *.tsbuildinfo
 .agent-picker/
 .kuma-picker/
+.agents/
+.claude/worktrees/
