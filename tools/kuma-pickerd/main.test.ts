@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
+import { rmSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -116,6 +117,7 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-navigate");
     expect(output).toContain("browser-sequence");
     expect(output).toContain("browser-refresh");
+    expect(output).toContain("browser-set-files");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
     expect(output).toContain("browser-download-permission");
@@ -131,6 +133,22 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).not.toContain("set-agent-note");
     expect(output).not.toContain("clear-agent-note");
     expect(output).toContain("menu-state|selected-option|tab-state|selector-state");
+  });
+
+  it("validates browser-set-files arguments before contacting the daemon", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-files-"));
+    const filePath = path.join(root, "image.png");
+    writeFileSync(filePath, "png");
+
+    expect(() =>
+      runCli(["browser-set-files", "--url-contains", "example.com", "--files", filePath], root),
+    ).toThrow(/browser-set-files requires --selector or --selector-path/i);
+
+    expect(() =>
+      runCli(["browser-set-files", "--url-contains", "example.com", "--selector", "input[type=file]"], root),
+    ).toThrow(/browser-set-files requires --files/i);
+
+    rmSync(root, { recursive: true, force: true });
   });
 });
 

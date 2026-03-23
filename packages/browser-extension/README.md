@@ -84,6 +84,7 @@ node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.porton
 node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
+node ./packages/server/src/cli.mjs browser-set-files --url-contains "facebook.com" --selector "input[type=file]" --files "/tmp/image.png"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-wait-for-download --url-contains "facebook.com" --filename-contains ".csv"
 node ./packages/server/src/cli.mjs browser-get-latest-download --url-contains "facebook.com" --filename-contains ".csv"
@@ -105,6 +106,6 @@ node ./packages/server/src/cli.mjs set-job-status --status completed --message "
 - extension status remains best-effort presence data: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last status becomes stale
 - the popup `Test Bridge` action now separates daemon health from WebSocket readiness so startup errors are easier to diagnose
 - targeted DOM and click commands can run against background tabs as long as the tab stays open with the content script loaded
-- targeted `browser-fill`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
+- targeted `browser-fill`, `browser-set-files`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
 - screenshots still require the target page to be the visible focused tab in Chrome
 - browser control now assumes the WebSocket bridge path only

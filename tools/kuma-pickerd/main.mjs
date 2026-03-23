@@ -13,6 +13,7 @@ import {
   commandBrowserEval,
   commandBrowserDownloadPermission,
   commandBrowserFill,
+  commandBrowserSetFiles,
   commandBrowserGetLatestDownload,
   commandBrowserKey,
   commandBrowserKeyDown,
@@ -64,6 +65,7 @@ Usage:
   node main.mjs browser-click-point --x 120 --y 240 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-pointer-drag ([--from-x 120 --from-y 240 --to-x 360 --to-y 240] | [--waypoints '[{"x":120,"y":240},{"x":240,"y":260},{"x":360,"y":240}]']) [--steps 12] [--duration-ms 280] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 120] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-set-files --files "/tmp/image.png,/tmp/image-2.png" [--selector "input[type=file]"] [--selector-path "form input:nth-of-type(1)"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-key --key Tab [--shift] [--alt] [--ctrl] [--meta] [--hold-ms 250] [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-keydown --key Shift [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] [--shift] [--alt] [--ctrl] [--meta] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-keyup --key Shift [--selector "input"] [--selector-path "form input:nth-of-type(1)"] [--text "Privacy Policy URL"] [--shift] [--alt] [--ctrl] [--meta] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 0] [--daemon-url http://127.0.0.1:4312]
@@ -400,6 +402,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-fill":
       await commandBrowserFill(options);
+      return;
+    case "browser-set-files":
+      await commandBrowserSetFiles(options);
       return;
     case "browser-key":
       await commandBrowserKey(options);

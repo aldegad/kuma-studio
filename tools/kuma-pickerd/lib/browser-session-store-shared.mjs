@@ -117,6 +117,18 @@ function sanitizeWaypoints(candidate) {
   return points.length >= 2 ? points : null;
 }
 
+function sanitizeFileList(candidate) {
+  if (!Array.isArray(candidate)) {
+    return null;
+  }
+
+  const files = candidate
+    .map((entry) => sanitizeString(entry, 4_000))
+    .filter(Boolean);
+
+  return files.length > 0 ? files : null;
+}
+
 export function sanitizeCommandPayload(candidate) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Browser command payload must be an object.");
@@ -161,6 +173,7 @@ export function sanitizeCommandPayload(candidate) {
   const toY = Number(candidate.toY);
   const clipRect = sanitizeClipRect(candidate.clipRect);
   const waypoints = sanitizeWaypoints(candidate.waypoints);
+  const files = sanitizeFileList(candidate.files);
   const sequenceSteps = Array.isArray(candidate.steps) ? cloneValue(candidate.steps) : null;
   const hasTarget =
     Number.isInteger(targetTabId) ||
@@ -204,6 +217,7 @@ export function sanitizeCommandPayload(candidate) {
     toX: Number.isFinite(toX) ? Math.max(0, Math.round(toX)) : null,
     toY: Number.isFinite(toY) ? Math.max(0, Math.round(toY)) : null,
     waypoints,
+    files,
     steps: sequenceSteps ?? (Number.isFinite(steps) && steps >= 1 ? Math.round(steps) : null),
     clipRect,
     focusTabFirst: candidate.focusTabFirst !== false,

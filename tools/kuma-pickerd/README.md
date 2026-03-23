@@ -106,7 +106,7 @@ That directory currently includes:
 The default is `websocket`.
 
 Browser control commands such as `browser-context`, `browser-dom`, `browser-eval`, `browser-console`, `browser-debugger-capture`, `browser-click`,
-`browser-sequence`, `browser-fill`, `browser-key`, `browser-refresh`, `browser-navigate`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
+`browser-sequence`, `browser-fill`, `browser-set-files`, `browser-key`, `browser-refresh`, `browser-navigate`, `browser-click-point`, `browser-pointer-drag`, `browser-screenshot`,
 `browser-wait-for-download`, and `browser-get-latest-download`
 use the WebSocket control plane.
 
@@ -139,6 +139,7 @@ node ./packages/server/src/cli.mjs browser-click --url-contains "developers.port
 node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
 node ./packages/server/src/cli.mjs browser-pointer-drag --url-contains "localhost:3000/shooting" --from-x 280 --from-y 520 --to-x 640 --to-y 520 --steps 18
 node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
+node ./packages/server/src/cli.mjs browser-set-files --url-contains "facebook.com" --selector "input[type=file]" --files "/tmp/image.png"
 node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
 node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com"
 node ./packages/server/src/cli.mjs browser-refresh --url-contains "facebook.com" --bypass-cache
@@ -181,6 +182,7 @@ For browser commands:
 - use `browser-debugger-capture` when you need short-lived DevTools-level `Runtime`, `Log`, and `Network` diagnostics
 - add `--refresh --bypass-cache` to `browser-debugger-capture` for deploy verification and capture the next page-load failures
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
+- use `browser-set-files --selector "input[type=file]" --files "/absolute/path/to/image.png"` when a real file input must receive local files
 - use `browser-sequence` when a menu, dropdown, or modal flow must stay alive across multiple clicks
 - add per-step `assert` checks in `browser-sequence` to verify that each write actually changed the UI before moving on
 - `browser-sequence` also accepts `insertText` steps when you need to keep the current caret position in a text input or `contenteditable` editor

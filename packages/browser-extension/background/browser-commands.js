@@ -281,6 +281,8 @@ async function executeBrowserCommand(tab, command) {
       return executeNavigateBrowserCommand(tab, command);
     case "eval":
       return executeEvalBrowserCommand(tab, command);
+    case "set-files":
+      return setFileInputFiles(tab, command);
     case "dom":
     case "click":
     case "sequence":

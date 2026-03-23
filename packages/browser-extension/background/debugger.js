@@ -21,6 +21,15 @@ function clampDebuggerCaptureMs(value, fallback = DEFAULT_DEBUGGER_CAPTURE_MS) {
   return Math.min(30_000, Math.round(numeric));
 }
 
+function clampPostActionDelayMs(value, fallback = 100) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return fallback;
+  }
+
+  return Math.min(10_000, Math.round(numeric));
+}
+
 function normalizeDebuggerString(value, maxLength = 1_000) {
   if (typeof value !== "string") {
     return null;
@@ -201,6 +210,167 @@ function createPageRecordFromDebugTab(tab) {
     pathname,
     title: typeof tab?.title === "string" && tab.title.trim() ? tab.title.trim() : null,
   };
+}
+
+function normalizeDebuggerFilePaths(command) {
+  const files = Array.isArray(command?.files)
+    ? command.files
+        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+        .filter(Boolean)
+    : [];
+
+  if (files.length === 0) {
+    throw new Error("The set-files command requires at least one local file path.");
+  }
+
+  return files;
+}
+
+function getDebuggerCommandSelector(command) {
+  const selectorCandidate =
+    typeof command?.selectorPath === "string"
+      ? command.selectorPath
+      : typeof command?.selector === "string"
+        ? command.selector
+        : "";
+  const selector = selectorCandidate.trim();
+
+  if (!selector) {
+    throw new Error("The set-files command requires --selector or --selector-path.");
+  }
+
+  return selector;
+}
+
+function readNodeAttributeMap(node) {
+  const attributes = Array.isArray(node?.attributes) ? node.attributes : [];
+  const map = new Map();
+
+  for (let index = 0; index < attributes.length; index += 2) {
+    const key = typeof attributes[index] === "string" ? attributes[index].toLowerCase() : null;
+    if (!key) {
+      continue;
+    }
+
+    const value = typeof attributes[index + 1] === "string" ? attributes[index + 1] : "";
+    map.set(key, value);
+  }
+
+  return map;
+}
+
+async function setFileInputFiles(tab, command = {}) {
+  if (!tab?.id) {
+    throw new Error("Failed to resolve the target browser tab for file upload.");
+  }
+
+  const selector = getDebuggerCommandSelector(command);
+  const files = normalizeDebuggerFilePaths(command);
+  const tabId = tab.id;
+  const debuggee = createDebuggerTarget(tabId);
+  let attached = false;
+
+  try {
+    try {
+      await chrome.debugger.attach(debuggee, DEBUGGER_PROTOCOL_VERSION);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        message.includes("Another debugger is already attached")
+          ? "Chrome DevTools or another debugger is already attached to this tab."
+          : `Failed to attach chrome.debugger: ${message}`,
+      );
+    }
+    attached = true;
+
+    await chrome.debugger.sendCommand(debuggee, "DOM.enable");
+    await chrome.debugger.sendCommand(debuggee, "Runtime.enable");
+
+    const { root } = await chrome.debugger.sendCommand(debuggee, "DOM.getDocument");
+    const { nodeId } = await chrome.debugger.sendCommand(debuggee, "DOM.querySelector", {
+      nodeId: root?.nodeId,
+      selector,
+    });
+
+    if (!Number.isInteger(nodeId) || nodeId <= 0) {
+      throw new Error(`No element matched the selector "${selector}".`);
+    }
+
+    const described = await chrome.debugger.sendCommand(debuggee, "DOM.describeNode", {
+      nodeId,
+    });
+    const node = described?.node ?? null;
+    const nodeName = typeof node?.nodeName === "string" ? node.nodeName.toLowerCase() : null;
+    const attributes = readNodeAttributeMap(node);
+    const inputType = (attributes.get("type") ?? "text").trim().toLowerCase();
+
+    if (nodeName !== "input" || inputType !== "file") {
+      throw new Error(`Selector "${selector}" did not resolve to an <input type="file"> element.`);
+    }
+
+    if (files.length > 1 && !attributes.has("multiple")) {
+      throw new Error(`Selector "${selector}" resolved to a single-file input. Provide one file or target an input with the multiple attribute.`);
+    }
+
+    await chrome.debugger.sendCommand(debuggee, "DOM.setFileInputFiles", {
+      nodeId,
+      files,
+    });
+
+    const resolvedNode = await chrome.debugger.sendCommand(debuggee, "DOM.resolveNode", {
+      nodeId,
+    });
+    const objectId = typeof resolvedNode?.object?.objectId === "string" ? resolvedNode.object.objectId : null;
+    let selectedFiles = [];
+
+    if (objectId) {
+      const dispatched = await chrome.debugger.sendCommand(debuggee, "Runtime.callFunctionOn", {
+        objectId,
+        functionDeclaration: `function () {
+          this.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+          this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+          return this.files
+            ? Array.from(this.files, function (file) {
+                return {
+                  name: file.name,
+                  type: file.type || null,
+                  size: Number.isFinite(file.size) ? file.size : null,
+                };
+              })
+            : [];
+        }`,
+        returnByValue: true,
+        userGesture: true,
+        awaitPromise: false,
+      });
+      selectedFiles = Array.isArray(dispatched?.result?.value) ? dispatched.result.value : [];
+    }
+
+    await waitForDelay(clampPostActionDelayMs(command?.postActionDelayMs, 100));
+
+    let currentTab = null;
+    try {
+      currentTab = await chrome.tabs.get(tabId);
+    } catch {
+      currentTab = null;
+    }
+
+    return {
+      page: createPageRecordFromDebugTab(currentTab),
+      selector,
+      fileCount: files.length,
+      selectedFiles,
+      multiple: attributes.has("multiple"),
+    };
+  } finally {
+    if (attached) {
+      try {
+        await chrome.debugger.detach(debuggee);
+      } catch {
+        // Ignore detach races after file selection completion.
+      }
+    }
+  }
 }
 
 function createCaptureBuckets() {

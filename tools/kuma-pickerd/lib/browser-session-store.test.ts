@@ -330,6 +330,40 @@ describe("BrowserSessionStore", () => {
     );
   });
 
+  it("preserves file lists when dispatching websocket commands", async () => {
+    const { BrowserSessionStore } = await import("./browser-session-store.mjs");
+    const store = new BrowserSessionStore();
+    const browserSend = vi.fn();
+    const controllerSend = vi.fn();
+
+    store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
+    store.registerHello("controller-1", { type: "hello", role: "controller" }, controllerSend);
+
+    store.dispatchControllerCommand("controller-1", {
+      type: "command.request",
+      requestId: "browser-command-test-06a",
+      command: {
+        type: "set-files",
+        targetTabId: 123,
+        selector: "input[type=file]",
+        files: ["/tmp/one.png", "/tmp/two.png"],
+      },
+    });
+
+    expect(browserSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-06a",
+        command: expect.objectContaining({
+          type: "set-files",
+          targetTabId: 123,
+          selector: "input[type=file]",
+          files: ["/tmp/one.png", "/tmp/two.png"],
+        }),
+      }),
+    );
+  });
+
   it("preserves eval expression payloads when dispatching websocket commands", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();

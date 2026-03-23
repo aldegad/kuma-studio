@@ -33,6 +33,7 @@
     "kuma-pickerd:browser-click-point": "node ./packages/server/src/cli.mjs browser-click-point",
     "kuma-pickerd:browser-pointer-drag": "node ./packages/server/src/cli.mjs browser-pointer-drag",
     "kuma-pickerd:browser-fill": "node ./packages/server/src/cli.mjs browser-fill",
+    "kuma-pickerd:browser-set-files": "node ./packages/server/src/cli.mjs browser-set-files",
     "kuma-pickerd:browser-key": "node ./packages/server/src/cli.mjs browser-key",
     "kuma-pickerd:browser-keydown": "node ./packages/server/src/cli.mjs browser-keydown",
     "kuma-pickerd:browser-keyup": "node ./packages/server/src/cli.mjs browser-keyup",
