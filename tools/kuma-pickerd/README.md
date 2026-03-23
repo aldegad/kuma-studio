@@ -63,7 +63,7 @@ node ./vendor/kuma-picker/packages/server/src/cli.mjs serve --root .
 ```
 
 The default address is `http://127.0.0.1:4312`.
-State files live under `~/.codex/kuma-picker/` by default, or under `$CODEX_HOME/kuma-picker/` when `CODEX_HOME` is set. You can override the location with `KUMA_PICKER_STATE_HOME`.
+State files live under `~/.kuma-picker/` by default. You can override the location with `KUMA_PICKER_STATE_HOME`.
 That directory currently includes:
 
 - `scene.json`

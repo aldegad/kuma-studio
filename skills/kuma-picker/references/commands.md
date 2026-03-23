@@ -11,8 +11,7 @@ Shorthand used below: `kuma-cli` = `node __KUMA_PICKER_REPO__/packages/server/sr
 ## State home resolution
 
 1. `KUMA_PICKER_STATE_HOME` — explicit override (highest priority)
-2. `$CODEX_HOME/kuma-picker/` — when `CODEX_HOME` is set
-3. `~/.codex/kuma-picker/` — default
+2. `~/.kuma-picker/` — shared default for Claude and Codex
 
 ## Command examples
 

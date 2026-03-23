@@ -6,12 +6,26 @@ Kuma Picker. If you are a human reading this, just ask your agent to install it.
 ## TL;DR for agents
 
 ```bash
-node scripts/install.mjs               # active agent's skill only (default)
-node scripts/install.mjs --also-codex   # also install Codex skill
-node scripts/install.mjs --also-claude  # also install Claude skill
+node scripts/install.mjs
+node scripts/install.mjs --also-codex
+node scripts/install.mjs --also-claude
+node scripts/install.mjs --all
 ```
 
 Done. The only remaining step requires human action in Chrome (see below).
+
+`node scripts/install.mjs` installs the active agent skill by default.
+Use `--also-codex`, `--also-claude`, or `--all` only when you explicitly want extra skill targets stamped in the same run.
+
+## Install model
+
+Kuma Picker is meant to feel like three install parts:
+
+- one repo/daemon checkout
+- one Chrome extension load
+- one agent skill install (Codex or Claude)
+
+The shared state home at `~/.kuma-picker/` is created automatically and is not a separate install target.
 
 ## What the installer does
 
@@ -19,9 +33,9 @@ Done. The only remaining step requires human action in Chrome (see below).
 |------|------|------------|
 | 1 | Check Node.js >= 20 | Yes |
 | 2 | `npm install` | Yes (skipped if node_modules exists) |
-| 3 | Create `~/.kuma-picker/` state home | Yes |
-| 4 | Install active agent's skill (Claude or Codex) | Yes |
-| 4b | Install other agent's skill (with `--also-codex` or `--also-claude`) | Optional |
+| 3 | Create shared state home `~/.kuma-picker/` | Yes |
+| 4 | Install the active agent skill (`~/.codex/...` or `~/.claude/...`) | Yes |
+| 4b | Install other agent skill targets via `--also-*` or `--all` | Optional |
 | 5 | Start `kuma-pickerd` daemon on `:4312` | Yes (background process) |
 | 6 | Load Chrome extension | **No — human required** |
 
@@ -33,16 +47,17 @@ kuma-picker repo (cloned once)
   ├── packages/server/src/cli.mjs     ← daemon + all CLI commands
   └── tools/kuma-pickerd/             ← state management
 
-~/.claude/skills/kuma-picker/         ← Claude skill (default when Claude runs install)
-  └── SKILL.md                        ← knows the repo path
-~/.codex/skills/kuma-picker/          ← Codex skill (default when Codex runs install)
-  └── SKILL.md                        ← same content
+~/.codex/skills/kuma-picker/          ← Codex skill target
+  └── SKILL.md                        ← points at the same repo
 
-~/.kuma-picker/                       ← shared state (selections, job cards)
+~/.claude/skills/kuma-picker/         ← Claude skill target
+  └── SKILL.md                        ← points at the same repo
+
+~/.kuma-picker/                       ← shared state for both Claude and Codex
 ```
 
 No files are copied into target projects. No npm scripts are injected.
-The global skill points agents to the repo. Everything runs from the repo.
+The active agent skill points agents to the repo. Everything runs from the repo.
 
 ## The one human step
 
@@ -71,10 +86,12 @@ Outputs a checklist:
   ✓ state_home         /home/user/.kuma-picker
   ✗ extension_status   No heartbeat. Load the extension...
   ✗ browser_bridge     No live tabs. Open a page...
-  ✓ claude_skill       ~/.claude/skills/kuma-picker/SKILL.md
-  ⚠ codex_skill        Missing (optional)
+  ✓ codex_skill        /path/to/installed-skill-or-optional-note
+  ✓ claude_skill       /path/to/installed-skill-or-optional-note
   ✓ extension_source   packages/browser-extension
 ```
+
+The active agent skill is required. The other skill target is informational unless you explicitly install it.
 
 Use `--json` for machine-readable output.
 
@@ -86,8 +103,8 @@ doctor fails?
   ├─ daemon_reachable fails   → node packages/server/src/cli.mjs serve &
   ├─ extension_status fails   → remind human to load extension
   ├─ browser_bridge fails     → remind human to refresh page
-  ├─ claude_skill missing     → node scripts/install.mjs
-  ├─ codex_skill missing      → node scripts/install.mjs --also-codex (optional)
+  ├─ active skill missing     → node scripts/install.mjs
+  ├─ optional extra skill     → node scripts/install.mjs --all
   └─ extension_source missing → check repo integrity (git status)
 ```
 
@@ -99,5 +116,5 @@ node scripts/install.mjs
 ```
 
 `git pull` updates daemon, extension, and skill source all at once.
-The installer re-stamps the global skill with the latest content.
+The installer re-stamps the selected skill targets with the latest content.
 Chrome auto-reloads the extension from the same folder.

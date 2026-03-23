@@ -12,7 +12,7 @@
 
 import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
 
@@ -35,7 +35,52 @@ function run(cmd) {
   return execSync(cmd, { cwd: KUMA_ROOT, stdio: "pipe", timeout: 10000 }).toString().trim();
 }
 
-// ── Checks ────────────────────────────────────────────────────────────────
+function resolveCodexHome() {
+  return process.env.CODEX_HOME ? resolve(process.env.CODEX_HOME) : resolve(os.homedir(), ".codex");
+}
+
+function detectPrimaryAgent() {
+  if (
+    process.env.CODEX_HOME ||
+    process.env.CODEX_SHELL ||
+    process.env.CODEX_CI ||
+    process.env.CODEX_THREAD_ID ||
+    process.env.CODEX
+  ) {
+    return "codex";
+  }
+
+  return "claude";
+}
+
+function resolveSkillPath(agent) {
+  if (agent === "codex") {
+    return resolve(resolveCodexHome(), "skills", "kuma-picker", "SKILL.md");
+  }
+
+  return resolve(os.homedir(), ".claude", "skills", "kuma-picker", "SKILL.md");
+}
+
+function checkSkill(agent) {
+  const activeAgent = detectPrimaryAgent();
+  const skillPath = resolveSkillPath(agent);
+  const isActiveAgent = agent === activeAgent;
+
+  check(
+    `${agent}_skill`,
+    () => {
+      if (!existsSync(skillPath)) {
+        const installHint = isActiveAgent
+          ? "node scripts/install.mjs"
+          : `node scripts/install.mjs --also-${agent}`;
+        throw new Error(`Missing: ${skillPath}. Run: ${installHint}`);
+      }
+
+      return isActiveAgent ? skillPath : `${skillPath} (optional)`;
+    },
+    { level: isActiveAgent ? "required" : "optional" },
+  );
+}
 
 check("node_version", () => {
   const major = parseInt(process.versions.node.split(".")[0], 10);
@@ -64,9 +109,7 @@ check("daemon_reachable", () => {
 });
 
 check("state_home", () => {
-  const stateHome =
-    process.env.KUMA_PICKER_STATE_HOME ||
-    resolve(os.homedir(), ".kuma-picker");
+  const stateHome = process.env.KUMA_PICKER_STATE_HOME || resolve(os.homedir(), ".kuma-picker");
   if (!existsSync(stateHome)) {
     throw new Error(`Missing: ${stateHome}. Run: node scripts/install.mjs`);
   }
@@ -101,21 +144,8 @@ check("browser_bridge", () => {
   }
 });
 
-check("claude_skill", () => {
-  const skillPath = resolve(os.homedir(), ".claude", "skills", "kuma-picker", "SKILL.md");
-  if (!existsSync(skillPath)) {
-    throw new Error(`Missing: ${skillPath}. Run: node scripts/install.mjs`);
-  }
-  return skillPath;
-});
-
-check("codex_skill", () => {
-  const skillPath = resolve(os.homedir(), ".codex", "skills", "kuma-picker", "SKILL.md");
-  if (!existsSync(skillPath)) {
-    throw new Error(`Missing: ${skillPath}. Run: node scripts/install.mjs --also-codex`);
-  }
-  return skillPath;
-}, { level: "optional" });
+checkSkill("codex");
+checkSkill("claude");
 
 check("extension_source", () => {
   const extPath = resolve(KUMA_ROOT, "packages", "browser-extension", "manifest.json");
@@ -124,8 +154,6 @@ check("extension_source", () => {
   }
   return resolve(KUMA_ROOT, "packages", "browser-extension");
 });
-
-// ── Output ────────────────────────────────────────────────────────────────
 
 if (jsonMode) {
   process.stdout.write(JSON.stringify({ checks }, null, 2) + "\n");
@@ -150,7 +178,7 @@ if (jsonMode) {
       process.stdout.write("  Quick fix: npm install\n\n");
     } else if (failed.some((c) => c.name === "daemon_reachable")) {
       process.stdout.write(`  Quick fix: node ${resolve(KUMA_ROOT, "packages/server/src/cli.mjs")} serve &\n\n`);
-    } else if (failed.some((c) => c.name === "claude_skill" || c.name === "codex_skill")) {
+    } else if (failed.some((c) => c.name === "codex_skill" || c.name === "claude_skill")) {
       process.stdout.write(`  Quick fix: node ${resolve(KUMA_ROOT, "scripts/install.mjs")}\n\n`);
     } else if (failed.some((c) => c.name === "extension_status" || c.name === "browser_bridge")) {
       process.stdout.write(

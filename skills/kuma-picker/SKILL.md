@@ -31,7 +31,8 @@ When the user asks to install Kuma Picker, run:
 node __KUMA_PICKER_REPO__/scripts/install.mjs
 ```
 
-This handles: dependency install, daemon start, state home creation, and global skill setup.
+This handles: dependency install, daemon start, shared state home creation, and installing the current agent skill by default.
+Add `--all` if you explicitly want both the Codex and Claude skill folders stamped in one run.
 The only human step is loading the Chrome extension (see below).
 
 ### Health check

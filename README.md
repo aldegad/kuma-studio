@@ -22,7 +22,7 @@ The fastest way to set up everything:
 node scripts/install.mjs
 ```
 
-This installs dependencies, starts the daemon, installs the global skills for both Codex and Claude (`~/.codex/skills/kuma-picker/`, `~/.claude/skills/kuma-picker/`), and tells you the one remaining step (loading the Chrome extension). See [INSTALL.md](./INSTALL.md) for details.
+This installs dependencies, starts the daemon, creates the shared Kuma Picker state in `~/.kuma-picker/`, installs the active agent skill by default, and tells you the one remaining step (loading the Chrome extension). Add `--all` if you want to stamp both the Codex and Claude skill folders in one run. See [INSTALL.md](./INSTALL.md) for details.
 
 **Manual setup** (if you prefer step by step):
 
