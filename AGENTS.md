@@ -25,6 +25,12 @@
 - If you changed code for a picked element, leave a final job-card update before replying.
 - Include what changed, whether you verified it, and whether reselection is needed.
 
+## UI QA
+
+- For frontend or visual changes, do not stop at code review alone.
+- Capture a fresh Kuma Picker screenshot of the actual page and inspect alignment, spacing, scroll behavior, and overall design quality before replying.
+- Call out the specific screenshot you checked and summarize what passed or still looks wrong.
+
 ## Repo Discipline
 
 - Keep shared engine code inside `packages/`, `tools/kuma-pickerd/`.

@@ -6,6 +6,7 @@
     const CLICK_SIZE = 70;
     const CLICK_HOTSPOT_Y = 0.25;
     let recordingGestureDurationMultiplier = 1;
+    let activeHoldGesture = null;
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
@@ -74,6 +75,21 @@
       return element;
     }
 
+    function getClickPlacement(point, size = CLICK_SIZE) {
+      return {
+        left: clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10),
+        top: clamp(point.y - size * CLICK_HOTSPOT_Y, 10, window.innerHeight - size - 10),
+      };
+    }
+
+    function applyElementFrame(element, frame) {
+      for (const [key, value] of Object.entries(frame)) {
+        if (value != null) {
+          element.style[key] = value;
+        }
+      }
+    }
+
     async function playAnimation(element, keyframes, options) {
       const root = getRootElement();
       root.appendChild(element);
@@ -105,8 +121,7 @@
       }
 
       const size = CLICK_SIZE;
-      const left = clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10);
-      const top = clamp(point.y - size * CLICK_HOTSPOT_Y, 10, window.innerHeight - size - 10);
+      const { left, top } = getClickPlacement(point, size);
       const paw = createPawElement(size, "click");
       paw.style.left = `${left}px`;
       paw.style.top = `${top}px`;
@@ -152,6 +167,142 @@
           fill: "forwards",
         },
       );
+    }
+
+    async function holdClickGesture(point) {
+      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+        return;
+      }
+
+      const root = getRootElement();
+      const size = CLICK_SIZE;
+      const { left, top } = getClickPlacement(point, size);
+
+      if (activeHoldGesture?.element instanceof Element) {
+        activeHoldGesture.element.remove();
+        activeHoldGesture = null;
+      }
+
+      const paw = createPawElement(size, "click");
+      paw.style.left = `${left}px`;
+      paw.style.top = `${top}px`;
+      root.appendChild(paw);
+
+      const finalFrame = {
+        opacity: "1",
+        transform: "translate3d(0, 0, 0) scale(0.9)",
+      };
+
+      activeHoldGesture = {
+        element: paw,
+        size,
+      };
+
+      if (document.visibilityState !== "visible" || typeof paw.animate !== "function") {
+        applyElementFrame(paw, finalFrame);
+        await waitForAnimationFrames(1);
+        return;
+      }
+
+      const animation = paw.animate(
+        [
+          {
+            opacity: 0,
+            transform: "translate3d(0, 5px, 0) scale(1)",
+          },
+          {
+            opacity: 1,
+            offset: 0.1,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 2px, 0) scale(1)",
+            offset: 0.5,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(0.9)",
+          },
+        ],
+        {
+          duration: Math.round(240 * recordingGestureDurationMultiplier),
+          easing: "ease-in-out",
+          fill: "forwards",
+        },
+      );
+      await animation.finished.catch(() => { });
+      if (activeHoldGesture?.element === paw) {
+        applyElementFrame(paw, finalFrame);
+      }
+    }
+
+    function moveHeldGesture(point) {
+      if (
+        !(activeHoldGesture?.element instanceof Element) ||
+        !point ||
+        !Number.isFinite(point.x) ||
+        !Number.isFinite(point.y)
+      ) {
+        return;
+      }
+
+      const { left, top } = getClickPlacement(point, activeHoldGesture.size ?? CLICK_SIZE);
+      activeHoldGesture.element.style.left = `${left}px`;
+      activeHoldGesture.element.style.top = `${top}px`;
+    }
+
+    async function releaseHeldGesture(point) {
+      if (!(activeHoldGesture?.element instanceof Element)) {
+        return;
+      }
+
+      const { element, size } = activeHoldGesture;
+      activeHoldGesture = null;
+
+      if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+        const { left, top } = getClickPlacement(point, size ?? CLICK_SIZE);
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
+      }
+
+      if (document.visibilityState !== "visible" || typeof element.animate !== "function") {
+        element.remove();
+        await waitForAnimationFrames(1);
+        return;
+      }
+
+      const animation = element.animate(
+        [
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(0.9)",
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(1)",
+            offset: 0.4,
+          },
+          {
+            opacity: 0,
+            transform: "translate3d(0, 5px, 0) scale(1)",
+          },
+        ],
+        {
+          duration: Math.round(180 * recordingGestureDurationMultiplier),
+          easing: "ease-in-out",
+          fill: "forwards",
+        },
+      );
+      await animation.finished.catch(() => { });
+      element.remove();
+    }
+
+    function clearHeldGesture() {
+      if (!(activeHoldGesture?.element instanceof Element)) {
+        return;
+      }
+      activeHoldGesture.element.remove();
+      activeHoldGesture = null;
     }
 
     async function playScrollGesture(details) {
@@ -261,6 +412,10 @@
 
     return {
       playClickGesture,
+      holdClickGesture,
+      moveHeldGesture,
+      releaseHeldGesture,
+      clearHeldGesture,
       playScrollGesture,
       playDragGesture,
       setRecordingMode,
