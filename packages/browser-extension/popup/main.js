@@ -462,6 +462,8 @@ async function runAction(type, workingMessage, successMessage, extra = {}) {
 
 document.addEventListener("DOMContentLoaded", async () => {
   daemonUrlInput.value = await readDaemonUrl();
+  const liveCaptureSettings = await KumaPickerExtensionLiveCaptureSettings.read();
+  setSelectedLiveCaptureSourceValue(liveCaptureSettings.source);
   setRefactorPrompt(REFACTOR_PROMPT);
   setLastSaved("");
   setFeedback("", "idle");

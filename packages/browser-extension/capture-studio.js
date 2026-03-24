@@ -62,6 +62,7 @@ let recordingActive = false;
 let stopping = false;
 let renderFrameId = null;
 const pendingDownloadUrls = new Map();
+let storedStudioPreferences = KumaPickerExtensionLiveCaptureSettings.createDefaultStudioSettings();
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -77,6 +78,90 @@ function getVisibleSectionIds() {
 
 function getActiveSectionId() {
   return compositionMode === COMPOSITION_SPLIT ? activeSectionId : COMPOSITION_SINGLE;
+}
+
+function rectToRatioRect(rect) {
+  if (!studioContext || !rect) {
+    return null;
+  }
+
+  return {
+    x: rect.x / studioContext.sourceWidth,
+    y: rect.y / studioContext.sourceHeight,
+    width: rect.width / studioContext.sourceWidth,
+    height: rect.height / studioContext.sourceHeight,
+  };
+}
+
+function ratioRectToSelectionRect(ratioRect) {
+  if (!studioContext || !ratioRect) {
+    return null;
+  }
+
+  return normalizeSelectionRect({
+    x: ratioRect.x * studioContext.sourceWidth,
+    y: ratioRect.y * studioContext.sourceHeight,
+    width: ratioRect.width * studioContext.sourceWidth,
+    height: ratioRect.height * studioContext.sourceHeight,
+  });
+}
+
+function createStudioPreferenceSnapshot() {
+  return {
+    previewScalePercent: clamp(Math.round(Number(previewScaleElement.value) || 100), 80, 145),
+    compositionMode,
+    activeSectionId: getActiveSectionId(),
+    selectionRatios: {
+      single: rectToRatioRect(selectionRects.single),
+      left: rectToRatioRect(selectionRects.left),
+      right: rectToRatioRect(selectionRects.right),
+    },
+  };
+}
+
+async function persistStudioPreferences() {
+  if (!studioContext || (studioContext.captureKind !== "window" && studioContext.captureKind !== "screen")) {
+    return;
+  }
+
+  storedStudioPreferences = await KumaPickerExtensionLiveCaptureSettings.writeStudioPreferences(
+    studioContext.captureKind,
+    createStudioPreferenceSnapshot(),
+  );
+}
+
+function applyStoredSelections() {
+  if (!studioContext) {
+    return false;
+  }
+
+  if (compositionMode === COMPOSITION_SPLIT) {
+    const left = ratioRectToSelectionRect(storedStudioPreferences.selectionRatios.left);
+    const right = ratioRectToSelectionRect(storedStudioPreferences.selectionRatios.right);
+    if (!left || !right) {
+      return false;
+    }
+
+    selectionRects = {
+      ...selectionRects,
+      left,
+      right,
+    };
+    activeSectionId = storedStudioPreferences.activeSectionId === "right" ? "right" : "left";
+    return true;
+  }
+
+  const single = ratioRectToSelectionRect(storedStudioPreferences.selectionRatios.single);
+  if (!single) {
+    return false;
+  }
+
+  selectionRects = {
+    ...selectionRects,
+    single,
+  };
+  activeSectionId = COMPOSITION_SINGLE;
+  return true;
 }
 
 function hasRecordingSelection() {
@@ -227,6 +312,12 @@ function applyDefaultSelections() {
     return;
   }
 
+  if (applyStoredSelections()) {
+    renderSelectionBoxes();
+    updateButtonState();
+    return;
+  }
+
   if (compositionMode === COMPOSITION_SPLIT) {
     const splitRects = createSplitSelectionRects();
     selectionRects = {
@@ -279,6 +370,7 @@ function setCompositionMode(mode) {
     updateButtonState();
   }
   updateCompositionUi();
+  void persistStudioPreferences();
 }
 
 function setActiveSection(sectionId) {
@@ -289,6 +381,7 @@ function setActiveSection(sectionId) {
   activeSectionId = sectionId;
   renderSelectionBoxes();
   updateCompositionUi();
+  void persistStudioPreferences();
 }
 
 function renderSelectionBoxes() {
@@ -655,6 +748,7 @@ async function startRecording() {
     return;
   }
 
+  await persistStudioPreferences();
   recordingPlan = createRecordingPlan();
   recordingCanvas.width = recordingPlan.canvasWidth;
   recordingCanvas.height = recordingPlan.canvasHeight;
@@ -762,6 +856,14 @@ async function loadStudioContext() {
   }
 
   studioContext = response.studio;
+  storedStudioPreferences = await KumaPickerExtensionLiveCaptureSettings.readStudioPreferences(studioContext.captureKind);
+  compositionMode = storedStudioPreferences.compositionMode === COMPOSITION_SPLIT ? COMPOSITION_SPLIT : COMPOSITION_SINGLE;
+  activeSectionId =
+    compositionMode === COMPOSITION_SPLIT
+      ? (storedStudioPreferences.activeSectionId === "right" ? "right" : "left")
+      : COMPOSITION_SINGLE;
+  previewScaleElement.value = String(storedStudioPreferences.previewScalePercent);
+  setPreviewScale(storedStudioPreferences.previewScalePercent);
   applyStudioCopy();
   updateButtonState();
 }
@@ -782,6 +884,7 @@ useFullFrameButton.addEventListener("click", () => {
   if (compositionMode === COMPOSITION_SPLIT) {
     applyDefaultSelections();
     setStatus("2-Up 기본 구도로 재설정했어요", "좌우를 각각 다시 드래그해서 원하는 구성으로 맞춰보세요.");
+    void persistStudioPreferences();
     return;
   }
 
@@ -794,6 +897,7 @@ useFullFrameButton.addEventListener("click", () => {
   renderSelectionBoxes();
   updateButtonState();
   setStatus("전체 프레임 사용", "전체 공유 화면을 그대로 녹화합니다.");
+  void persistStudioPreferences();
 });
 
 resetCompositionButton.addEventListener("click", () => {
@@ -808,6 +912,7 @@ resetCompositionButton.addEventListener("click", () => {
       ? "Left와 Right를 각각 다시 드래그해서 원하는 구성으로 맞춰보세요."
       : "프레임을 다시 드래그해 원하는 영역을 잡아보세요.",
   );
+  void persistStudioPreferences();
 });
 
 layoutSingleButton.addEventListener("click", () => {
@@ -883,6 +988,7 @@ previewStageElement.addEventListener("pointerup", (event) => {
 
   previewStageElement.releasePointerCapture(event.pointerId);
   selectionDrag = null;
+  void persistStudioPreferences();
 });
 
 previewStageElement.addEventListener("pointercancel", () => {
@@ -891,6 +997,10 @@ previewStageElement.addEventListener("pointercancel", () => {
 
 previewScaleElement.addEventListener("input", (event) => {
   setPreviewScale(event.currentTarget?.value);
+});
+
+previewScaleElement.addEventListener("change", () => {
+  void persistStudioPreferences();
 });
 
 window.addEventListener("resize", () => {

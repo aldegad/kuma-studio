@@ -2,6 +2,7 @@ const KumaPickerExtensionShared = (() => {
   const DEFAULT_DAEMON_URL = "http://127.0.0.1:4312";
   const DAEMON_STORAGE_KEY = "kumaPicker.browserExtension.daemonUrl";
   const INSPECT_KEY_PREFIX = "kumaPicker.browserExtension.inspect.";
+  const LIVE_CAPTURE_SETTINGS_STORAGE_KEY = "kumaPicker.browserExtension.liveCaptureSettings";
 
   function normalizeDaemonUrl(rawValue) {
     const trimmed = typeof rawValue === "string" ? rawValue.trim() : "";
@@ -26,6 +27,7 @@ const KumaPickerExtensionShared = (() => {
     DAEMON_STORAGE_KEY,
     DEFAULT_DAEMON_URL,
     INSPECT_KEY_PREFIX,
+    LIVE_CAPTURE_SETTINGS_STORAGE_KEY,
     createDaemonSocketUrl,
     createSessionId,
     normalizeDaemonUrl,

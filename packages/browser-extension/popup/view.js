@@ -54,6 +54,14 @@ function getSelectedLiveCaptureSourceValue() {
   return value === "window" || value === "screen" ? value : "tab";
 }
 
+function setSelectedLiveCaptureSourceValue(source) {
+  const normalizedSource = KumaPickerExtensionLiveCaptureSettings.normalizeSource(source);
+  liveCaptureSourceElements.forEach((input) => {
+    input.checked = input.value === normalizedSource;
+  });
+  syncButtonState();
+}
+
 function canStartLiveCapture() {
   const selectedSource = getSelectedLiveCaptureSourceValue();
   if (selectedSource === "window" || selectedSource === "screen") {
@@ -219,6 +227,9 @@ copyPageTabIdButton.addEventListener("click", () => {
 
 liveCaptureSourceElements.forEach((input) => {
   input.addEventListener("change", () => {
+    if (input.checked) {
+      void KumaPickerExtensionLiveCaptureSettings.writeSource(input.value);
+    }
     syncButtonState();
   });
 });
