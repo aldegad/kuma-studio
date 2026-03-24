@@ -26,6 +26,77 @@ function getBlackKeyLeft(keys: PianoKey[], midi: number, ww: number, bw: number)
 const WHITE_KEY_HEIGHT = 140;
 const BLACK_KEY_HEIGHT = 88;
 
+type PianoEffectState = {
+  modRate: number;
+  modDepth: number;
+  tremRate: number;
+  tremDepth: number;
+};
+
+type PianoAutomationKeyframe = PianoEffectState & {
+  at: number;
+};
+
+const ZERO_EFFECTS: PianoEffectState = {
+  modRate: 0,
+  modDepth: 0,
+  tremRate: 0,
+  tremDepth: 0,
+};
+
+const CANON_CONCERT_EFFECT_DURATION_MS = 143_270;
+const CANON_CONCERT_KEYFRAMES: PianoAutomationKeyframe[] = [
+  { at: 0, modRate: 0, modDepth: 0, tremRate: 0, tremDepth: 0 },
+  { at: 0.56, modRate: 0, modDepth: 0, tremRate: 0.1, tremDepth: 0.04 },
+  { at: 0.72, modRate: 0.03, modDepth: 0.015, tremRate: 0.16, tremDepth: 0.1 },
+  { at: 0.84, modRate: 0.06, modDepth: 0.04, tremRate: 0.22, tremDepth: 0.16 },
+  { at: 0.93, modRate: 0.08, modDepth: 0.06, tremRate: 0.28, tremDepth: 0.22 },
+  { at: 0.98, modRate: 0.04, modDepth: 0.025, tremRate: 0.16, tremDepth: 0.1 },
+  { at: 1, modRate: 0, modDepth: 0, tremRate: 0, tremDepth: 0 },
+];
+
+function clampUnit(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function interpolateEffectState(progress: number) {
+  const clampedProgress = clampUnit(progress);
+  const nextFrame = CANON_CONCERT_KEYFRAMES.find((frame) => frame.at >= clampedProgress) ?? CANON_CONCERT_KEYFRAMES[CANON_CONCERT_KEYFRAMES.length - 1];
+  const previousFrame =
+    [...CANON_CONCERT_KEYFRAMES].reverse().find((frame) => frame.at <= clampedProgress) ?? CANON_CONCERT_KEYFRAMES[0];
+
+  if (nextFrame.at === previousFrame.at) {
+    return {
+      modRate: nextFrame.modRate,
+      modDepth: nextFrame.modDepth,
+      tremRate: nextFrame.tremRate,
+      tremDepth: nextFrame.tremDepth,
+    } satisfies PianoEffectState;
+  }
+
+  const span = nextFrame.at - previousFrame.at;
+  const mix = span <= 0 ? 0 : (clampedProgress - previousFrame.at) / span;
+  const blend = (from: number, to: number) => from + (to - from) * mix;
+
+  return {
+    modRate: blend(previousFrame.modRate, nextFrame.modRate),
+    modDepth: blend(previousFrame.modDepth, nextFrame.modDepth),
+    tremRate: blend(previousFrame.tremRate, nextFrame.tremRate),
+    tremDepth: blend(previousFrame.tremDepth, nextFrame.tremDepth),
+  } satisfies PianoEffectState;
+}
+
+declare global {
+  interface Window {
+    __kumaPianoStudio?: {
+      getEffects: () => PianoEffectState;
+      playCanonConcertEffects: (durationMs?: number) => void;
+      setEffects: (next: Partial<PianoEffectState>) => void;
+      stopEffectAutomation: (reset?: boolean) => void;
+    };
+  }
+}
+
 function SustainPedal({
   active,
   onDown,
@@ -66,7 +137,17 @@ function SustainPedal({
 /*  Knob                                                               */
 /* ------------------------------------------------------------------ */
 
-function Knob({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+function Knob({
+  label,
+  value,
+  onChange,
+  testId,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  testId?: string;
+}) {
   const dragging = useRef(false);
   const startY = useRef(0);
   const startVal = useRef(0);
@@ -94,6 +175,7 @@ function Knob({ label, value, onChange }: { label: string; value: number; onChan
     <div className="flex flex-col items-center gap-1.5">
       <div
         className="relative h-[44px] w-[44px] cursor-ns-resize rounded-full border border-[rgba(255,255,255,0.08)] bg-[radial-gradient(circle_at_38%_38%,#3a3f4d,#0c0d12_70%)] shadow-[0_4px_16px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)]"
+        data-testid={testId}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -230,6 +312,8 @@ function PianoKeyboard({
 export function KumaPianoStudio() {
   const audioRef = useRef<PianoAudio | null>(null);
   const pressedRef = useRef(new Set<string>());
+  const effectStateRef = useRef<PianoEffectState>(ZERO_EFFECTS);
+  const automationFrameRef = useRef<number | null>(null);
   const [activeKeyIds, setActiveKeyIds] = useState<string[]>([]);
   const [sustainActive, setSustainActive] = useState(false);
 
@@ -244,6 +328,80 @@ export function KumaPianoStudio() {
 
   useEffect(() => { audioRef.current?.setModulation(modRate * 10, modDepth); }, [modRate, modDepth]);
   useEffect(() => { audioRef.current?.setTremolo(tremRate * 10, tremDepth); }, [tremRate, tremDepth]);
+  useEffect(() => {
+    effectStateRef.current = { modRate, modDepth, tremRate, tremDepth };
+  }, [modRate, modDepth, tremRate, tremDepth]);
+
+  function applyEffects(next: PianoEffectState) {
+    const clamped = {
+      modRate: clampUnit(next.modRate),
+      modDepth: clampUnit(next.modDepth),
+      tremRate: clampUnit(next.tremRate),
+      tremDepth: clampUnit(next.tremDepth),
+    } satisfies PianoEffectState;
+
+    effectStateRef.current = clamped;
+    setModRate(clamped.modRate);
+    setModDepth(clamped.modDepth);
+    setTremRate(clamped.tremRate);
+    setTremDepth(clamped.tremDepth);
+  }
+
+  function stopEffectAutomation(reset = false) {
+    if (automationFrameRef.current != null) {
+      window.cancelAnimationFrame(automationFrameRef.current);
+      automationFrameRef.current = null;
+    }
+    if (reset) {
+      applyEffects(ZERO_EFFECTS);
+    }
+  }
+
+  function playCanonConcertEffects(durationMs = CANON_CONCERT_EFFECT_DURATION_MS) {
+    stopEffectAutomation(false);
+    const totalMs = Math.max(1_000, durationMs);
+    const startedAt = performance.now();
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / totalMs);
+      applyEffects(interpolateEffectState(progress));
+
+      if (progress < 1) {
+        automationFrameRef.current = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      automationFrameRef.current = null;
+    };
+
+    applyEffects(interpolateEffectState(0));
+    automationFrameRef.current = window.requestAnimationFrame(tick);
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const api = {
+      getEffects: () => effectStateRef.current,
+      playCanonConcertEffects,
+      setEffects: (next: Partial<PianoEffectState>) => {
+        stopEffectAutomation(false);
+        applyEffects({
+          ...effectStateRef.current,
+          ...next,
+        });
+      },
+      stopEffectAutomation,
+    };
+
+    window.__kumaPianoStudio = api;
+    return () => {
+      if (window.__kumaPianoStudio === api) {
+        delete window.__kumaPianoStudio;
+      }
+      stopEffectAutomation(false);
+    };
+  }, []);
 
   function markActive(keyId: string, on: boolean) {
     setActiveKeyIds((cur) =>
@@ -343,16 +501,16 @@ export function KumaPianoStudio() {
                 <div className="flex flex-col items-center gap-2">
                   <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#dfd1ba]">Modulation</p>
                   <div className="flex gap-4">
-                    <Knob label="Rate" value={modRate} onChange={setModRate} />
-                    <Knob label="Depth" value={modDepth} onChange={setModDepth} />
+                    <Knob label="Rate" value={modRate} onChange={setModRate} testId="piano-modulation-rate" />
+                    <Knob label="Depth" value={modDepth} onChange={setModDepth} testId="piano-modulation-depth" />
                   </div>
                 </div>
                 <div className="mt-5 h-[50px] w-px bg-white/8" />
                 <div className="flex flex-col items-center gap-2">
                   <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#dfd1ba]">Tremolo</p>
                   <div className="flex gap-4">
-                    <Knob label="Rate" value={tremRate} onChange={setTremRate} />
-                    <Knob label="Depth" value={tremDepth} onChange={setTremDepth} />
+                    <Knob label="Rate" value={tremRate} onChange={setTremRate} testId="piano-tremolo-rate" />
+                    <Knob label="Depth" value={tremDepth} onChange={setTremDepth} testId="piano-tremolo-depth" />
                   </div>
                 </div>
               </div>

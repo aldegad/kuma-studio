@@ -88,4 +88,7 @@ Agent-specific guidance lives here:
 
 ## License
 
-[MIT](./LICENSE)
+[Apache-2.0](./LICENSE)
+
+The current repository state is distributed under Apache License 2.0. Earlier
+published revisions may have been available under different terms.
