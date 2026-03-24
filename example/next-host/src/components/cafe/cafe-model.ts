@@ -3,6 +3,9 @@ import {
   KUMA_CAFE_GUEST_RABBIT_SRC,
   KUMA_CAFE_GUEST_RACCOON_SRC,
   KUMA_CAFE_ICON_SRC,
+  KUMA_MENU_BERRY_SCONE_SRC,
+  KUMA_MENU_HONEY_BUN_SRC,
+  KUMA_MENU_MAPLE_FINANCIER_SRC,
 } from "../../lib/kuma-assets";
 
 export type CafeTabId = "orders" | "menu" | "delivery";
@@ -117,17 +120,17 @@ export const DESSERT_ORDER_TEMPLATES = [
 export const PASTRY_SHOWCASE_ITEMS: PastryShowcaseItem[] = [
   {
     name: "Honey Bun",
-    artworkUrl: "/kuma-menu-honey-bun.png",
+    artworkUrl: KUMA_MENU_HONEY_BUN_SRC,
     note: "Golden glaze, soft spiral crumb, morning counter favorite.",
   },
   {
     name: "Berry Scone",
-    artworkUrl: "/kuma-menu-berry-scone.png",
+    artworkUrl: KUMA_MENU_BERRY_SCONE_SRC,
     note: "Jammy fruit pockets with a cozy bakehouse finish.",
   },
   {
     name: "Maple Financier",
-    artworkUrl: "/kuma-menu-maple-financier.png",
+    artworkUrl: KUMA_MENU_MAPLE_FINANCIER_SRC,
     note: "Toasted almond crumb with a mellow maple glow.",
   },
 ];

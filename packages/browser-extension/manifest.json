@@ -12,6 +12,7 @@
     "offscreen",
     "scripting",
     "storage",
+    "tabCapture",
     "tabs"
   ],
   "host_permissions": [

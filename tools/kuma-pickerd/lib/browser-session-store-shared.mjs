@@ -256,7 +256,7 @@ export function sanitizeCommandPayload(candidate) {
         : null,
     timeoutMs:
       Number.isFinite(timeoutMs) && timeoutMs > 0
-        ? Math.min(120_000, Math.round(timeoutMs))
+        ? Math.min(600_000, Math.round(timeoutMs))
         : null,
     holdMs:
       Number.isFinite(holdMs) && holdMs >= 0

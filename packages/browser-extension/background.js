@@ -5,6 +5,7 @@ importScripts(
   "./background/tabs.js",
   "./background/recording-support.js",
   "./background/recording.js",
+  "./background/live-capture.js",
   "./background/debugger.js",
   "./background/injection.js",
   "./background/daemon-client.js",

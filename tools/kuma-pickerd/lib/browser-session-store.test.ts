@@ -136,10 +136,11 @@ describe("BrowserSessionStore", () => {
     );
   });
 
-  it("fails in-flight websocket commands when the browser disconnects", async () => {
+  it("allows an in-flight websocket command to complete after the browser reconnects", async () => {
     const { BrowserSessionStore } = await import("./browser-session-store.mjs");
     const store = new BrowserSessionStore();
     const browserSend = vi.fn();
+    const reconnectedBrowserSend = vi.fn();
     const controllerSend = vi.fn();
 
     store.registerHello("browser-1", { type: "hello", role: "browser", extensionId: "ext-1" }, browserSend);
@@ -170,15 +171,40 @@ describe("BrowserSessionStore", () => {
     });
 
     store.disconnect("browser-1");
-
-    expect(controllerSend).toHaveBeenLastCalledWith(
+    expect(controllerSend).not.toHaveBeenCalledWith(
       expect.objectContaining({
         type: "command.error",
         requestId: "browser-command-test-02",
-        error: expect.stringContaining("disconnected"),
       }),
     );
     expect(store.readSummary().connected).toBe(false);
+
+    store.registerHello("browser-2", { type: "hello", role: "browser", extensionId: "ext-1" }, reconnectedBrowserSend);
+    store.completeBrowserCommand("browser-2", {
+      type: "command.result",
+      requestId: "browser-command-test-02",
+      result: {
+        pageContext: {
+          page: {
+            title: "Recovered",
+          },
+        },
+      },
+    });
+
+    expect(controllerSend).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: "command.result",
+        requestId: "browser-command-test-02",
+        result: {
+          pageContext: {
+            page: {
+              title: "Recovered",
+            },
+          },
+        },
+      }),
+    );
   });
 
   it("can dispatch targeted websocket commands through a single browser connection without cached live presence", async () => {

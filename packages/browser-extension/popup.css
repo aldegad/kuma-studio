@@ -114,6 +114,21 @@ body {
   background: #fff6f6;
 }
 
+.live-capture-status[data-state="idle"] {
+  border-color: #dbe5ea;
+  background: #f9fbfc;
+}
+
+.live-capture-status[data-state="recording"] {
+  border-color: #f2e2c1;
+  background: #fff9ef;
+}
+
+.live-capture-status[data-state="error"] {
+  border-color: #f2d8d8;
+  background: #fff6f6;
+}
+
 .connection-status[data-state="connected"] .connection-badge {
   background: #edf9f4;
   border-color: #d7eee5;
@@ -283,6 +298,17 @@ body {
 .button-tertiary:hover {
   background: #e7e8ff;
   border-color: #d5d8ff;
+}
+
+.button-danger {
+  background: #fff0f0;
+  border-color: #f2d8d8;
+  color: #b65454;
+}
+
+.button-danger:hover {
+  background: #ffe5e5;
+  border-color: #eccccc;
 }
 
 .button-ghost {

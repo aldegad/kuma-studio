@@ -1,16 +1,32 @@
-const KUMA_ASSET_REV = "20260319c";
+import agentChatIcon from "../assets/agent-chat-icon.png";
+import kumaCafeBearBarista from "../assets/kuma-cafe-bear-barista.png";
+import kumaCafeGuestCat from "../assets/kuma-cafe-guest-cat.png";
+import kumaCafeGuestRabbit from "../assets/kuma-cafe-guest-rabbit.png";
+import kumaCafeGuestRaccoon from "../assets/kuma-cafe-guest-raccoon.png";
+import kumaCafeIcon from "../assets/kuma-cafe-icon.png";
+import kumaFavicon from "../assets/kuma-favicon.png";
+import kumaMenuBerryScone from "../assets/kuma-menu-berry-scone.png";
+import kumaMenuHoneyBun from "../assets/kuma-menu-honey-bun.png";
+import kumaMenuMapleFinancier from "../assets/kuma-menu-maple-financier.png";
+import kumaPianoIcon from "../assets/kuma-piano-icon.png";
+import kumaRichTextIcon from "../assets/kuma-richtext-icon.png";
+import kumaShootingIcon from "../assets/kuma-shooting-icon.png";
+import kumaSudokuIcon from "../assets/kuma-sudoku-icon.png";
+import kumaTestConnectIcon from "../assets/kuma-test-connect-icon.png";
 
-function withRev(path: string) {
-  return `${path}?v=${KUMA_ASSET_REV}`;
-}
+export const KUMA_SUDOKU_ICON_SRC = kumaSudokuIcon.src;
+export const KUMA_AGENT_CHAT_ICON_SRC = agentChatIcon.src;
+export const KUMA_CAFE_ICON_SRC = kumaCafeIcon.src;
+export const KUMA_CAFE_BEAR_BARISTA_SRC = kumaCafeBearBarista.src;
+export const KUMA_CAFE_GUEST_RABBIT_SRC = kumaCafeGuestRabbit.src;
+export const KUMA_CAFE_GUEST_CAT_SRC = kumaCafeGuestCat.src;
+export const KUMA_CAFE_GUEST_RACCOON_SRC = kumaCafeGuestRaccoon.src;
+export const KUMA_SHOOTING_ICON_SRC = kumaShootingIcon.src;
+export const KUMA_RICHTEXT_ICON_SRC = kumaRichTextIcon.src;
+export const KUMA_PIANO_ICON_SRC = kumaPianoIcon.src;
+export const KUMA_TEST_CONNECT_ICON_SRC = kumaTestConnectIcon.src;
+export const KUMA_FAVICON_SRC = kumaFavicon.src;
 
-export const KUMA_SUDOKU_ICON_SRC = withRev("/kuma-sudoku-icon.png");
-export const KUMA_AGENT_CHAT_ICON_SRC = withRev("/agent-chat-icon.png");
-export const KUMA_CAFE_ICON_SRC = withRev("/kuma-cafe-icon.png");
-export const KUMA_CAFE_BEAR_BARISTA_SRC = withRev("/kuma-cafe-bear-barista.png");
-export const KUMA_CAFE_GUEST_RABBIT_SRC = withRev("/kuma-cafe-guest-rabbit.png");
-export const KUMA_CAFE_GUEST_CAT_SRC = withRev("/kuma-cafe-guest-cat.png");
-export const KUMA_CAFE_GUEST_RACCOON_SRC = withRev("/kuma-cafe-guest-raccoon.png");
-export const KUMA_SHOOTING_ICON_SRC = withRev("/kuma-shooting-icon.png");
-export const KUMA_TEST_CONNECT_ICON_SRC = withRev("/kuma-test-connect-icon.png");
-export const KUMA_FAVICON_SRC = withRev("/kuma-favicon.png");
+export const KUMA_MENU_HONEY_BUN_SRC = kumaMenuHoneyBun.src;
+export const KUMA_MENU_BERRY_SCONE_SRC = kumaMenuBerryScone.src;
+export const KUMA_MENU_MAPLE_FINANCIER_SRC = kumaMenuMapleFinancier.src;

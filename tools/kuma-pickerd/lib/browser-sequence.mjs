@@ -33,6 +33,11 @@ const SUPPORTED_SEQUENCE_ASSERTION_TYPES = new Set([
   "selector-state",
 ]);
 
+const MIN_SEQUENCE_TIMEOUT_MS = 15_000;
+const MAX_SEQUENCE_TIMEOUT_MS = 600_000;
+const SEQUENCE_STEP_OVERHEAD_MS = 100;
+const SEQUENCE_TIMEOUT_BUFFER_MS = 5_000;
+
 function parseJson(rawValue, sourceLabel) {
   try {
     return JSON.parse(rawValue);
@@ -143,7 +148,37 @@ export function readBrowserSequenceSteps(options) {
   return normalizeBrowserSequenceDefinition(parseJson(inlineSteps, "--steps"), "--steps");
 }
 
+export function estimateBrowserSequenceTimeoutMs(steps, fallbackMs = MIN_SEQUENCE_TIMEOUT_MS) {
+  if (!Array.isArray(steps) || steps.length === 0) {
+    return fallbackMs;
+  }
+
+  const assertedWaitMs = steps.reduce((total, step) => {
+    const postActionDelayMs =
+      typeof step?.postActionDelayMs === "number" && Number.isFinite(step.postActionDelayMs) ? step.postActionDelayMs : 0;
+    const holdMs = typeof step?.holdMs === "number" && Number.isFinite(step.holdMs) ? step.holdMs : 0;
+    const durationMs = typeof step?.durationMs === "number" && Number.isFinite(step.durationMs) ? step.durationMs : 0;
+    const captureMs = typeof step?.captureMs === "number" && Number.isFinite(step.captureMs) ? step.captureMs : 0;
+    const assertions = Array.isArray(step?.assertions) ? step.assertions : [];
+    const assertionTimeoutMs = assertions.reduce(
+      (assertTotal, assertion) =>
+        assertTotal +
+        (typeof assertion?.timeoutMs === "number" && Number.isFinite(assertion.timeoutMs) ? assertion.timeoutMs : 0),
+      0,
+    );
+
+    return total + postActionDelayMs + holdMs + durationMs + captureMs + assertionTimeoutMs + SEQUENCE_STEP_OVERHEAD_MS;
+  }, SEQUENCE_TIMEOUT_BUFFER_MS);
+
+  return Math.max(
+    MIN_SEQUENCE_TIMEOUT_MS,
+    Math.min(MAX_SEQUENCE_TIMEOUT_MS, Math.round(assertedWaitMs)),
+  );
+}
+
 export {
+  MAX_SEQUENCE_TIMEOUT_MS,
+  MIN_SEQUENCE_TIMEOUT_MS,
   SUPPORTED_SEQUENCE_ASSERTION_TYPES,
   SUPPORTED_SEQUENCE_STEP_TYPES,
 };

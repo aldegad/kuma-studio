@@ -116,10 +116,15 @@ describe("kuma-pickerd browser usage", () => {
     expect(output).toContain("browser-debugger-capture");
     expect(output).toContain("browser-navigate");
     expect(output).toContain("browser-sequence");
+    expect(output).toContain("browser-sequence-start");
+    expect(output).toContain("browser-sequence-state");
+    expect(output).toContain("browser-sequence-stop");
     expect(output).toContain("browser-refresh");
     expect(output).toContain("browser-set-files");
     expect(output).toContain("browser-record-start");
     expect(output).toContain("browser-record-stop");
+    expect(output).toContain("browser-live-capture-state");
+    expect(output).toContain("browser-live-capture-stop");
     expect(output).toContain("browser-wait-for-download");
     expect(output).toContain("browser-get-latest-download");
     expect(output).toContain("browser-download-permission");

@@ -1,8 +1,13 @@
 import { enqueueBrowserCommand, fetchJson, getDaemonUrlFromOptions } from "./browser-command-client.mjs";
 import { printJson, printScreenshotResult } from "./browser-cli-output.mjs";
 export { commandBrowserSetFiles } from "./browser-cli-files.mjs";
-export { commandBrowserRecordStart, commandBrowserRecordStop } from "./browser-cli-recording.mjs";
-import { readBrowserSequenceSteps } from "./browser-sequence.mjs";
+export {
+  commandBrowserLiveCaptureState,
+  commandBrowserLiveCaptureStop,
+  commandBrowserRecordStart,
+  commandBrowserRecordStop,
+} from "./browser-cli-recording.mjs";
+import { estimateBrowserSequenceTimeoutMs, readBrowserSequenceSteps } from "./browser-sequence.mjs";
 import { readKeyboardModifierFlags } from "./browser-cli-shared.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";
 
@@ -116,9 +121,43 @@ export async function commandBrowserClick(options) {
 }
 
 export async function commandBrowserSequence(options) {
-  const result = await enqueueBrowserCommand(options, {
+  const steps = readBrowserSequenceSteps(options);
+  const timeoutMs = readNumber(options, "timeout-ms", null);
+  const commandOptions =
+    Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? options
+      : {
+          ...options,
+          "timeout-ms": String(estimateBrowserSequenceTimeoutMs(steps)),
+        };
+
+  const result = await enqueueBrowserCommand(commandOptions, {
     type: "sequence",
+    steps,
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserSequenceStart(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence-start",
     steps: readBrowserSequenceSteps(options),
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserSequenceState(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence-state",
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserSequenceStop(options) {
+  const runId = readOptionalString(options, "run-id");
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence-stop",
+    runId,
   });
   printJson(result.result ?? null);
 }
@@ -283,15 +322,18 @@ export async function commandBrowserMouseMove(options) {
 export async function commandBrowserMouseDown(options) {
   const x = readNumber(options, "x", null);
   const y = readNumber(options, "y", null);
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
 
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error("browser-mousedown requires --x and --y.");
+  if ((!Number.isFinite(x) || !Number.isFinite(y)) && !selector && !selectorPath) {
+    throw new Error("browser-mousedown requires --x and --y, or --selector/--selector-path.");
   }
 
   const result = await enqueueBrowserCommand(options, {
     type: "mousedown",
-    x,
-    y,
+    ...(Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {}),
+    selector,
+    selectorPath,
     button: readOptionalString(options, "button"),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
   });
@@ -301,15 +343,18 @@ export async function commandBrowserMouseDown(options) {
 export async function commandBrowserMouseUp(options) {
   const x = readNumber(options, "x", null);
   const y = readNumber(options, "y", null);
+  const selector = readOptionalString(options, "selector");
+  const selectorPath = readOptionalString(options, "selector-path");
 
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new Error("browser-mouseup requires --x and --y.");
+  if ((!Number.isFinite(x) || !Number.isFinite(y)) && !selector && !selectorPath) {
+    throw new Error("browser-mouseup requires --x and --y, or --selector/--selector-path.");
   }
 
   const result = await enqueueBrowserCommand(options, {
     type: "mouseup",
-    x,
-    y,
+    ...(Number.isFinite(x) && Number.isFinite(y) ? { x, y } : {}),
+    selector,
+    selectorPath,
     button: readOptionalString(options, "button"),
     postActionDelayMs: readNumber(options, "post-action-delay-ms", 0),
   });

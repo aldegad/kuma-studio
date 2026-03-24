@@ -196,6 +196,9 @@ async function startTabRecording(tab, command = {}) {
   if (recordingState.activeRecordingSession) {
     throw new Error("A Kuma Picker browser recording is already active. Stop it before starting another one.");
   }
+  if (getLiveCaptureStateStore?.().activeSession) {
+    throw new Error("Stop the current live capture before starting a debug recording.");
+  }
 
   const options = readRecordingCommandOptions(command);
   const startedAt = new Date().toISOString();

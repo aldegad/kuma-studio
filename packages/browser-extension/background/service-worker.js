@@ -108,6 +108,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "kuma-picker:recording-finished":
           sendResponse(await handleRecordingFinished(message));
           return;
+        case "kuma-picker:get-live-capture-state":
+          sendResponse({
+            ok: true,
+            ...serializeLiveCaptureState(),
+          });
+          return;
+        case "kuma-picker:start-live-capture":
+          sendResponse(await startLiveCapture(message));
+          return;
+        case "kuma-picker:stop-live-capture":
+          sendResponse(await stopLiveCapture());
+          return;
+        case "kuma-picker:live-capture-finished":
+          sendResponse(await handleLiveCaptureFinished(message));
+          return;
         case "kuma-picker:update-job-card-position":
           sendResponse(
             await writeJobCardUpdate(daemonUrl, {

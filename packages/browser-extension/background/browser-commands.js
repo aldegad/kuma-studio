@@ -269,6 +269,17 @@ async function executeEvalBrowserCommand(tab, command) {
   return evaluateDebuggerExpression(tab, command);
 }
 
+async function executeLiveCaptureStateBrowserCommand(tab) {
+  return {
+    page: createPageRecordFromTab(tab),
+    ...getLiveCaptureStateForTab(tab),
+  };
+}
+
+async function executeLiveCaptureStopBrowserCommand(tab) {
+  return stopLiveCaptureForTab(tab);
+}
+
 async function executeBrowserCommand(tab, command) {
   switch (command?.type) {
     case "context":
@@ -287,9 +298,16 @@ async function executeBrowserCommand(tab, command) {
       return startTabRecording(tab, command);
     case "record-stop":
       return stopTabRecording(tab, command);
+    case "live-capture-state":
+      return executeLiveCaptureStateBrowserCommand(tab);
+    case "live-capture-stop":
+      return executeLiveCaptureStopBrowserCommand(tab);
     case "dom":
     case "click":
     case "sequence":
+    case "sequence-start":
+    case "sequence-state":
+    case "sequence-stop":
     case "click-point":
     case "pointer-drag":
     case "fill":

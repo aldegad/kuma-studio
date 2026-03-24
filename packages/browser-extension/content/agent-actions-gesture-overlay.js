@@ -5,22 +5,20 @@
     const DEFAULT_SIZE = 88;
     const CLICK_SIZE = 70;
     const CLICK_HOTSPOT_Y = 0.25;
+    const HOLD_HOTSPOT_Y = 0.5;
+    const HOLD_ENTER_DURATION_MS = 240;
+    const HOLD_EXIT_DURATION_MS = 180;
     let recordingGestureDurationMultiplier = 1;
+    const activeHoldGestures = new Map();
 
     function clamp(value, min, max) {
       return Math.min(max, Math.max(min, value));
     }
 
-    function waitForAnimationFrame() {
+    function waitForTaskTick() {
       return new Promise((resolvePromise) => {
-        window.requestAnimationFrame(() => resolvePromise());
+        window.setTimeout(resolvePromise, 0);
       });
-    }
-
-    async function waitForAnimationFrames(count) {
-      for (let index = 0; index < count; index += 1) {
-        await waitForAnimationFrame();
-      }
     }
 
     function getRootElement() {
@@ -74,6 +72,41 @@
       return element;
     }
 
+    function getClickPlacement(point, size = CLICK_SIZE) {
+      return {
+        left: clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10),
+        top: clamp(point.y - size * CLICK_HOTSPOT_Y, 10, window.innerHeight - size - 10),
+      };
+    }
+
+    function getHoldPlacement(point, size = CLICK_SIZE) {
+      return {
+        left: clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10),
+        top: clamp(point.y - size * HOLD_HOTSPOT_Y, 10, window.innerHeight - size - 10),
+      };
+    }
+
+    function applyElementFrame(element, frame) {
+      for (const [key, value] of Object.entries(frame)) {
+        if (value != null) {
+          element.style[key] = value;
+        }
+      }
+    }
+
+    function stopTrackedAnimation(record) {
+      const animation = record?.animation;
+      record.animation = null;
+      if (!animation || typeof animation.cancel !== "function") {
+        return;
+      }
+      try {
+        animation.cancel();
+      } catch (_error) {
+        // Ignore cancellation errors for stale animations.
+      }
+    }
+
     async function playAnimation(element, keyframes, options) {
       const root = getRootElement();
       root.appendChild(element);
@@ -88,7 +121,7 @@
         if (typeof element.animate !== "function") {
           const finalFrame = keyframes[keyframes.length - 1] ?? {};
           Object.assign(element.style, finalFrame);
-          await waitForAnimationFrames(1);
+          await waitForTaskTick();
           return;
         }
 
@@ -105,8 +138,7 @@
       }
 
       const size = CLICK_SIZE;
-      const left = clamp(point.x - size * 0.5, 10, window.innerWidth - size - 10);
-      const top = clamp(point.y - size * CLICK_HOTSPOT_Y, 10, window.innerHeight - size - 10);
+      const { left, top } = getClickPlacement(point, size);
       const paw = createPawElement(size, "click");
       paw.style.left = `${left}px`;
       paw.style.top = `${top}px`;
@@ -152,6 +184,179 @@
           fill: "forwards",
         },
       );
+    }
+
+    async function holdClickGesture(point, holdId = "default") {
+      if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+        return;
+      }
+
+      const root = getRootElement();
+      const size = CLICK_SIZE;
+      const { left, top } = getHoldPlacement(point, size);
+
+      const existingHold = activeHoldGestures.get(holdId);
+      if (existingHold?.element instanceof Element) {
+        stopTrackedAnimation(existingHold);
+        existingHold.element.remove();
+        activeHoldGestures.delete(holdId);
+      }
+
+      const paw = createPawElement(size, "click");
+      paw.style.left = `${left}px`;
+      paw.style.top = `${top}px`;
+      root.appendChild(paw);
+
+      const finalFrame = {
+        opacity: "1",
+        transform: "translate3d(0, 0, 0) scale(0.9)",
+      };
+
+      const holdRecord = {
+        element: paw,
+        size,
+        animation: null,
+      };
+      activeHoldGestures.set(holdId, holdRecord);
+
+      if (document.visibilityState !== "visible" || typeof paw.animate !== "function") {
+        applyElementFrame(paw, finalFrame);
+        await waitForTaskTick();
+        return;
+      }
+
+      const animation = paw.animate(
+        [
+          {
+            opacity: 0,
+            transform: "translate3d(0, 5px, 0) scale(1)",
+          },
+          {
+            opacity: 1,
+            offset: 0.1,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 2px, 0) scale(1)",
+            offset: 0.5,
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(0.9)",
+          },
+        ],
+        {
+          duration: Math.round(HOLD_ENTER_DURATION_MS * recordingGestureDurationMultiplier),
+          easing: "ease-in-out",
+          fill: "forwards",
+        },
+      );
+      holdRecord.animation = animation;
+      animation.finished
+        .then(() => {
+          if (activeHoldGestures.get(holdId)?.element === paw) {
+            applyElementFrame(paw, finalFrame);
+          }
+        })
+        .catch(() => { })
+        .finally(() => {
+          if (activeHoldGestures.get(holdId) === holdRecord) {
+            holdRecord.animation = null;
+          }
+        });
+      await waitForTaskTick();
+    }
+
+    function moveHeldGesture(point, holdId = "default") {
+      const hold = activeHoldGestures.get(holdId);
+      if (
+        !(hold?.element instanceof Element) ||
+        !point ||
+        !Number.isFinite(point.x) ||
+        !Number.isFinite(point.y)
+      ) {
+        return;
+      }
+
+      const { left, top } = getHoldPlacement(point, hold.size ?? CLICK_SIZE);
+      hold.element.style.left = `${left}px`;
+      hold.element.style.top = `${top}px`;
+    }
+
+    async function releaseHeldGesture(point, holdId = "default") {
+      const hold = activeHoldGestures.get(holdId);
+      if (!(hold?.element instanceof Element)) {
+        return;
+      }
+
+      const { element, size } = hold;
+      activeHoldGestures.delete(holdId);
+      stopTrackedAnimation(hold);
+
+      if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+        const { left, top } = getHoldPlacement(point, size ?? CLICK_SIZE);
+        element.style.left = `${left}px`;
+        element.style.top = `${top}px`;
+      }
+
+      applyElementFrame(element, {
+        opacity: "1",
+        transform: "translate3d(0, 0, 0) scale(0.9)",
+      });
+
+      if (document.visibilityState !== "visible" || typeof element.animate !== "function") {
+        element.remove();
+        await waitForTaskTick();
+        return;
+      }
+
+      const animation = element.animate(
+        [
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(0.9)",
+          },
+          {
+            opacity: 1,
+            transform: "translate3d(0, 0, 0) scale(1)",
+            offset: 0.4,
+          },
+          {
+            opacity: 0,
+            transform: "translate3d(0, 5px, 0) scale(1)",
+          },
+        ],
+        {
+          duration: Math.round(HOLD_EXIT_DURATION_MS * recordingGestureDurationMultiplier),
+          easing: "ease-in-out",
+          fill: "forwards",
+        },
+      );
+      animation.finished
+        .catch(() => { })
+        .finally(() => {
+          element.remove();
+        });
+      await waitForTaskTick();
+    }
+
+    function clearHeldGesture(holdId) {
+      if (holdId == null) {
+        for (const hold of activeHoldGestures.values()) {
+          stopTrackedAnimation(hold);
+          hold.element?.remove?.();
+        }
+        activeHoldGestures.clear();
+        return;
+      }
+
+      const hold = activeHoldGestures.get(holdId);
+      if (!(hold?.element instanceof Element)) {
+        return;
+      }
+      stopTrackedAnimation(hold);
+      hold.element.remove();
+      activeHoldGestures.delete(holdId);
     }
 
     async function playScrollGesture(details) {
@@ -261,6 +466,10 @@
 
     return {
       playClickGesture,
+      holdClickGesture,
+      moveHeldGesture,
+      releaseHeldGesture,
+      clearHeldGesture,
       playScrollGesture,
       playDragGesture,
       setRecordingMode,

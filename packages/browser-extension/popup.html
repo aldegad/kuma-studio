@@ -43,6 +43,22 @@
         </div>
       </section>
 
+      <section id="live-capture-status" class="page-status live-capture-status" data-state="idle">
+        <span id="live-capture-dot" class="status-dot status-dot-connected" aria-hidden="true"></span>
+        <div class="page-status-copy">
+          <p id="live-capture-label" class="page-status-label">Live capture idle</p>
+          <p id="live-capture-meta" class="page-status-meta">Start from this popup to record the current tab at full frame rate.</p>
+          <div class="page-status-controls">
+            <button id="start-live-capture" type="button" class="button button-primary">
+              Start Live Capture
+            </button>
+            <button id="stop-live-capture" type="button" class="button button-danger">
+              Stop
+            </button>
+          </div>
+        </div>
+      </section>
+
       <section id="connection-form" class="connection-form is-hidden">
         <input
           id="daemon-url"
