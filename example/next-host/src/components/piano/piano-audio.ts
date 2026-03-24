@@ -1,5 +1,8 @@
 "use client";
 
+const MAX_MODULATION_RATIO = 0.024;
+const MAX_TREMOLO_SWING = 0.85;
+
 type Voice = {
   gainNode: GainNode;
   nodes: AudioNode[]; // all nodes to disconnect on stop
@@ -28,13 +31,13 @@ export class PianoAudio {
 
   private getVoiceProfile(frequency: number) {
     const bassBlend = Math.max(0, Math.min(1, (220 - frequency) / 140));
-    const gainPeak = 0.18 + bassBlend * 0.08;
-    const gainSustain = 0.1 + bassBlend * 0.05;
-    const subGain = 0.12 + bassBlend * 0.18;
-    const harmonic2Gain = 0.06 - bassBlend * 0.015;
-    const harmonic3Gain = 0.03 - bassBlend * 0.008;
+    const gainPeak = 0.18 + bassBlend * 0.12;
+    const gainSustain = 0.1 + bassBlend * 0.08;
+    const subGain = 0.12 + bassBlend * 0.26;
+    const harmonic2Gain = 0.06 - bassBlend * 0.02;
+    const harmonic3Gain = 0.03 - bassBlend * 0.01;
     const lowpassCutoff = Math.min(Math.max(frequency * (6.2 + bassBlend * 1.4), 900), 8000);
-    const lowShelfGain = bassBlend * 7;
+    const lowShelfGain = bassBlend * 11;
 
     return {
       gainPeak,
@@ -98,7 +101,6 @@ export class PianoAudio {
       this.tremGain = this.context.createGain();
       this.tremGain.gain.value = 0;
       this.tremLfo.connect(this.tremGain);
-      this.tremGain.connect(this.masterGain.gain);
       this.tremLfo.start();
 
       // Modulation LFO (connected per-voice to oscillator.frequency)
@@ -122,14 +124,14 @@ export class PianoAudio {
     this._modRate = rate;
     this._modDepth = depth;
     if (this.modLfo) this.modLfo.frequency.value = rate;
-    if (this.modGain) this.modGain.gain.value = depth * 4;
+    if (this.modGain) this.modGain.gain.value = depth;
   }
 
   setTremolo(rate: number, depth: number) {
     this._tremRate = rate;
     this._tremDepth = depth;
     if (this.tremLfo) this.tremLfo.frequency.value = rate;
-    if (this.tremGain) this.tremGain.gain.value = depth * 0.4;
+    if (this.tremGain) this.tremGain.gain.value = depth * MAX_TREMOLO_SWING;
   }
 
   get modRate() { return this._modRate; }
@@ -204,8 +206,13 @@ export class PianoAudio {
     noteGain.gain.setValueAtTime(0.0001, now);
     noteGain.gain.exponentialRampToValueAtTime(profile.gainPeak, now + 0.008); // fast attack
     noteGain.gain.exponentialRampToValueAtTime(profile.gainSustain, now + 0.3);   // decay to sustain
-    noteGain.connect(this.masterGain);
     allNodes.push(noteGain);
+
+    const tremoloGain = context.createGain();
+    tremoloGain.gain.value = 1;
+    noteGain.connect(tremoloGain);
+    tremoloGain.connect(this.masterGain);
+    allNodes.push(tremoloGain);
 
     // --- Richer oscillator stack for a warm piano-like tone ---
 
@@ -245,8 +252,24 @@ export class PianoAudio {
 
     // Modulation LFO connection
     if (this.modGain) {
-      this.modGain.connect(fundamental.frequency);
-      this.modGain.connect(harmonic2.frequency);
+      const fundamentalModDepth = context.createGain();
+      fundamentalModDepth.gain.value = frequency * MAX_MODULATION_RATIO;
+      const harmonic2ModDepth = context.createGain();
+      harmonic2ModDepth.gain.value = frequency * 2 * MAX_MODULATION_RATIO;
+      const harmonic3ModDepth = context.createGain();
+      harmonic3ModDepth.gain.value = frequency * 3 * (MAX_MODULATION_RATIO * 0.8);
+
+      this.modGain.connect(fundamentalModDepth);
+      this.modGain.connect(harmonic2ModDepth);
+      this.modGain.connect(harmonic3ModDepth);
+      fundamentalModDepth.connect(fundamental.frequency);
+      harmonic2ModDepth.connect(harmonic2.frequency);
+      harmonic3ModDepth.connect(harmonic3.frequency);
+      allNodes.push(fundamentalModDepth, harmonic2ModDepth, harmonic3ModDepth);
+    }
+
+    if (this.tremGain) {
+      this.tremGain.connect(tremoloGain.gain);
     }
 
     // Lowpass filter — frequency-dependent: higher notes get brighter cutoff
