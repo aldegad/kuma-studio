@@ -228,4 +228,136 @@ describe("kuma-pickerd websocket control plane", () => {
     controllerSocket.close();
     await new Promise((resolvePromise) => server.close(resolvePromise));
   });
+
+  it("routes a command result after the browser socket reconnects", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-socket-"));
+    tempRoots.push(root);
+    process.env.KUMA_PICKER_STATE_HOME = path.join(root, "state");
+
+    const { createServer } = await import("./server.mjs");
+    const { server } = createServer({
+      host: "127.0.0.1",
+      port: 0,
+      root,
+    });
+
+    await new Promise((resolvePromise) => {
+      server.listen(0, "127.0.0.1", resolvePromise);
+    });
+
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : null;
+    const browserSocket = new WebSocket(`ws://127.0.0.1:${port}/browser-session/socket`);
+    const controllerSocket = new WebSocket(`ws://127.0.0.1:${port}/browser-session/socket`);
+
+    await Promise.all([waitForOpen(browserSocket), waitForOpen(controllerSocket)]);
+
+    browserSocket.send(
+      JSON.stringify({
+        type: "hello",
+        role: "browser",
+        extensionId: "dnoppcchjalcholnhliibpjbdfhaklmo",
+        extensionName: "Kuma Picker Bridge",
+      }),
+    );
+    controllerSocket.send(
+      JSON.stringify({
+        type: "hello",
+        role: "controller",
+      }),
+    );
+
+    await Promise.all([waitForMessage(browserSocket), waitForMessage(controllerSocket)]);
+
+    browserSocket.send(
+      JSON.stringify({
+        type: "presence.update",
+        source: "content-script:page-heartbeat",
+        page: {
+          url: "https://example.com/piano",
+          pathname: "/piano",
+          title: "Piano",
+        },
+        activeTabId: 144,
+        visible: true,
+        focused: true,
+        capabilities: ["sequence", "mousedown", "mouseup"],
+        lastSeenAt: new Date().toISOString(),
+      }),
+    );
+
+    controllerSocket.send(
+      JSON.stringify({
+        type: "command.request",
+        requestId: "browser-command-test-0005",
+        command: {
+          type: "sequence",
+          targetTabId: 144,
+          steps: [{ type: "mousedown", selector: "[data-testid='piano-key-C4']" }],
+        },
+      }),
+    );
+
+    const accepted = await waitForMessage(controllerSocket);
+    expect(accepted).toEqual(
+      expect.objectContaining({
+        type: "command.accepted",
+        requestId: "browser-command-test-0005",
+      }),
+    );
+
+    const commandRequest = await waitForMessage(browserSocket);
+    expect(commandRequest).toEqual(
+      expect.objectContaining({
+        type: "command.request",
+        requestId: "browser-command-test-0005",
+      }),
+    );
+
+    browserSocket.close();
+    await once(browserSocket, "close");
+
+    const reconnectedBrowserSocket = new WebSocket(`ws://127.0.0.1:${port}/browser-session/socket`);
+    await waitForOpen(reconnectedBrowserSocket);
+    reconnectedBrowserSocket.send(
+      JSON.stringify({
+        type: "hello",
+        role: "browser",
+        extensionId: "dnoppcchjalcholnhliibpjbdfhaklmo",
+        extensionName: "Kuma Picker Bridge",
+      }),
+    );
+    await waitForMessage(reconnectedBrowserSocket);
+
+    reconnectedBrowserSocket.send(
+      JSON.stringify({
+        type: "command.result",
+        requestId: "browser-command-test-0005",
+        result: {
+          page: {
+            title: "Piano",
+          },
+          ok: true,
+        },
+      }),
+    );
+
+    const result = await waitForMessage(controllerSocket);
+    expect(result).toEqual(
+      expect.objectContaining({
+        type: "command.result",
+        requestId: "browser-command-test-0005",
+        result: {
+          page: {
+            title: "Piano",
+          },
+          ok: true,
+        },
+      }),
+    );
+
+    reconnectedBrowserSocket.close();
+    controllerSocket.close();
+    await new Promise((resolvePromise) => server.close(resolvePromise));
+  });
 });

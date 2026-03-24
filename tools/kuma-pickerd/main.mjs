@@ -29,6 +29,9 @@ import {
   commandBrowserQueryDom,
   commandBrowserRefresh,
   commandBrowserSequence,
+  commandBrowserSequenceStart,
+  commandBrowserSequenceState,
+  commandBrowserSequenceStop,
   commandBrowserScreenshot,
   commandBrowserWaitForDownload,
   commandBrowserWaitForDialogClose,
@@ -66,6 +69,9 @@ Usage:
   node main.mjs browser-debugger-capture [--refresh] [--bypass-cache] [--capture-ms 3000] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--daemon-url http://127.0.0.1:4312] [--timeout-ms 15000]
   node main.mjs browser-click [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--text "Continue"] [--exact-text] [--role tab] [--within "설정 모드"] [--nth 1] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-sequence (--steps '[{"type":"click","text":"File","assert":{"type":"wait-for-selector","selector":"[role=\"menu\"]","timeoutMs":1200}},{"type":"click","text":"Export video"}]' | --steps-file ./tmp/sequence.json) (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-sequence-start (--steps '[{"type":"mousedown","selector":"[data-testid=\"piano-key-C4\"]"},{"type":"mouseup","selector":"[data-testid=\"piano-key-C4\"]"}]' | --steps-file ./tmp/sequence.json) (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-sequence-state (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
+  node main.mjs browser-sequence-stop [--run-id sequence-run-123] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-click-point --x 120 --y 240 (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 400] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-pointer-drag ([--from-x 120 --from-y 240 --to-x 360 --to-y 240] | [--waypoints '[{"x":120,"y":240},{"x":240,"y":260},{"x":360,"y":240}]']) [--steps 12] [--duration-ms 280] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 120] [--daemon-url http://127.0.0.1:4312]
   node main.mjs browser-fill --value "https://example.com/privacy" [--selector "input[name=url]"] [--selector-path "form input:nth-of-type(1)"] [--label "Privacy Policy URL"] [--text "Privacy Policy URL"] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--post-action-delay-ms 100] [--daemon-url http://127.0.0.1:4312]
@@ -401,6 +407,15 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "browser-sequence":
       await commandBrowserSequence(options);
+      return;
+    case "browser-sequence-start":
+      await commandBrowserSequenceStart(options);
+      return;
+    case "browser-sequence-state":
+      await commandBrowserSequenceState(options);
+      return;
+    case "browser-sequence-stop":
+      await commandBrowserSequenceStop(options);
       return;
     case "browser-click-point":
       await commandBrowserClickPoint(options);

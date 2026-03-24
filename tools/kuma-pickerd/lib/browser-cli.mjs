@@ -7,7 +7,7 @@ export {
   commandBrowserRecordStart,
   commandBrowserRecordStop,
 } from "./browser-cli-recording.mjs";
-import { readBrowserSequenceSteps } from "./browser-sequence.mjs";
+import { estimateBrowserSequenceTimeoutMs, readBrowserSequenceSteps } from "./browser-sequence.mjs";
 import { readKeyboardModifierFlags } from "./browser-cli-shared.mjs";
 import { readNumber, readOptionalString, requireString } from "./cli-options.mjs";
 
@@ -121,9 +121,43 @@ export async function commandBrowserClick(options) {
 }
 
 export async function commandBrowserSequence(options) {
-  const result = await enqueueBrowserCommand(options, {
+  const steps = readBrowserSequenceSteps(options);
+  const timeoutMs = readNumber(options, "timeout-ms", null);
+  const commandOptions =
+    Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? options
+      : {
+          ...options,
+          "timeout-ms": String(estimateBrowserSequenceTimeoutMs(steps)),
+        };
+
+  const result = await enqueueBrowserCommand(commandOptions, {
     type: "sequence",
+    steps,
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserSequenceStart(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence-start",
     steps: readBrowserSequenceSteps(options),
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserSequenceState(options) {
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence-state",
+  });
+  printJson(result.result ?? null);
+}
+
+export async function commandBrowserSequenceStop(options) {
+  const runId = readOptionalString(options, "run-id");
+  const result = await enqueueBrowserCommand(options, {
+    type: "sequence-stop",
+    runId,
   });
   printJson(result.result ?? null);
 }

@@ -36,7 +36,7 @@ var {
 
 function readTimeoutMs(command, fallbackMs = 15_000) {
   return typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs)
-    ? Math.max(100, Math.min(120_000, Math.round(command.timeoutMs)))
+    ? Math.max(100, Math.min(600_000, Math.round(command.timeoutMs)))
     : fallbackMs;
 }
 
@@ -174,6 +174,12 @@ executeBrowserCommandInternal = async function executeBrowserCommandInternal(com
         throw new Error("Nested browser-sequence commands are not supported.");
       }
       return observeExtras.executeSequenceCommand(command);
+    case "sequence-start":
+      return observeExtras.startSequenceCommand(command);
+    case "sequence-state":
+      return observeExtras.readSequenceStateCommand(command);
+    case "sequence-stop":
+      return observeExtras.stopSequenceCommand(command);
     case "click-point":
       return interactionExecuteClickPointCommand(command);
     case "fill":

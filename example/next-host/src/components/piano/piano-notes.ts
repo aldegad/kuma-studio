@@ -1,4 +1,6 @@
 export type PianoKey = {
+  id: string;
+  manualId: "upper" | "lower";
   midi: number;
   note: string;
   octave: number;
@@ -29,6 +31,8 @@ function createKeys(startMidi: number, length: number) {
     const octave = Math.floor(midi / 12) - 1;
 
     return {
+      id: "",
+      manualId: "lower",
       midi,
       note: noteName,
       octave,
@@ -38,6 +42,14 @@ function createKeys(startMidi: number, length: number) {
       keyboard: null,
     } satisfies PianoKey;
   });
+}
+
+function assignManual(keys: PianoKey[], manualId: "upper" | "lower") {
+  return keys.map((key) => ({
+    ...key,
+    manualId,
+    id: `${manualId}-${key.label}`,
+  }));
 }
 
 function applyKeyboardMap(keys: PianoKey[], startMidi: number, keyboardMap: readonly string[]) {
@@ -50,13 +62,13 @@ function applyKeyboardMap(keys: PianoKey[], startMidi: number, keyboardMap: read
   });
 }
 
-// Upper: C4–B6
-export const UPPER_MANUAL_KEYS = createKeys(60, 36);
+// Upper: C4–C7
+export const UPPER_MANUAL_KEYS = assignManual(createKeys(60, 37), "upper");
 // Lower: C2–B4 with keyboard shortcuts centered on C3–B4
-export const LOWER_MANUAL_KEYS = applyKeyboardMap(createKeys(36, 36), 48, LOWER_KEYBOARD_MAP);
+export const LOWER_MANUAL_KEYS = applyKeyboardMap(assignManual(createKeys(36, 36), "lower"), 48, LOWER_KEYBOARD_MAP);
 
 export const PIANO_MANUALS: PianoManual[] = [
-  { id: "upper", label: "Upper Manual", caption: "Lead range — C4 to B6", keys: UPPER_MANUAL_KEYS },
+  { id: "upper", label: "Upper Manual", caption: "Lead range — C4 to C7", keys: UPPER_MANUAL_KEYS },
   { id: "lower", label: "Lower Manual", caption: "Bass + chords — C2 to B4", keys: LOWER_MANUAL_KEYS },
 ];
 

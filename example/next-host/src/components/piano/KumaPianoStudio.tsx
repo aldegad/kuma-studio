@@ -26,6 +26,42 @@ function getBlackKeyLeft(keys: PianoKey[], midi: number, ww: number, bw: number)
 const WHITE_KEY_HEIGHT = 140;
 const BLACK_KEY_HEIGHT = 88;
 
+function SustainPedal({
+  active,
+  onDown,
+  onUp,
+}: {
+  active: boolean;
+  onDown: () => void;
+  onUp: () => void;
+}) {
+  return (
+    <div className="mx-auto flex w-full max-w-[420px] flex-col items-center gap-3 pt-2" data-testid="piano-pedal-strip">
+      <p className="text-[9px] font-black uppercase tracking-[0.32em] text-[#d8c39d]">Damper Pedal</p>
+      <div className="relative flex h-[92px] w-full items-end justify-center rounded-[1.8rem] border border-white/6 bg-[linear-gradient(180deg,#0f1015_0%,#1c1410_100%)] px-10 pb-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_26px_44px_rgba(0,0,0,0.28)]">
+        <div className="absolute left-1/2 top-3 h-[22px] w-[160px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,#4a3929,#231812)] opacity-70" />
+        <button
+          type="button"
+          data-testid="piano-sustain-pedal"
+          aria-label="Sustain pedal"
+          aria-pressed={active}
+          className={cx(
+            "relative h-[54px] w-[168px] origin-top rounded-[1.5rem] border border-[#a77b43] bg-[linear-gradient(180deg,#f6d38b_0%,#bb8542_42%,#6f431d_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_18px_24px_rgba(0,0,0,0.3)] transition",
+            active ? "translate-y-[8px] scale-y-[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.36),0_8px_14px_rgba(0,0,0,0.32)]" : "hover:translate-y-[2px]",
+          )}
+          onPointerDown={onDown}
+          onPointerUp={onUp}
+          onPointerLeave={onUp}
+          onPointerCancel={onUp}
+        >
+          <div className="absolute inset-x-5 top-2 h-[10px] rounded-full bg-white/35 blur-[1px]" />
+          <div className="absolute inset-x-7 bottom-3 h-[14px] rounded-full bg-[rgba(43,21,7,0.24)]" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Knob                                                               */
 /* ------------------------------------------------------------------ */
@@ -83,14 +119,14 @@ function Knob({ label, value, onChange }: { label: string; value: number; onChan
 
 function PianoKeyboard({
   manual,
-  activeNotes,
+  activeKeyIds,
   onKeyDown,
   onKeyUp,
 }: {
   manual: PianoManual;
-  activeNotes: string[];
+  activeKeyIds: string[];
   onKeyDown: (key: PianoKey) => void;
-  onKeyUp: (label: string) => void;
+  onKeyUp: (key: PianoKey) => void;
 }) {
   const whiteKeys = manual.keys.filter((k) => !k.isBlack);
   const blackKeys = manual.keys.filter((k) => k.isBlack);
@@ -98,7 +134,7 @@ function PianoKeyboard({
   const bw = 28;
 
   return (
-    <div>
+    <div data-piano-manual={manual.id}>
       <div className="flex items-center justify-between px-1 pb-2">
         <div>
           <p className="text-[9px] font-black uppercase tracking-[0.3em] text-[#dfd1ba]">{manual.label}</p>
@@ -118,17 +154,22 @@ function PianoKeyboard({
           <div className="absolute inset-x-0 bottom-0 flex">
             {whiteKeys.map((key) => (
               <button
-                key={key.label}
+                key={key.id}
                 type="button"
                 data-testid={`piano-key-${key.label}`}
+                data-piano-key-id={key.id}
+                data-piano-note-label={key.label}
+                data-piano-manual={manual.id}
+                data-piano-active={activeKeyIds.includes(key.id) ? "true" : "false"}
+                aria-label={`${manual.label} ${key.label}`}
                 className={cx(
                   "group relative flex flex-col justify-between overflow-hidden rounded-b-[0.9rem] rounded-t-[0.5rem] border border-[#c9ccd5] bg-[linear-gradient(180deg,#f3f4fb_0%,#e6e8f0_38%,#cfd3de_100%)] px-1.5 pb-2 pt-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_10px_18px_rgba(0,0,0,0.14)] transition",
-                  activeNotes.includes(key.label) && "translate-y-[3px] bg-[linear-gradient(180deg,#ffffff_0%,#eef1fa_36%,#d6dae6_100%)]",
+                  activeKeyIds.includes(key.id) && "translate-y-[3px] bg-[linear-gradient(180deg,#ffffff_0%,#eef1fa_36%,#d6dae6_100%)]",
                 )}
                 style={{ width: `${ww}px`, height: `${WHITE_KEY_HEIGHT}px` }}
                 onPointerDown={() => onKeyDown(key)}
-                onPointerUp={() => onKeyUp(key.label)}
-                onPointerLeave={() => onKeyUp(key.label)}
+                onPointerUp={() => onKeyUp(key)}
+                onPointerLeave={() => onKeyUp(key)}
               >
                 <span className="text-[9px] font-black tracking-[0.02em] text-[#4d5260]">{key.label}</span>
                 {key.keyboard ? (
@@ -145,12 +186,17 @@ function PianoKeyboard({
           {/* Black keys */}
           {blackKeys.map((key) => (
             <button
-              key={key.label}
+              key={key.id}
               type="button"
               data-testid={`piano-key-${key.label}`}
+              data-piano-key-id={key.id}
+              data-piano-note-label={key.label}
+              data-piano-manual={manual.id}
+              data-piano-active={activeKeyIds.includes(key.id) ? "true" : "false"}
+              aria-label={`${manual.label} ${key.label}`}
               className={cx(
                 "absolute top-[38px] z-10 rounded-b-[0.7rem] rounded-t-[0.5rem] border border-[#05060a] bg-[linear-gradient(180deg,#3a3f4d_0%,#161920_32%,#07080d_100%)] px-1.5 pb-2 pt-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_20px_rgba(0,0,0,0.34)] transition",
-                activeNotes.includes(key.label) && "translate-y-[3px] bg-[linear-gradient(180deg,#4a5162_0%,#1c2029_34%,#090a10_100%)]",
+                activeKeyIds.includes(key.id) && "translate-y-[3px] bg-[linear-gradient(180deg,#4a5162_0%,#1c2029_34%,#090a10_100%)]",
               )}
               style={{
                 width: `${bw}px`,
@@ -158,8 +204,8 @@ function PianoKeyboard({
                 left: `${getBlackKeyLeft(manual.keys, key.midi, ww, bw)}px`,
               }}
               onPointerDown={() => onKeyDown(key)}
-              onPointerUp={() => onKeyUp(key.label)}
-              onPointerLeave={() => onKeyUp(key.label)}
+              onPointerUp={() => onKeyUp(key)}
+              onPointerLeave={() => onKeyUp(key)}
             >
               <span className="text-[8px] font-black tracking-[0.04em] text-[#eef2ff]">{key.label}</span>
               {key.keyboard ? (
@@ -184,7 +230,8 @@ function PianoKeyboard({
 export function KumaPianoStudio() {
   const audioRef = useRef<PianoAudio | null>(null);
   const pressedRef = useRef(new Set<string>());
-  const [activeNotes, setActiveNotes] = useState<string[]>([]);
+  const [activeKeyIds, setActiveKeyIds] = useState<string[]>([]);
+  const [sustainActive, setSustainActive] = useState(false);
 
   const [modRate, setModRate] = useState(0);
   const [modDepth, setModDepth] = useState(0);
@@ -198,43 +245,63 @@ export function KumaPianoStudio() {
   useEffect(() => { audioRef.current?.setModulation(modRate * 10, modDepth); }, [modRate, modDepth]);
   useEffect(() => { audioRef.current?.setTremolo(tremRate * 10, tremDepth); }, [tremRate, tremDepth]);
 
-  function markActive(label: string, on: boolean) {
-    setActiveNotes((cur) =>
-      on ? (cur.includes(label) ? cur : [...cur, label].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) : cur.filter((v) => v !== label),
+  function markActive(keyId: string, on: boolean) {
+    setActiveKeyIds((cur) =>
+      on ? (cur.includes(keyId) ? cur : [...cur, keyId].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))) : cur.filter((v) => v !== keyId),
     );
   }
 
   async function play(key: PianoKey) {
-    await audioRef.current?.playNote(key.label, key.frequency);
-    markActive(key.label, true);
+    await audioRef.current?.playNote(key.id, key.frequency);
+    markActive(key.id, true);
   }
 
-  function stop(label: string) {
-    audioRef.current?.stopNote(label);
-    markActive(label, false);
+  function stop(key: PianoKey) {
+    audioRef.current?.stopNote(key.id);
+    markActive(key.id, false);
+  }
+
+  function setSustain(active: boolean) {
+    setSustainActive(active);
+    audioRef.current?.setSustain(active);
   }
 
   function stopAll() {
     pressedRef.current.clear();
+    setSustain(false);
     audioRef.current?.stopAll();
-    setActiveNotes([]);
+    setActiveKeyIds([]);
   }
 
   useEffect(() => {
     function down(e: KeyboardEvent) {
       if (e.key === "Escape") { stopAll(); return; }
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (!sustainActive) {
+          setSustain(true);
+        }
+        return;
+      }
       const key = findKeyByKeyboard(e.key);
-      if (!key || e.repeat || pressedRef.current.has(key.label)) return;
+      if (!key || e.repeat || pressedRef.current.has(key.id)) return;
       e.preventDefault();
-      pressedRef.current.add(key.label);
+      pressedRef.current.add(key.id);
       void play(key);
     }
     function up(e: KeyboardEvent) {
       const key = findKeyByKeyboard(e.key);
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (sustainActive) {
+          setSustain(false);
+        }
+        return;
+      }
       if (!key) return;
       e.preventDefault();
-      pressedRef.current.delete(key.label);
-      stop(key.label);
+      pressedRef.current.delete(key.id);
+      stop(key);
     }
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -243,7 +310,7 @@ export function KumaPianoStudio() {
       window.removeEventListener("keyup", up);
       audioRef.current?.stopAll();
     };
-  }, []);
+  }, [sustainActive]);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,rgba(255,235,200,0.85),transparent_28%),linear-gradient(180deg,#1f120d_0%,#2f1a10_24%,#6a4326_56%,#e8d2aa_100%)] px-4 py-5 text-[#fff4df]">
@@ -296,12 +363,14 @@ export function KumaPianoStudio() {
                   <PianoKeyboard
                     key={manual.id}
                     manual={manual}
-                    activeNotes={activeNotes}
+                    activeKeyIds={activeKeyIds}
                     onKeyDown={(key) => void play(key)}
-                    onKeyUp={(label) => stop(label)}
+                    onKeyUp={(key) => stop(key)}
                   />
                 ))}
               </div>
+
+              <SustainPedal active={sustainActive} onDown={() => setSustain(true)} onUp={() => setSustain(false)} />
             </div>
           </div>
         </section>

@@ -487,6 +487,57 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       "wait-for-dialog-close",
       "selector-state",
     ]);
+    let nextSequenceRunId = 1;
+    let activeSequenceRunner = null;
+    let lastSequenceRunner = null;
+
+    function createSequenceStopError() {
+      const error = new Error("Sequence stopped.");
+      error.sequenceStopped = true;
+      return error;
+    }
+
+    function createSequenceRunId() {
+      return `sequence-run-${Date.now()}-${nextSequenceRunId++}`;
+    }
+
+    function buildSequenceRunnerSnapshot(runner) {
+      if (!runner) {
+        return {
+          active: false,
+          runId: null,
+          status: "idle",
+          stepCount: 0,
+          completedStepCount: 0,
+          startedAt: null,
+          finishedAt: null,
+          currentStepIndex: null,
+          currentStepType: null,
+          currentStepLabel: null,
+          error: null,
+        };
+      }
+
+      return {
+        active: runner.status === "running" || runner.status === "stopping",
+        runId: runner.runId,
+        status: runner.status,
+        stepCount: runner.stepCount,
+        completedStepCount: runner.completedStepCount,
+        startedAt: runner.startedAt,
+        finishedAt: runner.finishedAt ?? null,
+        currentStepIndex: runner.currentStepIndex ?? null,
+        currentStepType: runner.currentStepType ?? null,
+        currentStepLabel: runner.currentStepLabel ?? null,
+        error: runner.error ?? null,
+      };
+    }
+
+    function ensureSequenceNotStopped(runner) {
+      if (runner?.stopRequested === true) {
+        throw createSequenceStopError();
+      }
+    }
 
     function normalizeSequenceSteps(command) {
       if (!Array.isArray(command?.steps) || command.steps.length === 0) {
@@ -529,10 +580,11 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       }
     }
 
-    async function executeSequenceAssertions(assertions, stepIndex) {
+    async function executeSequenceAssertions(assertions, stepIndex, runner = null) {
       const results = [];
 
       for (let assertionIndex = 0; assertionIndex < assertions.length; assertionIndex += 1) {
+        ensureSequenceNotStopped(runner);
         const assertion = assertions[assertionIndex];
         const type = normalizeText(assertion?.type).toLowerCase();
         if (!SEQUENCE_ASSERTION_TYPES.has(type)) {
@@ -570,11 +622,12 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       return results;
     }
 
-    async function executeSequenceCommand(command) {
+    async function runSequenceSteps(command, runner = null) {
       const steps = normalizeSequenceSteps(command);
       const completedSteps = [];
 
       for (let stepIndex = 0; stepIndex < steps.length; stepIndex += 1) {
+        ensureSequenceNotStopped(runner);
         const step = steps[stepIndex];
         if (!step || typeof step !== "object" || Array.isArray(step)) {
           throw new Error(`Sequence step ${stepIndex + 1} must be an object.`);
@@ -586,20 +639,35 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
         }
 
         const { assertions, ...stepCommand } = step;
+        if (runner) {
+          runner.currentStepIndex = stepIndex + 1;
+          runner.currentStepType = type;
+          runner.currentStepLabel = typeof step.label === "string" && step.label.trim() ? step.label.trim() : null;
+        }
 
         try {
           const result = await runNestedCommand({ ...stepCommand, type });
+          ensureSequenceNotStopped(runner);
           completedSteps.push({
             index: stepIndex + 1,
             type,
             label: typeof step.label === "string" && step.label.trim() ? step.label.trim() : null,
             result,
-            assertions: await executeSequenceAssertions(normalizeSequenceAssertions(step), stepIndex),
+            assertions: await executeSequenceAssertions(normalizeSequenceAssertions(step), stepIndex, runner),
           });
+          if (runner) {
+            runner.completedStepCount = completedSteps.length;
+          }
         } catch (error) {
           throw new Error(`Sequence step ${stepIndex + 1} (${type}) failed: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
+
+      return completedSteps;
+    }
+
+    async function executeSequenceCommand(command) {
+      const completedSteps = await runSequenceSteps(command, null);
 
       return {
         page: buildPageRecord(),
@@ -608,11 +676,103 @@ var KumaPickerExtensionAgentActionObserveExtra = (() => {
       };
     }
 
+    function readSequenceStateCommand() {
+      return {
+        page: buildPageRecord(),
+        sequence: buildSequenceRunnerSnapshot(activeSequenceRunner ?? lastSequenceRunner),
+      };
+    }
+
+    function stopSequenceCommand(command) {
+      const runId = typeof command?.runId === "string" && command.runId.trim() ? command.runId.trim() : null;
+      const runner = activeSequenceRunner;
+
+      if (!runner) {
+        return {
+          page: buildPageRecord(),
+          sequence: buildSequenceRunnerSnapshot(lastSequenceRunner),
+          stopRequested: false,
+        };
+      }
+
+      if (runId && runner.runId !== runId) {
+        return {
+          page: buildPageRecord(),
+          sequence: buildSequenceRunnerSnapshot(runner),
+          stopRequested: false,
+        };
+      }
+
+      runner.stopRequested = true;
+      runner.status = "stopping";
+      return {
+        page: buildPageRecord(),
+        sequence: buildSequenceRunnerSnapshot(runner),
+        stopRequested: true,
+      };
+    }
+
+    function startSequenceCommand(command) {
+      if (activeSequenceRunner && (activeSequenceRunner.status === "running" || activeSequenceRunner.status === "stopping")) {
+        throw new Error("A browser sequence is already running on this page.");
+      }
+
+      const steps = normalizeSequenceSteps(command);
+      const runner = {
+        runId: createSequenceRunId(),
+        status: "running",
+        stepCount: steps.length,
+        completedStepCount: 0,
+        startedAt: new Date().toISOString(),
+        finishedAt: null,
+        currentStepIndex: null,
+        currentStepType: null,
+        currentStepLabel: null,
+        error: null,
+        stopRequested: false,
+      };
+
+      activeSequenceRunner = runner;
+      lastSequenceRunner = runner;
+
+      void (async () => {
+        try {
+          await runSequenceSteps(command, runner);
+          runner.status = runner.stopRequested ? "stopped" : "completed";
+        } catch (error) {
+          if (error?.sequenceStopped === true || runner.stopRequested) {
+            runner.status = "stopped";
+            runner.error = null;
+          } else {
+            runner.status = "failed";
+            runner.error = error instanceof Error ? error.message : String(error);
+          }
+        } finally {
+          runner.finishedAt = new Date().toISOString();
+          runner.currentStepIndex = null;
+          runner.currentStepType = null;
+          runner.currentStepLabel = null;
+          lastSequenceRunner = { ...runner };
+          if (activeSequenceRunner?.runId === runner.runId) {
+            activeSequenceRunner = null;
+          }
+        }
+      })();
+
+      return {
+        page: buildPageRecord(),
+        sequence: buildSequenceRunnerSnapshot(runner),
+      };
+    }
+
     return {
       executeEvalCommand,
       executeMeasureCommand,
       executeQueryDomCommand,
       executeSequenceCommand,
+      readSequenceStateCommand,
+      startSequenceCommand,
+      stopSequenceCommand,
     };
   }
 

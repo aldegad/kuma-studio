@@ -5,16 +5,19 @@ const {
 const SOCKET_RECONNECT_BASE_DELAY_MS = 1_000;
 const SOCKET_RECONNECT_MAX_DELAY_MS = 10_000;
 const SOCKET_PROBE_TIMEOUT_MS = 1_500;
+const MAX_QUEUED_SOCKET_MESSAGES = 200;
 
 let daemonSocket = null;
 let daemonSocketUrl = null;
 let daemonTransportUrl = null;
 let queuedPresenceUpdate = null;
+let queuedSocketMessages = [];
 let reconnectDelayMs = SOCKET_RECONNECT_BASE_DELAY_MS;
 let reconnectTimer = null;
 let lastSocketStatus = "idle";
 let lastSocketError = null;
 let lastSocketErrorAt = null;
+let daemonSocketReady = false;
 
 function clearDaemonReconnectTimer() {
   if (reconnectTimer == null) {
@@ -78,6 +81,7 @@ function clearSocketError() {
 function closeDaemonSocket(options = {}) {
   const { intentional = false } = options;
   clearDaemonReconnectTimer();
+  daemonSocketReady = false;
 
   if (!daemonSocket) {
     if (intentional) {
@@ -101,8 +105,32 @@ function closeDaemonSocket(options = {}) {
   }
 }
 
+function queueSocketMessage(payload) {
+  queuedSocketMessages.push(payload);
+  if (queuedSocketMessages.length > MAX_QUEUED_SOCKET_MESSAGES) {
+    queuedSocketMessages = queuedSocketMessages.slice(-MAX_QUEUED_SOCKET_MESSAGES);
+  }
+}
+
+function flushQueuedSocketMessages() {
+  if (!daemonSocketReady || !isDaemonSocketOpen() || queuedSocketMessages.length === 0) {
+    return;
+  }
+
+  const pending = queuedSocketMessages;
+  queuedSocketMessages = [];
+  for (const message of pending) {
+    try {
+      daemonSocket.send(JSON.stringify(message));
+    } catch {
+      queueSocketMessage(message);
+      break;
+    }
+  }
+}
+
 function flushQueuedPresenceUpdate() {
-  if (!queuedPresenceUpdate || !isDaemonSocketOpen()) {
+  if (!queuedPresenceUpdate || !isDaemonSocketOpen() || !daemonSocketReady) {
     return;
   }
 
@@ -115,12 +143,15 @@ function sendDaemonSocketMessage(payload) {
     return false;
   }
 
-  if (payload.type === "presence.update" && !isDaemonSocketOpen()) {
+  if (payload.type === "presence.update" && (!isDaemonSocketOpen() || !daemonSocketReady)) {
     queuedPresenceUpdate = payload;
     return false;
   }
 
-  if (!isDaemonSocketOpen()) {
+  if (!isDaemonSocketOpen() || !daemonSocketReady) {
+    if (payload.type === "command.result" || payload.type === "command.error") {
+      queueSocketMessage(payload);
+    }
     return false;
   }
 
@@ -194,6 +225,7 @@ function openDaemonSocket(daemonUrl) {
   socket.addEventListener("open", () => {
     reconnectDelayMs = SOCKET_RECONNECT_BASE_DELAY_MS;
     lastSocketStatus = "connected";
+    daemonSocketReady = false;
     clearSocketError();
     void reportSocketDiagnostics(daemonUrl, "websocket:open");
     socket.send(
@@ -217,6 +249,8 @@ function openDaemonSocket(daemonUrl) {
 
       switch (message?.type) {
         case "hello":
+          daemonSocketReady = true;
+          flushQueuedSocketMessages();
           flushQueuedPresenceUpdate();
           return;
         case "ping":
@@ -241,6 +275,7 @@ function openDaemonSocket(daemonUrl) {
     if (daemonSocket === socket) {
       daemonSocket = null;
       daemonSocketUrl = null;
+      daemonSocketReady = false;
       if (lastSocketStatus !== "error") {
         lastSocketStatus = "disconnected";
         void reportSocketDiagnostics(daemonUrl, "websocket:close");
@@ -251,6 +286,7 @@ function openDaemonSocket(daemonUrl) {
 
   socket.addEventListener("error", () => {
     if (daemonSocket === socket) {
+      daemonSocketReady = false;
       setSocketError("The Kuma Picker WebSocket bridge failed to initialize.", daemonUrl, "websocket:error");
       try {
         socket.close();

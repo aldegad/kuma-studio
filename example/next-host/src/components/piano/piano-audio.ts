@@ -3,6 +3,7 @@
 type Voice = {
   gainNode: GainNode;
   nodes: AudioNode[]; // all nodes to disconnect on stop
+  disconnectTimer: number | null;
 };
 
 export class PianoAudio {
@@ -22,6 +23,29 @@ export class PianoAudio {
   private tremGain: GainNode | null = null;
   private _tremRate = 0;
   private _tremDepth = 0;
+  private sustainEnabled = false;
+  private sustainedVoiceIds = new Set<string>();
+
+  private getVoiceProfile(frequency: number) {
+    const bassBlend = Math.max(0, Math.min(1, (220 - frequency) / 140));
+    const gainPeak = 0.18 + bassBlend * 0.08;
+    const gainSustain = 0.1 + bassBlend * 0.05;
+    const subGain = 0.12 + bassBlend * 0.18;
+    const harmonic2Gain = 0.06 - bassBlend * 0.015;
+    const harmonic3Gain = 0.03 - bassBlend * 0.008;
+    const lowpassCutoff = Math.min(Math.max(frequency * (6.2 + bassBlend * 1.4), 900), 8000);
+    const lowShelfGain = bassBlend * 7;
+
+    return {
+      gainPeak,
+      gainSustain,
+      subGain,
+      harmonic2Gain: Math.max(0.035, harmonic2Gain),
+      harmonic3Gain: Math.max(0.016, harmonic3Gain),
+      lowpassCutoff,
+      lowShelfGain,
+    };
+  }
 
   private createReverbIR(ctx: AudioContext): AudioBuffer {
     const rate = ctx.sampleRate;
@@ -113,19 +137,73 @@ export class PianoAudio {
   get tremRate() { return this._tremRate; }
   get tremDepth() { return this._tremDepth; }
 
+  private disconnectVoice(voice: Voice) {
+    if (voice.disconnectTimer != null) {
+      window.clearTimeout(voice.disconnectTimer);
+      voice.disconnectTimer = null;
+    }
+    for (const node of voice.nodes) {
+      try {
+        node.disconnect();
+      } catch (_error) {
+        // Ignore disconnect races during fast retriggers.
+      }
+    }
+  }
+
+  private releaseVoice(id: string, releaseTime: number) {
+    if (!this.context) return;
+    const voice = this.voices.get(id);
+    if (!voice) return;
+
+    this.voices.delete(id);
+    this.sustainedVoiceIds.delete(id);
+
+    const now = this.context.currentTime;
+    voice.gainNode.gain.cancelScheduledValues(now);
+    voice.gainNode.gain.setValueAtTime(Math.max(voice.gainNode.gain.value, 0.0001), now);
+    voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, now + releaseTime);
+
+    for (const node of voice.nodes) {
+      if (node instanceof OscillatorNode) {
+        try {
+          node.stop(now + releaseTime + 0.05);
+        } catch (_error) {
+          // Oscillator may already be stopping.
+        }
+      }
+    }
+
+    voice.disconnectTimer = window.setTimeout(() => {
+      this.disconnectVoice(voice);
+    }, (releaseTime + 0.12) * 1000);
+  }
+
+  setSustain(enabled: boolean) {
+    this.sustainEnabled = enabled;
+    if (!enabled) {
+      for (const id of Array.from(this.sustainedVoiceIds)) {
+        this.releaseVoice(id, 0.9);
+      }
+    }
+  }
+
   async playNote(id: string, frequency: number) {
     const context = await this.ensureContext();
     if (!this.masterGain) return;
-    if (this.voices.has(id)) return;
+    if (this.voices.has(id)) {
+      this.releaseVoice(id, 0.05);
+    }
 
     const now = context.currentTime;
     const allNodes: AudioNode[] = [];
+    const profile = this.getVoiceProfile(frequency);
 
     // Per-voice gain with piano-like ADSR
     const noteGain = context.createGain();
     noteGain.gain.setValueAtTime(0.0001, now);
-    noteGain.gain.exponentialRampToValueAtTime(0.18, now + 0.008); // fast attack
-    noteGain.gain.exponentialRampToValueAtTime(0.10, now + 0.3);   // decay to sustain
+    noteGain.gain.exponentialRampToValueAtTime(profile.gainPeak, now + 0.008); // fast attack
+    noteGain.gain.exponentialRampToValueAtTime(profile.gainSustain, now + 0.3);   // decay to sustain
     noteGain.connect(this.masterGain);
     allNodes.push(noteGain);
 
@@ -142,7 +220,7 @@ export class PianoAudio {
     sub.type = "triangle";
     sub.frequency.setValueAtTime(frequency / 2, now);
     const subGain = context.createGain();
-    subGain.gain.value = 0.12; // very subtle sub
+    subGain.gain.value = profile.subGain;
     sub.connect(subGain);
     allNodes.push(sub, subGain);
 
@@ -151,7 +229,7 @@ export class PianoAudio {
     harmonic2.type = "sine";
     harmonic2.frequency.setValueAtTime(frequency * 2, now);
     const h2Gain = context.createGain();
-    h2Gain.gain.value = 0.06;
+    h2Gain.gain.value = profile.harmonic2Gain;
     harmonic2.connect(h2Gain);
     allNodes.push(harmonic2, h2Gain);
 
@@ -160,7 +238,7 @@ export class PianoAudio {
     harmonic3.type = "sine";
     harmonic3.frequency.setValueAtTime(frequency * 3, now);
     const h3Gain = context.createGain();
-    h3Gain.gain.setValueAtTime(0.03, now);
+    h3Gain.gain.setValueAtTime(profile.harmonic3Gain, now);
     h3Gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6); // sparkle fades fast
     harmonic3.connect(h3Gain);
     allNodes.push(harmonic3, h3Gain);
@@ -174,16 +252,23 @@ export class PianoAudio {
     // Lowpass filter — frequency-dependent: higher notes get brighter cutoff
     const lpf = context.createBiquadFilter();
     lpf.type = "lowpass";
-    lpf.frequency.setValueAtTime(Math.min(frequency * 6, 8000), now);
+    lpf.frequency.setValueAtTime(profile.lowpassCutoff, now);
     lpf.Q.value = 0.7;
     allNodes.push(lpf);
+
+    const lowShelf = context.createBiquadFilter();
+    lowShelf.type = "lowshelf";
+    lowShelf.frequency.setValueAtTime(220, now);
+    lowShelf.gain.setValueAtTime(profile.lowShelfGain, now);
+    allNodes.push(lowShelf);
 
     // Connect oscillator stack → filter → noteGain
     fundamental.connect(lpf);
     subGain.connect(lpf);
     h2Gain.connect(lpf);
     h3Gain.connect(lpf);
-    lpf.connect(noteGain);
+    lpf.connect(lowShelf);
+    lowShelf.connect(noteGain);
 
     // Start all oscillators
     fundamental.start(now);
@@ -191,36 +276,21 @@ export class PianoAudio {
     harmonic2.start(now);
     harmonic3.start(now);
 
-    this.voices.set(id, { gainNode: noteGain, nodes: allNodes });
+    this.voices.set(id, { gainNode: noteGain, nodes: allNodes, disconnectTimer: null });
   }
 
   stopNote(id: string) {
-    if (!this.context) return;
-    const voice = this.voices.get(id);
-    if (!voice) return;
-
-    const now = this.context.currentTime;
-    const releaseTime = 0.6; // longer release for piano feel
-
-    voice.gainNode.gain.cancelScheduledValues(now);
-    voice.gainNode.gain.setValueAtTime(Math.max(voice.gainNode.gain.value, 0.0001), now);
-    voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, now + releaseTime);
-
-    // Stop oscillators after release
-    for (const node of voice.nodes) {
-      if (node instanceof OscillatorNode) {
-        node.stop(now + releaseTime + 0.05);
-      }
+    if (!this.context || !this.voices.has(id)) return;
+    if (this.sustainEnabled) {
+      this.sustainedVoiceIds.add(id);
+      return;
     }
-
-    window.setTimeout(() => {
-      for (const node of voice.nodes) node.disconnect();
-    }, (releaseTime + 0.1) * 1000);
-
-    this.voices.delete(id);
+    this.releaseVoice(id, 0.85);
   }
 
   stopAll() {
-    Array.from(this.voices.keys()).forEach((id) => this.stopNote(id));
+    this.sustainEnabled = false;
+    this.sustainedVoiceIds.clear();
+    Array.from(this.voices.keys()).forEach((id) => this.releaseVoice(id, 0.18));
   }
 }

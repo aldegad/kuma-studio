@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { normalizeBrowserSequenceDefinition, readBrowserSequenceSteps } from "./browser-sequence.mjs";
+import {
+  estimateBrowserSequenceTimeoutMs,
+  normalizeBrowserSequenceDefinition,
+  readBrowserSequenceSteps,
+} from "./browser-sequence.mjs";
 
 describe("browser sequence parsing", () => {
   const tempRoots: string[] = [];
@@ -109,6 +113,21 @@ describe("browser sequence parsing", () => {
 
     const steps = readBrowserSequenceSteps({ "steps-file": file });
     expect(steps).toEqual([{ type: "click", text: "Export" }]);
+  });
+
+  it("estimates longer default timeouts for long-running browser sequences", () => {
+    const timeoutMs = estimateBrowserSequenceTimeoutMs([
+      { type: "mousedown", selector: "[data-testid='piano-key-D3']" },
+      { type: "mousedown", selector: "[data-testid='piano-key-F#4']" },
+      { type: "mousedown", selector: "[data-testid='piano-key-A4']" },
+      { type: "mousedown", selector: "[data-testid='piano-key-D5']", postActionDelayMs: 30_000 },
+      { type: "mouseup", selector: "[data-testid='piano-key-D3']" },
+      { type: "mouseup", selector: "[data-testid='piano-key-F#4']" },
+      { type: "mouseup", selector: "[data-testid='piano-key-A4']" },
+      { type: "mouseup", selector: "[data-testid='piano-key-D5']", postActionDelayMs: 32_000 },
+    ]);
+
+    expect(timeoutMs).toBeGreaterThan(60_000);
   });
 
   it("rejects unsupported assertion types", () => {

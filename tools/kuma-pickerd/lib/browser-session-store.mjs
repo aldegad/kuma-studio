@@ -15,6 +15,9 @@ import {
   toTimestamp,
 } from "./browser-session-store-shared.mjs";
 
+const COMMAND_RECONNECT_GRACE_BUFFER_MS = 5_000;
+const COMMAND_RECONNECT_GRACE_MAX_MS = 300_000;
+
 export class BrowserSessionStore {
   constructor() {
     this.metadata = null;
@@ -24,7 +27,64 @@ export class BrowserSessionStore {
     this.inFlightCommands = new Map();
   }
 
+  pruneExpiredInFlightCommands() {
+    const now = Date.now();
+
+    for (const [requestId, request] of [...this.inFlightCommands.entries()]) {
+      if (request.browserConnectionId != null || !request.reconnectDeadlineAt) {
+        continue;
+      }
+
+      if (toTimestamp(request.reconnectDeadlineAt) > now) {
+        continue;
+      }
+
+      const controller = this.controllerConnections.get(request.controllerConnectionId);
+      controller?.send(
+        createSocketEnvelope("command.error", {
+          requestId,
+          error: "The target browser connection disconnected before the command completed and did not reconnect in time.",
+        }),
+      );
+      this.inFlightCommands.delete(requestId);
+    }
+  }
+
+  computeReconnectDeadline(command) {
+    const requestedTimeoutMs =
+      typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) && command.timeoutMs > 0
+        ? command.timeoutMs
+        : 15_000;
+    return new Date(
+      Date.now() + Math.min(requestedTimeoutMs + COMMAND_RECONNECT_GRACE_BUFFER_MS, COMMAND_RECONNECT_GRACE_MAX_MS),
+    ).toISOString();
+  }
+
+  reclaimInFlightCommands(connectionId, extensionId) {
+    if (!extensionId) {
+      return;
+    }
+
+    const now = Date.now();
+    for (const request of this.inFlightCommands.values()) {
+      if (request.browserConnectionId != null) {
+        continue;
+      }
+      if (request.browserExtensionId !== extensionId) {
+        continue;
+      }
+      if (request.reconnectDeadlineAt && toTimestamp(request.reconnectDeadlineAt) <= now) {
+        continue;
+      }
+
+      request.browserConnectionId = connectionId;
+      request.disconnectedAt = null;
+      request.reconnectDeadlineAt = null;
+    }
+  }
+
   registerHello(connectionId, payload, send) {
+    this.pruneExpiredInFlightCommands();
     const hello = sanitizeHelloPayload(payload);
     const record = {
       connectionId,
@@ -47,6 +107,7 @@ export class BrowserSessionStore {
         browserName: record.browserName,
         updatedAt: record.updatedAt,
       };
+      this.reclaimInFlightCommands(connectionId, record.extensionId);
     } else {
       this.controllerConnections.set(connectionId, record);
     }
@@ -55,6 +116,7 @@ export class BrowserSessionStore {
   }
 
   recordBrowserPresence(connectionId, payload) {
+    this.pruneExpiredInFlightCommands();
     const connection = this.browserConnections.get(connectionId);
     if (!connection) {
       throw new Error("Browser presence requires an active browser hello.");
@@ -109,6 +171,7 @@ export class BrowserSessionStore {
   }
 
   dispatchControllerCommand(connectionId, payload) {
+    this.pruneExpiredInFlightCommands();
     const controller = this.controllerConnections.get(connectionId);
     if (!controller) {
       throw new Error("Browser command requests require a controller hello.");
@@ -140,8 +203,11 @@ export class BrowserSessionStore {
       requestId: envelope.requestId,
       controllerConnectionId: connectionId,
       browserConnectionId: browserConnection.connectionId,
+      browserExtensionId: browserConnection.extensionId ?? null,
       createdAt: nowIso(),
       command,
+      disconnectedAt: null,
+      reconnectDeadlineAt: null,
     });
 
     controller.send(
@@ -163,6 +229,7 @@ export class BrowserSessionStore {
   }
 
   completeBrowserCommand(connectionId, payload) {
+    this.pruneExpiredInFlightCommands();
     const result = sanitizeCommandResultPayload(payload, true);
     return this.completeBrowserEnvelope(connectionId, result.requestId, {
       type: "command.result",
@@ -172,6 +239,7 @@ export class BrowserSessionStore {
   }
 
   failBrowserCommand(connectionId, payload) {
+    this.pruneExpiredInFlightCommands();
     const result = sanitizeCommandResultPayload(payload, false);
     return this.completeBrowserEnvelope(connectionId, result.requestId, {
       type: "command.error",
@@ -181,6 +249,7 @@ export class BrowserSessionStore {
   }
 
   disconnect(connectionId) {
+    this.pruneExpiredInFlightCommands();
     this.controllerConnections.delete(connectionId);
 
     if (this.browserConnections.delete(connectionId)) {
@@ -192,6 +261,13 @@ export class BrowserSessionStore {
 
       for (const [requestId, request] of [...this.inFlightCommands.entries()]) {
         if (request.browserConnectionId === connectionId) {
+          if (request.browserExtensionId) {
+            request.browserConnectionId = null;
+            request.disconnectedAt = nowIso();
+            request.reconnectDeadlineAt = this.computeReconnectDeadline(request.command);
+            continue;
+          }
+
           const controller = this.controllerConnections.get(request.controllerConnectionId);
           controller?.send(
             createSocketEnvelope("command.error", {
@@ -213,6 +289,7 @@ export class BrowserSessionStore {
   }
 
   readSummary() {
+    this.pruneExpiredInFlightCommands();
     const sessions = [...this.sessions.values()];
     const freshSessions = sessions.filter(isFreshSession).sort(compareSessions);
     const primarySession = freshSessions[0] ?? null;
@@ -296,13 +373,25 @@ export class BrowserSessionStore {
   }
 
   completeBrowserEnvelope(connectionId, requestId, envelope) {
+    this.pruneExpiredInFlightCommands();
     const request = this.inFlightCommands.get(requestId);
     if (!request) {
       throw new Error(`Unknown browser command request: ${requestId}`);
     }
 
     if (request.browserConnectionId !== connectionId) {
-      throw new Error("Only the claimed browser connection can complete this command.");
+      const browserConnection = this.browserConnections.get(connectionId);
+      const canReconnectComplete =
+        request.browserConnectionId == null &&
+        browserConnection?.extensionId &&
+        browserConnection.extensionId === request.browserExtensionId;
+      if (!canReconnectComplete) {
+        throw new Error("Only the claimed browser connection can complete this command.");
+      }
+
+      request.browserConnectionId = connectionId;
+      request.disconnectedAt = null;
+      request.reconnectDeadlineAt = null;
     }
 
     const controller = this.controllerConnections.get(request.controllerConnectionId);
