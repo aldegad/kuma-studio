@@ -1121,7 +1121,6 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     }
 
     await focusElement(target);
-    getGestureOverlay()?.clearHeldGesture?.();
     const holdId = `drag-${nextPointerHoldId++}`;
     await getGestureOverlay()?.holdClickGesture?.(start, holdId);
 

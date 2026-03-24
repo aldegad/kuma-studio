@@ -10,7 +10,7 @@ describe("browser extension manifest", () => {
 
     expect(manifest.minimum_chrome_version).toBe("116");
     expect(manifest.permissions).toEqual(
-      expect.arrayContaining(["downloads", "contentSettings", "debugger", "offscreen", "tabCapture"]),
+      expect.arrayContaining(["downloads", "contentSettings", "debugger", "desktopCapture", "offscreen", "tabCapture"]),
     );
     expect(manifest.host_permissions).toEqual(
       expect.arrayContaining(["ws://127.0.0.1/*", "ws://localhost/*", "wss://127.0.0.1/*", "wss://localhost/*"]),

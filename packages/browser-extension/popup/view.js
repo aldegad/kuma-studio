@@ -1,11 +1,11 @@
 const daemonUrlInput = document.getElementById("daemon-url");
 const connectDaemonButton = document.getElementById("connect-daemon");
+const connectDaemonIcon = document.getElementById("connect-daemon-icon");
 const capturePageButton = document.getElementById("capture-page");
 const inspectElementButton = document.getElementById("inspect-element");
 const inspectWithJobButton = document.getElementById("inspect-with-job");
 const copyRefactorPromptButton = document.getElementById("copy-refactor-prompt");
 const refactorPromptElement = document.getElementById("refactor-prompt");
-const connectionFormElement = document.getElementById("connection-form");
 const connectionStatusElement = document.getElementById("connection-status");
 const connectionDotElement = document.getElementById("connection-dot");
 const connectionLabelElement = document.getElementById("connection-label");
@@ -21,23 +21,71 @@ const liveCaptureStatusElement = document.getElementById("live-capture-status");
 const liveCaptureDotElement = document.getElementById("live-capture-dot");
 const liveCaptureLabelElement = document.getElementById("live-capture-label");
 const liveCaptureMetaElement = document.getElementById("live-capture-meta");
+const liveCaptureSourceElements = Array.from(document.querySelectorAll('input[name="live-capture-source"]'));
 const startLiveCaptureButton = document.getElementById("start-live-capture");
 const stopLiveCaptureButton = document.getElementById("stop-live-capture");
+const captureSelectorPanelElement = document.getElementById("capture-selector-panel");
+const captureSelectorTitleElement = document.getElementById("capture-selector-title");
+const captureSelectorMetaElement = document.getElementById("capture-selector-meta");
+const captureSelectorHintElement = document.getElementById("capture-selector-hint");
+const captureSelectorCloseButton = document.getElementById("capture-selector-close");
+const captureSelectorFullButton = document.getElementById("capture-selector-full");
+const captureSelectorStartButton = document.getElementById("capture-selector-start");
+const capturePreviewStageElement = document.getElementById("capture-preview-stage");
+const capturePreviewImageElement = document.getElementById("capture-preview-image");
+const captureSelectionBoxElement = document.getElementById("capture-selection-box");
+const captureSelectionSizeElement = document.getElementById("capture-selection-size");
 const feedbackElement = document.getElementById("feedback");
+const feedbackMessageElement = document.getElementById("feedback-message");
+const feedbackShortcutElement = document.getElementById("feedback-shortcut");
 const lastSavedElement = document.getElementById("last-saved");
 let isBusy = false;
 let isConnected = false;
 let isCurrentPageReady = false;
 let isLiveCaptureActive = false;
+let isCaptureSelectorActive = false;
 let currentPageTabId = null;
+let isEditingConnectionUrl = false;
+const DEFAULT_FOOTER_MESSAGE = "Click to pick an element, or drag to capture an area.";
+
+function getSelectedLiveCaptureSourceValue() {
+  const selected = liveCaptureSourceElements.find((input) => input.checked);
+  const value = typeof selected?.value === "string" ? selected.value : "tab";
+  return value === "window" || value === "screen" ? value : "tab";
+}
+
+function canStartLiveCapture() {
+  const selectedSource = getSelectedLiveCaptureSourceValue();
+  if (selectedSource === "window" || selectedSource === "screen") {
+    return isConnected && currentPageTabId !== null && !isLiveCaptureActive;
+  }
+
+  return isConnected && isCurrentPageReady && !isLiveCaptureActive;
+}
 
 function syncButtonState() {
   connectDaemonButton.disabled = isBusy;
   capturePageButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectElementButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectWithJobButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
-  startLiveCaptureButton.disabled = isBusy || !isConnected || !isCurrentPageReady || isLiveCaptureActive;
+  startLiveCaptureButton.disabled = isBusy || isCaptureSelectorActive || !canStartLiveCapture();
   stopLiveCaptureButton.disabled = isBusy || !isLiveCaptureActive;
+  liveCaptureSourceElements.forEach((input) => {
+    input.disabled = isBusy || isLiveCaptureActive;
+  });
+  captureSelectorCloseButton.disabled = isBusy;
+  captureSelectorFullButton.disabled = isBusy;
+  captureSelectorStartButton.disabled = isBusy;
+}
+
+function updateConnectionEditUi() {
+  connectionUrlElement.classList.toggle("is-hidden", isEditingConnectionUrl);
+  daemonUrlInput.classList.toggle("is-hidden", !isEditingConnectionUrl);
+  connectDaemonButton.setAttribute("aria-label", isEditingConnectionUrl ? "Apply bridge URL" : "Edit bridge URL");
+  connectDaemonButton.setAttribute("title", isEditingConnectionUrl ? "Apply bridge URL" : "Edit bridge URL");
+  connectDaemonIcon.innerHTML = isEditingConnectionUrl
+    ? '<path d="M5 12.5l4.25 4.25L19 7" />'
+    : '<path d="M4 20l4.5-1 9.25-9.25a1.5 1.5 0 0 0 0-2.12l-1.38-1.38a1.5 1.5 0 0 0-2.12 0L5 15.5 4 20z" /><path d="M13.5 7.5l3 3" />';
 }
 
 function setBusyState(busyState) {
@@ -52,7 +100,8 @@ function setActionAvailability(connectedState, currentPageReadyState = false) {
 }
 
 function setFeedback(message = "", tone = "idle") {
-  feedbackElement.textContent = message;
+  feedbackMessageElement.textContent = message || DEFAULT_FOOTER_MESSAGE;
+  feedbackShortcutElement.classList.toggle("is-hidden", Boolean(message));
   feedbackElement.className = `feedback feedback-${tone}`;
 }
 
@@ -64,11 +113,27 @@ function setRefactorPrompt(message) {
   refactorPromptElement.value = message;
 }
 
+function isConnectionEditMode() {
+  return isEditingConnectionUrl;
+}
+
+function setConnectionEditMode(editing, { focus = false, resetValue = false } = {}) {
+  isEditingConnectionUrl = editing === true;
+  if (resetValue) {
+    daemonUrlInput.value = connectionUrlElement.textContent || "";
+  }
+  updateConnectionEditUi();
+  if (isEditingConnectionUrl && focus) {
+    daemonUrlInput.focus();
+    daemonUrlInput.select();
+  }
+}
+
 function setCurrentPageTabId(tabId) {
   currentPageTabId = Number.isInteger(tabId) ? tabId : null;
   const hasTabId = currentPageTabId !== null;
   pageStatusControlsElement.classList.toggle("is-hidden", !hasTabId);
-  pageTabIdElement.textContent = hasTabId ? `Tab ID ${currentPageTabId}` : "";
+  pageTabIdElement.textContent = hasTabId ? String(currentPageTabId) : "";
   copyPageTabIdButton.disabled = !hasTabId;
 }
 
@@ -78,6 +143,23 @@ function setLiveCaptureState({ state = "idle", label = "", meta = "", active = f
   liveCaptureDotElement.className = `status-dot status-dot-${state === "recording" ? "checking" : state === "error" ? "error" : "connected"}`;
   liveCaptureLabelElement.textContent = label;
   liveCaptureMetaElement.textContent = meta;
+  liveCaptureStatusElement.open = active === true || state === "error";
+  syncButtonState();
+}
+
+function setCaptureSelectorState({
+  active = false,
+  title = "Frame your capture",
+  meta = "",
+  hint = "",
+  startLabel = "Start Selected Capture",
+} = {}) {
+  isCaptureSelectorActive = active === true;
+  captureSelectorPanelElement.classList.toggle("is-hidden", !isCaptureSelectorActive);
+  captureSelectorTitleElement.textContent = title;
+  captureSelectorMetaElement.textContent = meta;
+  captureSelectorHintElement.textContent = hint;
+  captureSelectorStartButton.textContent = startLabel;
   syncButtonState();
 }
 
@@ -87,9 +169,8 @@ async function copyCurrentPageTabId() {
   }
 
   try {
-    const tabIdArgument = `--tab-id ${currentPageTabId}`;
-    await navigator.clipboard.writeText(tabIdArgument);
-    setFeedback(`${tabIdArgument} copied.`, "success");
+    await navigator.clipboard.writeText(String(currentPageTabId));
+    setFeedback("Tab ID copied.", "success");
   } catch (error) {
     setFeedback(error instanceof Error ? error.message : String(error), "error");
   }
@@ -109,7 +190,7 @@ function setConnectionState({
   connectionDotElement.className = `status-dot status-dot-${state}`;
   connectionLabelElement.textContent = label;
   connectionUrlElement.textContent = url;
-  connectionFormElement.classList.toggle("is-hidden", !showForm);
+  daemonUrlInput.value = url;
   pageStatusElement.dataset.state = pageState;
   pageStatusDotElement.className = `status-dot status-dot-${pageState === "ready" ? "connected" : pageState === "checking" ? "checking" : "error"}`;
   pageStatusLabelElement.textContent = pageLabel;
@@ -135,3 +216,21 @@ function updateSavedSelectionLabel(result) {
 copyPageTabIdButton.addEventListener("click", () => {
   void copyCurrentPageTabId();
 });
+
+liveCaptureSourceElements.forEach((input) => {
+  input.addEventListener("change", () => {
+    syncButtonState();
+  });
+});
+
+daemonUrlInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    connectDaemonButton.click();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    setConnectionEditMode(false, { resetValue: true });
+  }
+});
+
+updateConnectionEditUi();

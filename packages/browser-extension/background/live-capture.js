@@ -1,12 +1,29 @@
 const LIVE_CAPTURE_OFFSCREEN_DOCUMENT_PATH = "offscreen-recording.html";
 const LIVE_CAPTURE_OFFSCREEN_TARGET = "offscreen-live-capture";
-const LIVE_CAPTURE_TIMEOUT_MS = 20_000;
+const LIVE_CAPTURE_TIMEOUT_MS = 120_000;
 const LIVE_CAPTURE_DEFAULT_FPS = 30;
+
+function normalizeLiveCaptureKind(value) {
+  return value === "screen" || value === "window" ? value : "tab";
+}
+
+function getLiveCaptureKindLabel(kind) {
+  switch (normalizeLiveCaptureKind(kind)) {
+    case "window":
+      return "Window";
+    case "screen":
+      return "Screen";
+    default:
+      return "Current tab";
+  }
+}
 
 function getLiveCaptureStateStore() {
   if (!globalThis.__kumaPickerLiveCaptureState) {
     globalThis.__kumaPickerLiveCaptureState = {
       offscreenCreatePromise: null,
+      preparedSession: null,
+      studioSession: null,
       activeSession: null,
       pendingStops: new Map(),
     };
@@ -101,8 +118,8 @@ async function ensureLiveCaptureOffscreenDocument() {
 
   state.offscreenCreatePromise = chrome.offscreen.createDocument({
     url: LIVE_CAPTURE_OFFSCREEN_DOCUMENT_PATH,
-    reasons: ["USER_MEDIA"],
-    justification: "Capture high-quality live browser video for Kuma Picker.",
+    reasons: ["USER_MEDIA", "DISPLAY_MEDIA"],
+    justification: "Capture high-quality live browser, window, or screen video for Kuma Picker.",
   });
 
   try {
@@ -146,8 +163,19 @@ function withLiveCaptureTimeout(promise, timeoutMs, timeoutMessage) {
 }
 
 async function downloadLiveCaptureVideo(result, filename) {
+  const downloadUrl =
+    typeof result?.downloadUrl === "string" && result.downloadUrl
+      ? result.downloadUrl
+      : typeof result?.dataUrl === "string" && result.dataUrl
+        ? result.dataUrl
+        : "";
+
+  if (!downloadUrl) {
+    throw new Error("The live capture did not return a downloadable URL.");
+  }
+
   const downloadId = await chrome.downloads.download({
-    url: result.dataUrl,
+    url: downloadUrl,
     filename,
     saveAs: false,
     conflictAction: "uniquify",
@@ -157,6 +185,30 @@ async function downloadLiveCaptureVideo(result, filename) {
     downloadId,
     record: await refreshDownloadRecord(downloadId),
   };
+}
+
+async function releaseLiveCaptureDownloadUrl(session, result) {
+  if (result?.downloadUrlType !== "object-url" || typeof result?.downloadUrl !== "string" || !result.downloadUrl) {
+    return;
+  }
+
+  if (session?.mode === "studio" && Number.isInteger(session?.studioTabId)) {
+    await chrome.tabs
+      .sendMessage(session.studioTabId, {
+        type: "kuma-picker:studio-live-capture-release-download-url",
+        target: "capture-studio",
+        recordingId: session.id,
+        downloadUrl: result.downloadUrl,
+      })
+      .catch(() => null);
+    return;
+  }
+
+  await sendMessageToLiveCaptureOffscreen({
+    type: "kuma-picker:live-capture-release-download-url",
+    recordingId: session?.id ?? "",
+    downloadUrl: result.downloadUrl,
+  }).catch(() => null);
 }
 
 function serializeLiveCaptureState() {
@@ -175,6 +227,8 @@ function serializeLiveCaptureState() {
       tabId: session.targetTabId,
       page: session.page,
       filename: session.filename,
+      captureKind: session.captureKind,
+      captureLabel: session.captureLabel,
       fps: session.fps,
       startedAt: session.startedAt,
       status: session.status,
@@ -216,6 +270,144 @@ function getLiveCaptureStateForTab(tab) {
   return serializeLiveCaptureState();
 }
 
+async function openLiveCaptureStudio(message = {}) {
+  const state = getLiveCaptureStateStore();
+  if (state.activeSession) {
+    throw new Error("Stop the current live capture before opening Capture Studio.");
+  }
+  if (state.studioSession?.studioTabId) {
+    try {
+      const existingTab = await chrome.tabs.get(state.studioSession.studioTabId);
+      if (existingTab?.windowId) {
+        await chrome.windows.update(existingTab.windowId, { focused: true });
+        await chrome.tabs.update(existingTab.id, { active: true });
+        return {
+          ok: true,
+          message: "Capture Studio is already open.",
+        };
+      }
+    } catch {
+      state.studioSession = null;
+    }
+  }
+
+  const targetTab = await resolveTargetTab(message);
+  if (!targetTab?.id || !targetTab.windowId || !targetTab.url) {
+    throw new Error("No target tab is available for Capture Studio.");
+  }
+
+  const captureKind = normalizeLiveCaptureKind(message?.captureKind);
+  if (captureKind === "tab") {
+    throw new Error("Capture Studio is only needed for window or screen capture.");
+  }
+
+  const startedAt = new Date().toISOString();
+  const recordingId = `live-capture-${Date.now().toString(36)}`;
+  const fps = Number.isFinite(message?.fps) ? Math.max(1, Math.min(60, Math.round(message.fps))) : LIVE_CAPTURE_DEFAULT_FPS;
+  const filename = normalizeLiveCaptureFilename(message?.filename, targetTab, startedAt);
+  const studioUrl = new URL(chrome.runtime.getURL("capture-studio.html"));
+  studioUrl.searchParams.set("studioId", recordingId);
+  const studioWindow = await chrome.windows.create({
+    url: studioUrl.toString(),
+    type: "popup",
+    focused: true,
+    width: 980,
+    height: 980,
+  });
+  const studioTab = Array.isArray(studioWindow.tabs) ? studioWindow.tabs[0] : null;
+  if (!studioTab?.id) {
+    throw new Error("Failed to open Capture Studio.");
+  }
+
+  state.studioSession = {
+    id: recordingId,
+    targetTabId: targetTab.id,
+    studioTabId: studioTab.id,
+    studioWindowId: studioWindow.id ?? null,
+    startedAt,
+    fps,
+    filename,
+    page: createPageRecordFromTab(targetTab),
+    captureKind,
+    captureLabel: getLiveCaptureKindLabel(captureKind),
+    mode: "studio",
+    status: "opening",
+  };
+
+  return {
+    ok: true,
+    message: "Capture Studio opened.",
+    studio: {
+      id: recordingId,
+      tabId: studioTab.id,
+      windowId: studioWindow.id ?? null,
+    },
+  };
+}
+
+async function getLiveCaptureStudioContext(message = {}, sender = {}) {
+  const state = getLiveCaptureStateStore();
+  const studioId = typeof message?.studioId === "string" ? message.studioId.trim() : "";
+  const studioSession = state.studioSession;
+  if (!studioSession || !studioId || studioSession.id !== studioId) {
+    return {
+      ok: false,
+      error: "Capture Studio session was not found.",
+    };
+  }
+
+  if (sender.tab?.id && sender.tab.id !== studioSession.studioTabId) {
+    return {
+      ok: false,
+      error: "Capture Studio context belongs to another tab.",
+    };
+  }
+
+  return {
+    ok: true,
+    studio: {
+      id: studioSession.id,
+      targetTabId: studioSession.targetTabId,
+      page: studioSession.page,
+      captureKind: studioSession.captureKind,
+      captureLabel: studioSession.captureLabel,
+      fps: studioSession.fps,
+      filename: studioSession.filename,
+    },
+  };
+}
+
+async function handleStudioLiveCaptureStarted(message = {}, sender = {}) {
+  const state = getLiveCaptureStateStore();
+  const studioSession = state.studioSession;
+  const studioId = typeof message?.studioId === "string" ? message.studioId.trim() : "";
+  if (!studioSession || !studioId || studioSession.id !== studioId) {
+    return {
+      ok: false,
+      error: "Capture Studio session was not found.",
+    };
+  }
+
+  if (sender.tab?.id !== studioSession.studioTabId) {
+    return {
+      ok: false,
+      error: "Only the matching Capture Studio tab can start this recording.",
+    };
+  }
+
+  state.activeSession = {
+    ...studioSession,
+    status: "recording",
+    startedAt: typeof message?.startedAt === "string" && message.startedAt ? message.startedAt : studioSession.startedAt,
+  };
+  state.studioSession = null;
+
+  return {
+    ok: true,
+    ...serializeLiveCaptureState(),
+  };
+}
+
 async function startLiveCapture(message = {}) {
   const state = getLiveCaptureStateStore();
   if (state.activeSession) {
@@ -230,34 +422,168 @@ async function startLiveCapture(message = {}) {
     throw new Error("No target tab is available for live capture.");
   }
 
+  const preparedCaptureId = typeof message?.preparedCaptureId === "string" ? message.preparedCaptureId.trim() : "";
+  if (preparedCaptureId) {
+    const preparedSession = state.preparedSession;
+    if (!preparedSession || preparedSession.id !== preparedCaptureId) {
+      throw new Error("No matching prepared live capture is available.");
+    }
+
+    if (preparedSession.targetTabId !== targetTab.id) {
+      throw new Error(`The prepared live capture belongs to tab ${preparedSession.targetTabId}, not tab ${targetTab.id}.`);
+    }
+
+    try {
+      await sendMessageToLiveCaptureOffscreen({
+        type: "kuma-picker:live-capture-begin",
+        recordingId: preparedSession.id,
+        cropRect:
+          message?.cropRect &&
+          typeof message.cropRect === "object" &&
+          Number.isFinite(message.cropRect.x) &&
+          Number.isFinite(message.cropRect.y) &&
+          Number.isFinite(message.cropRect.width) &&
+          Number.isFinite(message.cropRect.height)
+            ? {
+                x: message.cropRect.x,
+                y: message.cropRect.y,
+                width: message.cropRect.width,
+                height: message.cropRect.height,
+              }
+            : null,
+      });
+    } catch (error) {
+      await sendMessageToLiveCaptureOffscreen({
+        type: "kuma-picker:live-capture-discard",
+        recordingId: preparedSession.id,
+      }).catch(() => null);
+      state.preparedSession = null;
+      throw error;
+    }
+
+    state.activeSession = {
+      ...preparedSession,
+      status: "recording",
+    };
+    state.preparedSession = null;
+  } else {
+    const startedAt = new Date().toISOString();
+    const requestedStreamId = typeof message?.streamId === "string" ? message.streamId.trim() : "";
+    const streamId = requestedStreamId || (await chrome.tabCapture.getMediaStreamId({ targetTabId: targetTab.id }));
+    const captureKind = normalizeLiveCaptureKind(message?.captureKind);
+    const canRequestAudioTrack = message?.canRequestAudioTrack === true;
+    const recordingId = `live-capture-${Date.now().toString(36)}`;
+    const fps = Number.isFinite(message?.fps) ? Math.max(1, Math.min(60, Math.round(message.fps))) : LIVE_CAPTURE_DEFAULT_FPS;
+    const filename = normalizeLiveCaptureFilename(message?.filename, targetTab, startedAt);
+
+    await sendMessageToLiveCaptureOffscreen({
+      type: "kuma-picker:live-capture-start",
+      recordingId,
+      streamId,
+      captureKind,
+      canRequestAudioTrack,
+      fps,
+    });
+
+    state.activeSession = {
+      id: recordingId,
+      targetTabId: targetTab.id,
+      startedAt,
+      fps,
+      filename,
+      page: createPageRecordFromTab(targetTab),
+      captureKind,
+      captureLabel: getLiveCaptureKindLabel(captureKind),
+      status: "recording",
+    };
+  }
+
+  return {
+    ok: true,
+    message: "Live capture started.",
+    ...serializeLiveCaptureState(),
+  };
+}
+
+async function prepareLiveCapture(message = {}) {
+  const state = getLiveCaptureStateStore();
+  if (state.activeSession) {
+    throw new Error("Stop the current live capture before preparing another one.");
+  }
+  if (state.preparedSession) {
+    await discardPreparedLiveCapture({ preparedCaptureId: state.preparedSession.id }).catch(() => null);
+  }
+
+  const targetTab = await resolveTargetTab(message);
+  if (!targetTab?.id || !targetTab.windowId || !targetTab.url) {
+    throw new Error("No target tab is available for live capture.");
+  }
+
   const startedAt = new Date().toISOString();
   const requestedStreamId = typeof message?.streamId === "string" ? message.streamId.trim() : "";
   const streamId = requestedStreamId || (await chrome.tabCapture.getMediaStreamId({ targetTabId: targetTab.id }));
+  const captureKind = normalizeLiveCaptureKind(message?.captureKind);
+  const canRequestAudioTrack = message?.canRequestAudioTrack === true;
   const recordingId = `live-capture-${Date.now().toString(36)}`;
   const fps = Number.isFinite(message?.fps) ? Math.max(1, Math.min(60, Math.round(message.fps))) : LIVE_CAPTURE_DEFAULT_FPS;
   const filename = normalizeLiveCaptureFilename(message?.filename, targetTab, startedAt);
-
-  await sendMessageToLiveCaptureOffscreen({
-    type: "kuma-picker:live-capture-start",
+  const preview = await sendMessageToLiveCaptureOffscreen({
+    type: "kuma-picker:live-capture-prepare",
     recordingId,
     streamId,
+    captureKind,
+    canRequestAudioTrack,
     fps,
   });
 
-  state.activeSession = {
+  state.preparedSession = {
     id: recordingId,
     targetTabId: targetTab.id,
     startedAt,
     fps,
     filename,
     page: createPageRecordFromTab(targetTab),
-    status: "recording",
+    captureKind,
+    captureLabel: getLiveCaptureKindLabel(captureKind),
+    status: "prepared",
   };
 
   return {
     ok: true,
-    message: "Live capture started.",
-    ...serializeLiveCaptureState(),
+    preparedCapture: {
+      id: recordingId,
+      captureKind,
+      captureLabel: getLiveCaptureKindLabel(captureKind),
+      sourceWidth: preview.sourceWidth,
+      sourceHeight: preview.sourceHeight,
+      previewDataUrl: preview.previewDataUrl,
+    },
+  };
+}
+
+async function discardPreparedLiveCapture(message = {}) {
+  const state = getLiveCaptureStateStore();
+  const preparedSession = state.preparedSession;
+  if (!preparedSession) {
+    return {
+      ok: true,
+      ignored: true,
+    };
+  }
+
+  const preparedCaptureId = typeof message?.preparedCaptureId === "string" ? message.preparedCaptureId.trim() : "";
+  if (preparedCaptureId && preparedCaptureId !== preparedSession.id) {
+    throw new Error(`The prepared live capture belongs to ${preparedSession.id}, not ${preparedCaptureId}.`);
+  }
+
+  await sendMessageToLiveCaptureOffscreen({
+    type: "kuma-picker:live-capture-discard",
+    recordingId: preparedSession.id,
+  }).catch(() => null);
+  state.preparedSession = null;
+
+  return {
+    ok: true,
   };
 }
 
@@ -273,39 +599,51 @@ async function stopLiveCapture() {
   state.pendingStops.set(session.id, deferred);
 
   try {
-    await sendMessageToLiveCaptureOffscreen({
-      type: "kuma-picker:live-capture-stop",
-      recordingId: session.id,
-    });
+    if (session.mode === "studio") {
+      await chrome.runtime.sendMessage({
+        type: "kuma-picker:studio-live-capture-stop-request",
+        target: "capture-studio",
+        recordingId: session.id,
+      });
+    } else {
+      await sendMessageToLiveCaptureOffscreen({
+        type: "kuma-picker:live-capture-stop",
+        recordingId: session.id,
+      });
+    }
 
     const result = await withLiveCaptureTimeout(
       deferred.promise,
       LIVE_CAPTURE_TIMEOUT_MS,
       "Timed out waiting for the live capture to finish encoding.",
     );
-    const download = await downloadLiveCaptureVideo(result, session.filename);
+    try {
+      const download = await downloadLiveCaptureVideo(result, session.filename);
 
-    return {
-      ok: true,
-      message: "Live capture saved.",
-      active: false,
-      recording: {
-        id: session.id,
-        filename: session.filename,
-        startedAt: session.startedAt,
-        stoppedAt: new Date().toISOString(),
-        fps: session.fps,
-        bytes: result.bytes,
-        mimeType: result.mimeType,
-      },
-      download: serializeDownloadResult(download.record, {
-        filenameContains: session.filename.split("/").at(-1) ?? null,
-        downloadUrlContains: null,
-        startedAfter: session.startedAt,
-        contextTargetUrl: session.page?.url ?? null,
-      }),
-      downloadId: download.downloadId,
-    };
+      return {
+        ok: true,
+        message: "Live capture saved.",
+        active: false,
+        recording: {
+          id: session.id,
+          filename: session.filename,
+          startedAt: session.startedAt,
+          stoppedAt: new Date().toISOString(),
+          fps: session.fps,
+          bytes: result.bytes,
+          mimeType: result.mimeType,
+        },
+        download: serializeDownloadResult(download.record, {
+          filenameContains: session.filename.split("/").at(-1) ?? null,
+          downloadUrlContains: null,
+          startedAfter: session.startedAt,
+          contextTargetUrl: session.page?.url ?? null,
+        }),
+        downloadId: download.downloadId,
+      };
+    } finally {
+      await releaseLiveCaptureDownloadUrl(session, result);
+    }
   } finally {
     state.pendingStops.delete(session.id);
     state.activeSession = null;
@@ -329,6 +667,8 @@ async function handleLiveCaptureFinished(message) {
   }
 
   pending.resolve({
+    downloadUrl: typeof message?.downloadUrl === "string" ? message.downloadUrl : "",
+    downloadUrlType: typeof message?.downloadUrlType === "string" ? message.downloadUrlType : "data-url",
     dataUrl: typeof message?.dataUrl === "string" ? message.dataUrl : "",
     mimeType: typeof message?.mimeType === "string" ? message.mimeType : "video/webm",
     bytes: Number.isFinite(message?.bytes) ? Math.max(0, Math.round(message.bytes)) : 0,
@@ -339,7 +679,13 @@ async function handleLiveCaptureFinished(message) {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   const state = getLiveCaptureStateStore();
-  if (state.activeSession?.targetTabId === tabId) {
+  if (state.studioSession?.studioTabId === tabId) {
+    state.studioSession = null;
+  }
+  if (state.preparedSession?.targetTabId === tabId) {
+    void discardPreparedLiveCapture({ preparedCaptureId: state.preparedSession.id });
+  }
+  if (state.activeSession?.targetTabId === tabId || state.activeSession?.studioTabId === tabId) {
     const pending = state.pendingStops.get(state.activeSession.id);
     pending?.reject(new Error("The live-captured tab was closed before encoding finished."));
     state.pendingStops.delete(state.activeSession.id);

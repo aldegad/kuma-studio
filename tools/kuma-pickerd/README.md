@@ -188,7 +188,7 @@ For browser commands:
 - use `browser-fill --label "..."` when the form field is easier to target by label than by selector
 - use `browser-set-files --selector "input[type=file]" --files "/absolute/path/to/image.png"` when a real file input must receive local files
 - use `browser-record-start` before a reproduction flow and `browser-record-stop` after it when you want Chrome to save a sped-up `.webm` debugging clip in the downloads folder
-- use `browser-live-capture-state` to check whether a popup-started live capture is active for a specific tab
+- use `browser-live-capture-state` to check whether a popup-started live capture is active for a specific tab, even when the popup is recording a desktop window or the entire screen
 - use `browser-live-capture-stop` when the popup already started a live capture and the agent should stop it from the terminal
 - the current visible-tab recorder is capped at `2fps` because Chrome's `tabs.MAX_CAPTURE_VISIBLE_TAB_CALLS_PER_SECOND` limit for `captureVisibleTab` is `2`
 - use `browser-sequence` when a menu, dropdown, or modal flow must stay alive across multiple clicks

@@ -8,27 +8,184 @@
   </head>
   <body>
     <main class="popup">
-      <header id="connection-status" class="connection-status">
-        <div class="connection-badge">
-          <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
-          <p id="connection-label" class="connection-label">Checking bridge...</p>
-        </div>
-        <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
-      </header>
-
-      <section id="page-status" class="page-status" data-state="checking">
-        <span id="page-status-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
-        <div class="page-status-copy">
-          <p id="page-status-label" class="page-status-label">Checking current page...</p>
-          <p id="page-status-meta" class="page-status-meta"></p>
-          <div id="page-status-controls" class="page-status-controls is-hidden">
-            <span id="page-tab-id" class="page-tab-id"></span>
+      <section class="status-overview">
+        <header id="connection-status" class="connection-status">
+          <div class="connection-badge">
+            <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+            <div class="connection-copy">
+              <div class="connection-inline">
+                <p id="connection-label" class="connection-label">Checking bridge...</p>
+                <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
+                <input
+                  id="daemon-url"
+                  class="connection-url-input is-hidden"
+                  type="url"
+                  spellcheck="false"
+                  placeholder="http://127.0.0.1:4312"
+                />
+              </div>
+            </div>
             <button
-              id="copy-page-tab-id"
+              id="connect-daemon"
               type="button"
-              class="icon-button"
-              aria-label="Copy current tab ID"
-              title="Copy current tab ID"
+              class="icon-button connection-edit-button"
+              aria-label="Edit bridge URL"
+              title="Edit bridge URL"
+            >
+              <svg id="connect-daemon-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20l4.5-1 9.25-9.25a1.5 1.5 0 0 0 0-2.12l-1.38-1.38a1.5 1.5 0 0 0-2.12 0L5 15.5 4 20z" />
+                <path d="M13.5 7.5l3 3" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <section id="page-status" class="page-status" data-state="checking">
+          <span id="page-status-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+          <div class="page-status-copy">
+            <div class="page-status-head">
+              <p id="page-status-label" class="page-status-label">Checking current page...</p>
+              <div id="page-status-controls" class="page-status-controls is-hidden">
+                <span id="page-tab-id" class="page-tab-id"></span>
+                <button
+                  id="copy-page-tab-id"
+                  type="button"
+                  class="icon-button"
+                  aria-label="Copy current tab ID"
+                  title="Copy current tab ID"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
+                    />
+                    <path
+                      d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <p id="page-status-meta" class="page-status-meta"></p>
+          </div>
+        </section>
+      </section>
+
+      <details id="live-capture-status" class="page-status live-capture-status live-capture-panel" data-state="idle">
+        <summary class="live-capture-summary">
+          <span id="live-capture-dot" class="status-dot status-dot-connected" aria-hidden="true"></span>
+          <div class="page-status-copy">
+            <p id="live-capture-label" class="page-status-label">Live capture idle</p>
+            <p id="live-capture-meta" class="page-status-meta">Current tab starts instantly. Window and screen captures open a separate Capture Studio for framing.</p>
+          </div>
+          <span class="accordion-toggle" aria-hidden="true"></span>
+        </summary>
+        <div class="live-capture-body">
+          <fieldset class="capture-source-list">
+            <legend class="field-label">Capture source</legend>
+            <label class="capture-source-option">
+              <input type="radio" name="live-capture-source" value="tab" checked />
+              <span class="capture-source-text">
+                <span class="capture-source-title">Current tab</span>
+                <span class="capture-source-meta">Start instantly from the active page.</span>
+              </span>
+            </label>
+            <label class="capture-source-option">
+              <input type="radio" name="live-capture-source" value="window" />
+              <span class="capture-source-text">
+                <span class="capture-source-title">Window</span>
+                <span class="capture-source-meta">Open Capture Studio and frame just the shared window.</span>
+              </span>
+            </label>
+            <label class="capture-source-option">
+              <input type="radio" name="live-capture-source" value="screen" />
+              <span class="capture-source-text">
+                <span class="capture-source-title">Entire screen</span>
+                <span class="capture-source-meta">Pick any monitor, then crop inside Capture Studio.</span>
+              </span>
+            </label>
+          </fieldset>
+          <p class="live-capture-tip">Window and screen captures open a separate studio window where you can drag the frame and fine-tune the preview scale.</p>
+          <div class="page-status-controls">
+            <button id="start-live-capture" type="button" class="button button-primary">
+              Start Live Capture
+            </button>
+            <button id="stop-live-capture" type="button" class="button button-danger">
+              Stop
+            </button>
+          </div>
+        </div>
+      </details>
+
+      <section id="capture-selector-panel" class="capture-selector-panel is-hidden">
+        <div class="capture-selector-head">
+          <div class="capture-selector-copy">
+            <p id="capture-selector-title" class="capture-selector-title">Frame your capture</p>
+            <p id="capture-selector-meta" class="capture-selector-meta">Drag across the preview to choose the exact recording area.</p>
+          </div>
+          <button id="capture-selector-close" type="button" class="button button-ghost capture-selector-close">
+            Cancel
+          </button>
+        </div>
+        <div id="capture-preview-stage" class="capture-preview-stage">
+          <img id="capture-preview-image" class="capture-preview-image" alt="Live capture preview" />
+          <div id="capture-selection-box" class="capture-selection-box is-hidden">
+            <span id="capture-selection-size" class="capture-selection-size"></span>
+          </div>
+        </div>
+        <div class="capture-selector-footer">
+          <p id="capture-selector-hint" class="capture-selector-hint">Click and drag to draw a crop. Use full frame if you want the whole shared surface.</p>
+          <div class="capture-selector-actions">
+            <button id="capture-selector-full" type="button" class="button button-secondary">
+              Use Full Frame
+            </button>
+            <button id="capture-selector-start" type="button" class="button button-primary">
+              Start Selected Capture
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="action-stack">
+        <button id="inspect-element" type="button" class="button button-primary action-feature">
+          Pick Element Or Drag Area
+        </button>
+        <div class="action-row">
+          <button id="capture-page" type="button" class="button button-secondary">
+            Capture Current Page
+          </button>
+          <button id="inspect-with-job" type="button" class="button button-tertiary">
+            Pick With Job
+          </button>
+        </div>
+      </section>
+
+      <section class="footer-status" aria-live="polite">
+        <img
+          class="footer-paw"
+          src="./assets/gestures/kuma-paw-tap.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <div class="footer-copy">
+          <p id="feedback" class="feedback feedback-idle">
+            <span id="feedback-message">Click to pick an element, or drag to capture an area.</span>
+            <span id="feedback-shortcut">Press <kbd>Esc</kbd> to cancel.</span>
+          </p>
+          <p id="last-saved" class="last-saved"></p>
+        </div>
+      </section>
+
+      <details class="prompt-panel">
+        <summary class="prompt-summary">
+          <span class="prompt-summary-label">Refactor Prompt</span>
+          <span class="prompt-summary-actions">
+            <span class="accordion-toggle" aria-hidden="true"></span>
+            <button
+              id="copy-refactor-prompt"
+              type="button"
+              class="icon-button prompt-copy-button"
+              aria-label="Copy refactor prompt"
+              title="Copy refactor prompt"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
@@ -39,62 +196,12 @@
                 />
               </svg>
             </button>
-          </div>
-        </div>
-      </section>
-
-      <section id="live-capture-status" class="page-status live-capture-status" data-state="idle">
-        <span id="live-capture-dot" class="status-dot status-dot-connected" aria-hidden="true"></span>
-        <div class="page-status-copy">
-          <p id="live-capture-label" class="page-status-label">Live capture idle</p>
-          <p id="live-capture-meta" class="page-status-meta">Start from this popup to record the current tab at full frame rate.</p>
-          <div class="page-status-controls">
-            <button id="start-live-capture" type="button" class="button button-primary">
-              Start Live Capture
-            </button>
-            <button id="stop-live-capture" type="button" class="button button-danger">
-              Stop
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section id="connection-form" class="connection-form is-hidden">
-        <input
-          id="daemon-url"
-          type="url"
-          spellcheck="false"
-          placeholder="http://127.0.0.1:4312"
-        />
-        <button id="connect-daemon" type="button" class="button button-secondary">
-          Connect
-        </button>
-      </section>
-
-      <section class="action-stack">
-        <button id="capture-page" type="button" class="button button-primary">
-          Capture Current Page
-        </button>
-        <button id="inspect-element" type="button" class="button button-secondary">
-          Pick Element Or Drag Area
-        </button>
-        <button id="inspect-with-job" type="button" class="button button-tertiary">
-          Pick With Job
-        </button>
-      </section>
-
-      <p class="micro-copy">Click to pick an element, or drag to capture an area. Press <kbd>Esc</kbd> to cancel.</p>
-      <p id="feedback" class="feedback feedback-idle"></p>
-      <p id="last-saved" class="last-saved"></p>
-
-      <section class="prompt-panel">
+          </span>
+        </summary>
         <div class="prompt-shell">
           <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
-          <button id="copy-refactor-prompt" type="button" class="button button-ghost">
-            Copy Refactor Prompt
-          </button>
         </div>
-      </section>
+      </details>
     </main>
     <script src="./shared/runtime.js"></script>
     <script src="./popup/state.js"></script>

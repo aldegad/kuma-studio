@@ -23,6 +23,16 @@ function getBlackKeyLeft(keys: PianoKey[], midi: number, ww: number, bw: number)
   return countWhiteKeysBefore(keys, midi) * ww - bw / 2;
 }
 
+function findKeyById(id: string) {
+  for (const manual of PIANO_MANUALS) {
+    const key = manual.keys.find((candidate) => candidate.id === id);
+    if (key) {
+      return key;
+    }
+  }
+  return null;
+}
+
 const WHITE_KEY_HEIGHT = 140;
 const BLACK_KEY_HEIGHT = 88;
 
@@ -59,6 +69,24 @@ function clampUnit(value: number) {
   return Math.max(0, Math.min(1, value));
 }
 
+function capturePointer(target: HTMLElement, pointerId: number) {
+  try {
+    target.setPointerCapture(pointerId);
+  } catch {
+    // Kuma Picker automation can synthesize pointer-like events without an active pointer.
+  }
+}
+
+function releasePointer(target: HTMLElement, pointerId: number) {
+  try {
+    if (target.hasPointerCapture(pointerId)) {
+      target.releasePointerCapture(pointerId);
+    }
+  } catch {
+    // Ignore synthetic event cleanup mismatches.
+  }
+}
+
 function interpolateEffectState(progress: number) {
   const clampedProgress = clampUnit(progress);
   const nextFrame = CANON_CONCERT_KEYFRAMES.find((frame) => frame.at >= clampedProgress) ?? CANON_CONCERT_KEYFRAMES[CANON_CONCERT_KEYFRAMES.length - 1];
@@ -90,8 +118,15 @@ declare global {
   interface Window {
     __kumaPianoStudio?: {
       getEffects: () => PianoEffectState;
+      getActiveKeyIds: () => string[];
+      holdKey: (keyId: string) => Promise<void>;
+      holdKeys: (keyIds: string[]) => Promise<void>;
       playCanonConcertEffects: (durationMs?: number) => void;
+      releaseKey: (keyId: string) => void;
+      releaseKeys: (keyIds: string[]) => void;
+      setSustain: (active: boolean) => void;
       setEffects: (next: Partial<PianoEffectState>) => void;
+      stopAll: () => void;
       stopEffectAutomation: (reset?: boolean) => void;
     };
   }
@@ -106,6 +141,22 @@ function SustainPedal({
   onDown: () => void;
   onUp: () => void;
 }) {
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      capturePointer(event.currentTarget, event.pointerId);
+      onDown();
+    },
+    [onDown],
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      releasePointer(event.currentTarget, event.pointerId);
+      onUp();
+    },
+    [onUp],
+  );
+
   return (
     <div className="mx-auto flex w-full max-w-[420px] flex-col items-center gap-3 pt-2" data-testid="piano-pedal-strip">
       <p className="text-[9px] font-black uppercase tracking-[0.32em] text-[#d8c39d]">Damper Pedal</p>
@@ -120,10 +171,9 @@ function SustainPedal({
             "relative h-[54px] w-[168px] origin-top rounded-[1.5rem] border border-[#a77b43] bg-[linear-gradient(180deg,#f6d38b_0%,#bb8542_42%,#6f431d_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.5),0_18px_24px_rgba(0,0,0,0.3)] transition",
             active ? "translate-y-[8px] scale-y-[0.92] shadow-[inset_0_1px_0_rgba(255,255,255,0.36),0_8px_14px_rgba(0,0,0,0.32)]" : "hover:translate-y-[2px]",
           )}
-          onPointerDown={onDown}
-          onPointerUp={onUp}
-          onPointerLeave={onUp}
-          onPointerCancel={onUp}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
         >
           <div className="absolute inset-x-5 top-2 h-[10px] rounded-full bg-white/35 blur-[1px]" />
           <div className="absolute inset-x-7 bottom-3 h-[14px] rounded-full bg-[rgba(43,21,7,0.24)]" />
@@ -158,7 +208,7 @@ function Knob({
       dragging.current = true;
       startY.current = e.clientY;
       startVal.current = value;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      capturePointer(e.currentTarget as HTMLElement, e.pointerId);
     },
     [value],
   );
@@ -169,7 +219,10 @@ function Knob({
     },
     [onChange],
   );
-  const onPointerUp = useCallback(() => { dragging.current = false; }, []);
+  const onPointerUp = useCallback((e: React.PointerEvent) => {
+    dragging.current = false;
+    releasePointer(e.currentTarget as HTMLElement, e.pointerId);
+  }, []);
 
   return (
     <div className="flex flex-col items-center gap-1.5">
@@ -215,6 +268,22 @@ function PianoKeyboard({
   const ww = 50;
   const bw = 28;
 
+  const handleKeyPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>, key: PianoKey) => {
+      capturePointer(event.currentTarget, event.pointerId);
+      onKeyDown(key);
+    },
+    [onKeyDown],
+  );
+
+  const handleKeyPointerUp = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>, key: PianoKey) => {
+      releasePointer(event.currentTarget, event.pointerId);
+      onKeyUp(key);
+    },
+    [onKeyUp],
+  );
+
   return (
     <div data-piano-manual={manual.id}>
       <div className="flex items-center justify-between px-1 pb-2">
@@ -249,9 +318,9 @@ function PianoKeyboard({
                   activeKeyIds.includes(key.id) && "translate-y-[3px] bg-[linear-gradient(180deg,#ffffff_0%,#eef1fa_36%,#d6dae6_100%)]",
                 )}
                 style={{ width: `${ww}px`, height: `${WHITE_KEY_HEIGHT}px` }}
-                onPointerDown={() => onKeyDown(key)}
-                onPointerUp={() => onKeyUp(key)}
-                onPointerLeave={() => onKeyUp(key)}
+                onPointerDown={(event) => handleKeyPointerDown(event, key)}
+                onPointerUp={(event) => handleKeyPointerUp(event, key)}
+                onPointerCancel={(event) => handleKeyPointerUp(event, key)}
               >
                 <span className="text-[9px] font-black tracking-[0.02em] text-[#4d5260]">{key.label}</span>
                 {key.keyboard ? (
@@ -285,9 +354,9 @@ function PianoKeyboard({
                 height: `${BLACK_KEY_HEIGHT}px`,
                 left: `${getBlackKeyLeft(manual.keys, key.midi, ww, bw)}px`,
               }}
-              onPointerDown={() => onKeyDown(key)}
-              onPointerUp={() => onKeyUp(key)}
-              onPointerLeave={() => onKeyUp(key)}
+              onPointerDown={(event) => handleKeyPointerDown(event, key)}
+              onPointerUp={(event) => handleKeyPointerUp(event, key)}
+              onPointerCancel={(event) => handleKeyPointerUp(event, key)}
             >
               <span className="text-[8px] font-black tracking-[0.04em] text-[#eef2ff]">{key.label}</span>
               {key.keyboard ? (
@@ -382,8 +451,21 @@ export function KumaPianoStudio() {
     if (typeof window === "undefined") return undefined;
 
     const api = {
+      getActiveKeyIds: () => activeKeyIds,
       getEffects: () => effectStateRef.current,
+      holdKey: holdKeyById,
+      holdKeys: async (keyIds: string[]) => {
+        for (const keyId of keyIds) {
+          await holdKeyById(keyId);
+        }
+      },
       playCanonConcertEffects,
+      releaseKey: releaseKeyById,
+      releaseKeys: (keyIds: string[]) => {
+        for (const keyId of keyIds) {
+          releaseKeyById(keyId);
+        }
+      },
       setEffects: (next: Partial<PianoEffectState>) => {
         stopEffectAutomation(false);
         applyEffects({
@@ -391,6 +473,8 @@ export function KumaPianoStudio() {
           ...next,
         });
       },
+      setSustain,
+      stopAll,
       stopEffectAutomation,
     };
 
@@ -401,7 +485,7 @@ export function KumaPianoStudio() {
       }
       stopEffectAutomation(false);
     };
-  }, []);
+  }, [activeKeyIds]);
 
   function markActive(keyId: string, on: boolean) {
     setActiveKeyIds((cur) =>
@@ -417,6 +501,38 @@ export function KumaPianoStudio() {
   function stop(key: PianoKey) {
     audioRef.current?.stopNote(key.id);
     markActive(key.id, false);
+  }
+
+  function pressKey(key: PianoKey) {
+    if (pressedRef.current.has(key.id)) {
+      return;
+    }
+    pressedRef.current.add(key.id);
+    void play(key);
+  }
+
+  function releaseKey(key: PianoKey) {
+    if (!pressedRef.current.has(key.id) && !activeKeyIds.includes(key.id)) {
+      return;
+    }
+    pressedRef.current.delete(key.id);
+    stop(key);
+  }
+
+  async function holdKeyById(keyId: string) {
+    const key = findKeyById(keyId);
+    if (!key) {
+      return;
+    }
+    pressKey(key);
+  }
+
+  function releaseKeyById(keyId: string) {
+    const key = findKeyById(keyId);
+    if (!key) {
+      return;
+    }
+    releaseKey(key);
   }
 
   function setSustain(active: boolean) {
@@ -444,8 +560,7 @@ export function KumaPianoStudio() {
       const key = findKeyByKeyboard(e.key);
       if (!key || e.repeat || pressedRef.current.has(key.id)) return;
       e.preventDefault();
-      pressedRef.current.add(key.id);
-      void play(key);
+      pressKey(key);
     }
     function up(e: KeyboardEvent) {
       const key = findKeyByKeyboard(e.key);
@@ -458,8 +573,7 @@ export function KumaPianoStudio() {
       }
       if (!key) return;
       e.preventDefault();
-      pressedRef.current.delete(key.id);
-      stop(key);
+      releaseKey(key);
     }
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
@@ -522,8 +636,8 @@ export function KumaPianoStudio() {
                     key={manual.id}
                     manual={manual}
                     activeKeyIds={activeKeyIds}
-                    onKeyDown={(key) => void play(key)}
-                    onKeyUp={(key) => stop(key)}
+                    onKeyDown={pressKey}
+                    onKeyUp={releaseKey}
                   />
                 ))}
               </div>

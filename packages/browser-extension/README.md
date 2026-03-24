@@ -29,6 +29,12 @@ It can also target a non-active tab for DOM reads and clicks when you specify
 `--tab-id`, `--url`, or `--url-contains`. Visible-tab screenshots still require
 the page to be the currently focused tab.
 
+The popup live-capture control can record either:
+
+- the current browser tab through `tabCapture`
+- a chosen desktop window through `desktopCapture`
+- the entire screen through `desktopCapture`
+
 ## Load It In Chrome
 
 1. start a local daemon
@@ -108,4 +114,5 @@ node ./packages/server/src/cli.mjs set-job-status --status completed --message "
 - targeted DOM and click commands can run against background tabs as long as the tab stays open with the content script loaded
 - targeted `browser-fill`, `browser-set-files`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
 - screenshots still require the target page to be the visible focused tab in Chrome
+- popup live capture can now target the current tab, a chosen window, or the entire screen
 - browser control now assumes the WebSocket bridge path only

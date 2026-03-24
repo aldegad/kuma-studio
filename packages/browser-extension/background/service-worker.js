@@ -114,6 +114,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             ...serializeLiveCaptureState(),
           });
           return;
+        case "kuma-picker:open-live-capture-studio":
+          sendResponse(await openLiveCaptureStudio(message));
+          return;
+        case "kuma-picker:get-live-capture-studio-context":
+          sendResponse(await getLiveCaptureStudioContext(message, sender));
+          return;
+        case "kuma-picker:studio-live-capture-started":
+          sendResponse(await handleStudioLiveCaptureStarted(message, sender));
+          return;
+        case "kuma-picker:prepare-live-capture":
+          sendResponse(await prepareLiveCapture(message));
+          return;
+        case "kuma-picker:discard-live-capture-prepare":
+          sendResponse(await discardPreparedLiveCapture(message));
+          return;
         case "kuma-picker:start-live-capture":
           sendResponse(await startLiveCapture(message));
           return;

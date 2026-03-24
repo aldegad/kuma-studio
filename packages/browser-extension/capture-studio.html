@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kuma Picker Capture Studio</title>
+    <link rel="stylesheet" href="./capture-studio.css" />
+  </head>
+  <body>
+    <main class="studio-shell">
+      <section class="studio-hero">
+        <div class="studio-hero-copy">
+          <p class="studio-kicker">Kuma Picker Capture Studio</p>
+          <h1 id="studio-title" class="studio-title">화면을 프레이밍하고 녹화를 시작하세요</h1>
+          <p id="studio-subtitle" class="studio-subtitle">공유할 대상을 고른 뒤, 원하는 영역만 드래그해서 담을 수 있어요.</p>
+        </div>
+        <div class="studio-actions">
+          <button id="choose-source" type="button" class="button button-primary">공유 대상 고르기</button>
+          <button id="start-recording" type="button" class="button button-emerald" disabled>선택 영역 녹화 시작</button>
+          <button id="stop-recording" type="button" class="button button-rose" disabled>녹화 종료</button>
+        </div>
+      </section>
+
+      <section class="studio-workbench">
+        <section class="studio-panel studio-panel-glass studio-preview-panel">
+          <div class="studio-panel-head">
+            <div>
+              <p class="studio-panel-kicker">Preview</p>
+              <h2 class="studio-panel-title">라이브 프레이밍</h2>
+            </div>
+            <div class="studio-chip-row">
+              <span id="capture-kind-chip" class="studio-chip">Screen</span>
+              <span id="composition-chip" class="studio-chip studio-chip-accent">Single</span>
+              <span id="capture-size-chip" class="studio-chip studio-chip-muted">대기 중</span>
+            </div>
+          </div>
+
+          <div id="preview-stage" class="preview-stage">
+            <video id="preview-video" class="preview-video" playsinline muted></video>
+            <div id="selection-overlays" class="selection-overlays"></div>
+            <div id="preview-empty" class="preview-empty">
+              <p class="preview-empty-title">아직 공유된 화면이 없어요</p>
+              <p class="preview-empty-copy">먼저 공유 대상을 고르면 여기에서 실시간으로 프리뷰가 보이고, 마우스로 영역을 잡을 수 있어요.</p>
+            </div>
+          </div>
+
+          <div class="studio-toolbar">
+            <div class="studio-toolbar-meta">
+              <p id="studio-hint" class="studio-hint">`공유 대상 고르기`를 누르면 크롬의 공유 선택창이 열립니다.</p>
+              <label class="studio-scale-control" for="preview-scale">
+                <span class="studio-scale-label">Preview scale</span>
+                <input id="preview-scale" class="studio-scale-slider" type="range" min="80" max="145" step="5" value="100" />
+                <span id="preview-scale-value" class="studio-scale-value">100%</span>
+              </label>
+              <div class="studio-layout-tools">
+                <div class="studio-layout-row">
+                  <span class="studio-control-label">Composition</span>
+                  <div class="studio-segmented">
+                    <button id="layout-single" type="button" class="studio-segment-button is-active">Single</button>
+                    <button id="layout-split" type="button" class="studio-segment-button">2-Up</button>
+                  </div>
+                  <button id="reset-composition" type="button" class="button button-ghost button-compact" disabled>
+                    Reset
+                  </button>
+                </div>
+                <div id="section-controls" class="studio-layout-row is-hidden">
+                  <span class="studio-control-label">Edit section</span>
+                  <div class="studio-segmented">
+                    <button type="button" class="studio-segment-button" data-section-button="left">Left</button>
+                    <button type="button" class="studio-segment-button" data-section-button="right">Right</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="studio-toolbar-actions">
+              <button id="use-full-frame" type="button" class="button button-secondary" disabled>전체 프레임 사용</button>
+              <button id="close-studio" type="button" class="button button-ghost">닫기</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="studio-panel studio-panel-dark studio-status-panel">
+          <div class="studio-panel-head">
+            <div>
+              <p class="studio-panel-kicker">Status</p>
+              <h2 class="studio-panel-title">녹화 상태</h2>
+            </div>
+          </div>
+          <p id="status-line" class="status-line">준비 중...</p>
+          <p id="status-meta" class="status-meta"></p>
+        </section>
+      </section>
+    </main>
+
+    <canvas id="recording-canvas" class="recording-canvas" width="1" height="1"></canvas>
+    <script src="./capture-studio.js"></script>
+  </body>
+</html>

@@ -1,6 +1,7 @@
 (() => {
   var KumaPickerExtensionAgentGestureOverlay = (() => {
     const ROOT_ID = "kuma-picker-gesture-overlay-root";
+    const BRIDGE_EVENT_NAME = "kuma-picker:gesture-overlay";
     const CLICK_ASSET_PATH = "assets/gestures/kuma-paw-tap.png";
     const DEFAULT_SIZE = 88;
     const CLICK_SIZE = 70;
@@ -359,6 +360,20 @@
       activeHoldGestures.delete(holdId);
     }
 
+    function readPoint(candidate) {
+      if (
+        candidate &&
+        Number.isFinite(candidate.x) &&
+        Number.isFinite(candidate.y)
+      ) {
+        return {
+          x: Number(candidate.x),
+          y: Number(candidate.y),
+        };
+      }
+      return null;
+    }
+
     async function playScrollGesture(details) {
       const deltaY = Number(details?.deltaY);
       if (!Number.isFinite(deltaY) || Math.abs(deltaY) < 18) {
@@ -464,7 +479,51 @@
       recordingGestureDurationMultiplier = active === true ? 3 : 1;
     }
 
+    function handleBridgeEvent(event) {
+      const detail = event?.detail;
+      const type = typeof detail?.type === "string" ? detail.type : "";
+      const holdId = typeof detail?.holdId === "string" ? detail.holdId : "default";
+
+      switch (type) {
+        case "click":
+          void playClickGesture(readPoint(detail?.point));
+          return;
+        case "hold":
+          void holdClickGesture(readPoint(detail?.point), holdId);
+          return;
+        case "move":
+          moveHeldGesture(readPoint(detail?.point), holdId);
+          return;
+        case "release":
+          void releaseHeldGesture(readPoint(detail?.point), holdId);
+          return;
+        case "clear":
+          clearHeldGesture(typeof detail?.holdId === "string" ? detail.holdId : null);
+          return;
+        case "drag":
+          void playDragGesture({
+            from: readPoint(detail?.from),
+            to: readPoint(detail?.to),
+            durationMs: detail?.durationMs,
+          });
+          return;
+        case "scroll":
+          void playScrollGesture({
+            deltaY: detail?.deltaY,
+          });
+          return;
+        case "recording-mode":
+          setRecordingMode(detail?.active === true);
+          return;
+        default:
+          return;
+      }
+    }
+
+    window.addEventListener(BRIDGE_EVENT_NAME, handleBridgeEvent);
+
     return {
+      bridgeEventName: BRIDGE_EVENT_NAME,
       playClickGesture,
       holdClickGesture,
       moveHeldGesture,
