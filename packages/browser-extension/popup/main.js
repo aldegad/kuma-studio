@@ -8,6 +8,10 @@ let captureSelection = null;
 let captureSelectionDrag = null;
 
 function formatCurrentPageMeta(result) {
+  if (result?.currentPageReady === true) {
+    return "";
+  }
+
   if (result?.currentPage?.title) {
     return result.currentPage.title;
   }
@@ -413,7 +417,7 @@ function formatLiveCaptureMeta(result) {
     }
   }
 
-  return "Start from this popup to record the current tab, a window, or your entire screen.";
+  return "";
 }
 
 async function refreshLiveCaptureState() {

@@ -88,6 +88,23 @@
           </div>
           <p id="status-line" class="status-line">준비 중...</p>
           <p id="status-meta" class="status-meta"></p>
+
+          <section class="output-preview-card">
+            <div class="output-preview-head">
+              <div>
+                <p class="studio-panel-kicker">Composite Preview</p>
+                <h3 class="output-preview-title">합성 후 미리보기</h3>
+              </div>
+              <span id="composite-size-chip" class="studio-chip studio-chip-dark">대기 중</span>
+            </div>
+            <div class="output-preview-stage">
+              <canvas id="composite-preview-canvas" class="output-preview-canvas" width="1" height="1"></canvas>
+              <div id="composite-preview-empty" class="output-preview-empty">
+                <p class="output-preview-empty-title">합성 프리뷰가 여기에 보여요</p>
+                <p class="output-preview-empty-copy">공유를 시작하면 지금 선택한 프레임이 실제 결과 비율대로 바로 렌더링됩니다.</p>
+              </div>
+            </div>
+          </section>
         </section>
       </section>
     </main>

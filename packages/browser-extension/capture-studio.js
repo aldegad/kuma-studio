@@ -1,12 +1,24 @@
 const DEFAULT_FPS = 30;
 const DEFAULT_INSET = 0.1;
 const MIN_SELECTION_DISPLAY_SIZE = 18;
+const PREVIEW_RENDER_MAX_EDGE = 960;
 const COMPOSITION_SINGLE = "single";
 const COMPOSITION_SPLIT = "split";
 const SECTION_IDS = ["left", "right"];
-const COMPOSITE_PADDING = 24;
-const COMPOSITE_GAP = 28;
+const COMPOSITE_PADDING = 10;
+const COMPOSITE_GAP = 10;
 const MAX_COMPOSITE_EDGE = 3840;
+const HANDLE_DEFINITIONS = [
+  { id: "nw", x: "0%", y: "0%" },
+  { id: "n", x: "50%", y: "0%" },
+  { id: "ne", x: "100%", y: "0%" },
+  { id: "w", x: "0%", y: "50%" },
+  { id: "move", x: "50%", y: "50%" },
+  { id: "e", x: "100%", y: "50%" },
+  { id: "sw", x: "0%", y: "100%" },
+  { id: "s", x: "50%", y: "100%" },
+  { id: "se", x: "100%", y: "100%" },
+];
 
 const SECTION_LABELS = {
   single: "Frame",
@@ -38,6 +50,10 @@ const layoutSplitButton = document.getElementById("layout-split");
 const resetCompositionButton = document.getElementById("reset-composition");
 const sectionControlsElement = document.getElementById("section-controls");
 const sectionButtonElements = Array.from(document.querySelectorAll("[data-section-button]"));
+const compositeSizeChipElement = document.getElementById("composite-size-chip");
+const compositePreviewCanvas = document.getElementById("composite-preview-canvas");
+const compositePreviewContext = compositePreviewCanvas.getContext("2d", { alpha: false });
+const compositePreviewEmptyElement = document.getElementById("composite-preview-empty");
 const recordingCanvas = document.getElementById("recording-canvas");
 const recordingContext = recordingCanvas.getContext("2d", { alpha: false });
 
@@ -60,7 +76,7 @@ let recordingPlan = null;
 let chunks = [];
 let recordingActive = false;
 let stopping = false;
-let renderFrameId = null;
+let renderLoopId = null;
 const pendingDownloadUrls = new Map();
 let storedStudioPreferences = KumaPickerExtensionLiveCaptureSettings.createDefaultStudioSettings();
 
@@ -78,6 +94,10 @@ function getVisibleSectionIds() {
 
 function getActiveSectionId() {
   return compositionMode === COMPOSITION_SPLIT ? activeSectionId : COMPOSITION_SINGLE;
+}
+
+function getCompositeFillColor(mode) {
+  return mode === COMPOSITION_SPLIT ? "#060a12" : "#000000";
 }
 
 function rectToRatioRect(rect) {
@@ -212,8 +232,8 @@ function updateCompositionUi() {
   startRecordingButton.textContent = compositionMode === COMPOSITION_SPLIT ? "2-Up 녹화 시작" : "선택 영역 녹화 시작";
   studioHintElement.textContent =
     compositionMode === COMPOSITION_SPLIT
-      ? "`2-Up` 모드에서는 Left와 Right를 각각 드래그해 한 화면짜리 영상으로 합칩니다."
-      : "`공유 대상 고르기`를 누르면 크롬의 공유 선택창이 열리고, 프리뷰에서 한 번 드래그해 프레임을 정할 수 있어요.";
+      ? "`2-Up` 모드에서는 Left와 Right를 각각 드래그하거나 9점 핸들로 조절해 한 화면짜리 영상으로 합칩니다."
+      : "`공유 대상 고르기`를 누르면 크롬의 공유 선택창이 열리고, 프리뷰에서 드래그하거나 9점 핸들로 프레임을 정할 수 있어요.";
   updateButtonState();
 }
 
@@ -226,8 +246,8 @@ function applyStudioCopy() {
   studioTitleElement.textContent = `${label}을 예쁘게 프레이밍해볼까요?`;
   studioSubtitleElement.textContent =
     label === "Window"
-      ? "창을 공유한 뒤, 필요한 부분만 드래그해서 깔끔하게 잘라서 녹화하거나 2-up으로 합칠 수 있어요."
-      : "화면을 공유한 뒤, 필요한 부분만 드래그해서 보기 좋게 잘라서 녹화하거나 2-up으로 합칠 수 있어요.";
+      ? "창을 공유한 뒤, 필요한 부분만 드래그하거나 핸들로 맞춰서 깔끔하게 잘라 녹화하거나 2-up으로 합칠 수 있어요."
+      : "화면을 공유한 뒤, 필요한 부분만 드래그하거나 핸들로 맞춰서 보기 좋게 잘라 녹화하거나 2-up으로 합칠 수 있어요.";
   captureKindChipElement.textContent = label;
   updateCompositionUi();
   setStatus("공유 대기 중", `${label} 공유를 시작하면 여기에서 실시간 프리뷰가 열립니다.`);
@@ -235,6 +255,13 @@ function applyStudioCopy() {
 
 function clearSelectionBoxes() {
   selectionOverlaysElement.replaceChildren();
+}
+
+function clearCompositePreview() {
+  compositePreviewContext.fillStyle = "#09111c";
+  compositePreviewContext.fillRect(0, 0, compositePreviewCanvas.width, compositePreviewCanvas.height);
+  compositePreviewEmptyElement.classList.remove("is-hidden");
+  compositeSizeChipElement.textContent = "대기 중";
 }
 
 function getPreviewBounds() {
@@ -261,6 +288,28 @@ function normalizeSelectionRect(rect) {
   };
 }
 
+function getMinimumSelectionSize() {
+  if (!studioContext) {
+    return {
+      width: 1,
+      height: 1,
+    };
+  }
+
+  const bounds = getPreviewBounds();
+  if (bounds.width < 1 || bounds.height < 1) {
+    return {
+      width: 1,
+      height: 1,
+    };
+  }
+
+  return {
+    width: Math.max(1, (MIN_SELECTION_DISPLAY_SIZE / bounds.width) * studioContext.sourceWidth),
+    height: Math.max(1, (MIN_SELECTION_DISPLAY_SIZE / bounds.height) * studioContext.sourceHeight),
+  };
+}
+
 function createInsetSelectionRect() {
   if (!studioContext) {
     return null;
@@ -284,9 +333,9 @@ function createSplitSelectionRects() {
     };
   }
 
-  const insetX = Math.round(studioContext.sourceWidth * Math.max(0.06, DEFAULT_INSET * 0.75));
+  const insetX = Math.round(studioContext.sourceWidth * Math.max(0.05, DEFAULT_INSET * 0.6));
   const insetY = Math.round(studioContext.sourceHeight * DEFAULT_INSET);
-  const centerGap = Math.max(24, Math.round(studioContext.sourceWidth * 0.035));
+  const centerGap = Math.max(12, Math.round(studioContext.sourceWidth * 0.014));
   const availableWidth = Math.max(2, studioContext.sourceWidth - insetX * 2 - centerGap);
   const leftWidth = Math.max(1, Math.floor(availableWidth / 2));
   const rightX = insetX + leftWidth + centerGap;
@@ -307,12 +356,12 @@ function createSplitSelectionRects() {
   };
 }
 
-function applyDefaultSelections() {
+function applyDefaultSelections(options = {}) {
   if (!studioContext) {
     return;
   }
 
-  if (applyStoredSelections()) {
+  if (options.useStored !== false && applyStoredSelections()) {
     renderSelectionBoxes();
     updateButtonState();
     return;
@@ -362,8 +411,8 @@ function setCompositionMode(mode) {
     setStatus(
       compositionMode === COMPOSITION_SPLIT ? "2-Up 프레이밍 준비 완료" : "프레이밍 준비 완료",
       compositionMode === COMPOSITION_SPLIT
-        ? "Left와 Right를 각각 드래그해서 한 화면짜리 영상으로 합쳐보세요."
-        : "마우스로 원하는 영역을 드래그한 다음 녹화를 시작하세요.",
+        ? "Left와 Right를 각각 드래그하거나 핸들로 맞춰 한 화면짜리 영상으로 합쳐보세요."
+        : "마우스로 원하는 영역을 드래그하거나 핸들로 조정한 다음 녹화를 시작하세요.",
     );
   } else {
     renderSelectionBoxes();
@@ -382,6 +431,35 @@ function setActiveSection(sectionId) {
   renderSelectionBoxes();
   updateCompositionUi();
   void persistStudioPreferences();
+}
+
+function beginSelectionTransform(event, sectionId, handle) {
+  if (!sourceStream || recordingActive) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  if (compositionMode === COMPOSITION_SPLIT) {
+    setActiveSection(sectionId);
+  }
+
+  const currentRect = selectionRects[sectionId];
+  if (!currentRect) {
+    return;
+  }
+
+  selectionDrag = {
+    type: "transform",
+    sectionId,
+    handle,
+    startPointer: {
+      x: event.clientX,
+      y: event.clientY,
+    },
+    startRect: { ...currentRect },
+  };
+  previewStageElement.setPointerCapture(event.pointerId);
 }
 
 function renderSelectionBoxes() {
@@ -416,6 +494,15 @@ function renderSelectionBoxes() {
     box.style.top = `${Math.round(rect.y * scaleY)}px`;
     box.style.width = `${Math.max(1, Math.round(rect.width * scaleX))}px`;
     box.style.height = `${Math.max(1, Math.round(rect.height * scaleY))}px`;
+    box.addEventListener("pointerdown", (event) => {
+      if (event.target !== box) {
+        return;
+      }
+      beginSelectionTransform(event, sectionId, "move");
+    });
+
+    const grid = document.createElement("div");
+    grid.className = "selection-grid";
 
     const header = document.createElement("div");
     header.className = "selection-header";
@@ -428,7 +515,21 @@ function renderSelectionBoxes() {
     size.className = "selection-size";
     size.textContent = `${Math.round(rect.width)} x ${Math.round(rect.height)}`;
 
-    box.append(header, size);
+    box.append(grid, header, size);
+
+    for (const handle of HANDLE_DEFINITIONS) {
+      const handleElement = document.createElement("button");
+      handleElement.type = "button";
+      handleElement.className = "selection-handle";
+      handleElement.dataset.handle = handle.id;
+      handleElement.style.left = handle.x;
+      handleElement.style.top = handle.y;
+      handleElement.addEventListener("pointerdown", (event) => {
+        beginSelectionTransform(event, sectionId, handle.id);
+      });
+      box.append(handleElement);
+    }
+
     selectionOverlaysElement.append(box);
   }
 }
@@ -459,6 +560,85 @@ function getSelectionFromPoints(startPoint, currentPoint) {
     width: (width / bounds.width) * studioContext.sourceWidth,
     height: (height / bounds.height) * studioContext.sourceHeight,
   };
+}
+
+function getSourceDeltaFromPointerDelta(deltaX, deltaY) {
+  if (!studioContext) {
+    return {
+      x: 0,
+      y: 0,
+    };
+  }
+
+  const bounds = getPreviewBounds();
+  if (bounds.width < 1 || bounds.height < 1) {
+    return {
+      x: 0,
+      y: 0,
+    };
+  }
+
+  return {
+    x: (deltaX / bounds.width) * studioContext.sourceWidth,
+    y: (deltaY / bounds.height) * studioContext.sourceHeight,
+  };
+}
+
+function translateSelectionRect(rect, delta) {
+  if (!studioContext) {
+    return rect;
+  }
+
+  return normalizeSelectionRect({
+    x: clamp(rect.x + delta.x, 0, studioContext.sourceWidth - rect.width),
+    y: clamp(rect.y + delta.y, 0, studioContext.sourceHeight - rect.height),
+    width: rect.width,
+    height: rect.height,
+  });
+}
+
+function resizeSelectionRect(rect, delta, handle) {
+  if (!studioContext) {
+    return rect;
+  }
+
+  const minimum = getMinimumSelectionSize();
+  let left = rect.x;
+  let top = rect.y;
+  let right = rect.x + rect.width;
+  let bottom = rect.y + rect.height;
+
+  if (handle.includes("w")) {
+    left = clamp(rect.x + delta.x, 0, right - minimum.width);
+  }
+  if (handle.includes("e")) {
+    right = clamp(rect.x + rect.width + delta.x, left + minimum.width, studioContext.sourceWidth);
+  }
+  if (handle.includes("n")) {
+    top = clamp(rect.y + delta.y, 0, bottom - minimum.height);
+  }
+  if (handle.includes("s")) {
+    bottom = clamp(rect.y + rect.height + delta.y, top + minimum.height, studioContext.sourceHeight);
+  }
+
+  return normalizeSelectionRect({
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  });
+}
+
+function getNextSelectionRectFromTransform(interaction, event) {
+  const delta = getSourceDeltaFromPointerDelta(
+    event.clientX - interaction.startPointer.x,
+    event.clientY - interaction.startPointer.y,
+  );
+  if (interaction.handle === "move") {
+    return translateSelectionRect(interaction.startRect, delta);
+  }
+
+  return resizeSelectionRect(interaction.startRect, delta, interaction.handle);
 }
 
 function waitForVideoReady(video) {
@@ -552,10 +732,21 @@ function chooseDesktopSource() {
   });
 }
 
+function stopRenderLoop() {
+  if (!renderLoopId) {
+    return;
+  }
+
+  cancelAnimationFrame(renderLoopId);
+  renderLoopId = null;
+}
+
 function stopSourceStream() {
   sourceStream?.getTracks?.().forEach((track) => track.stop());
   sourceStream = null;
   previewVideoElement.srcObject = null;
+  stopRenderLoop();
+  clearCompositePreview();
 }
 
 async function preparePreview() {
@@ -572,11 +763,12 @@ async function preparePreview() {
   studioContext.sourceHeight = previewVideoElement.videoHeight;
   captureSizeChipElement.textContent = `${studioContext.sourceWidth} x ${studioContext.sourceHeight}`;
   applyDefaultSelections();
+  ensureRenderLoop();
   setStatus(
     compositionMode === COMPOSITION_SPLIT ? "2-Up 프레이밍 준비 완료" : "프레이밍 준비 완료",
     compositionMode === COMPOSITION_SPLIT
-      ? "Left와 Right를 각각 드래그해서 하나의 영상으로 합쳐보세요."
-      : "마우스로 원하는 영역을 드래그한 다음 녹화를 시작하세요.",
+      ? "Left와 Right를 각각 드래그하거나 핸들로 맞춰 하나의 영상으로 합쳐보세요."
+      : "마우스로 원하는 영역을 드래그하거나 핸들로 조정한 다음 녹화를 시작하세요.",
   );
 }
 
@@ -586,6 +778,18 @@ function scaleRect(rect, factor) {
     y: Math.round(rect.y * factor),
     width: Math.max(1, Math.round(rect.width * factor)),
     height: Math.max(1, Math.round(rect.height * factor)),
+  };
+}
+
+function scalePlan(plan, factor) {
+  return {
+    ...plan,
+    canvasWidth: Math.max(1, Math.round(plan.canvasWidth * factor)),
+    canvasHeight: Math.max(1, Math.round(plan.canvasHeight * factor)),
+    sections: plan.sections.map((section) => ({
+      ...section,
+      targetRect: scaleRect(section.targetRect, factor),
+    })),
   };
 }
 
@@ -663,16 +867,17 @@ function createRecordingPlan() {
   return compositionMode === COMPOSITION_SPLIT ? buildSplitRecordingPlan() : buildSingleRecordingPlan();
 }
 
-function drawRecordingFrame() {
-  if (!recordingActive || !recordingPlan) {
-    return;
-  }
+function getDisplayPreviewPlan(basePlan) {
+  const scale = Math.min(1, PREVIEW_RENDER_MAX_EDGE / Math.max(basePlan.canvasWidth, basePlan.canvasHeight));
+  return scale < 1 ? scalePlan(basePlan, scale) : basePlan;
+}
 
-  recordingContext.fillStyle = recordingPlan.mode === COMPOSITION_SPLIT ? "#0b1220" : "#000000";
-  recordingContext.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+function drawPlanFrame(context, canvas, plan) {
+  context.fillStyle = getCompositeFillColor(plan.mode);
+  context.fillRect(0, 0, canvas.width, canvas.height);
 
-  for (const section of recordingPlan.sections) {
-    recordingContext.drawImage(
+  for (const section of plan.sections) {
+    context.drawImage(
       previewVideoElement,
       section.sourceRect.x,
       section.sourceRect.y,
@@ -684,8 +889,49 @@ function drawRecordingFrame() {
       section.targetRect.height,
     );
   }
+}
 
-  renderFrameId = requestAnimationFrame(drawRecordingFrame);
+function renderCompositePreviewFrame() {
+  if (!sourceStream || !studioContext || !hasRecordingSelection()) {
+    clearCompositePreview();
+    return;
+  }
+
+  const basePlan = recordingPlan ?? createRecordingPlan();
+  const previewPlan = getDisplayPreviewPlan(basePlan);
+  compositePreviewEmptyElement.classList.add("is-hidden");
+  compositeSizeChipElement.textContent = `${basePlan.canvasWidth} x ${basePlan.canvasHeight}`;
+  if (compositePreviewCanvas.width !== previewPlan.canvasWidth || compositePreviewCanvas.height !== previewPlan.canvasHeight) {
+    compositePreviewCanvas.width = previewPlan.canvasWidth;
+    compositePreviewCanvas.height = previewPlan.canvasHeight;
+  }
+  drawPlanFrame(compositePreviewContext, compositePreviewCanvas, previewPlan);
+}
+
+function renderRecordingFrame() {
+  if (!recordingActive || !recordingPlan) {
+    return;
+  }
+
+  drawPlanFrame(recordingContext, recordingCanvas, recordingPlan);
+}
+
+function runRenderLoop() {
+  renderCompositePreviewFrame();
+  renderRecordingFrame();
+  if (sourceStream || recordingActive) {
+    renderLoopId = requestAnimationFrame(runRenderLoop);
+  } else {
+    renderLoopId = null;
+  }
+}
+
+function ensureRenderLoop() {
+  if (renderLoopId) {
+    return;
+  }
+
+  renderLoopId = requestAnimationFrame(runRenderLoop);
 }
 
 function selectMimeType() {
@@ -793,10 +1039,6 @@ async function startRecording() {
     recordingActive = false;
     stopping = false;
     recordingPlan = null;
-    if (renderFrameId) {
-      cancelAnimationFrame(renderFrameId);
-      renderFrameId = null;
-    }
     updateButtonState();
   });
 
@@ -819,7 +1061,7 @@ async function startRecording() {
       ? "선택한 Left/Right 영역을 하나의 영상으로 합성해서 기록하고 있어요."
       : "팝업이나 터미널에서도 이 녹화를 종료할 수 있어요.",
   );
-  drawRecordingFrame();
+  ensureRenderLoop();
   recorder.start(1_000);
 }
 
@@ -882,8 +1124,8 @@ useFullFrameButton.addEventListener("click", () => {
   }
 
   if (compositionMode === COMPOSITION_SPLIT) {
-    applyDefaultSelections();
-    setStatus("2-Up 기본 구도로 재설정했어요", "좌우를 각각 다시 드래그해서 원하는 구성으로 맞춰보세요.");
+    applyDefaultSelections({ useStored: false });
+    setStatus("2-Up 기본 구도로 재설정했어요", "좌우를 각각 다시 드래그하거나 핸들로 맞춰보세요.");
     void persistStudioPreferences();
     return;
   }
@@ -905,12 +1147,12 @@ resetCompositionButton.addEventListener("click", () => {
     return;
   }
 
-  applyDefaultSelections();
+  applyDefaultSelections({ useStored: false });
   setStatus(
     compositionMode === COMPOSITION_SPLIT ? "2-Up 기본 구도로 재설정했어요" : "기본 프레임으로 되돌렸어요",
     compositionMode === COMPOSITION_SPLIT
-      ? "Left와 Right를 각각 다시 드래그해서 원하는 구성으로 맞춰보세요."
-      : "프레임을 다시 드래그해 원하는 영역을 잡아보세요.",
+      ? "Left와 Right를 각각 다시 드래그하거나 핸들로 맞춰보세요."
+      : "프레임을 다시 드래그하거나 핸들로 잡아보세요.",
   );
   void persistStudioPreferences();
 });
@@ -959,12 +1201,15 @@ previewStageElement.addEventListener("pointerdown", (event) => {
   }
 
   selectionDrag = {
+    type: "draw",
     sectionId: getActiveSectionId(),
-    x: event.clientX,
-    y: event.clientY,
+    startPointer: {
+      x: event.clientX,
+      y: event.clientY,
+    },
   };
   previewStageElement.setPointerCapture(event.pointerId);
-  const nextSelection = getSelectionFromPoints(selectionDrag, { x: event.clientX, y: event.clientY });
+  const nextSelection = getSelectionFromPoints(selectionDrag.startPointer, { x: event.clientX, y: event.clientY });
   if (nextSelection) {
     setSelectionRect(selectionDrag.sectionId, nextSelection);
   }
@@ -975,7 +1220,10 @@ previewStageElement.addEventListener("pointermove", (event) => {
     return;
   }
 
-  const nextSelection = getSelectionFromPoints(selectionDrag, { x: event.clientX, y: event.clientY });
+  const nextSelection =
+    selectionDrag.type === "transform"
+      ? getNextSelectionRectFromTransform(selectionDrag, event)
+      : getSelectionFromPoints(selectionDrag.startPointer, { x: event.clientX, y: event.clientY });
   if (nextSelection) {
     setSelectionRect(selectionDrag.sectionId, nextSelection);
   }
@@ -986,12 +1234,17 @@ previewStageElement.addEventListener("pointerup", (event) => {
     return;
   }
 
-  previewStageElement.releasePointerCapture(event.pointerId);
+  if (previewStageElement.hasPointerCapture?.(event.pointerId)) {
+    previewStageElement.releasePointerCapture(event.pointerId);
+  }
   selectionDrag = null;
   void persistStudioPreferences();
 });
 
-previewStageElement.addEventListener("pointercancel", () => {
+previewStageElement.addEventListener("pointercancel", (event) => {
+  if (previewStageElement.hasPointerCapture?.(event.pointerId)) {
+    previewStageElement.releasePointerCapture(event.pointerId);
+  }
   selectionDrag = null;
 });
 
@@ -1005,6 +1258,7 @@ previewScaleElement.addEventListener("change", () => {
 
 window.addEventListener("resize", () => {
   renderSelectionBoxes();
+  renderCompositePreviewFrame();
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -1031,13 +1285,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 window.addEventListener("beforeunload", () => {
-  if (renderFrameId) {
-    cancelAnimationFrame(renderFrameId);
-  }
+  stopRenderLoop();
   stopSourceStream();
 });
 
 setPreviewScale(previewScaleElement.value);
+clearCompositePreview();
 
 void loadStudioContext().catch((error) => {
   setStatus("Capture Studio를 열지 못했어요", error instanceof Error ? error.message : String(error));

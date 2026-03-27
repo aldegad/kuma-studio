@@ -43,78 +43,113 @@
         <section id="page-status" class="page-status" data-state="checking">
           <span id="page-status-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
           <div class="page-status-copy">
-            <div class="page-status-head">
+            <div class="page-status-inline">
               <p id="page-status-label" class="page-status-label">Checking current page...</p>
-              <div id="page-status-controls" class="page-status-controls is-hidden">
-                <span id="page-tab-id" class="page-tab-id"></span>
-                <button
-                  id="copy-page-tab-id"
-                  type="button"
-                  class="icon-button"
-                  aria-label="Copy current tab ID"
-                  title="Copy current tab ID"
-                >
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
-                    />
-                    <path
-                      d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
-                    />
-                  </svg>
-                </button>
-              </div>
+              <p id="page-tab-id" class="page-status-value is-hidden"></p>
             </div>
             <p id="page-status-meta" class="page-status-meta"></p>
           </div>
+          <button
+            id="copy-page-tab-id"
+            type="button"
+            class="icon-button is-hidden"
+            aria-label="Copy current tab ID"
+            title="Copy current tab ID"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
+              />
+              <path
+                d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
+              />
+            </svg>
+          </button>
         </section>
       </section>
 
-      <details id="live-capture-status" class="page-status live-capture-status live-capture-panel" data-state="idle">
-        <summary class="live-capture-summary">
-          <span id="live-capture-dot" class="status-dot status-dot-connected" aria-hidden="true"></span>
-          <div class="page-status-copy">
-            <p id="live-capture-label" class="page-status-label">Live capture idle</p>
-            <p id="live-capture-meta" class="page-status-meta">Current tab starts instantly. Window and screen captures open a separate Capture Studio for framing.</p>
+      <section class="live-capture-stack">
+        <details id="live-capture-status" class="page-status live-capture-status live-capture-panel" data-state="idle">
+          <summary class="live-capture-summary">
+            <div class="live-capture-summary-main">
+              <span id="live-capture-dot" class="status-dot status-dot-connected" aria-hidden="true"></span>
+              <div class="live-capture-summary-copy">
+                <p id="live-capture-label" class="page-status-label">Live capture idle</p>
+                <p id="live-capture-meta" class="page-status-meta">Current tab selected</p>
+              </div>
+            </div>
+            <div class="live-capture-summary-side">
+              <span id="live-capture-source-chip" class="live-capture-source-chip" data-source="tab">
+                <span id="live-capture-source-icon" class="live-capture-source-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" />
+                    <path d="M4.5 8.5h15" />
+                  </svg>
+                </span>
+                <span id="live-capture-source-label" class="live-capture-source-label">Current tab</span>
+              </span>
+              <span class="accordion-toggle" aria-hidden="true"></span>
+            </div>
+          </summary>
+          <div class="live-capture-body">
+            <fieldset class="capture-source-list">
+              <legend class="field-label">Capture source</legend>
+              <label class="capture-source-option">
+                <input type="radio" name="live-capture-source" value="tab" checked />
+                <span class="capture-source-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" />
+                    <path d="M4.5 8.5h15" />
+                  </svg>
+                </span>
+                <span class="capture-source-text">
+                  <span class="capture-source-title">Current tab</span>
+                  <span class="capture-source-meta">Start instantly from the active page.</span>
+                </span>
+              </label>
+              <label class="capture-source-option">
+                <input type="radio" name="live-capture-source" value="window" />
+                <span class="capture-source-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" />
+                    <path d="M8 9h8" />
+                    <path d="M8 12h8" />
+                  </svg>
+                </span>
+                <span class="capture-source-text">
+                  <span class="capture-source-title">Window</span>
+                  <span class="capture-source-meta">Open Capture Studio and frame just the shared window.</span>
+                </span>
+              </label>
+              <label class="capture-source-option">
+                <input type="radio" name="live-capture-source" value="screen" />
+                <span class="capture-source-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v7.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 14.25z" />
+                    <path d="M9.5 19.5h5" />
+                    <path d="M12 16.5v3" />
+                  </svg>
+                </span>
+                <span class="capture-source-text">
+                  <span class="capture-source-title">Entire screen</span>
+                  <span class="capture-source-meta">Pick any monitor, then crop inside Capture Studio.</span>
+                </span>
+              </label>
+            </fieldset>
+            <p class="live-capture-tip">Window and screen captures open a separate studio window where you can drag the frame and fine-tune the preview scale.</p>
           </div>
-          <span class="accordion-toggle" aria-hidden="true"></span>
-        </summary>
-        <div class="live-capture-body">
-          <fieldset class="capture-source-list">
-            <legend class="field-label">Capture source</legend>
-            <label class="capture-source-option">
-              <input type="radio" name="live-capture-source" value="tab" checked />
-              <span class="capture-source-text">
-                <span class="capture-source-title">Current tab</span>
-                <span class="capture-source-meta">Start instantly from the active page.</span>
-              </span>
-            </label>
-            <label class="capture-source-option">
-              <input type="radio" name="live-capture-source" value="window" />
-              <span class="capture-source-text">
-                <span class="capture-source-title">Window</span>
-                <span class="capture-source-meta">Open Capture Studio and frame just the shared window.</span>
-              </span>
-            </label>
-            <label class="capture-source-option">
-              <input type="radio" name="live-capture-source" value="screen" />
-              <span class="capture-source-text">
-                <span class="capture-source-title">Entire screen</span>
-                <span class="capture-source-meta">Pick any monitor, then crop inside Capture Studio.</span>
-              </span>
-            </label>
-          </fieldset>
-          <p class="live-capture-tip">Window and screen captures open a separate studio window where you can drag the frame and fine-tune the preview scale.</p>
-          <div class="page-status-controls">
-            <button id="start-live-capture" type="button" class="button button-primary">
+        </details>
+        <div class="live-capture-footer">
+          <div class="live-capture-toolbar">
+            <button id="start-live-capture" type="button" class="button button-primary live-capture-action">
               Start Live Capture
             </button>
-            <button id="stop-live-capture" type="button" class="button button-danger">
+            <button id="stop-live-capture" type="button" class="button button-danger live-capture-action">
               Stop
             </button>
           </div>
         </div>
-      </details>
+      </section>
 
       <section id="capture-selector-panel" class="capture-selector-panel is-hidden">
         <div class="capture-selector-head">

@@ -14,13 +14,15 @@ const pageStatusElement = document.getElementById("page-status");
 const pageStatusDotElement = document.getElementById("page-status-dot");
 const pageStatusLabelElement = document.getElementById("page-status-label");
 const pageStatusMetaElement = document.getElementById("page-status-meta");
-const pageStatusControlsElement = document.getElementById("page-status-controls");
 const pageTabIdElement = document.getElementById("page-tab-id");
 const copyPageTabIdButton = document.getElementById("copy-page-tab-id");
 const liveCaptureStatusElement = document.getElementById("live-capture-status");
 const liveCaptureDotElement = document.getElementById("live-capture-dot");
 const liveCaptureLabelElement = document.getElementById("live-capture-label");
 const liveCaptureMetaElement = document.getElementById("live-capture-meta");
+const liveCaptureSourceChipElement = document.getElementById("live-capture-source-chip");
+const liveCaptureSourceIconElement = document.getElementById("live-capture-source-icon");
+const liveCaptureSourceLabelElement = document.getElementById("live-capture-source-label");
 const liveCaptureSourceElements = Array.from(document.querySelectorAll('input[name="live-capture-source"]'));
 const startLiveCaptureButton = document.getElementById("start-live-capture");
 const stopLiveCaptureButton = document.getElementById("stop-live-capture");
@@ -46,7 +48,47 @@ let isLiveCaptureActive = false;
 let isCaptureSelectorActive = false;
 let currentPageTabId = null;
 let isEditingConnectionUrl = false;
+let liveCaptureStateValue = "idle";
 const DEFAULT_FOOTER_MESSAGE = "Click to pick an element, or drag to capture an area.";
+
+function getLiveCaptureSourceUi(source) {
+  switch (source) {
+    case "window":
+      return {
+        label: "Window",
+        idleMeta: "Window selected",
+        startLabel: "Open Window Studio",
+        icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" /><path d="M8 9h8" /><path d="M8 12h8" /></svg>',
+      };
+    case "screen":
+      return {
+        label: "Screen",
+        idleMeta: "Screen selected",
+        startLabel: "Open Screen Studio",
+        icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v7.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 14.25z" /><path d="M9.5 19.5h5" /><path d="M12 16.5v3" /></svg>',
+      };
+    default:
+      return {
+        label: "Current tab",
+        idleMeta: "Current tab selected",
+        startLabel: "Start Tab Capture",
+        icon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" /><path d="M4.5 8.5h15" /></svg>',
+      };
+  }
+}
+
+function updateLiveCaptureSourceUi() {
+  const source = getSelectedLiveCaptureSourceValue();
+  const sourceUi = getLiveCaptureSourceUi(source);
+  liveCaptureSourceChipElement.dataset.source = source;
+  liveCaptureSourceIconElement.innerHTML = sourceUi.icon;
+  liveCaptureSourceLabelElement.textContent = sourceUi.label;
+  if (liveCaptureStateValue !== "recording" && liveCaptureStateValue !== "error") {
+    liveCaptureMetaElement.textContent = sourceUi.idleMeta;
+    liveCaptureMetaElement.classList.remove("is-hidden");
+  }
+  startLiveCaptureButton.textContent = sourceUi.startLabel;
+}
 
 function getSelectedLiveCaptureSourceValue() {
   const selected = liveCaptureSourceElements.find((input) => input.checked);
@@ -59,6 +101,7 @@ function setSelectedLiveCaptureSourceValue(source) {
   liveCaptureSourceElements.forEach((input) => {
     input.checked = input.value === normalizedSource;
   });
+  updateLiveCaptureSourceUi();
   syncButtonState();
 }
 
@@ -140,17 +183,24 @@ function setConnectionEditMode(editing, { focus = false, resetValue = false } = 
 function setCurrentPageTabId(tabId) {
   currentPageTabId = Number.isInteger(tabId) ? tabId : null;
   const hasTabId = currentPageTabId !== null;
-  pageStatusControlsElement.classList.toggle("is-hidden", !hasTabId);
+  pageTabIdElement.classList.toggle("is-hidden", !hasTabId);
   pageTabIdElement.textContent = hasTabId ? String(currentPageTabId) : "";
+  copyPageTabIdButton.classList.toggle("is-hidden", !hasTabId);
   copyPageTabIdButton.disabled = !hasTabId;
 }
 
 function setLiveCaptureState({ state = "idle", label = "", meta = "", active = false }) {
   isLiveCaptureActive = active === true;
+  liveCaptureStateValue = state;
   liveCaptureStatusElement.dataset.state = state;
   liveCaptureDotElement.className = `status-dot status-dot-${state === "recording" ? "checking" : state === "error" ? "error" : "connected"}`;
   liveCaptureLabelElement.textContent = label;
-  liveCaptureMetaElement.textContent = meta;
+  if (meta) {
+    liveCaptureMetaElement.textContent = meta;
+    liveCaptureMetaElement.classList.remove("is-hidden");
+  } else {
+    updateLiveCaptureSourceUi();
+  }
   liveCaptureStatusElement.open = active === true || state === "error";
   syncButtonState();
 }
@@ -203,6 +253,7 @@ function setConnectionState({
   pageStatusDotElement.className = `status-dot status-dot-${pageState === "ready" ? "connected" : pageState === "checking" ? "checking" : "error"}`;
   pageStatusLabelElement.textContent = pageLabel;
   pageStatusMetaElement.textContent = pageMeta;
+  pageStatusMetaElement.classList.toggle("is-hidden", !pageMeta);
   setCurrentPageTabId(pageTabId);
   setActionAvailability(state === "connected", pageState === "ready");
 }

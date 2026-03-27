@@ -10,3 +10,5 @@ tmp/
 .kuma-picker/
 .agents/
 .claude/worktrees/
+.playwright-cli/
+output/
