@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kuma Picker Bridge</title>
-    <link rel="stylesheet" href="./popup.css" />
+    <link rel="stylesheet" href="./popup.css?v=final-polish-1" />
   </head>
   <body>
     <main class="popup">
@@ -12,19 +12,6 @@
         <header id="connection-status" class="connection-status">
           <div class="connection-badge">
             <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
-            <div class="connection-copy">
-              <div class="connection-inline">
-                <p id="connection-label" class="connection-label">Checking bridge...</p>
-                <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
-                <input
-                  id="daemon-url"
-                  class="connection-url-input is-hidden"
-                  type="url"
-                  spellcheck="false"
-                  placeholder="http://127.0.0.1:4312"
-                />
-              </div>
-            </div>
             <button
               id="connect-daemon"
               type="button"
@@ -37,6 +24,19 @@
                 <path d="M13.5 7.5l3 3" />
               </svg>
             </button>
+          </div>
+          <div class="connection-popover">
+            <div class="connection-inline">
+              <p id="connection-label" class="connection-label">Checking bridge...</p>
+              <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
+              <input
+                id="daemon-url"
+                class="connection-url-input is-hidden"
+                type="url"
+                spellcheck="false"
+                placeholder="http://127.0.0.1:4312"
+              />
+            </div>
           </div>
         </header>
 
@@ -194,22 +194,6 @@
         </div>
       </section>
 
-      <section class="footer-status" aria-live="polite">
-        <img
-          class="footer-paw"
-          src="./assets/gestures/kuma-paw-tap.png"
-          alt=""
-          aria-hidden="true"
-        />
-        <div class="footer-copy">
-          <p id="feedback" class="feedback feedback-idle">
-            <span id="feedback-message">Click to pick an element, or drag to capture an area.</span>
-            <span id="feedback-shortcut">Press <kbd>Esc</kbd> to cancel.</span>
-          </p>
-          <p id="last-saved" class="last-saved"></p>
-        </div>
-      </section>
-
       <details class="prompt-panel">
         <summary class="prompt-summary">
           <span class="prompt-summary-label">Refactor Prompt</span>
@@ -237,6 +221,22 @@
           <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
         </div>
       </details>
+
+      <section class="footer-status" aria-live="polite">
+        <img
+          class="footer-paw"
+          src="./assets/gestures/kuma-paw-tap.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <div class="footer-copy">
+          <p id="feedback" class="feedback feedback-idle">
+            <span id="feedback-message">Click to pick an element, or drag to capture an area.</span>
+            <span id="feedback-shortcut">Press <kbd>Esc</kbd> to cancel.</span>
+          </p>
+          <p id="last-saved" class="last-saved"></p>
+        </div>
+      </section>
     </main>
     <script src="./shared/runtime.js"></script>
     <script src="./shared/live-capture-settings.js"></script>
