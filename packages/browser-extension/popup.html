@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kuma Picker Bridge</title>
-    <link rel="stylesheet" href="./popup.css?v=final-polish-1" />
+    <link rel="stylesheet" href="./popup.css?v=senior-design-1" />
   </head>
   <body>
     <main class="popup">
@@ -182,45 +182,54 @@
 
       <section class="action-stack">
         <button id="inspect-element" type="button" class="button button-primary action-feature">
-          Pick Element Or Drag Area
+          <span class="action-feature-copy">
+            <span class="action-feature-title">Pick Element Or Drag Area</span>
+            <span class="action-feature-meta">Inspect exactly what you want to change.</span>
+          </span>
         </button>
-        <div class="action-row">
-          <button id="capture-page" type="button" class="button button-secondary">
-            Capture Current Page
-          </button>
-          <button id="inspect-with-job" type="button" class="button button-tertiary">
-            Pick With Job
-          </button>
+
+        <div class="action-utility-deck">
+          <div class="action-row action-support">
+            <button id="capture-page" type="button" class="button button-secondary">
+              Capture Current Page
+            </button>
+            <button id="inspect-with-job" type="button" class="button button-tertiary">
+              Pick With Job
+            </button>
+          </div>
+
+          <details class="prompt-panel prompt-panel-inline">
+            <summary class="prompt-summary">
+              <span class="prompt-summary-copy">
+                <span class="prompt-summary-label">Refactor Prompt</span>
+                <span class="prompt-summary-hint">Expand for the generated prompt.</span>
+              </span>
+              <span class="prompt-summary-actions">
+                <span class="accordion-toggle" aria-hidden="true"></span>
+                <button
+                  id="copy-refactor-prompt"
+                  type="button"
+                  class="icon-button prompt-copy-button"
+                  aria-label="Copy refactor prompt"
+                  title="Copy refactor prompt"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
+                    />
+                    <path
+                      d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
+                    />
+                  </svg>
+                </button>
+              </span>
+            </summary>
+            <div class="prompt-shell">
+              <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
+            </div>
+          </details>
         </div>
       </section>
-
-      <details class="prompt-panel">
-        <summary class="prompt-summary">
-          <span class="prompt-summary-label">Refactor Prompt</span>
-          <span class="prompt-summary-actions">
-            <span class="accordion-toggle" aria-hidden="true"></span>
-            <button
-              id="copy-refactor-prompt"
-              type="button"
-              class="icon-button prompt-copy-button"
-              aria-label="Copy refactor prompt"
-              title="Copy refactor prompt"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
-                />
-                <path
-                  d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
-                />
-              </svg>
-            </button>
-          </span>
-        </summary>
-        <div class="prompt-shell">
-          <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
-        </div>
-      </details>
 
       <section class="footer-status" aria-live="polite">
         <img
