@@ -53,11 +53,11 @@ Latest verified parity snapshot on **2026-03-29**:
 
 | Scenario | Kuma | Playwright | Result |
 | --- | ---: | ---: | --- |
-| `agent-chat` | `458ms` | `483ms` | Kuma faster |
-| `contenteditable-lab` | `444ms` | `426ms` | Playwright faster |
-| `sudoku` | `431ms` | `478ms` | Kuma faster |
-| `cafe-control-room` | `598ms` | `550ms` | Playwright faster |
-| `shooting` | `1387ms` | `1057ms` | Playwright faster |
+| `agent-chat` | `461ms` | `505ms` | Kuma faster |
+| `contenteditable-lab` | `456ms` | `452ms` | Playwright faster |
+| `sudoku` | `440ms` | `501ms` | Kuma faster |
+| `cafe-control-room` | `595ms` | `583ms` | Playwright faster |
+| `shooting` | `1371ms` | `1047ms` | Playwright faster |
 
 Both sides completed these runs at `100%` success, and the parity compare step passed.
 
