@@ -25,6 +25,9 @@
     "kuma-pickerd:run": "node ./packages/server/src/cli.mjs run",
     "kuma-pickerd:smoke": "node ./scripts/run-smoke-scenarios.mjs",
     "kuma-pickerd:measure": "node ./scripts/run-measurement-scenarios.mjs",
+    "kuma-pickerd:parity:kuma": "node ./scripts/run-parity-scenarios.mjs --tool kuma --mode attach",
+    "kuma-pickerd:parity:playwright": "node ./scripts/run-parity-scenarios.mjs --tool playwright --mode attach",
+    "kuma-pickerd:parity:compare": "node ./scripts/compare-parity-results.mjs",
     "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
     "skill:install": "node ./scripts/install.mjs",
     "skill:doctor": "node ./scripts/doctor.mjs"

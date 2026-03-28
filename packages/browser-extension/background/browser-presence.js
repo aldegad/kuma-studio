@@ -79,7 +79,7 @@ async function upsertKnownBrowserTabFromTab(tab, overrides = {}) {
 }
 
 async function publishPagePresence(daemonUrl, payload) {
-  const { tab, page, source, visible, focused } = payload ?? {};
+  const { tab, page, source, visible, focused, browserUserAgent } = payload ?? {};
   if (!tab?.id || !tab.windowId) {
     return {
       ok: false,
@@ -104,6 +104,7 @@ async function publishPagePresence(daemonUrl, payload) {
     focused: claimant?.focused === true,
     capabilities: BROWSER_COMMAND_CAPABILITIES,
     lastSeenAt: claimant?.lastSeenAt ?? new Date().toISOString(),
+    browserUserAgent: typeof browserUserAgent === "string" ? browserUserAgent : null,
   });
 
   return {
@@ -249,6 +250,7 @@ async function handlePageHeartbeat(daemonUrl, message, sender) {
     page,
     visible: message?.visibilityState === "visible",
     focused: message?.hasFocus === true,
+    browserUserAgent: typeof message?.browserUserAgent === "string" ? message.browserUserAgent : null,
   });
 
   if (message?.type === "kuma-picker:page-ready") {

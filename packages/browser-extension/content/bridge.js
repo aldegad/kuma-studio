@@ -20,6 +20,7 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
         page: buildPageRecord(),
         visibilityState: document.visibilityState,
         hasFocus: document.hasFocus(),
+        browserUserAgent: navigator.userAgent,
       });
     } catch {
       // Ignore teardown or reload races.
@@ -100,6 +101,7 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
   void chrome.runtime.sendMessage({
     type: "kuma-picker:page-ready",
     page: buildPageRecord(),
+    browserUserAgent: navigator.userAgent,
   });
   void sendPageHeartbeat();
   window.setInterval(sendPageHeartbeat, 2_000);

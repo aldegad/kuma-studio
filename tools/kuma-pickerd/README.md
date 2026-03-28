@@ -37,6 +37,9 @@ node ./packages/server/src/cli.mjs set-job-status --status in_progress --message
 node ./packages/server/src/cli.mjs run ./tmp/script.js --url-contains "localhost:3000"
 npm run kuma-pickerd:smoke -- --scenario agent-chat
 npm run kuma-pickerd:measure -- --scenario shooting --tab-id 123 --repeat 5
+npm run kuma-pickerd:parity:kuma -- --url-contains "localhost:3000" --browser-version "146.0.7680.165" --repeat 3
+npm run kuma-pickerd:parity:playwright -- --cdp-url "http://127.0.0.1:9222" --url-contains "localhost:3000" --browser-version "146.0.7680.165" --playwright-module-path /tmp/kuma-picker-parity-playwright/node_modules/playwright/index.mjs --repeat 3
+npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --playwright ./artifacts/parity/playwright.json
 ```
 
 You can also pipe scripts through stdin:
@@ -95,6 +98,18 @@ npm run kuma-pickerd:measure -- --scenario shooting --tab-id 123 --repeat 5
 ```
 
 By default, reports are written under `artifacts/measurements/`.
+
+## Fair parity runs
+
+For real Kuma vs Playwright comparisons, use the parity runners instead of the Kuma-only measurement runner.
+
+```bash
+npm run kuma-pickerd:parity:kuma -- --url-contains "localhost:3000" --browser-version "146.0.7680.165" --repeat 3
+npm run kuma-pickerd:parity:playwright -- --cdp-url "http://127.0.0.1:9222" --url-contains "localhost:3000" --browser-version "146.0.7680.165" --playwright-module-path /tmp/kuma-picker-parity-playwright/node_modules/playwright/index.mjs --repeat 3
+npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --playwright ./artifacts/parity/playwright.json
+```
+
+The comparison command hard-fails if the mode, base URL, timeout budget, repeat count, scenario set, repo commit, resolved target URL, or browser metadata do not match.
 
 ## HTTP API
 

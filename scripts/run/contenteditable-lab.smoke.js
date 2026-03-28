@@ -1,4 +1,3 @@
-const baseUrl = "http://localhost:3000";
 const content = "Line 1\nLine 2";
 
 await page.goto(`${baseUrl}/contenteditable-lab`);

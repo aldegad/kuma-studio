@@ -1,5 +1,3 @@
-const baseUrl = "http://localhost:3000";
-
 await page.goto(`${baseUrl}/sudoku`);
 
 let selectedCell = null;

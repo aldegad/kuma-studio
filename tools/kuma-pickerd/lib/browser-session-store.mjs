@@ -150,6 +150,7 @@ export class BrowserSessionStore {
       capabilities: presence.capabilities,
       visible: presence.visible,
       focused: presence.focused,
+      browserUserAgent: presence.browserUserAgent,
     });
 
     return {
@@ -332,6 +333,7 @@ export class BrowserSessionStore {
       extensionName: referenceSession.extensionName,
       extensionVersion: referenceSession.extensionVersion,
       browserName: referenceSession.browserName,
+      browserUserAgent: referenceSession.browserUserAgent ?? null,
       activeTabId: referenceSession.tabId,
       page: cloneValue(referenceSession.page),
       capabilities: [...(referenceSession.capabilities ?? [])],

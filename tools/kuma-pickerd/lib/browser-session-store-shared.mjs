@@ -364,6 +364,7 @@ export function sanitizePresencePayload(candidate) {
     focused: candidate.focused === true,
     capabilities: sanitizeCapabilities(candidate.capabilities),
     lastSeenAt,
+    browserUserAgent: sanitizeString(candidate.browserUserAgent, 1_024),
   };
 }
 

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { parseScenarioArgs, readTargetArgs, runScenario, selectScenarios, REPO_ROOT } from "./run-scenarios-shared.mjs";
+import { parseScenarioArgs, readTargetOptions, runKumaScenario, selectScenarios, REPO_ROOT } from "./run-scenarios-shared.mjs";
 
 function median(values) {
   if (values.length === 0) return 0;
@@ -41,14 +41,18 @@ async function main() {
     throw new Error("No matching scenarios were selected.");
   }
 
-  const targetArgs = readTargetArgs(options.targetArgs);
+  const target = readTargetOptions(options.target);
   const runCount = options.repeat;
   const scenarioResults = [];
 
   for (const [id, filePath] of scenarios) {
     const runs = [];
     for (let index = 0; index < runCount; index += 1) {
-      const result = await runScenario(id, filePath, targetArgs);
+      const result = await runKumaScenario(id, filePath, {
+        target,
+        baseUrl: options.baseUrl,
+        timeoutMs: options.timeoutMs,
+      });
       runs.push(result);
       process.stdout.write(`[${id}] run ${index + 1}/${runCount} ${result.durationMs}ms\n`);
     }
@@ -71,7 +75,9 @@ async function main() {
     ok: true,
     generatedAt: new Date().toISOString(),
     repeat: runCount,
-    targetArgs,
+    target,
+    baseUrl: options.baseUrl,
+    timeoutMs: options.timeoutMs,
     scenarios: scenarioResults,
   };
 

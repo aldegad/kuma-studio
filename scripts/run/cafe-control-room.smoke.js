@@ -1,4 +1,3 @@
-const baseUrl = "http://localhost:3000";
 const drinkName = `Kuma Signature ${Date.now()}`;
 
 await page.goto(`${baseUrl}/cafe-control-room`);

@@ -1,5 +1,3 @@
-const baseUrl = "http://localhost:3000";
-
 await page.goto(`${baseUrl}/shooting`);
 await page.locator('[data-testid="shooting-start-button"]').click();
 

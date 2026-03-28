@@ -73,6 +73,9 @@ Agent-specific guidance lives here:
 - `npm run kuma-pickerd:run -- --url-contains "localhost:3000" ./tmp/script.js`: run a Playwright-shaped script against a target tab
 - `npm run kuma-pickerd:smoke -- --scenario agent-chat`: run a reusable smoke scenario against the bundled test surfaces
 - `npm run kuma-pickerd:measure -- --tab-id 123 --repeat 3`: run repeated Kuma-side scenario measurements and save a JSON report
+- `npm run kuma-pickerd:parity:kuma -- --url-contains "localhost:3000" --browser-version "146.0.7680.165" --repeat 3`: produce a parity-format Kuma attach run
+- `npm run kuma-pickerd:parity:playwright -- --cdp-url "http://127.0.0.1:9222" --url-contains "localhost:3000" --browser-version "146.0.7680.165" --playwright-module-path /tmp/kuma-picker-parity-playwright/node_modules/playwright/index.mjs --repeat 3`: produce a parity-format Playwright attach run
+- `npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --playwright ./artifacts/parity/playwright.json`: verify that two parity runs are actually comparable
 - `npm run test`: run daemon unit tests
 
 Example runner script:

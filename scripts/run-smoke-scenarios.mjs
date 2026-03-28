@@ -1,4 +1,4 @@
-import { parseScenarioArgs, readTargetArgs, runScenario, selectScenarios } from "./run-scenarios-shared.mjs";
+import { parseScenarioArgs, readTargetOptions, runKumaScenario, selectScenarios } from "./run-scenarios-shared.mjs";
 
 async function main() {
   const options = parseScenarioArgs(process.argv.slice(2));
@@ -9,11 +9,15 @@ async function main() {
     throw new Error("No matching scenarios were selected.");
   }
 
-  const targetArgs = readTargetArgs(options.targetArgs);
+  const target = readTargetOptions(options.target);
   const results = [];
 
   for (const [id, filePath] of scenarios) {
-    const result = await runScenario(id, filePath, targetArgs);
+    const result = await runKumaScenario(id, filePath, {
+      target,
+      baseUrl: options.baseUrl,
+      timeoutMs: options.timeoutMs,
+    });
     results.push(result);
     process.stdout.write(`[${id}] ${result.durationMs}ms\n`);
     if (result.stdout) {
