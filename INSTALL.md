@@ -1,7 +1,7 @@
 # Kuma Picker — Installation Guide
 
 This guide is written for **agents** (Claude, Codex, etc.) that need to set up
-Kuma Picker. If you are a human reading this, just ask your agent to install it.
+Kuma Picker, but a human can follow the same steps directly.
 
 ## TL;DR for agents
 
@@ -117,4 +117,5 @@ node scripts/install.mjs
 
 `git pull` updates daemon, extension, and skill source all at once.
 The installer re-stamps the selected skill targets with the latest content.
-Chrome auto-reloads the extension from the same folder.
+If the extension code changed, reload the unpacked extension once in `chrome://extensions`
+before trusting new browser-side behavior or benchmark numbers.
