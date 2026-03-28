@@ -1,10 +1,19 @@
 const CONTENT_SCRIPT_UNAVAILABLE_ERROR =
   "This page does not accept the Kuma Picker automation runtime. Try a regular website tab instead of a browser-internal page.";
 const AUTOMATION_RUNTIME_NOT_READY_ERROR = "The Kuma Picker automation runtime is not loaded for this page yet.";
+const AUTOMATION_RETRY_DELAYS_MS = [30, 50, 80, 120, 160, 220, 300];
 
 function isTransientAutomationError(error) {
   const message = error instanceof Error ? error.message : String(error);
   return message === CONTENT_SCRIPT_UNAVAILABLE_ERROR || message === AUTOMATION_RUNTIME_NOT_READY_ERROR;
+}
+
+function getAutomationRetryDelayMs(attempt) {
+  if (!Number.isInteger(attempt) || attempt < 0) {
+    return AUTOMATION_RETRY_DELAYS_MS[0];
+  }
+
+  return AUTOMATION_RETRY_DELAYS_MS[Math.min(attempt, AUTOMATION_RETRY_DELAYS_MS.length - 1)];
 }
 
 async function collectPageContext(tabId) {
@@ -39,7 +48,7 @@ async function sendAutomationCommandToTab(tabId, command) {
 
       invalidateAutomationBridge(tabId);
       await ensureAutomationBridge(tabId);
-      await waitForDelay(150);
+      await waitForDelay(getAutomationRetryDelayMs(attempt));
       continue;
     }
 
@@ -53,7 +62,7 @@ async function sendAutomationCommandToTab(tabId, command) {
 
     invalidateAutomationBridge(tabId);
     await ensureAutomationBridge(tabId);
-    await waitForDelay(150);
+    await waitForDelay(getAutomationRetryDelayMs(attempt));
   }
 
   if (!response?.ok) {
@@ -65,7 +74,7 @@ async function sendAutomationCommandToTab(tabId, command) {
   return response.result ?? null;
 }
 
-async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
+async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = null) {
   let lastError = null;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -76,7 +85,9 @@ async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
       if (attempt < attempts - 1 && isTransientAutomationError(error)) {
         invalidateAutomationBridge(tabId);
         await ensureAutomationBridge(tabId);
-        await waitForDelay(delayMs);
+        await waitForDelay(
+          typeof delayMs === "number" && Number.isFinite(delayMs) ? delayMs : getAutomationRetryDelayMs(attempt),
+        );
         continue;
       }
       break;

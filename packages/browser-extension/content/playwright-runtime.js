@@ -259,13 +259,14 @@ function readWaitState(target, state) {
 
 async function pollUntil(timeoutMs, evaluator, failureMessage) {
   const startedAt = Date.now();
+  const pollIntervalMs = document.visibilityState === "visible" ? 34 : 100;
 
   while (Date.now() - startedAt <= timeoutMs) {
     const result = evaluator();
     if (result.matched) {
       return result.value;
     }
-    await waitForDelay(100);
+    await waitForDelay(pollIntervalMs);
   }
 
   throw new Error(failureMessage);

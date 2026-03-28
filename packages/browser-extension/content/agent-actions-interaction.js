@@ -705,7 +705,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       };
     }
 
-    await waitForPostActionDelay(command, 120);
+    await waitForPostActionDelay(command, 60);
     return {
       page: buildPageRecord(),
       clickedElement: coreDescribeElementForCommand(target),
@@ -722,7 +722,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     if (target instanceof HTMLElement && document.contains(target)) {
       target.focus?.({ preventScroll: true });
     }
-    await waitForPostActionDelay(command, 120);
+    await waitForPostActionDelay(command, 60);
 
     return {
       page: buildPageRecord(),
@@ -761,7 +761,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       setContentEditableValue(target, value);
     }
 
-    await waitForPostActionDelay(command, 30);
+    await waitForPostActionDelay(command, 16);
     return {
       page: buildPageRecord(),
       filledElement: coreDescribeElementForCommand(target),
@@ -790,7 +790,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       throw new Error("Failed to insert text at the current cursor position.");
     }
 
-    await waitForPostActionDelay(command, 30);
+    await waitForPostActionDelay(command, 16);
     return {
       page: buildPageRecord(),
       text,
@@ -857,7 +857,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     if (shouldMirrorKeyboardEventToWindow(target)) {
       dispatchKeyboardEventToWindow("keyup", key, modifiers, code);
     }
-    await waitForPostActionDelay(command, 30);
+    await waitForPostActionDelay(command, 16);
 
     return {
       page: buildPageRecord(),
