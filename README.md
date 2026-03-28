@@ -72,7 +72,7 @@ Agent-specific guidance lives here:
 - `npm run kuma-pickerd:get-browser-session`: check browser bridge session
 - `npm run kuma-pickerd:run -- --url-contains "localhost:3000" ./tmp/script.js`: run a Playwright-shaped script against a target tab
 - `npm run kuma-pickerd:smoke -- --scenario agent-chat`: run a reusable smoke scenario against the bundled test surfaces
-- `npm run kuma-pickerd:benchmark -- --tab-id 123 --repeat 3`: run repeated scenario benchmarks and save a JSON report
+- `npm run kuma-pickerd:measure -- --tab-id 123 --repeat 3`: run repeated Kuma-side scenario measurements and save a JSON report
 - `npm run test`: run daemon unit tests
 
 Example runner script:

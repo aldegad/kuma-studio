@@ -36,7 +36,7 @@ node ./packages/server/src/cli.mjs get-browser-session
 node ./packages/server/src/cli.mjs set-job-status --status in_progress --message "Investigating the picked UI."
 node ./packages/server/src/cli.mjs run ./tmp/script.js --url-contains "localhost:3000"
 npm run kuma-pickerd:smoke -- --scenario agent-chat
-npm run kuma-pickerd:benchmark -- --scenario shooting --tab-id 123 --repeat 5
+npm run kuma-pickerd:measure -- --scenario shooting --tab-id 123 --repeat 5
 ```
 
 You can also pipe scripts through stdin:
@@ -85,16 +85,16 @@ npm run kuma-pickerd:smoke
 npm run kuma-pickerd:smoke -- --scenario sudoku
 ```
 
-## Benchmarks
+## Repeated measurements
 
-Use the benchmark runner when you want repeated measurements and a saved JSON report:
+Use the measurement runner when you want repeated Kuma-side timings and a saved JSON report:
 
 ```bash
-npm run kuma-pickerd:benchmark -- --tab-id 123 --repeat 3
-npm run kuma-pickerd:benchmark -- --scenario shooting --tab-id 123 --repeat 5
+npm run kuma-pickerd:measure -- --tab-id 123 --repeat 3
+npm run kuma-pickerd:measure -- --scenario shooting --tab-id 123 --repeat 5
 ```
 
-By default, reports are written under `artifacts/benchmarks/`.
+By default, reports are written under `artifacts/measurements/`.
 
 ## HTTP API
 

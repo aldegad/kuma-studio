@@ -24,7 +24,7 @@
     "kuma-pickerd:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
     "kuma-pickerd:run": "node ./packages/server/src/cli.mjs run",
     "kuma-pickerd:smoke": "node ./scripts/run-smoke-scenarios.mjs",
-    "kuma-pickerd:benchmark": "node ./scripts/run-benchmark-scenarios.mjs",
+    "kuma-pickerd:measure": "node ./scripts/run-measurement-scenarios.mjs",
     "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
     "skill:install": "node ./scripts/install.mjs",
     "skill:doctor": "node ./scripts/doctor.mjs"

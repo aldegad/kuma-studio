@@ -19,10 +19,10 @@ function percentile(values, ratio) {
 
 function buildDefaultOutputPath() {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  return path.join(REPO_ROOT, "artifacts", "benchmarks", `benchmark-${stamp}.json`);
+  return path.join(REPO_ROOT, "artifacts", "measurements", `measurement-${stamp}.json`);
 }
 
-async function writeBenchmarkOutput(outputPath, payload) {
+async function writeMeasurementOutput(outputPath, payload) {
   const absolutePath = path.isAbsolute(outputPath) ? outputPath : path.resolve(REPO_ROOT, outputPath);
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -75,7 +75,7 @@ async function main() {
     scenarios: scenarioResults,
   };
 
-  const outputPath = await writeBenchmarkOutput(options.outputPath || buildDefaultOutputPath(), payload);
+  const outputPath = await writeMeasurementOutput(options.outputPath || buildDefaultOutputPath(), payload);
   process.stdout.write(`${JSON.stringify({ ...payload, outputPath }, null, 2)}\n`);
 }
 
