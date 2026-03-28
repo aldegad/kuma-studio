@@ -11,10 +11,10 @@ export function CafeSidebar({
         <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#8e5d2b]">Live Mission Board</p>
         <div className="mt-4 space-y-3 text-sm leading-6 text-[#6f461f]">
           <CafeCheck title="Pick the floor" body="Use `Pick With Job` on a guest card, a station control, or the action console." />
-          <CafeCheck title="Dropdown focus" body="Crew Station is the custom listbox for `menu-state` and `selected-option` checks." />
+          <CafeCheck title="Dropdown focus" body="Crew Station is the custom listbox for `page.getByRole` and post-click readback checks." />
           <CafeCheck title="Station rule" body="Drinks only move at Espresso Bar, desserts only move at Bakery Shelf, and serving only happens at Service Counter." />
           <CafeCheck title="Recipe flow" body="Open the signature recipe dialog, edit the drink, save it, then wait for the toast to disappear." />
-          <CafeCheck title="Delivery flow" body="Prepare the receipts CSV, click the visible download link, then verify it with `browser-wait-for-download`." />
+          <CafeCheck title="Delivery flow" body="Prepare the receipts CSV, click the visible download link, then verify the UI state from the same script." />
         </div>
       </div>
 

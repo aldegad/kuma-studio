@@ -33,18 +33,20 @@ pointerdown→pointerup 사이에 시간 0ms. 게임 입장에서 0프레임 터
 DOM 앱에서는 합리적 (클릭 → React 리렌더 대기).
 캔버스에서는 무의미. 이미 `postActionDelayMs: 0`으로 설정 가능하므로 구조적 문제는 아님.
 
-## 해결: `pointer-drag` 커맨드 (구현 완료)
+## 해결: `page.mouse.drag` 기반 경로 입력
 
 ### 기본형 (from → to)
 
 ```bash
-browser-pointer-drag --from-x 200 --from-y 500 --to-x 300 --to-y 400 --duration-ms 500
+cat <<'EOF' | node ./packages/server/src/cli.mjs run --tab-id 123
+await page.mouse.drag({ x: 200, y: 500 }, { x: 300, y: 400 }, { durationMs: 500 });
+EOF
 ```
 
 ### waypoints 지원
 
 ```bash
-browser-pointer-drag --waypoints '[{"x":200,"y":500},{"x":150,"y":450},{"x":300,"y":400}]' --duration-ms 2000
+// v1은 waypoints를 직접 지원하지 않으므로 여러 drag/move 호출로 구성한다.
 ```
 
 ### 동작 원리
@@ -72,7 +74,9 @@ pointerup(to) → mouseup(to)
 
 전체 화면 대신 관심 영역만 캡처:
 ```bash
-browser-screenshot --x 100 --y 300 --width 200 --height 200 --file /tmp/region.png
+cat <<'EOF' | node ./packages/server/src/cli.mjs run --tab-id 123
+await page.screenshot({ path: "/tmp/region.png", clip: { x: 100, y: 300, width: 200, height: 200 } });
+EOF
 ```
 이미지가 작으면 캡처도 빠르고 LLM 추론도 빠름.
 

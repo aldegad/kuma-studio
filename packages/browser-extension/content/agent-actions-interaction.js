@@ -2,7 +2,6 @@
 var {
   FOCUSABLE_SELECTOR: coreFocusableSelector,
   normalizeText: coreNormalizeText,
-  normalizeRole: coreNormalizeRole,
   isExtensionUiElement: coreIsExtensionUiElement,
   describeElementForCommand: coreDescribeElementForCommand,
   isVisibleElement: coreIsVisibleElement,
@@ -150,23 +149,6 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       dataState: target.getAttribute?.("data-state") ?? null,
       open: target.hasAttribute?.("open") ?? false,
     };
-  }
-
-  function shouldUseSemanticClickFallback(target, before, after) {
-    const isTabLike =
-      coreNormalizeRole(target.getAttribute?.("role")) === "tab" || Boolean(target.getAttribute?.("aria-controls"));
-    if (!isTabLike) {
-      return false;
-    }
-
-    return (
-      before.page?.url === after.page?.url &&
-      before.page?.pathname === after.page?.pathname &&
-      before.ariaSelected === after.ariaSelected &&
-      before.ariaExpanded === after.ariaExpanded &&
-      before.dataState === after.dataState &&
-      before.open === after.open
-    );
   }
 
   function isLikelyNavigationClickTarget(target) {
@@ -690,11 +672,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     }
 
     await focusElement(target);
-    const before = readClickOutcome(target);
     const rect = target.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    let fallbackUsed = false;
     const navigationLikely = isLikelyNavigationClickTarget(target);
 
     await getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY });
@@ -713,23 +693,14 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       return {
         page: buildPageRecord(),
         clickedElement: coreDescribeElementForCommand(target),
-        fallbackUsed,
         navigationLikely,
       };
-    }
-
-    await waitForDelay(Math.min(150, Math.max(50, Math.round((command?.postActionDelayMs ?? 400) / 2))));
-
-    if (shouldUseSemanticClickFallback(target, before, readClickOutcome(target))) {
-      dispatchClickSequence(target, centerX, centerY);
-      fallbackUsed = true;
     }
 
     await waitForPostActionDelay(command, 400);
     return {
       page: buildPageRecord(),
       clickedElement: coreDescribeElementForCommand(target),
-      fallbackUsed,
       navigationLikely,
     };
   }

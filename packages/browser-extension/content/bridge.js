@@ -5,8 +5,8 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
     return globalThis.KumaPickerExtensionInteractive ?? null;
   }
 
-  function getAgentActionsApi() {
-    return globalThis.KumaPickerExtensionAgentActions ?? null;
+  function getAutomationApi() {
+    return globalThis.KumaPickerExtensionPlaywrightRuntime ?? null;
   }
 
   function getJobCardsApi() {
@@ -49,17 +49,17 @@ if (!globalThis.KumaPickerExtensionBridgeInitialized) {
           });
           sendResponse({ ok: true });
           return;
-        case "kuma-picker:browser-command":
-          if (!getAgentActionsApi()?.executeBrowserCommand) {
+        case "kuma-picker:automation-command":
+          if (!getAutomationApi()?.executeAutomationCommand) {
             sendResponse({
               ok: false,
-              error: "The Kuma Picker browser command tools are not loaded for this page yet.",
+              error: "The Kuma Picker automation runtime is not loaded for this page yet.",
             });
             return;
           }
 
           try {
-            const result = await getAgentActionsApi().executeBrowserCommand(message.command);
+            const result = await getAutomationApi().executeAutomationCommand(message.command);
             sendResponse({
               ok: true,
               result,

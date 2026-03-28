@@ -304,8 +304,8 @@ export function CafePanels({
               <div className="rounded-[1.5rem] border border-[#8f6333]/12 bg-[#4d3112] p-4 text-[#fff7e6]">
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#f0d59f]">Semantic Hooks</p>
                 <div className="mt-4 space-y-3 text-sm leading-7">
-                  <div className="rounded-[1.15rem] bg-white/8 px-4 py-3">Tabs still expose `role=tab` and `aria-selected` for tab-state checks.</div>
-                  <div className="rounded-[1.15rem] bg-white/8 px-4 py-3">Crew Station is the custom dropdown to hit with `menu-state` and `selected-option` queries.</div>
+                  <div className="rounded-[1.15rem] bg-white/8 px-4 py-3">Tabs still expose `role=tab` and `aria-selected` for locator-based checks.</div>
+                  <div className="rounded-[1.15rem] bg-white/8 px-4 py-3">Crew Station is the custom dropdown to hit with `page.getByRole` and readback checks.</div>
                   <div className="rounded-[1.15rem] bg-white/8 px-4 py-3">The recipe editor dialog remains a real form flow with toast feedback after save.</div>
                 </div>
               </div>
@@ -318,7 +318,7 @@ export function CafePanels({
                 <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[#8e5d2b]">Dispatch Desk</p>
                 <h3 className="mt-2 text-2xl font-black tracking-[-0.05em] text-[#47280d]">Visible receipt export</h3>
                 <p className="mt-3 text-sm leading-7 text-[#6f461f]">
-                  Keep this explicit. Prepare the file first, then click the visible download link so `browser-wait-for-download` can verify a real user-facing action.
+                  Keep this explicit. Prepare the file first, then click the visible download link so the same `page` script can verify a real user-facing action.
                 </p>
                 <div className="mt-4 rounded-[1.25rem] border border-[#8f6333]/12 bg-[#fff7e8] px-4 py-3 text-sm leading-6 text-[#6f461f]">
                   If Chrome asks about repeated downloads, allow it once and retry the same visible link.

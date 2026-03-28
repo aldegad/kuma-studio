@@ -1,118 +1,41 @@
-# Browser Extension MVP
+# Browser Extension
 
-This folder contains an unpacked Chrome extension that bridges arbitrary web
-pages into a local `kuma-pickerd` daemon.
+This folder contains the unpacked Chrome extension that connects arbitrary pages to the local `kuma-pickerd` daemon.
 
-## What It Does
+## What it does
 
-- saves the current page as the latest Kuma Picker selection
-- offers a lightweight inspect mode so you can click a single element or drag a viewport area on any site
-- lets you save a picked element or dragged area with a short job message
-- captures a visible-tab screenshot and stores it through the shared Kuma Picker state flow
+- saves the current page or picked element into Kuma Picker shared state
+- renders the inspect UI and job-card overlay flows
+- streams browser-session presence to the daemon
+- executes the Playwright-shaped automation subset used by `kuma-pickerd run`
+- keeps gesture overlays for click, scroll, hold, and drag interactions
 
-This MVP does not try to map DOM nodes back to app source code or React
-components. It is meant to prove the bridge model on real websites first.
+## Load it in Chrome
 
-The extension keeps a lightweight bootstrap content script on regular pages so
-the daemon can see the current tab context, and loads the heavier inspect UI
-only when you explicitly start picking from the popup.
-
-It now also exposes a WebSocket-backed browser control bridge for local agents:
-
-- stream live tab presence into the daemon while the page stays open
-- return page context and a DOM snapshot of visible interactive elements
-- click a target by selector, selector path, or visible text
-- click a viewport coordinate, fill focused or targeted form fields, and send basic keys
-- capture a visible-tab screenshot to a file through the CLI
-
-It can also target a non-active tab for DOM reads and clicks when you specify
-`--tab-id`, `--url`, or `--url-contains`. Visible-tab screenshots still require
-the page to be the currently focused tab.
-
-The popup live-capture control can record either:
-
-- the current browser tab through `tabCapture`
-- a chosen desktop window through `desktopCapture`
-- the entire screen through `desktopCapture`
-
-## Load It In Chrome
-
-1. start a local daemon
+1. start the daemon with `npm run kuma-pickerd:serve`
 2. open `chrome://extensions`
 3. enable `Developer mode`
 4. click `Load unpacked`
-5. choose the `packages/browser-extension` folder from the cloned repo
+5. choose `packages/browser-extension`
 
-Chrome loads the extension directly from the repo. When you `git pull`, the extension updates automatically.
+## Bridge usage
 
-## Start The Bridge
-
-From the repo root:
-
-```bash
-node packages/server/src/cli.mjs serve
-```
-
-That gives the extension a stable default bridge at:
-
-```text
-http://127.0.0.1:4312
-```
-
-## Use It
-
-1. open any regular website tab
-2. open the extension popup
-3. leave the daemon URL at `http://127.0.0.1:4312` or paste your custom one
-4. click `Test Bridge`
-5. click `Capture Current Page`, `Pick Element Or Drag Area`, or `Pick With Job`
-6. read the latest saved context from the repo root:
-
-```bash
-node packages/server/src/cli.mjs get-selection
-```
-
-To check whether the daemon has seen this extension recently, run:
-
-```bash
-node packages/server/src/cli.mjs get-extension-status
-```
-
-To inspect or control the active tab from a local agent, keep the target page
-open and use the daemon CLI with an explicit tab target:
+Keep the target page open, then run:
 
 ```bash
 node ./packages/server/src/cli.mjs get-browser-session
-node ./packages/server/src/cli.mjs browser-context --url-contains "developers.portone.io"
-node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
-node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role tab --exact-text --text "API 개별 연동"
-node ./packages/server/src/cli.mjs browser-dom --url-contains "developers.portone.io"
-node ./packages/server/src/cli.mjs browser-click --url-contains "developers.portone.io" --role button --exact-text --text "다음"
-node ./packages/server/src/cli.mjs browser-click-point --url-contains "facebook.com" --x 420 --y 360
-node ./packages/server/src/cli.mjs browser-fill --url-contains "facebook.com" --label "사이트 URL" --value "https://ddalkkakposting.com/privacy"
-node ./packages/server/src/cli.mjs browser-set-files --url-contains "facebook.com" --selector "input[type=file]" --files "/tmp/image.png"
-node ./packages/server/src/cli.mjs browser-key --url-contains "facebook.com" --key Tab
-node ./packages/server/src/cli.mjs browser-wait-for-download --url-contains "facebook.com" --filename-contains ".csv"
-node ./packages/server/src/cli.mjs browser-get-latest-download --url-contains "facebook.com" --filename-contains ".csv"
-node ./packages/server/src/cli.mjs browser-wait-for-text --url-contains "facebook.com" --text "저장됨" --scope dialog
-node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind input-by-label --text "사이트 URL" --scope dialog
-node ./packages/server/src/cli.mjs browser-query-dom --url-contains "facebook.com" --kind selected-option --text "설정 모드" --scope dialog
-node ./packages/server/src/cli.mjs browser-screenshot --url-contains "developers.portone.io" --file ./tmp/portone.png
-node ./packages/server/src/cli.mjs set-job-status --status in_progress --message "Implementing the picked UI request."
-node ./packages/server/src/cli.mjs set-job-status --status completed --message "Updated the picked area and verified the change."
+cat <<'EOF' | node ./packages/server/src/cli.mjs run --url-contains "localhost:3000"
+await page.goto("http://localhost:3000/cafe-control-room");
+await page.getByRole("tab", { name: "Delivery" }).click();
+await page.getByRole("button", { name: "Prepare Receipts CSV" }).click();
+console.log(await page.title());
+EOF
 ```
 
 ## Notes
 
-- browser-internal pages such as `chrome://...` will not accept the content script
-- screenshots are captured from the visible viewport, not the entire scrollable page
-- dragged area captures are cropped from the visible viewport screenshot before they are saved
-- `Pick With Job` creates a 3-step work card on the target page: `메모 남김` → `작업 중` → `작업 완료`
-- selection saves still use the daemon's HTTP endpoints, but browser control uses the daemon's WebSocket endpoint at `/browser-session/socket`
-- extension status remains best-effort presence data: the daemon can tell whether the extension was seen recently, not guarantee that Chrome still has it loaded if the last status becomes stale
-- the popup `Test Bridge` action now separates daemon health from WebSocket readiness so startup errors are easier to diagnose
-- targeted DOM and click commands can run against background tabs as long as the tab stays open with the content script loaded
-- targeted `browser-fill`, `browser-set-files`, `browser-key`, and `browser-click-point` commands can also run against background tabs when the page remains open
-- screenshots still require the target page to be the visible focused tab in Chrome
-- popup live capture can now target the current tab, a chosen window, or the entire screen
-- browser control now assumes the WebSocket bridge path only
+- browser-internal pages such as `chrome://...` do not accept the content script
+- screenshots are visible-viewport captures, not full-page stitched images
+- `Pick With Job` still creates the three-step work card flow on the target page
+- browser automation is now WebSocket-only and script-runner-only
+- background-tab automation works when the tab remains open with the content runtime attached

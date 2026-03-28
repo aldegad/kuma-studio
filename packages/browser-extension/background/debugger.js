@@ -124,7 +124,7 @@ async function evaluateDebuggerExpression(tab, command = {}) {
           : "";
   const expression = expressionCandidate.trim();
   if (!expression) {
-    throw new Error("browser-eval requires --expression.");
+    throw new Error("page.evaluate requires an expression.");
   }
 
   const tabId = tab.id;

@@ -432,7 +432,7 @@ export function KumaSudokuClub() {
               <p className="text-[11px] font-black uppercase tracking-[0.28em] text-[#8e5d2b]">Kuma Picker Checklist</p>
               <div className="mt-4 space-y-3 text-sm leading-6 text-[#6f461f]">
                 <CheckRow title="Click a cell" body="Target row 4 column 7 or use the board grid selectors." />
-                <CheckRow title="Write and verify" body="Enter a value, then read it back with `browser-query-dom`." />
+                <CheckRow title="Write and verify" body="Enter a value, then read it back in the same `page` script." />
                 <CheckRow title="Test note mode" body="Toggle notes and confirm mini digits render in the same tile." />
                 <CheckRow title="Generate a fresh board" body="Use `New Puzzle` to confirm the surface re-renders with a different layout." />
               </div>

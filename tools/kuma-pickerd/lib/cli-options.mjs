@@ -1,9 +1,14 @@
 export function parseFlags(argv) {
-  const options = {};
+  const options = {
+    _: [],
+  };
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
-    if (!token.startsWith("--")) continue;
+    if (!token.startsWith("--")) {
+      options._.push(token);
+      continue;
+    }
 
     const key = token.slice(2);
     const nextToken = argv[index + 1];

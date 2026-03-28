@@ -46,8 +46,7 @@
     {
       "resources": [
         "content/runtime-observer-main.js",
-        "assets/gestures/kuma-paw-tap.png",
-        "assets/gestures/kuma-paw-grab.png"
+        "assets/gestures/kuma-paw-tap.png"
       ],
       "matches": [
         "<all_urls>"
@@ -75,9 +74,7 @@
         "content/agent-actions-core.js",
         "content/agent-actions-gesture-overlay.js",
         "content/agent-actions-interaction.js",
-        "content/agent-actions-observe-extra.js",
-        "content/agent-actions-observe.js",
-        "content/agent-actions.js",
+        "content/playwright-runtime.js",
         "content/bridge.js"
       ],
       "run_at": "document_idle"

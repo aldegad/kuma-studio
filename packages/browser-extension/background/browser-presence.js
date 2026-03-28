@@ -1,41 +1,5 @@
 const knownBrowserTabs = new Map();
-const BROWSER_COMMAND_CAPABILITIES = [
-  "context",
-  "navigate",
-  "dom",
-  "eval",
-  "console",
-  "debugger-capture",
-  "click",
-  "sequence",
-  "sequence-start",
-  "sequence-state",
-  "sequence-stop",
-  "click-point",
-  "pointer-drag",
-  "fill",
-  "set-files",
-  "record-start",
-  "record-stop",
-  "live-capture-state",
-  "live-capture-stop",
-  "key",
-  "keydown",
-  "keyup",
-  "mousemove",
-  "mousedown",
-  "mouseup",
-  "refresh",
-  "screenshot",
-  "wait-for-download",
-  "get-latest-download",
-  "download-permission",
-  "wait-for-text",
-  "wait-for-text-disappear",
-  "wait-for-selector",
-  "wait-for-dialog-close",
-  "query-dom",
-];
+const BROWSER_COMMAND_CAPABILITIES = ["run"];
 
 async function reportExtensionHeartbeatSafely(daemonUrl, payload) {
   try {

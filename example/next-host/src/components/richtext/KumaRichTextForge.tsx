@@ -89,7 +89,7 @@ export function KumaRichTextForge() {
       appName="Kuma Rich Text Forge"
       eyebrow="Rich text input surface"
       headline={<>Kuma Rich Text Forge</>}
-      description="A richer contenteditable testbed for Kuma Picker. It keeps plain-text and HTML readback side by side so formatting actions, multiline paste, insertText flows, and browser-fill edge cases are easy to verify."
+      description="A richer contenteditable testbed for Kuma Picker. It keeps plain-text and HTML readback side by side so formatting actions, multiline paste, insertText flows, and Playwright-shaped fill flows are easy to verify."
       pills={[
         "contenteditable",
         "Toolbar commands",

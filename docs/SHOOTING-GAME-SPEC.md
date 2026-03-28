@@ -115,7 +115,7 @@ Capture screenshots at T=0, T=1s, T=2s. Verify:
 
 ### 4. Touch/pointer sequence testing
 
-Use `browser-sequence` to script a series of pointer events:
+Use a `run` script with `page.mouse` to script a series of pointer events:
 
 ```json
 [

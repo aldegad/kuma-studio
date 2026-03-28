@@ -70,13 +70,19 @@ Agent-specific guidance lives here:
 - `npm run kuma-pickerd:get-job-card`: read the latest browser work card
 - `npm run kuma-pickerd:get-extension-status`: show the latest browser extension heartbeat
 - `npm run kuma-pickerd:get-browser-session`: check browser bridge session
-- `npm run kuma-pickerd:browser-context`: get browser context from extension
-- `npm run kuma-pickerd:browser-navigate -- --url "http://localhost:3000"`: navigate the current browser session to a URL
-- `npm run kuma-pickerd:browser-dom`: read DOM from extension
-- `npm run kuma-pickerd:browser-click -- --text "Next"`: click element via extension
-- `npm run kuma-pickerd:browser-pointer-drag -- --from-x 120 --from-y 260 --to-x 420 --to-y 260`: drag across the page via extension
-- `npm run kuma-pickerd:browser-screenshot -- --file ./tmp/shot.png`: take screenshot via extension
+- `npm run kuma-pickerd:run -- --url-contains "localhost:3000" ./tmp/script.js`: run a Playwright-shaped script against a target tab
+- `npm run kuma-pickerd:smoke -- --scenario agent-chat`: run a reusable smoke scenario against the bundled test surfaces
+- `npm run kuma-pickerd:benchmark -- --tab-id 123 --repeat 3`: run repeated scenario benchmarks and save a JSON report
 - `npm run test`: run daemon unit tests
+
+Example runner script:
+
+```js
+await page.goto("http://localhost:3000/agent-chat");
+await page.getByLabel("1P Composer").fill("hello from kuma");
+await page.getByRole("button", { name: "Send from 1P" }).click();
+console.log(await page.getByText("hello from kuma").textContent());
+```
 
 ## Docs
 

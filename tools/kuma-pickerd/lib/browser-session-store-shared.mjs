@@ -139,6 +139,79 @@ export function sanitizeCommandPayload(candidate) {
     throw new Error("Browser command type is required.");
   }
 
+  const targetTabId = sanitizeOptionalInteger(candidate.targetTabId);
+  const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
+  const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
+  const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
+  const hasTarget =
+    Number.isInteger(targetTabId) ||
+    (typeof targetUrl === "string" && targetUrl.length > 0) ||
+    (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
+
+  if (!hasTarget && type !== "navigate") {
+    throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
+  }
+
+  if (type === "playwright") {
+    const action = sanitizeString(candidate.action, 128);
+    if (!action) {
+      throw new Error("Playwright automation commands require an action.");
+    }
+
+    const timeoutMs = Number(candidate.timeoutMs);
+    const holdMs = Number(candidate.holdMs);
+    const durationMs = Number(candidate.durationMs);
+    const steps = Number(candidate.steps);
+    const x = Number(candidate.x);
+    const y = Number(candidate.y);
+
+    return {
+      type,
+      action,
+      targetTabId,
+      resolvedTargetTabId,
+      targetUrl,
+      targetUrlContains,
+      timeoutMs:
+        Number.isFinite(timeoutMs) && timeoutMs > 0
+          ? Math.min(600_000, Math.round(timeoutMs))
+          : null,
+      holdMs:
+        Number.isFinite(holdMs) && holdMs >= 0
+          ? Math.min(10_000, Math.round(holdMs))
+          : null,
+      durationMs:
+        Number.isFinite(durationMs) && durationMs >= 0
+          ? Math.min(10_000, Math.round(durationMs))
+          : null,
+      steps:
+        Number.isFinite(steps) && steps >= 1
+          ? Math.min(500, Math.round(steps))
+          : null,
+      x: Number.isFinite(x) ? x : null,
+      y: Number.isFinite(y) ? y : null,
+      url: sanitizeString(candidate.url, 2_000),
+      waitUntil: sanitizeString(candidate.waitUntil, 64),
+      selector: sanitizeString(candidate.selector, 1_200),
+      state: sanitizeString(candidate.state, 64),
+      key: sanitizeString(candidate.key, 64),
+      button: sanitizeString(candidate.button, 16),
+      shiftKey: candidate.shiftKey === true,
+      altKey: candidate.altKey === true,
+      ctrlKey: candidate.ctrlKey === true,
+      metaKey: candidate.metaKey === true,
+      bypassCache: candidate.bypassCache === true,
+      clip: sanitizeClipRect(candidate.clip),
+      from: cloneValue(candidate.from ?? null),
+      to: cloneValue(candidate.to ?? null),
+      locator: cloneValue(candidate.locator ?? null),
+      value: cloneValue(candidate.value ?? null),
+      arg: cloneValue(candidate.arg ?? null),
+      kind: sanitizeString(candidate.kind, 64),
+      source: typeof candidate.source === "string" ? candidate.source.slice(0, 16_000) : null,
+    };
+  }
+
   const selector = sanitizeString(candidate.selector, 1_200);
   const selectorPath = sanitizeString(candidate.selectorPath, 2_000);
   const label = sanitizeString(candidate.label, 512);
@@ -151,8 +224,6 @@ export function sanitizeCommandPayload(candidate) {
   const role = sanitizeString(candidate.role, 64);
   const within = sanitizeString(candidate.within, 512);
   const scope = sanitizeString(candidate.scope, 32);
-  const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
-  const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const navigationUrl = sanitizeString(candidate.navigationUrl, 2_000);
   const filename = sanitizeString(candidate.filename, 512);
   const filenameContains = sanitizeString(candidate.filenameContains, 512);
@@ -166,8 +237,6 @@ export function sanitizeCommandPayload(candidate) {
   const durationMs = Number(candidate.durationMs);
   const steps = Number(candidate.steps);
   const nth = Number(candidate.nth);
-  const targetTabId = sanitizeOptionalInteger(candidate.targetTabId);
-  const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
   const x = Number(candidate.x);
   const y = Number(candidate.y);
   const fromX = Number(candidate.fromX);
@@ -178,11 +247,6 @@ export function sanitizeCommandPayload(candidate) {
   const waypoints = sanitizeWaypoints(candidate.waypoints);
   const files = sanitizeFileList(candidate.files);
   const sequenceSteps = Array.isArray(candidate.steps) ? cloneValue(candidate.steps) : null;
-  const hasTarget =
-    Number.isInteger(targetTabId) ||
-    (typeof targetUrl === "string" && targetUrl.length > 0) ||
-    (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
-
   if (!hasTarget && type !== "navigate") {
     throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
   }

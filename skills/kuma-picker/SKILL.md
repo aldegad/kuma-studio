@@ -98,12 +98,13 @@ Kuma Picker resolves its shared state directory in this priority order:
    ```
 3. Prefer targeted tab commands (`--tab-id`, `--url`, `--url-contains`).
 4. Use the narrowest command that answers the question. See [references/commands.md](references/commands.md).
+5. When the task matches a bundled smoke surface, prefer the reusable scripts under `scripts/run/` before inventing a one-off flow.
 
 ## Browser write safety
 
 - Never infer success from a click alone.
 - After any write action, verify with a direct readback.
-- Prefer `browser-sequence` with per-step `assert` checks.
+- Prefer `run` scripts that keep the write and the readback in the same `page` flow.
 - Prefer selector, role, and label targeting over text-only clicks.
 
 ## Job cards

@@ -1,5 +1,5 @@
 const INTERACTIVE_SCRIPT_FILES = ["content/interactive.js"];
-const BROWSER_COMMAND_SCRIPT_FILES = [
+const AUTOMATION_SCRIPT_FILES = [
   "content/runtime-observer.js",
   "content/constants.js",
   "content/page-context.js",
@@ -7,9 +7,7 @@ const BROWSER_COMMAND_SCRIPT_FILES = [
   "content/agent-actions-core.js",
   "content/agent-actions-gesture-overlay.js",
   "content/agent-actions-interaction.js",
-  "content/agent-actions-observe-extra.js",
-  "content/agent-actions-observe.js",
-  "content/agent-actions.js",
+  "content/playwright-runtime.js",
   "content/bridge.js",
 ];
 const RUNTIME_OBSERVER_MAIN_SCRIPT_FILES = ["content/runtime-observer-main.js"];
@@ -33,11 +31,11 @@ async function ensureInteractiveKumaPicker(tabId) {
   );
 }
 
-async function ensureBrowserCommandBridge(tabId) {
+async function ensureAutomationBridge(tabId) {
   await executeKumaPickerScripts(
     tabId,
-    BROWSER_COMMAND_SCRIPT_FILES,
-    "This page does not allow the Kuma Picker browser command tools. Try a regular website tab instead of a browser-internal page.",
+    AUTOMATION_SCRIPT_FILES,
+    "This page does not allow the Kuma Picker automation runtime. Try a regular website tab instead of a browser-internal page.",
   );
 }
 

@@ -324,7 +324,7 @@ var KumaPickerExtensionAgentActionCore = (() => {
       .filter((entry) => entry.score > 0)
       .sort((left, right) => right.score - left.score || left.text.length - right.text.length);
 
-    const directMatch = selectNthMatch(candidates, command, "browser-click target");
+    const directMatch = selectNthMatch(candidates, command, "automation target");
     if (directMatch) {
       return directMatch;
     }

@@ -1,10 +1,10 @@
 const CONTENT_SCRIPT_UNAVAILABLE_ERROR =
-  "This page does not accept the Kuma Picker content script. Try a regular website tab instead of a browser-internal page.";
-const COMMAND_TOOLS_NOT_READY_ERROR = "The Kuma Picker browser command tools are not loaded for this page yet.";
+  "This page does not accept the Kuma Picker automation runtime. Try a regular website tab instead of a browser-internal page.";
+const AUTOMATION_RUNTIME_NOT_READY_ERROR = "The Kuma Picker automation runtime is not loaded for this page yet.";
 
-function isTransientContentScriptError(error) {
+function isTransientAutomationError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return message === CONTENT_SCRIPT_UNAVAILABLE_ERROR || message === COMMAND_TOOLS_NOT_READY_ERROR;
+  return message === CONTENT_SCRIPT_UNAVAILABLE_ERROR || message === AUTOMATION_RUNTIME_NOT_READY_ERROR;
 }
 
 async function collectPageContext(tabId) {
@@ -19,23 +19,25 @@ async function collectPageContext(tabId) {
   return response.pageContext;
 }
 
-async function sendAgentCommandToTab(tabId, command) {
+async function sendAutomationCommandToTab(tabId, command) {
   let response = null;
   let lastError = null;
+
+  await ensureAutomationBridge(tabId);
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
       response = await sendMessageToTab(tabId, {
-        type: "kuma-picker:browser-command",
+        type: "kuma-picker:automation-command",
         command,
       });
     } catch (error) {
       lastError = error;
-      if (!isTransientContentScriptError(error)) {
+      if (!isTransientAutomationError(error)) {
         break;
       }
 
-      await ensureBrowserCommandBridge(tabId);
+      await ensureAutomationBridge(tabId);
       await waitForDelay(150);
       continue;
     }
@@ -44,18 +46,18 @@ async function sendAgentCommandToTab(tabId, command) {
       return response.result ?? null;
     }
 
-    if (response?.error !== COMMAND_TOOLS_NOT_READY_ERROR) {
+    if (response?.error !== AUTOMATION_RUNTIME_NOT_READY_ERROR) {
       break;
     }
 
-    await ensureBrowserCommandBridge(tabId);
+    await ensureAutomationBridge(tabId);
     await waitForDelay(150);
   }
 
   if (!response?.ok) {
     throw lastError instanceof Error
       ? lastError
-      : new Error(response?.error || "The active tab rejected the browser command.");
+      : new Error(response?.error || "The active tab rejected the automation request.");
   }
 
   return response.result ?? null;
@@ -69,8 +71,8 @@ async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
       return await collectPageContext(tabId);
     } catch (error) {
       lastError = error;
-      if (attempt < attempts - 1 && isTransientContentScriptError(error)) {
-        await ensureBrowserCommandBridge(tabId);
+      if (attempt < attempts - 1 && isTransientAutomationError(error)) {
+        await ensureAutomationBridge(tabId);
         await waitForDelay(delayMs);
         continue;
       }
@@ -82,7 +84,7 @@ async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
 }
 
 function normalizeScreenshotClipRect(command) {
-  const candidate = command?.clipRect;
+  const candidate = command?.clip;
   if (!candidate || typeof candidate !== "object") {
     return null;
   }
@@ -97,25 +99,17 @@ function normalizeScreenshotClipRect(command) {
   return rect.width >= 1 && rect.height >= 1 ? rect : null;
 }
 
-function getScreenshotSelector(command) {
-  if (typeof command?.selectorPath === "string") {
-    return command.selectorPath;
-  }
-
-  return typeof command?.selector === "string" ? command.selector : null;
-}
-
 function getRefreshTimeoutMs(command) {
   return typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) && command.timeoutMs > 0
     ? command.timeoutMs
     : 15_000;
 }
 
-async function executeScreenshotBrowserCommand(tab, command) {
+async function executePageScreenshotCommand(tab, command) {
   const pageContext = await collectPageContext(tab.id);
   const capture = await captureTargetTabScreenshot(tab, {
-    focusTabFirst: command?.focusTabFirst !== false,
-    restorePreviousActiveTab: command?.restorePreviousActiveTab === true,
+    focusTabFirst: true,
+    restorePreviousActiveTab: false,
   });
   const viewportWidth = Number(pageContext?.viewport?.width) || 0;
   const viewportHeight = Number(pageContext?.viewport?.height) || 0;
@@ -127,18 +121,19 @@ async function executeScreenshotBrowserCommand(tab, command) {
     height: Math.max(0, Math.round(viewportHeight * devicePixelRatio)),
     capturedAt: new Date().toISOString(),
   };
-  let clip = null;
 
-  const selector = getScreenshotSelector(command);
+  const selector = typeof command?.selector === "string" ? command.selector : null;
   const clipRect = normalizeScreenshotClipRect(command);
 
   if (selector || clipRect) {
     const measured = selector
-      ? await sendAgentCommandToTab(tab.id, {
-          type: "measure",
-          selector: typeof command?.selector === "string" ? command.selector : null,
-          selectorPath: typeof command?.selectorPath === "string" ? command.selectorPath : null,
-          scope: typeof command?.scope === "string" ? command.scope : null,
+      ? await sendAutomationCommandToTab(tab.id, {
+          type: "playwright",
+          action: "locator.measure",
+          locator: {
+            kind: "selector",
+            selector,
+          },
         })
       : null;
     const rect = clipRect ?? measured?.rect ?? null;
@@ -150,29 +145,15 @@ async function executeScreenshotBrowserCommand(tab, command) {
       height: cropped.height,
       capturedAt: new Date().toISOString(),
     };
-    clip = {
-      mode: measured ? "selector" : "rect",
-      scope: typeof command?.scope === "string" ? command.scope : "page",
-      selector: measured?.selector ?? null,
-      rect,
-      element: measured?.element ?? null,
-    };
   }
 
   return {
     page: pageContext.page,
     screenshot,
-    capture: {
-      tabId: capture.tabId,
-      windowId: capture.windowId,
-      focused: capture.focused,
-      active: capture.active,
-    },
-    clip,
   };
 }
 
-async function executeRefreshBrowserCommand(tab, command) {
+async function executePageReloadCommand(tab, command) {
   const reloaded = await reloadTargetTab(tab, {
     bypassCache: command?.bypassCache === true,
     timeoutMs: getRefreshTimeoutMs(command),
@@ -181,17 +162,15 @@ async function executeRefreshBrowserCommand(tab, command) {
 
   return {
     page: pageContext.page,
-    refreshedTabId: reloaded.tab.id,
-    refreshedWindowId: reloaded.tab.windowId ?? null,
     bypassCache: reloaded.bypassCache,
     status: reloaded.tab.status ?? null,
   };
 }
 
-async function executeNavigateBrowserCommand(tab, command) {
-  const navigationUrl = typeof command?.navigationUrl === "string" ? command.navigationUrl.trim() : "";
+async function executePageGotoCommand(tab, command) {
+  const navigationUrl = typeof command?.url === "string" ? command.url.trim() : "";
   if (!navigationUrl) {
-    throw new Error("The navigate command requires a non-empty destination URL.");
+    throw new Error("page.goto requires a non-empty URL.");
   }
 
   let parsedUrl = null;
@@ -201,140 +180,35 @@ async function executeNavigateBrowserCommand(tab, command) {
     throw new Error(`Invalid navigation URL: ${navigationUrl}`);
   }
 
-  const timeoutMs = getRefreshTimeoutMs(command);
-  const navigationResult = command?.newTab === true
-    ? await createTargetTab({
-        url: parsedUrl.toString(),
-        windowId: tab?.windowId,
-        index: Number.isInteger(tab?.index) ? tab.index + 1 : undefined,
-        active: command?.active !== false,
-        timeoutMs,
-      })
-    : await navigateTargetTab(tab, {
-        url: parsedUrl.toString(),
-        timeoutMs,
-      });
-
-  let pageContext = null;
-  try {
-    pageContext = await collectPageContextWithRetry(navigationResult.tab.id);
-  } catch {
-    pageContext = null;
-  }
+  const navigationResult = await navigateTargetTab(tab, {
+    url: parsedUrl.toString(),
+    timeoutMs: getRefreshTimeoutMs(command),
+  });
+  const pageContext = await collectPageContextWithRetry(navigationResult.tab.id);
 
   return {
-    page: pageContext?.page ?? createPageRecordFromTab(navigationResult.tab),
-    navigatedTabId: navigationResult.tab.id,
-    navigatedWindowId: navigationResult.tab.windowId ?? null,
-    requestedUrl: parsedUrl.toString(),
-    newTab: command?.newTab === true,
-    active: navigationResult.tab.active === true,
+    page: pageContext.page,
     status: navigationResult.tab.status ?? null,
-    contentScriptReady: pageContext != null,
   };
 }
 
-async function executeWaitForDownloadBrowserCommand(tab, command) {
-  const pageContext = await collectPageContext(tab.id);
-  const { filter, waitedMs, record, permission } = await waitForMatchingDownload(command, tab);
-  return {
-    page: pageContext.page,
-    matched: true,
-    waitedMs,
-    download: serializeDownloadResult(record, filter),
-    permission: serializeDownloadPermission(permission),
-  };
-}
-
-async function executeGetLatestDownloadBrowserCommand(tab, command) {
-  const pageContext = await collectPageContext(tab.id);
-  const { filter, record, permission } = await getLatestDownload(command, tab);
-  return {
-    page: pageContext.page,
-    download: serializeDownloadResult(record, filter),
-    permission: serializeDownloadPermission(permission),
-  };
-}
-
-async function executeDownloadPermissionBrowserCommand(tab) {
-  const pageContext = await collectPageContext(tab.id);
-  const permission = await getDownloadPermission(tab);
-  return {
-    page: pageContext.page,
-    permission: serializeDownloadPermission(permission),
-  };
-}
-
-async function executeEvalBrowserCommand(tab, command) {
-  return evaluateDebuggerExpression(tab, command);
-}
-
-async function executeLiveCaptureStateBrowserCommand(tab) {
-  return {
-    page: createPageRecordFromTab(tab),
-    ...getLiveCaptureStateForTab(tab),
-  };
-}
-
-async function executeLiveCaptureStopBrowserCommand(tab) {
-  return stopLiveCaptureForTab(tab);
+async function executePlaywrightCommand(tab, command) {
+  switch (command?.action) {
+    case "page.goto":
+      return executePageGotoCommand(tab, command);
+    case "page.reload":
+      return executePageReloadCommand(tab, command);
+    case "page.screenshot":
+      return executePageScreenshotCommand(tab, command);
+    default:
+      return sendAutomationCommandToTab(tab.id, command);
+  }
 }
 
 async function executeBrowserCommand(tab, command) {
-  switch (command?.type) {
-    case "context":
-      return {
-        pageContext: await collectPageContext(tab.id),
-      };
-    case "debugger-capture":
-      return captureDebuggerDiagnostics(tab, command);
-    case "navigate":
-      return executeNavigateBrowserCommand(tab, command);
-    case "eval":
-      return executeEvalBrowserCommand(tab, command);
-    case "set-files":
-      return setFileInputFiles(tab, command);
-    case "record-start":
-      return startTabRecording(tab, command);
-    case "record-stop":
-      return stopTabRecording(tab, command);
-    case "live-capture-state":
-      return executeLiveCaptureStateBrowserCommand(tab);
-    case "live-capture-stop":
-      return executeLiveCaptureStopBrowserCommand(tab);
-    case "dom":
-    case "click":
-    case "sequence":
-    case "sequence-start":
-    case "sequence-state":
-    case "sequence-stop":
-    case "click-point":
-    case "pointer-drag":
-    case "fill":
-    case "key":
-    case "keydown":
-    case "keyup":
-    case "mousemove":
-    case "mousedown":
-    case "mouseup":
-    case "console":
-    case "wait-for-text":
-    case "wait-for-text-disappear":
-    case "wait-for-selector":
-    case "wait-for-dialog-close":
-    case "query-dom":
-      return sendAgentCommandToTab(tab.id, command);
-    case "screenshot":
-      return executeScreenshotBrowserCommand(tab, command);
-    case "refresh":
-      return executeRefreshBrowserCommand(tab, command);
-    case "wait-for-download":
-      return executeWaitForDownloadBrowserCommand(tab, command);
-    case "get-latest-download":
-      return executeGetLatestDownloadBrowserCommand(tab, command);
-    case "download-permission":
-      return executeDownloadPermissionBrowserCommand(tab);
-    default:
-      throw new Error(`Unsupported Kuma Picker browser command: ${String(command?.type)}`);
+  if (command?.type !== "playwright") {
+    throw new Error(`Unsupported Kuma Picker automation command: ${String(command?.type)}`);
   }
+
+  return executePlaywrightCommand(tab, command);
 }

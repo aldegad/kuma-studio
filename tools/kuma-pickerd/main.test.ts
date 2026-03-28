@@ -35,6 +35,20 @@ function runCli(args: string[], cwd: string, env: NodeJS.ProcessEnv = process.en
   });
 }
 
+function runCliWithInput(
+  args: string[],
+  cwd: string,
+  input: string,
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  return execFileSync(process.execPath, [CLI_PATH, ...args], {
+    cwd,
+    encoding: "utf8",
+    env,
+    input,
+  });
+}
+
 function createSelectionRecord(sessionId: string, index: number, jobMessage?: string) {
   const isoDay = String(index).padStart(2, "0");
 
@@ -107,69 +121,56 @@ function createSelectionRecord(sessionId: string, index: number, jobMessage?: st
   };
 }
 
-describe("kuma-pickerd browser usage", () => {
-  it("prints the console, eval, debugger capture, sequence, refresh, download, and semantic DOM query commands in help output", () => {
+describe("kuma-pickerd run usage", () => {
+  it("prints run and omits the removed browser command surface in help output", () => {
     const output = runCli(["--help"], process.cwd());
 
-    expect(output).toContain("browser-console");
-    expect(output).toContain("browser-eval");
-    expect(output).toContain("browser-debugger-capture");
-    expect(output).toContain("browser-navigate");
-    expect(output).toContain("browser-sequence");
-    expect(output).toContain("browser-sequence-start");
-    expect(output).toContain("browser-sequence-state");
-    expect(output).toContain("browser-sequence-stop");
-    expect(output).toContain("browser-refresh");
-    expect(output).toContain("browser-set-files");
-    expect(output).toContain("browser-record-start");
-    expect(output).toContain("browser-record-stop");
-    expect(output).toContain("browser-live-capture-state");
-    expect(output).toContain("browser-live-capture-stop");
-    expect(output).toContain("browser-wait-for-download");
-    expect(output).toContain("browser-get-latest-download");
-    expect(output).toContain("browser-download-permission");
-    expect(output).toContain("--hold-ms 250");
-    expect(output).toContain("browser-keydown");
-    expect(output).toContain("browser-keyup");
-    expect(output).toContain("browser-mousemove");
-    expect(output).toContain("browser-mousedown");
-    expect(output).toContain("browser-mouseup");
+    expect(output).toContain("node main.mjs run [script.js]");
+    expect(output).toContain("get-browser-session");
     expect(output).toContain("get-job-card");
     expect(output).toContain("set-job-status");
-    expect(output).not.toContain("get-agent-note");
-    expect(output).not.toContain("set-agent-note");
-    expect(output).not.toContain("clear-agent-note");
-    expect(output).toContain("menu-state|selected-option|tab-state|selector-state");
+    expect(output).not.toContain("browser-click");
+    expect(output).not.toContain("browser-fill");
+    expect(output).not.toContain("browser-sequence");
+    expect(output).not.toContain("browser-query-dom");
+    expect(output).not.toContain("browser-keydown");
   });
 
-  it("validates browser-set-files arguments before contacting the daemon", () => {
-    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-files-"));
-    const filePath = path.join(root, "image.png");
-    writeFileSync(filePath, "png");
+  it("runs a script file with injected page and console globals", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "kuma-pickerd-run-file-"));
+    const scriptPath = path.join(root, "script.js");
+    writeFileSync(scriptPath, "console.log(typeof page.locator, typeof console.log);");
 
-    expect(() =>
-      runCli(["browser-set-files", "--url-contains", "example.com", "--files", filePath], root),
-    ).toThrow(/browser-set-files requires --selector or --selector-path/i);
+    const output = runCli(["run", scriptPath, "--url-contains", "example.com"], root);
 
-    expect(() =>
-      runCli(["browser-set-files", "--url-contains", "example.com", "--selector", "input[type=file]"], root),
-    ).toThrow(/browser-set-files requires --files/i);
-
+    expect(output.trim()).toBe("function function");
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("validates browser-record-start arguments before contacting the daemon", () => {
-    expect(() =>
-      runCli(["browser-record-start", "--url-contains", "example.com", "--fps", "0"], process.cwd()),
-    ).toThrow(/browser-record-start --fps must be a positive integer/i);
+  it("runs stdin scripts without requiring a file path", () => {
+    const output = runCliWithInput(
+      ["run", "--url-contains", "example.com"],
+      process.cwd(),
+      "console.log(page.url());",
+    );
 
-    expect(() =>
-      runCli(["browser-record-start", "--url-contains", "example.com", "--fps", "10"], process.cwd()),
-    ).toThrow(/currently supports up to 2fps/i);
+    expect(output.trim()).toBe("null");
+  });
 
+  it("requires an explicit browser target for run", () => {
     expect(() =>
-      runCli(["browser-record-start", "--url-contains", "example.com", "--speed-multiplier", "0"], process.cwd()),
-    ).toThrow(/browser-record-start --speed-multiplier must be a positive number/i);
+      runCliWithInput(["run"], process.cwd(), "console.log('hello');"),
+    ).toThrow(/requires --tab-id, --url, or --url-contains/i);
+  });
+
+  it("fails fast on unsupported Playwright-shaped APIs before touching the daemon", () => {
+    expect(() =>
+      runCliWithInput(
+        ["run", "--url-contains", "example.com"],
+        process.cwd(),
+        "page.frameLocator('iframe');",
+      ),
+    ).toThrow(/Unsupported Kuma Playwright API: page\.frameLocator/i);
   });
 });
 
