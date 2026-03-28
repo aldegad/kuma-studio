@@ -6,23 +6,24 @@ Playwright is not required to use Kuma Picker. It is only required when you want
 
 ## Current verified snapshot
 
-Checked-in parity artifacts from **2026-03-28** show:
+Latest verified parity run from **2026-03-28** shows:
 
 | Scenario | Kuma | Playwright | Outcome |
 | --- | ---: | ---: | --- |
-| `agent-chat` | `3023ms` | `509ms` | Playwright faster |
-| `contenteditable-lab` | `3005ms` | `442ms` | Playwright faster |
-| `sudoku` | `3738ms` | `504ms` | Playwright faster |
-| `cafe-control-room` | `4719ms` | `573ms` | Playwright faster |
-| `shooting` | `2819ms` | `1049ms` | Playwright faster |
+| `agent-chat` | `458ms` | `483ms` | Kuma faster |
+| `contenteditable-lab` | `444ms` | `426ms` | Playwright faster |
+| `sudoku` | `431ms` | `478ms` | Kuma faster |
+| `cafe-control-room` | `598ms` | `550ms` | Playwright faster |
+| `shooting` | `1387ms` | `1057ms` | Playwright faster |
 
 Interpretation:
 
 - this is a fair result, not a marketing result
-- both tools completed the checked-in run set at `100%` success
-- Playwright still wins raw latency
-- Kuma keeps paying for the daemon bridge, extension hop, and visible interaction layer
-- Kuma should keep getting faster, but parity evidence must stay honest even when the result is unfavorable
+- both tools completed the verified run set at `100%` success
+- the compare step passed on the same browser label: `Google Chrome 146.0.7680.165`
+- Kuma is now in the same rough latency band for these attach-mode scenarios
+- Playwright still wins some scenarios, especially the heavier `shooting` flow
+- this is still a `repeat 1` snapshot, so the right claim is "much closer," not "case closed"
 
 ## Comparison rules
 

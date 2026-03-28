@@ -229,15 +229,45 @@ async function collectPlaywrightMetadata(page, browser, target, browserLabel = n
     // Best effort only.
   }
 
+  const resolvedBrowserLabel = inferBrowserLabel({
+    browserName: "chromium",
+    browserVersion,
+    browserLabel,
+  });
+
   return {
     browserName: "chromium",
     browserVersion,
     browserUserAgent,
-    browserLabel,
+    browserLabel: resolvedBrowserLabel,
     targetUrl: target.url ?? null,
     targetUrlContains: target.urlContains ?? null,
     attachedPageUrl: page.url(),
   };
+}
+
+function inferBrowserLabel({ browserName = null, browserVersion = null, browserLabel = null } = {}) {
+  if (typeof browserLabel === "string" && browserLabel.trim()) {
+    return browserLabel.trim();
+  }
+
+  const normalizedVersion =
+    typeof browserVersion === "string" && browserVersion.trim()
+      ? browserVersion.replace(/^Chrome\//, "").trim()
+      : null;
+  if (!normalizedVersion) {
+    return null;
+  }
+
+  if (browserName === "chrome" || browserName === "chromium") {
+    return `Google Chrome ${normalizedVersion}`;
+  }
+
+  if (typeof browserName === "string" && browserName.trim()) {
+    return `${browserName.trim()} ${normalizedVersion}`;
+  }
+
+  return normalizedVersion;
 }
 
 function createPlaywrightParityPage(page) {
@@ -551,11 +581,17 @@ export async function readKumaSessionMetadata(target) {
     }
   }
 
+  const browserName = payload?.browserName ?? null;
+  const browserVersion = payload?.browserVersion ?? null;
+
   return {
-    browserName: payload?.browserName ?? null,
-    browserVersion: payload?.browserVersion ?? null,
+    browserName,
+    browserVersion,
     browserUserAgent,
-    browserLabel: null,
+    browserLabel: inferBrowserLabel({
+      browserName,
+      browserVersion,
+    }),
     extensionVersion: payload?.extensionVersion ?? null,
     targetUrl: target?.url ?? null,
     targetUrlContains: target?.urlContains ?? null,

@@ -40,6 +40,31 @@ async function writeParityOutput(outputPath, payload) {
   return absolutePath;
 }
 
+function inferBrowserLabel(browserName, browserVersion, browserLabel = null) {
+  if (typeof browserLabel === "string" && browserLabel.trim()) {
+    return browserLabel.trim();
+  }
+
+  if (typeof browserVersion !== "string" || !browserVersion.trim()) {
+    return null;
+  }
+
+  const normalizedVersion = browserVersion.replace(/^Chrome\//, "").trim();
+  if (!normalizedVersion) {
+    return null;
+  }
+
+  if (browserName === "chrome" || browserName === "chromium") {
+    return `Google Chrome ${normalizedVersion}`;
+  }
+
+  if (typeof browserName === "string" && browserName.trim()) {
+    return `${browserName.trim()} ${normalizedVersion}`;
+  }
+
+  return normalizedVersion;
+}
+
 function summarizeRuns(runs) {
   const durations = runs.map((entry) => entry.durationMs);
   const successCount = runs.filter((entry) => entry.ok).length;
@@ -68,19 +93,22 @@ async function runScenarioForTool(tool, id, filePath, options) {
 
 async function readToolMetadata(tool, options) {
   if (tool === "kuma") {
+    const metadata = await readKumaSessionMetadata(options.target);
+    const browserVersion = options.browserVersion ?? metadata.browserVersion ?? null;
     return {
-      ...(await readKumaSessionMetadata(options.target)),
-      browserLabel: options.browserLabel ?? null,
-      browserVersion: options.browserVersion ?? null,
+      ...metadata,
+      browserVersion,
+      browserLabel: inferBrowserLabel(metadata.browserName, browserVersion, options.browserLabel ?? metadata.browserLabel),
     };
   }
 
   if (tool === "playwright") {
+    const browserVersion = options.browserVersion ?? null;
     return {
       browserName: "chromium",
-      browserVersion: options.browserVersion ?? null,
+      browserVersion,
       browserUserAgent: null,
-      browserLabel: options.browserLabel ?? null,
+      browserLabel: inferBrowserLabel("chromium", browserVersion, options.browserLabel ?? null),
       extensionVersion: null,
       targetUrl: options.target.url ?? null,
       targetUrlContains: options.target.urlContains ?? null,

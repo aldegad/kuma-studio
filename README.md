@@ -43,23 +43,25 @@ It is not trying to be a faster clone of Playwright. It is trying to be a better
 
 ## Honest Benchmark Snapshot
 
-The current checked-in fair parity snapshot shows that Playwright is still faster in raw latency.
+The current verified parity snapshot is much tighter than before.
 
-That is expected. Playwright talks to the browser more directly. Kuma pays extra overhead for the daemon bridge, extension hop, content script execution, and the visible interaction layer.
+Playwright still has the simpler architecture, so it should remain very competitive on raw latency. Kuma still pays for the daemon bridge, extension hop, content script execution, and the visible interaction layer.
 
-What we care about is staying in the same range where Kuma still feels responsive while preserving its product value.
+What we care about is staying in the same range where Kuma still feels responsive while preserving its product value. After the latest round of overhead cuts, that is now true in attach mode.
 
 Latest verified parity snapshot on **2026-03-28**:
 
 | Scenario | Kuma | Playwright | Result |
 | --- | ---: | ---: | --- |
-| `agent-chat` | `3023ms` | `509ms` | Playwright faster |
-| `contenteditable-lab` | `3005ms` | `442ms` | Playwright faster |
-| `sudoku` | `3738ms` | `504ms` | Playwright faster |
-| `cafe-control-room` | `4719ms` | `573ms` | Playwright faster |
-| `shooting` | `2819ms` | `1049ms` | Playwright faster |
+| `agent-chat` | `458ms` | `483ms` | Kuma faster |
+| `contenteditable-lab` | `444ms` | `426ms` | Playwright faster |
+| `sudoku` | `431ms` | `478ms` | Kuma faster |
+| `cafe-control-room` | `598ms` | `550ms` | Playwright faster |
+| `shooting` | `1387ms` | `1057ms` | Playwright faster |
 
-Both sides completed these runs at `100%` success in the checked-in parity artifacts.
+Both sides completed these runs at `100%` success, and the parity compare step passed.
+
+This is a `repeat 1`, attach-mode snapshot on the same browser build, not a sweeping claim that Kuma is now universally faster than Playwright.
 
 The benchmark rules are intentionally strict:
 
@@ -83,7 +85,7 @@ Kuma's value is:
 - the browser becomes shared coordination state instead of a hidden automation box
 - the API still feels familiar because it is shaped like Playwright
 
-The paw feedback is not an excuse for slowness. It is a product choice. We still keep trimming avoidable wait overhead so Kuma stays pleasant to use.
+The paw feedback is not an excuse for slowness. It is a product choice. We still keep trimming avoidable wait overhead so Kuma stays pleasant to use, and the latest parity run shows that this trade-off no longer means "multi-second by default."
 
 ## Getting Started
 
