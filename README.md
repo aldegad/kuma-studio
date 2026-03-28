@@ -16,6 +16,15 @@
   <code>run</code> · <code>page.locator()</code> · <code>shared selection</code> · <code>job cards</code> · <code>cute but honest</code>
 </p>
 
+<p align="center">
+  <a href="https://github.com/aldegad/kuma-picker/actions/workflows/ci.yml">
+    <img src="https://github.com/aldegad/kuma-picker/actions/workflows/ci.yml/badge.svg" alt="CI status" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="Apache-2.0 license" />
+  </a>
+</p>
+
 ---
 
 ## Why This Exists
@@ -40,6 +49,8 @@ It is not trying to be a faster clone of Playwright. It is trying to be a better
 - extension-driven control over the tab you already have open
 - visible click, scroll, hold, and drag feedback instead of invisible automation
 - bundled test surfaces for smoke, measurement, and parity runs
+
+The repo is open source, but the root `package.json` stays `private: true` so the project is not accidentally published as an npm package.
 
 ## Honest Benchmark Snapshot
 
@@ -171,6 +182,7 @@ Agent-specific guidance:
 - [docs/BROWSER-CONTROL-CHECKLIST.md](./docs/BROWSER-CONTROL-CHECKLIST.md)
 - [docs/PLAYWRIGHT-PARITY-BENCHMARK.md](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md)
 - [docs/maintainers.md](./docs/maintainers.md)
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
 - [CONTRIBUTING.md](./CONTRIBUTING.md)
 - [SECURITY.md](./SECURITY.md)
 - [tools/kuma-pickerd/README.md](./tools/kuma-pickerd/README.md)
