@@ -49,7 +49,7 @@ Playwright still has the simpler architecture, so it should remain very competit
 
 What we care about is staying in the same range where Kuma still feels responsive while preserving its product value. After the latest round of overhead cuts, that is now true in attach mode.
 
-Latest verified parity snapshot on **2026-03-28**:
+Latest verified parity snapshot on **2026-03-29**:
 
 | Scenario | Kuma | Playwright | Result |
 | --- | ---: | ---: | --- |

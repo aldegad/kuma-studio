@@ -1,11 +1,10 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import path, { resolve } from "node:path";
 import { promisify } from "node:util";
 
-import { commandRun } from "../tools/kuma-pickerd/lib/playwright-runner.mjs";
+import { commandRun, commandRunSource } from "../tools/kuma-pickerd/lib/playwright-runner.mjs";
 
 const execFileAsync = promisify(execFile);
 const AsyncFunction = Object.getPrototypeOf(async function noop() {}).constructor;
@@ -126,18 +125,6 @@ async function withCapturedOutput(run) {
   } finally {
     process.stdout.write = originalStdoutWrite;
     process.stderr.write = originalStderrWrite;
-  }
-}
-
-async function withTempScenarioFile(source, run) {
-  const directory = await mkdtemp(path.join(tmpdir(), "kuma-parity-scenario-"));
-  const scriptPath = path.join(directory, "scenario.js");
-  await writeFile(scriptPath, source, "utf8");
-
-  try {
-    return await run(scriptPath);
-  } finally {
-    await rm(directory, { recursive: true, force: true });
   }
 }
 
@@ -482,7 +469,7 @@ export async function runKumaScenario(id, filePath, options = {}) {
   const scriptSource = await readScenarioSource(filePath, options.baseUrl ?? DEFAULT_BASE_URL);
   const startedAt = performance.now();
   const { stdout, stderr } = await withCapturedOutput(() =>
-    withTempScenarioFile(scriptSource, (scriptPath) => commandRun(targetToCommandOptions(target, timeoutMs), scriptPath)),
+    commandRunSource(targetToCommandOptions(target, timeoutMs), scriptSource),
   );
 
   return {
@@ -571,9 +558,7 @@ export async function readKumaSessionMetadata(target) {
     try {
       const metadataScript = 'console.log(await page.evaluate(() => navigator.userAgent));';
       const captured = await withCapturedOutput(() =>
-        withTempScenarioFile(metadataScript, (scriptPath) =>
-          commandRun(targetToCommandOptions(normalizeTarget(target), DEFAULT_TIMEOUT_MS), scriptPath),
-        ),
+        commandRunSource(targetToCommandOptions(normalizeTarget(target), DEFAULT_TIMEOUT_MS), metadataScript),
       );
       browserUserAgent = captured.stdout || null;
     } catch {

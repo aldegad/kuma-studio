@@ -28,6 +28,25 @@ async function collectPageContext(tabId) {
   return response.pageContext;
 }
 
+function buildPageRecordFromTab(tab) {
+  const url = typeof tab?.url === "string" ? tab.url : null;
+  let pathname = null;
+
+  if (url) {
+    try {
+      pathname = new URL(url).pathname;
+    } catch {
+      pathname = null;
+    }
+  }
+
+  return {
+    url,
+    pathname,
+    title: typeof tab?.title === "string" ? tab.title : null,
+  };
+}
+
 async function sendAutomationCommandToTab(tabId, command) {
   let response = null;
   let lastError = null;
@@ -172,10 +191,9 @@ async function executePageReloadCommand(tab, command) {
     bypassCache: command?.bypassCache === true,
     timeoutMs: getRefreshTimeoutMs(command),
   });
-  const pageContext = await collectPageContextWithRetry(reloaded.tab.id);
 
   return {
-    page: pageContext.page,
+    page: buildPageRecordFromTab(reloaded.tab),
     bypassCache: reloaded.bypassCache,
     status: reloaded.tab.status ?? null,
   };
@@ -198,10 +216,9 @@ async function executePageGotoCommand(tab, command) {
     url: parsedUrl.toString(),
     timeoutMs: getRefreshTimeoutMs(command),
   });
-  const pageContext = await collectPageContextWithRetry(navigationResult.tab.id);
 
   return {
-    page: pageContext.page,
+    page: buildPageRecordFromTab(navigationResult.tab),
     status: navigationResult.tab.status ?? null,
   };
 }

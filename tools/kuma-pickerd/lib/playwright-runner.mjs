@@ -132,6 +132,14 @@ async function readScriptSource(fileArg) {
   return source;
 }
 
+function validateScriptSource(scriptSource) {
+  if (typeof scriptSource !== "string" || !scriptSource.trim()) {
+    throw new Error("The run command received an empty script.");
+  }
+
+  return scriptSource;
+}
+
 function createLocator(client, state, descriptor) {
   const locatorTarget = {
     async click(options = {}) {
@@ -464,8 +472,8 @@ function createPage(client, state) {
   return createUnsupportedProxy("page", pageTarget);
 }
 
-export async function commandRun(options, fileArg = null) {
-  const scriptSource = await readScriptSource(fileArg);
+export async function commandRunSource(options, scriptSource) {
+  const resolvedSource = validateScriptSource(scriptSource);
   const targets = requireTarget(options);
   const state = {
     url: targets.targetUrl ?? null,
@@ -485,10 +493,14 @@ export async function commandRun(options, fileArg = null) {
     const executor = new AsyncFunction(
       "page",
       "console",
-      `"use strict"; return (async () => {\n${scriptSource}\n})();`,
+      `"use strict"; return (async () => {\n${resolvedSource}\n})();`,
     );
     await executor(page, scriptConsole);
   } finally {
     await client.close();
   }
+}
+
+export async function commandRun(options, fileArg = null) {
+  return commandRunSource(options, await readScriptSource(fileArg));
 }

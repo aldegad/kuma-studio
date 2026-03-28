@@ -102,6 +102,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
   async function focusElement(target) {
     const beforeRect = target.getBoundingClientRect();
+    if (document.activeElement === target && isRectMostlyVisible(beforeRect)) {
+      return;
+    }
     const shouldWatchScroll = !isRectMostlyVisible(beforeRect);
     if (shouldWatchScroll) {
       target.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
@@ -674,7 +677,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function executeClickCommand(command) {
-    const target = coreResolveCommandTarget(command);
+    const target = command?.targetElement instanceof Element ? command.targetElement : coreResolveCommandTarget(command);
     if (!(target instanceof Element)) {
       throw new Error("Failed to find a matching element to click in the active tab.");
     }
@@ -732,7 +735,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
   }
 
   async function executeFillCommand(command) {
-    const target = coreResolveFillTarget(command);
+    const target = command?.targetElement instanceof Element ? command.targetElement : coreResolveFillTarget(command);
     if (!(target instanceof Element) || !coreIsFillableElement(target)) {
       throw new Error("Failed to find a fillable input, textarea, select, or contenteditable target.");
     }
@@ -812,6 +815,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
         ? Math.max(0, Math.min(10_000, Math.round(command.holdMs)))
         : 0;
     const target =
+      (command?.targetElement instanceof Element ? command.targetElement : null) ??
       coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
       (document.body instanceof Element ? document.body : document.documentElement);
 
@@ -877,6 +881,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     }
 
     const target =
+      (command?.targetElement instanceof Element ? command.targetElement : null) ??
       coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
       (document.activeElement instanceof Element
         ? document.activeElement
@@ -922,6 +927,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const stored = pressedKeys.get(normalizedKey.code) ?? null;
     const target =
       (stored?.target instanceof Element && document.contains(stored.target) ? stored.target : null) ??
+      (command?.targetElement instanceof Element ? command.targetElement : null) ??
       coreResolveCommandTarget(command, { allowFocusedElement: true }) ??
       (document.activeElement instanceof Element
         ? document.activeElement

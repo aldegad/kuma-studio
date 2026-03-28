@@ -157,10 +157,6 @@ function resolveLocatorElement(locator, options = {}) {
   }
 }
 
-function buildLocatorSelectorPath(target) {
-  return describeElementForCommand(target).selectorPath;
-}
-
 function readInputValue(target) {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
     return target.value;
@@ -360,8 +356,14 @@ async function executePageWaitForSelector(command) {
 }
 
 async function executeLocatorClick(command) {
-  const locatorCommand = toLocatorCommand(command.locator);
-  return executeClickCommand(locatorCommand);
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target.");
+  }
+
+  return executeClickCommand({
+    targetElement: target,
+  });
 }
 
 async function executeLocatorFill(command) {
@@ -371,7 +373,7 @@ async function executeLocatorFill(command) {
   }
 
   return executeFillCommand({
-    selectorPath: buildLocatorSelectorPath(target),
+    targetElement: target,
     value: String(command.value ?? ""),
   });
 }
@@ -383,7 +385,7 @@ async function executeLocatorPress(command) {
   }
 
   return executeKeyCommand({
-    selectorPath: buildLocatorSelectorPath(target),
+    targetElement: target,
     key: command.key,
     holdMs: command.holdMs,
     shiftKey: command.shiftKey === true,

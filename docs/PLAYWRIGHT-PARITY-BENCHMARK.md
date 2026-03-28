@@ -6,7 +6,7 @@ Playwright is not required to use Kuma Picker. It is only required when you want
 
 ## Current verified snapshot
 
-Latest verified parity run from **2026-03-28** shows:
+Latest verified parity run from **2026-03-29** shows:
 
 | Scenario | Kuma | Playwright | Outcome |
 | --- | ---: | ---: | --- |
