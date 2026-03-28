@@ -25,6 +25,10 @@ kuma-cli get-extension-status
 kuma-cli get-browser-session
 kuma-cli run ./tmp/script.js --url-contains "example.com"
 npm run kuma-pickerd:smoke -- --scenario agent-chat
+npm run kuma-pickerd:measure -- --scenario agent-chat --tab-id 123 --repeat 3
+npm run kuma-pickerd:parity:kuma -- --url-contains "localhost:3000" --browser-version "146.0.7680.165" --repeat 3
+npm run kuma-pickerd:parity:playwright -- --cdp-url "http://127.0.0.1:9222" --url-contains "localhost:3000" --browser-version "146.0.7680.165" --playwright-module-path /tmp/kuma-picker-parity-playwright/node_modules/playwright/index.mjs --repeat 3
+npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --playwright ./artifacts/parity/playwright.json
 kuma-cli set-job-status --status in_progress --message "Implementing the requested change."
 kuma-cli set-job-status --status completed --message "Updated the picked element and verified the change."
 ```
@@ -57,6 +61,12 @@ console.log(await page.getByText("hello from kuma").textContent());
 - Use `page.waitForSelector` or locator readback after writes instead of assuming success.
 - Use `locator.boundingBox()` when a canvas or drag surface needs viewport coordinates without relying on `page.evaluate`.
 - Prefer the bundled smoke scripts in `scripts/run/` when they already cover the requested bundled surface.
+- `Playwright` is not needed for normal Kuma work. It is only needed when you explicitly run the Playwright side of a parity benchmark.
+
+## Measurement vs parity
+
+- `kuma-pickerd:measure` is Kuma-only and does not count as Playwright parity evidence by itself.
+- Fair parity requires both sides to run shared scenarios and then pass `kuma-pickerd:parity:compare`.
 
 ## Shared state layout
 

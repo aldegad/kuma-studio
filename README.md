@@ -78,6 +78,8 @@ Agent-specific guidance lives here:
 - `npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --playwright ./artifacts/parity/playwright.json`: verify that two parity runs are actually comparable
 - `npm run test`: run daemon unit tests
 
+`playwright` is not a runtime dependency of Kuma Picker itself. It is only needed when you want to run the Playwright side of a parity comparison.
+
 Example runner script:
 
 ```js
@@ -94,6 +96,10 @@ console.log(await page.getByText("hello from kuma").textContent());
 - [docs/maintainers.md](./docs/maintainers.md)
 - [tools/kuma-pickerd/README.md](./tools/kuma-pickerd/README.md)
 - [packages/browser-extension/README.md](./packages/browser-extension/README.md)
+
+## Acknowledgements
+
+The Playwright-shaped scripting direction and some of the agent ergonomics work in Kuma Picker were informed by [SawyerHood/dev-browser](https://github.com/SawyerHood/dev-browser).
 
 ## License
 

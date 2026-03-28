@@ -2,6 +2,8 @@
 
 This document defines the minimum rules for a fair comparison between Kuma Picker's `run` surface and real Playwright. The repository ships reusable shared scenarios, a Kuma attach runner, a Playwright attach runner, and a comparison command that rejects mismatched runs.
 
+Playwright is not required to use Kuma Picker. It is only required when you want to execute the Playwright side of this parity benchmark.
+
 ## Comparison rules
 
 - Compare the same scenario boundary on both sides.

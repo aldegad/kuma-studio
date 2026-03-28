@@ -66,6 +66,12 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     await waitForDelay(postActionDelayMs);
   }
 
+  function fireAndForgetGesture(task) {
+    Promise.resolve()
+      .then(task)
+      .catch(() => {});
+  }
+
   function isRectMostlyVisible(rect) {
     return (
       rect.bottom >= 0 &&
@@ -111,10 +117,12 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const afterRect = target.getBoundingClientRect();
     const deltaY = afterRect.top - beforeRect.top;
     if (Math.abs(deltaY) >= 18) {
-      await getGestureOverlay()?.playScrollGesture?.({
-        deltaY,
-        center: readElementCenter(afterRect),
-      });
+      fireAndForgetGesture(() =>
+        getGestureOverlay()?.playScrollGesture?.({
+          deltaY,
+          center: readElementCenter(afterRect),
+        }),
+      );
     }
   }
 
@@ -677,7 +685,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const centerY = rect.top + rect.height / 2;
     const navigationLikely = isLikelyNavigationClickTarget(target);
 
-    await getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY });
+    fireAndForgetGesture(() => getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY }));
 
     if (target instanceof HTMLElement) {
       target.click();
@@ -697,7 +705,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       };
     }
 
-    await waitForPostActionDelay(command, 400);
+    await waitForPostActionDelay(command, 120);
     return {
       page: buildPageRecord(),
       clickedElement: coreDescribeElementForCommand(target),
@@ -709,12 +717,12 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const { x, y } = getPointTarget(command);
     const target = getInteractivePointTarget({ x, y }, "click-point");
     await focusElement(target);
-    await getGestureOverlay()?.playClickGesture?.({ x, y });
+    fireAndForgetGesture(() => getGestureOverlay()?.playClickGesture?.({ x, y }));
     dispatchClickSequence(target, x, y);
     if (target instanceof HTMLElement && document.contains(target)) {
       target.focus?.({ preventScroll: true });
     }
-    await waitForPostActionDelay(command, 400);
+    await waitForPostActionDelay(command, 120);
 
     return {
       page: buildPageRecord(),
@@ -734,7 +742,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const rect = target.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    await getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY });
+    fireAndForgetGesture(() => getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY }));
 
     if (coreIsTextInputElement(target)) {
       setNativeValue(target, value);
@@ -753,7 +761,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       setContentEditableValue(target, value);
     }
 
-    await waitForPostActionDelay(command, 100);
+    await waitForPostActionDelay(command, 30);
     return {
       page: buildPageRecord(),
       filledElement: coreDescribeElementForCommand(target),
@@ -782,7 +790,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       throw new Error("Failed to insert text at the current cursor position.");
     }
 
-    await waitForPostActionDelay(command, 100);
+    await waitForPostActionDelay(command, 30);
     return {
       page: buildPageRecord(),
       text,
@@ -849,7 +857,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     if (shouldMirrorKeyboardEventToWindow(target)) {
       dispatchKeyboardEventToWindow("keyup", key, modifiers, code);
     }
-    await waitForPostActionDelay(command, 100);
+    await waitForPostActionDelay(command, 30);
 
     return {
       page: buildPageRecord(),
@@ -1093,7 +1101,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
     await focusElement(target);
     const holdId = `drag-${nextPointerHoldId++}`;
-    await getGestureOverlay()?.holdClickGesture?.(start, holdId);
+    fireAndForgetGesture(() => getGestureOverlay()?.holdClickGesture?.(start, holdId));
 
     dispatchPointerEvent(target, "pointerdown", start.x, start.y, { button: 0, buttons: 1 });
     dispatchMouseEvent(target, "mousedown", start.x, start.y);
@@ -1112,7 +1120,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
 
     dispatchPointerEvent(target, "pointerup", end.x, end.y, { button: 0, buttons: 0 });
     dispatchMouseEvent(target, "mouseup", end.x, end.y);
-    await getGestureOverlay()?.releaseHeldGesture?.(end, holdId);
+    fireAndForgetGesture(() => getGestureOverlay()?.releaseHeldGesture?.(end, holdId));
 
     await waitForPostActionDelay(command, 0);
 
@@ -1190,7 +1198,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     const holdId = `hold-${nextPointerHoldId++}`;
 
     await focusElement(target);
-    await getGestureOverlay()?.holdClickGesture?.(gesturePoint, holdId);
+    fireAndForgetGesture(() => getGestureOverlay()?.holdClickGesture?.(gesturePoint, holdId));
 
     dispatchPointerEvent(target, "pointerdown", point.x, point.y, {
       button: buttonInfo.button,
@@ -1262,7 +1270,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       button,
       buttons: 0,
     });
-    await getGestureOverlay()?.releaseHeldGesture?.(gesturePoint, holdState?.id ?? activePointerState.id ?? "default");
+    fireAndForgetGesture(() =>
+      getGestureOverlay()?.releaseHeldGesture?.(gesturePoint, holdState?.id ?? activePointerState.id ?? "default"),
+    );
 
     const synthesizedClick =
       button === 0 &&

@@ -99,6 +99,7 @@ Kuma Picker resolves its shared state directory in this priority order:
 3. Prefer targeted tab commands (`--tab-id`, `--url`, `--url-contains`).
 4. Use the narrowest command that answers the question. See [references/commands.md](references/commands.md).
 5. When the task matches a bundled smoke surface, prefer the reusable scripts under `scripts/run/` before inventing a one-off flow.
+6. `Playwright` is not required for normal Kuma Picker use. It is only needed when the user explicitly wants a Kuma vs Playwright parity comparison.
 
 ## Browser write safety
 
@@ -106,6 +107,13 @@ Kuma Picker resolves its shared state directory in this priority order:
 - After any write action, verify with a direct readback.
 - Prefer `run` scripts that keep the write and the readback in the same `page` flow.
 - Prefer selector, role, and label targeting over text-only clicks.
+
+## Reusable runners
+
+- Use `npm run kuma-pickerd:smoke -- --scenario <id>` for bundled smoke flows.
+- Use `npm run kuma-pickerd:measure -- ...` only for Kuma-side repeated timings.
+- Use the parity runners only when the user explicitly wants a fair Kuma vs Playwright comparison.
+- Parity comparisons require running both `kuma-pickerd:parity:kuma` and `kuma-pickerd:parity:playwright`, then validating them with `kuma-pickerd:parity:compare`.
 
 ## Job cards
 
