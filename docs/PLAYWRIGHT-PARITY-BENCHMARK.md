@@ -4,6 +4,26 @@ This document defines the minimum rules for a fair comparison between Kuma Picke
 
 Playwright is not required to use Kuma Picker. It is only required when you want to execute the Playwright side of this parity benchmark.
 
+## Current verified snapshot
+
+Checked-in parity artifacts from **2026-03-28** show:
+
+| Scenario | Kuma | Playwright | Outcome |
+| --- | ---: | ---: | --- |
+| `agent-chat` | `3023ms` | `509ms` | Playwright faster |
+| `contenteditable-lab` | `3005ms` | `442ms` | Playwright faster |
+| `sudoku` | `3738ms` | `504ms` | Playwright faster |
+| `cafe-control-room` | `4719ms` | `573ms` | Playwright faster |
+| `shooting` | `2819ms` | `1049ms` | Playwright faster |
+
+Interpretation:
+
+- this is a fair result, not a marketing result
+- both tools completed the checked-in run set at `100%` success
+- Playwright still wins raw latency
+- Kuma keeps paying for the daemon bridge, extension hop, and visible interaction layer
+- Kuma should keep getting faster, but parity evidence must stay honest even when the result is unfavorable
+
 ## Comparison rules
 
 - Compare the same scenario boundary on both sides.
@@ -31,6 +51,7 @@ Playwright is not required to use Kuma Picker. It is only required when you want
 - control-plane architecture differences by themselves
 - installation convenience or dependency count
 - unsupported APIs on one side that were silently replaced with a different task
+- "Kuma is cuter" as a substitute for speed data
 
 ## Scorecard template
 
@@ -57,3 +78,13 @@ npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --pla
 ```
 
 The compare step is part of the benchmark. If it fails, the run set does not count as parity evidence.
+
+## Product note
+
+Kuma Picker still intentionally keeps the visible paw-feedback layer. That product choice is real, and it carries cost. The benchmark should measure that cost instead of hiding it.
+
+The right way to present Kuma is:
+
+- be honest when Playwright is faster
+- keep reducing avoidable overhead
+- argue for Kuma on shared-session workflow, visible feedback, and agent coordination only after the timing data is already on the table
