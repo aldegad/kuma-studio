@@ -1,5 +1,14 @@
 chrome.tabs.onRemoved.addListener((tabId) => {
   void clearInspectState(tabId);
+  invalidateInteractiveKumaPicker(tabId);
+  invalidateAutomationBridge(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    invalidateInteractiveKumaPicker(tabId);
+    invalidateAutomationBridge(tabId);
+  }
 });
 
 async function reportStoredExtensionHeartbeat(source, page = null) {

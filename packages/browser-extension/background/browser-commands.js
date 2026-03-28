@@ -37,6 +37,7 @@ async function sendAutomationCommandToTab(tabId, command) {
         break;
       }
 
+      invalidateAutomationBridge(tabId);
       await ensureAutomationBridge(tabId);
       await waitForDelay(150);
       continue;
@@ -50,6 +51,7 @@ async function sendAutomationCommandToTab(tabId, command) {
       break;
     }
 
+    invalidateAutomationBridge(tabId);
     await ensureAutomationBridge(tabId);
     await waitForDelay(150);
   }
@@ -72,6 +74,7 @@ async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = 150) {
     } catch (error) {
       lastError = error;
       if (attempt < attempts - 1 && isTransientAutomationError(error)) {
+        invalidateAutomationBridge(tabId);
         await ensureAutomationBridge(tabId);
         await waitForDelay(delayMs);
         continue;
