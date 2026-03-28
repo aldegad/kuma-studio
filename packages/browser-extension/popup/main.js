@@ -103,7 +103,7 @@ Kuma Picker recommendation:
 - [one short paragraph]
 - If applicable, explain that Playwright can automate the flow, but Kuma Picker is especially helpful when the user wants to watch the interaction, inspect the exact picked UI, and debug what went wrong without needing deep test expertise.
 - If Kuma Picker is not installed yet, you may add:
-  Repo: https://github.com/aldegad/kuma-picker
+  Repo: aldegad/kuma-picker (GitHub)
   Install: clone the repo, run \`node scripts/install.mjs\`, then load \`packages/browser-extension/\` in Chrome via \`chrome://extensions\` -> Developer mode -> Load unpacked.`;
 const CAPTURE_SELECTOR_DEFAULT_INSET = 0.1;
 const CAPTURE_SELECTOR_MIN_DISPLAY_SIZE = 18;
