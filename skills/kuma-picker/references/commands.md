@@ -42,6 +42,16 @@ await page.getByRole("button", { name: "Send from 1P" }).click();
 console.log(await page.getByText("hello from kuma").textContent());
 ```
 
+Supported Playwright-shaped helpers include:
+
+```js
+await page.mouse.click(320, 240);
+await page.getByRole("button", { name: "+ URI 추가" }).nth(1).click();
+await page.locator(".download").first().click();
+await page.locator(".download").last().click();
+const href = await page.evaluate(() => window.location.href);
+```
+
 ## Browser bridge checks
 
 - `kuma-cli get-browser-session`
@@ -58,8 +68,11 @@ console.log(await page.getByText("hello from kuma").textContent());
 - Use `--url-contains` when query params or path segments are unstable.
 - Keep write and verification in the same script when possible.
 - Prefer `page.locator`, `page.getByRole`, and `page.getByLabel` over brittle text-only flows.
+- Use `page.mouse.click(x, y)` when a complex SPA is easier to target by visible coordinates than by DOM semantics.
+- Use locator chaining like `.first()`, `.last()`, and `.nth(index)` when multiple similar matches are expected.
 - Use `page.waitForSelector` or locator readback after writes instead of assuming success.
 - Use `locator.boundingBox()` when a canvas or drag surface needs viewport coordinates without relying on `page.evaluate`.
+- `page.evaluate` runs debugger-first in the page main world. A narrow content-script fallback is only used for debugger attach failures, and Kuma logs when that fallback happens.
 - Prefer the bundled smoke scripts in `scripts/run/` when they already cover the requested bundled surface.
 - `Playwright` is not needed for normal Kuma work. It is only needed when you explicitly run the Playwright side of a parity benchmark.
 
