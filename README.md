@@ -9,8 +9,8 @@
 <h1 align="center">Kuma Picker</h1>
 
 <p align="center">
-  The human picks. The agent sees. The paw taps.<br />
-  A shared browser surface for human-plus-agent work.
+  <strong>Your browser has a bear now.</strong><br />
+  The cutest way to share a browser with your agent.
 </p>
 
 <p align="center">
