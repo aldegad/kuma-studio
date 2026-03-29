@@ -1,25 +1,3 @@
-async function handleCapturePage(daemonUrl, message) {
-  const tab = await resolveTargetTab(message);
-  const pageContext = await collectPageContext(tab.id);
-  pageContext.page = {
-    ...pageContext.page,
-    tabId: tab.id,
-    windowId: tab.windowId,
-  };
-  const screenshotDataUrl = await captureTabScreenshot(tab.windowId);
-  const selection = await saveSelectionToDaemon(daemonUrl, pageContext, screenshotDataUrl);
-  await reportExtensionHeartbeatSafely(daemonUrl, {
-    source: "popup:capture-page",
-    page: pageContext.page,
-  });
-
-  return {
-    ok: true,
-    message: "Current page saved to the bridge.",
-    selection,
-  };
-}
-
 async function captureInspectScreenshot(windowId, message) {
   const screenshotDataUrl = await captureTabScreenshot(windowId);
 

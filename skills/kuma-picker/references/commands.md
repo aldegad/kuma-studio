@@ -102,7 +102,18 @@ If the user says `pick 1`, `selection 2`, etc.:
 ```bash
 kuma-cli get-selection
 ```
-Read `job.message`. The page should already show a `메모 남김` card.
+Read `job.message`. The page should already show a visible note card.
+
+### Leave a manual handoff for the user
+
+Use `Pick With Job` when the agent is blocked on a user-only browser step such as a password, 2FA prompt, CAPTCHA, approval toggle, or judgment call. Write the exact manual step in the job message so it stays attached to the page.
+
+Good examples:
+
+```text
+Enter the password here and click the sign-in button. When you're done, call me back.
+Please confirm whether this setting should be enabled. After deciding, call me back.
+```
 
 ### During work
 ```bash

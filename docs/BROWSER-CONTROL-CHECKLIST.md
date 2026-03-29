@@ -43,20 +43,20 @@ Make Kuma Picker feel natural to agents that already think in Playwright terms, 
 
 ## Benchmark surfaces
 
-- [ ] `/`
-- [ ] `/agent-chat`
-- [ ] `/contenteditable-lab`
-- [ ] `/sudoku`
-- [ ] `/cafe-control-room`
-- [ ] `/shooting`
+- [x] `/`
+- [x] `/agent-chat`
+- [x] `/contenteditable-lab`
+- [x] `/sudoku`
+- [x] `/cafe-control-room`
+- [x] `/shooting`
 
 ## Benchmark scenarios
 
-- [ ] `/agent-chat`: fill composer, send, verify transcript, reset
-- [ ] `/contenteditable-lab`: multiline write, Enter, verify readback
-- [ ] `/sudoku`: select cell, type digit, verify value
-- [ ] `/cafe-control-room`: switch tab, save dialog, wait for toast
-- [ ] `/shooting`: hold key input, drag pointer input, verify metrics
+- [x] `/agent-chat`: fill composer, send, verify transcript, reset
+- [x] `/contenteditable-lab`: multiline write, Enter, verify readback
+- [x] `/sudoku`: select cell, type digit, verify value
+- [x] `/cafe-control-room`: switch tab, save dialog, wait for toast
+- [x] `/shooting`: hold key input, drag pointer input, verify metrics
 
 ## Scorecard template
 

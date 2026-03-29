@@ -186,14 +186,14 @@
 
   function displayAuthor(author) {
     if (author === "user") {
-      return "나";
+      return "You";
     }
 
     if (author === "codex") {
-      return "에이전트";
+      return "Agent";
     }
 
-    return author || "에이전트";
+    return author || "Agent";
   }
 
   function statusColors(status) {
@@ -234,16 +234,16 @@
 
     const diffSeconds = Math.max(0, Math.round(diffMs / 1000));
     if (diffSeconds < 60) {
-      return "방금";
+      return "Just now";
     }
 
     const diffMinutes = Math.round(diffSeconds / 60);
     if (diffMinutes < 60) {
-      return `${diffMinutes}분 전`;
+      return `${diffMinutes}m ago`;
     }
 
     const diffHours = Math.round(diffMinutes / 60);
-    return `${diffHours}시간 전`;
+    return `${diffHours}h ago`;
   }
 
   function normalizeRect(rect) {

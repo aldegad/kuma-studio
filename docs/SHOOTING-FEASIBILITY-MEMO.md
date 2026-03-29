@@ -1,129 +1,139 @@
-# Canvas Game Interaction — 쿠마피커 역량 분석 메모
+# Canvas Game Interaction — Kuma Picker Capability Memo
 
-## 배경
+## Background
 
-- 쿠마피커로 **캔버스 기반 게임**(슈팅, Three.js, Phaser 등)을 플레이시키고 싶다.
-- DOM 테스트는 스도쿠 등이 이미 커버. 이건 **DOM이 아닌 세계**를 다루는 것이 목적.
-- 캔버스 게임에서 관찰 수단은 **screenshot뿐** (DOM tree가 없으므로).
+- We want Kuma Picker to play **canvas-based games** such as shooters, Three.js demos, and Phaser scenes.
+- DOM-focused scenarios are already covered by surfaces like Sudoku. The goal here is to handle a world that is **not driven by the DOM**.
+- In a canvas game, the main observation tool is **screenshots** because there is no meaningful DOM tree to read.
 
-## 기존 문제 분석
+## Existing limitations
 
-### 1. `dispatchClickSequence`는 즉발
+### 1. `dispatchClickSequence` used to be immediate
 
 ```js
 // agent-actions-interaction.js:94-100
 function dispatchClickSequence(target, clientX, clientY) {
   dispatchMouseEvent(target, "pointerdown", clientX, clientY);
   dispatchMouseEvent(target, "mousedown", clientX, clientY);
-  dispatchMouseEvent(target, "pointerup", clientX, clientY);  // ← 즉시
+  dispatchMouseEvent(target, "pointerup", clientX, clientY); // immediate
   dispatchMouseEvent(target, "mouseup", clientX, clientY);
   dispatchMouseEvent(target, "click", clientX, clientY);
 }
 ```
 
-pointerdown→pointerup 사이에 시간 0ms. 게임 입장에서 0프레임 터치.
+There was effectively `0ms` between `pointerdown` and `pointerup`. From the game's perspective, that meant a zero-frame tap.
 
-### 2. `pointermove`가 아예 없었다
+### 2. There was no `pointermove`
 
-기존 커맨드: click, click-point, fill, key, dom, context, console, query-dom, measure, wait-*, sequence.
-**연속 제스처 프리미티브 없음.**
+The old command surface handled clicks, fills, keys, DOM reads, context reads, console output, measurements, waits, and sequences.
+It did **not** have a continuous gesture primitive.
 
-### 3. 400ms 딜레이
+### 3. The default `400ms` delay
 
-DOM 앱에서는 합리적 (클릭 → React 리렌더 대기).
-캔버스에서는 무의미. 이미 `postActionDelayMs: 0`으로 설정 가능하므로 구조적 문제는 아님.
+That delay was reasonable for DOM apps where a click might need to wait for a React rerender.
+For canvas games it added cost without improving reliability. The core issue was not structural because `postActionDelayMs: 0` was already possible.
 
-## 해결: `page.mouse.drag` 기반 경로 입력
+## Solution: path input via `page.mouse.drag`
 
-### 기본형 (from → to)
+### Basic form (`from` -> `to`)
 
 ```bash
-cat <<'EOF' | node ./packages/server/src/cli.mjs run --tab-id 123
+cat <<'EOF' | node ./packages/server/src/cli.mjs run --url-contains "localhost:3000"
 await page.mouse.drag({ x: 200, y: 500 }, { x: 300, y: 400 }, { durationMs: 500 });
 EOF
 ```
 
-### waypoints 지원
+### Waypoint support
 
 ```bash
-// v1은 waypoints를 직접 지원하지 않으므로 여러 drag/move 호출로 구성한다.
+// v1 does not support waypoints directly, so compose them from multiple drag/move calls.
 ```
 
-### 동작 원리
+### How it works
 
+```text
+pointerdown(from) -> mousedown(from)
+  -> [pointermove + mousemove] × N steps (durationMs / 16 ~= 60fps)
+pointerup(to) -> mouseup(to)
 ```
-pointerdown(from) → mousedown(from)
-  → [pointermove + mousemove] × N steps (durationMs / 16 ≈ 60fps)
-pointerup(to) → mouseup(to)
-```
 
-- `steps` 파라미터로 이벤트 밀도 조절 가능 (기본: `durationMs / 16`)
-- `postActionDelayMs` 기본값 0 (캔버스 게임 최적화)
-- waypoints 간 거리 비례로 보간 → 직선이 아닌 경로도 지원
-- sequence 안에서 사용 가능
+- `steps` controls event density and defaults to roughly `durationMs / 16`
+- `postActionDelayMs` can stay at `0` for canvas-heavy flows
+- Waypoint interpolation can be distance-aware, so the path does not have to be a simple straight line
+- The primitive can still be composed inside larger flows
 
-### 활용 범위 (게임만이 아님)
+### Where this helps beyond games
 
-- 슬라이더, 지도 패닝, 드래그앤드롭, 스와이프, 드로잉
-- 롱프레스: from === to + durationMs로 대체 가능
-- 게임: 슈팅, 퍼즐, 시뮬레이션
+- Sliders
+- Map panning
+- Drag and drop
+- Swipes
+- Drawing surfaces
+- Long press by using `from === to` with a non-zero `durationMs`
+- Games such as shooters, puzzle boards, and simulations
 
-## 반응성 향상 방법론
+## Responsiveness strategies
 
-### A. clip screenshot — 눈을 빠르게
+### A. Clip screenshots for faster visual feedback
 
-전체 화면 대신 관심 영역만 캡처:
+Capture only the region of interest instead of the full screen:
+
 ```bash
-cat <<'EOF' | node ./packages/server/src/cli.mjs run --tab-id 123
+cat <<'EOF' | node ./packages/server/src/cli.mjs run --url-contains "localhost:3000"
 await page.screenshot({ path: "/tmp/region.png", clip: { x: 100, y: 300, width: 200, height: 200 } });
 EOF
 ```
-이미지가 작으면 캡처도 빠르고 LLM 추론도 빠름.
 
-### B. waypoints — 손을 길게
+Smaller images are faster to capture and cheaper for the model to reason about.
 
-LLM 추론 1회에 2~3초치 경로를 한 번에 계획:
+### B. Use waypoints to make one decision last longer
+
+Let the model plan two to three seconds of motion in one reasoning pass:
+
 ```json
 {
   "type": "pointer-drag",
   "waypoints": [
-    {"x": 200, "y": 500},
-    {"x": 150, "y": 450},
-    {"x": 300, "y": 400},
-    {"x": 250, "y": 500}
+    { "x": 200, "y": 500 },
+    { "x": 150, "y": 450 },
+    { "x": 300, "y": 400 },
+    { "x": 250, "y": 500 }
   ],
   "durationMs": 2000
 }
 ```
-추론 병목(~800ms)을 실행 시간(2초)으로 상쇄.
 
-### C. sequence 안에서 drag + screenshot 교차 — 보면서 움직이기
+That allows an ~800ms reasoning delay to be amortized across a longer execution window.
+
+### C. Alternate drag and screenshot steps inside one sequence
 
 ```json
 {
   "type": "sequence",
   "steps": [
-    {"type": "pointer-drag", "fromX": 200, "fromY": 500, "toX": 150, "toY": 450, "durationMs": 500},
-    {"type": "screenshot", "clipRect": {"x": 100, "y": 300, "width": 200, "height": 200}},
-    {"type": "pointer-drag", "fromX": 150, "fromY": 450, "toX": 300, "toY": 400, "durationMs": 500},
-    {"type": "screenshot", "clipRect": {"x": 100, "y": 300, "width": 200, "height": 200}}
+    { "type": "pointer-drag", "fromX": 200, "fromY": 500, "toX": 150, "toY": 450, "durationMs": 500 },
+    { "type": "screenshot", "clipRect": { "x": 100, "y": 300, "width": 200, "height": 200 } },
+    { "type": "pointer-drag", "fromX": 150, "fromY": 450, "toX": 300, "toY": 400, "durationMs": 500 },
+    { "type": "screenshot", "clipRect": { "x": 100, "y": 300, "width": 200, "height": 200 } }
   ]
 }
 ```
-라운드트립 1회에 "움직이고 → 보고 → 움직이고 → 보고". 중간 관찰 데이터가 다음 판단의 근거.
 
-### D. 현실적 에이전트 루프
+This creates one round trip that alternates between moving and observing, so each screenshot informs the next plan.
 
+### D. A realistic agent loop
+
+```text
+1. Capture a clipped screenshot (~20ms)
+2. Let the model locate the threat and plan ~2 seconds of avoidance (~800ms)
+3. Execute a 2-second pointer-drag path
+4. Repeat
 ```
-1. clip-screenshot (관심 영역만, ~20ms)
-2. LLM: 적 위치 파악 + 2초치 회피 경로 계획 (~800ms)
-3. pointer-drag waypoints 2초 실행
-4. 다시 1로
-```
-**3초에 한 사이클, 그중 2초는 실제 움직임.** 게임 난이도를 이 주기에 맞추면 플레이 가능.
 
-## 열린 질문
+That yields a rough 3-second loop where about 2 seconds are real motion. Games can be tuned around that cadence.
 
-- 멀티 포인터(핀치 줌)는 스코프 밖이지만 구조는 확장 가능하게 유지
-- pointer-drag 실행 중에 관찰 명령을 동시에 보내려면? (현재 WebSocket은 직렬)
-- 게임 난이도 파라미터화는 게임별로 다름 — 범용 전략은 아님, 벤치마크 테스트베드 전용
+## Open questions
+
+- Multi-pointer gestures like pinch zoom are still out of scope, but the structure should leave room for them
+- What happens if an observation command needs to run while a drag is still in flight? The current WebSocket path is still serialized
+- Game difficulty tuning is game-specific, so this should stay a benchmark testbed rather than pretending to be a universal policy

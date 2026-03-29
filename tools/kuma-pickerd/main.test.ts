@@ -292,7 +292,7 @@ describe("kuma-pickerd job cards", () => {
     // @ts-expect-error runtime import of local .mjs helper
     const { buildJobCardFromSelection } = (await import("./lib/job-card-store.mjs")) as JobCardStoreModule;
 
-    const card = buildJobCardFromSelection(createSelectionRecord("session_04", 4, "여기 버튼 문구를 다듬어줘")) as {
+    const card = buildJobCardFromSelection(createSelectionRecord("session_04", 4, "Please refine the copy on this button.")) as {
       status: string;
       requestMessage: string;
       resultMessage: string;
@@ -300,7 +300,7 @@ describe("kuma-pickerd job cards", () => {
     };
 
     expect(card.status).toBe("noted");
-    expect(card.requestMessage).toBe("여기 버튼 문구를 다듬어줘");
+    expect(card.requestMessage).toBe("Please refine the copy on this button.");
     expect(card.resultMessage).toBe("");
     expect(card.anchor.point).toEqual({ x: 44, y: 66 });
   });

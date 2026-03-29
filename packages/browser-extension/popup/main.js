@@ -595,19 +595,11 @@ connectDaemonButton.addEventListener("click", async () => {
   setBusyState(false);
 });
 
-capturePageButton.addEventListener("click", async () => {
-  await runAction(
-    "kuma-picker:capture-page",
-    "Capturing the current page...",
-    "Current page saved to the bridge.",
-  );
-});
-
 inspectElementButton.addEventListener("click", async () => {
   const ok = await runAction(
     "kuma-picker:start-inspect",
-    "Inspect mode armed. Click an element or drag an area in the page.",
-    "Inspect mode armed. Click the target element or drag the area you want to save.",
+    "Inspect mode armed. Click, drag, or press Space to preview the whole page.",
+    "Inspect mode armed. Click the target element, drag the area you want, or press Space to preview the full page before saving it.",
   );
 
   if (ok) {
@@ -618,8 +610,8 @@ inspectElementButton.addEventListener("click", async () => {
 inspectWithJobButton.addEventListener("click", async () => {
   const ok = await runAction(
     "kuma-picker:start-inspect",
-    "Job pick mode armed. Click an element or drag an area, then write the job.",
-    "Job pick mode armed. Pick the target first, then write the job you want the agent to handle.",
+    "Job pick mode armed. Click, drag, or press Space to preview the whole page, then write the job.",
+    "Job pick mode armed. Pick the target, drag the area, or press Space to preview the full page before writing the job.",
     { withJob: true },
   );
 

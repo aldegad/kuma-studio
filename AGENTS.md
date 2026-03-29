@@ -7,7 +7,7 @@
 ## Kuma Picker First
 
 - If the user mentions Kuma Picker, the picker, a picked element, or says they selected something for you, read the latest selection first.
-- If the user says `이거 봐줘` or `방금 선택한 거 봐줘`, interpret that as "read the latest Kuma Picker selection first."
+- If the user says "check this" or "look at what I just picked," interpret that as "read the latest Kuma Picker selection first."
 - If the user says `see pick1`, `check pick 1`, `look at selection 2`, or similar English shorthand, read the latest selection first and map the number to the `elements` array using 1-based indexing.
 - Primary command: `npm run kuma-pickerd:get-selection`
 - Do not claim `kuma-pickerd:*` scripts are missing unless you checked the root `package.json` or ran the command and saw it fail.

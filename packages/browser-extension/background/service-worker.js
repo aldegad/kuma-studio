@@ -105,9 +105,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await ensureRuntimeObserver(sender.tab.id, typeof sender.frameId === "number" ? sender.frameId : 0);
           sendResponse({ ok: true });
           return;
-        case "kuma-picker:capture-page":
-          sendResponse(await handleCapturePage(daemonUrl, message));
-          return;
         case "kuma-picker:start-inspect":
           sendResponse(await handleStartInspect(daemonUrl, message));
           return;

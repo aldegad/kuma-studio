@@ -115,6 +115,8 @@ npm run kuma-pickerd:serve
 npm run kuma-pickerd:get-selection
 npm run kuma-pickerd:get-job-card
 npm run kuma-pickerd:get-browser-session
+npm run kuma-pickerd:get-extension-status
+npm run kuma-pickerd:set-job-status -- --status in_progress --message "..."
 npm run kuma-pickerd:run -- --url-contains "localhost:3000" ./tmp/script.js
 npm run kuma-pickerd:smoke -- --scenario agent-chat
 npm run kuma-pickerd:measure -- --tab-id 123 --repeat 3

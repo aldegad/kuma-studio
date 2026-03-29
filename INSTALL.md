@@ -63,12 +63,12 @@ The active agent skill points agents to the repo. Everything runs from the repo.
 
 After automated setup, tell the user:
 
-> Chrome 익스텐션 하나만 직접 로드해주세요:
-> 1. `chrome://extensions` 열기
-> 2. 우측 상단 **개발자 모드** 켜기
-> 3. **압축해제된 확장 프로그램을 로드합니다** 클릭
-> 4. kuma-picker 레포의 `packages/browser-extension/` 폴더 선택
-> 5. 아무 페이지에서 새로고침 한 번
+> Please load the Chrome extension manually:
+> 1. Open `chrome://extensions`
+> 2. Turn on **Developer mode** in the top-right corner
+> 3. Click **Load unpacked**
+> 4. Select the `packages/browser-extension/` folder from the kuma-picker repo
+> 5. Refresh any open page once
 
 ## Health check
 

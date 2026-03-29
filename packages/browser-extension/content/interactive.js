@@ -21,6 +21,7 @@
   let hoveredElement = null;
   let dragStartPoint = null;
   let isDraggingArea = false;
+  let isViewportPreviewActive = false;
 
   const DRAG_THRESHOLD_PX = 8;
 
@@ -365,6 +366,56 @@
     isDraggingArea = false;
   }
 
+  function clearViewportPreview({ preserveOverlay = false } = {}) {
+    isViewportPreviewActive = false;
+    hoveredElement = null;
+    clearDragState();
+
+    if (!preserveOverlay) {
+      hideOverlay();
+    }
+  }
+
+  function buildViewportAreaSelection() {
+    return {
+      x: 0,
+      y: 0,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+  }
+
+  function buildViewportPickedPoint(selectionRect) {
+    return {
+      x: Math.round(selectionRect.width / 2),
+      y: Math.round(selectionRect.height / 2),
+    };
+  }
+
+  function saveViewportSelection() {
+    const selectionRect = buildViewportAreaSelection();
+    const pickedPoint = buildViewportPickedPoint(selectionRect);
+    void savePickedContext(
+      buildAreaPageContext(selectionRect, pickedPoint),
+      inspectMode === "job" ? "Saving the whole page as a job..." : "Saving the whole page...",
+      selectionRect,
+    );
+  }
+
+  function activateViewportPreview() {
+    const selectionRect = buildViewportAreaSelection();
+    isViewportPreviewActive = true;
+    hoveredElement = null;
+    clearDragState();
+    updateAreaOverlay(selectionRect);
+    showToast(
+      inspectMode === "job"
+        ? "Whole page selected. Click anywhere to save it, then write the job. Press Space or Esc to clear."
+        : "Whole page selected. Click anywhere to save it. Press Space or Esc to clear.",
+      "info",
+    );
+  }
+
   async function savePickedContext(pageContext, message, captureRect = null) {
     const nextInspectMode = inspectMode;
     stopInspectMode();
@@ -407,8 +458,7 @@
   function stopInspectMode() {
     isInspecting = false;
     inspectMode = "standard";
-    hoveredElement = null;
-    clearDragState();
+    clearViewportPreview();
     hideOverlay();
     setInspectSurfaceEnabled(false);
 
@@ -430,8 +480,8 @@
     inspectMode = options?.withJob === true ? "job" : "standard";
     showToast(
       inspectMode === "job"
-        ? "Job pick mode on. Pick first, then write the job. Press Esc."
-        : "Inspect mode on. Click an element or drag an area. Press Esc.",
+        ? "Job pick mode on. Pick first, then write the job. Press Space to preview the whole page or Esc to cancel."
+        : "Inspect mode on. Click an element, drag an area, or press Space to preview the whole page. Press Esc to cancel.",
       "info",
     );
     setInspectSurfaceEnabled(true);
@@ -449,10 +499,15 @@
       return;
     }
 
+    if (isViewportPreviewActive && !dragStartPoint) {
+      return;
+    }
+
     if (dragStartPoint) {
       const nextRect = createRectFromPoints(dragStartPoint, getPoint(event));
       if (isDraggingArea || isAreaGesture(nextRect)) {
         isDraggingArea = true;
+        isViewportPreviewActive = false;
         hoveredElement = null;
         updateAreaOverlay(nextRect);
         return;
@@ -484,6 +539,11 @@
     event.stopImmediatePropagation();
 
     if (!dragStartPoint) {
+      return;
+    }
+
+    if (isViewportPreviewActive) {
+      saveViewportSelection();
       return;
     }
 
@@ -527,11 +587,37 @@
       return;
     }
 
-    if (!isInspecting || event.key !== "Escape") {
+    if (!isInspecting) {
+      return;
+    }
+
+    if (event.key === " " || event.key === "Spacebar" || event.code === "Space") {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      if (isViewportPreviewActive) {
+        clearViewportPreview();
+        showToast("Whole-page preview cleared.", "info");
+        return;
+      }
+
+      activateViewportPreview();
+      return;
+    }
+
+    if (event.key !== "Escape") {
       return;
     }
 
     event.preventDefault();
+
+    if (isViewportPreviewActive) {
+      clearViewportPreview();
+      showToast("Whole-page preview cleared.", "info");
+      return;
+    }
+
     stopInspectMode();
     showToast("Inspect mode cancelled.", "info");
     chrome.runtime.sendMessage({ type: "kuma-picker:cancel-inspect" });

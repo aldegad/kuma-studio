@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -11,13 +11,13 @@
       <section class="studio-hero">
         <div class="studio-hero-copy">
           <p class="studio-kicker">Kuma Picker Capture Studio</p>
-          <h1 id="studio-title" class="studio-title">화면을 프레이밍하고 녹화를 시작하세요</h1>
-          <p id="studio-subtitle" class="studio-subtitle">공유할 대상을 고른 뒤, 원하는 영역만 드래그해서 담을 수 있어요.</p>
+          <h1 id="studio-title" class="studio-title">Frame your capture and start recording</h1>
+          <p id="studio-subtitle" class="studio-subtitle">Choose what to share, then drag to capture only the area you want.</p>
         </div>
         <div class="studio-actions">
-          <button id="choose-source" type="button" class="button button-primary">공유 대상 고르기</button>
-          <button id="start-recording" type="button" class="button button-emerald" disabled>선택 영역 녹화 시작</button>
-          <button id="stop-recording" type="button" class="button button-rose" disabled>녹화 종료</button>
+          <button id="choose-source" type="button" class="button button-primary">Choose Source</button>
+          <button id="start-recording" type="button" class="button button-emerald" disabled>Start Recording Selection</button>
+          <button id="stop-recording" type="button" class="button button-rose" disabled>Stop Recording</button>
         </div>
       </section>
 
@@ -26,12 +26,12 @@
           <div class="studio-panel-head">
             <div>
               <p class="studio-panel-kicker">Preview</p>
-              <h2 class="studio-panel-title">라이브 프레이밍</h2>
+              <h2 class="studio-panel-title">Live Framing</h2>
             </div>
             <div class="studio-chip-row">
               <span id="capture-kind-chip" class="studio-chip">Screen</span>
               <span id="composition-chip" class="studio-chip studio-chip-accent">Single</span>
-              <span id="capture-size-chip" class="studio-chip studio-chip-muted">대기 중</span>
+              <span id="capture-size-chip" class="studio-chip studio-chip-muted">Waiting</span>
             </div>
           </div>
 
@@ -39,14 +39,14 @@
             <video id="preview-video" class="preview-video" playsinline muted></video>
             <div id="selection-overlays" class="selection-overlays"></div>
             <div id="preview-empty" class="preview-empty">
-              <p class="preview-empty-title">아직 공유된 화면이 없어요</p>
-              <p class="preview-empty-copy">먼저 공유 대상을 고르면 여기에서 실시간으로 프리뷰가 보이고, 마우스로 영역을 잡을 수 있어요.</p>
+              <p class="preview-empty-title">No shared source yet</p>
+              <p class="preview-empty-copy">Choose a source to see a live preview here and drag out the area you want to capture.</p>
             </div>
           </div>
 
           <div class="studio-toolbar">
             <div class="studio-toolbar-meta">
-              <p id="studio-hint" class="studio-hint">`공유 대상 고르기`를 누르면 크롬의 공유 선택창이 열립니다.</p>
+              <p id="studio-hint" class="studio-hint">Click Choose Source to open Chrome's share picker.</p>
               <label class="studio-scale-control" for="preview-scale">
                 <span class="studio-scale-label">Preview scale</span>
                 <input id="preview-scale" class="studio-scale-slider" type="range" min="80" max="145" step="5" value="100" />
@@ -73,8 +73,8 @@
               </div>
             </div>
             <div class="studio-toolbar-actions">
-              <button id="use-full-frame" type="button" class="button button-secondary" disabled>전체 프레임 사용</button>
-              <button id="close-studio" type="button" class="button button-ghost">닫기</button>
+              <button id="use-full-frame" type="button" class="button button-secondary" disabled>Use Full Frame</button>
+              <button id="close-studio" type="button" class="button button-ghost">Close</button>
             </div>
           </div>
         </section>
@@ -83,25 +83,25 @@
           <div class="studio-panel-head">
             <div>
               <p class="studio-panel-kicker">Status</p>
-              <h2 class="studio-panel-title">녹화 상태</h2>
+              <h2 class="studio-panel-title">Recording Status</h2>
             </div>
           </div>
-          <p id="status-line" class="status-line">준비 중...</p>
+          <p id="status-line" class="status-line">Getting ready...</p>
           <p id="status-meta" class="status-meta"></p>
 
           <section class="output-preview-card">
             <div class="output-preview-head">
               <div>
                 <p class="studio-panel-kicker">Composite Preview</p>
-                <h3 class="output-preview-title">합성 후 미리보기</h3>
+                <h3 class="output-preview-title">Composite Preview</h3>
               </div>
-              <span id="composite-size-chip" class="studio-chip studio-chip-dark">대기 중</span>
+              <span id="composite-size-chip" class="studio-chip studio-chip-dark">Waiting</span>
             </div>
             <div class="output-preview-stage">
               <canvas id="composite-preview-canvas" class="output-preview-canvas" width="1" height="1"></canvas>
               <div id="composite-preview-empty" class="output-preview-empty">
-                <p class="output-preview-empty-title">합성 프리뷰가 여기에 보여요</p>
-                <p class="output-preview-empty-copy">공유를 시작하면 지금 선택한 프레임이 실제 결과 비율대로 바로 렌더링됩니다.</p>
+                <p class="output-preview-empty-title">Your composite preview appears here</p>
+                <p class="output-preview-empty-copy">Once sharing starts, your current framing is rendered here at the final output ratio.</p>
               </div>
             </div>
           </section>

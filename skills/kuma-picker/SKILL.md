@@ -45,12 +45,12 @@ node __KUMA_PICKER_REPO__/scripts/doctor.mjs
 
 The Chrome extension cannot be installed by an agent. Tell the user:
 
-> Chrome 익스텐션 하나만 직접 로드해주세요:
-> 1. chrome://extensions 열기
-> 2. 우측 상단 "개발자 모드" 켜기
-> 3. "압축해제된 확장 프로그램을 로드합니다" 클릭
-> 4. `__KUMA_PICKER_REPO__/packages/browser-extension/` 폴더 선택
-> 5. 아무 페이지에서 새로고침 한 번
+> Please load the Chrome extension manually:
+> 1. Open `chrome://extensions`
+> 2. Turn on "Developer mode" in the top-right corner
+> 3. Click "Load unpacked"
+> 4. Select `__KUMA_PICKER_REPO__/packages/browser-extension/`
+> 5. Refresh any page once
 
 Then verify:
 ```bash
@@ -117,9 +117,31 @@ Kuma Picker resolves its shared state directory in this priority order:
 
 ## Job cards
 
-- `Pick With Job` creates a selection with `job` metadata and a `메모 남김` card on the page.
+- `Pick With Job` creates a selection with `job` metadata and a visible note card on the page.
 - Use `set-job-status --status in_progress` when starting work.
 - Use `set-job-status --status completed` with a summary when done.
+
+### Blocked-on-user-input workflow
+
+When the agent is blocked on a manual step the user must perform in the browser, prefer leaving a visible job card exactly at that spot instead of burying the request in chat.
+
+Good examples:
+
+- a password or 2FA code the agent cannot know
+- a CAPTCHA or hardware-security-key prompt
+- a judgment call that is easier for the user to make in the page
+- a final confirmation that should stay visibly attached to the UI
+
+Recommended flow:
+
+1. Pick the exact element or area with `Pick With Job`.
+2. Write a short action-oriented message in the job card.
+   - Good: `Enter the password here, click Sign in, then let me know.`
+   - Good: `Please confirm whether this toggle should be enabled, then call me back.`
+3. Treat the saved `job.message` as the source of truth when resuming.
+4. When the user finishes the manual step, read the latest selection or page state again before continuing.
+
+If the user explicitly asks the agent to leave something for them to do later, prefer a job card over a long textual reminder.
 
 ## Selection hygiene
 

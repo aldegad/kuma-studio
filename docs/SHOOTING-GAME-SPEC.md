@@ -80,7 +80,7 @@ The right-side panel exposes live telemetry updated every 15 frames (~250 ms at 
 
 These metrics are DOM elements (not canvas-drawn), so agents can read them via standard selectors while the game runs.
 
-## How to Test with Agent Picker
+## How to Test with Kuma Picker
 
 ### 1. Visual coordinate-based interaction
 

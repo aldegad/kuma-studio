@@ -1,7 +1,6 @@
 const daemonUrlInput = document.getElementById("daemon-url");
 const connectDaemonButton = document.getElementById("connect-daemon");
 const connectDaemonIcon = document.getElementById("connect-daemon-icon");
-const capturePageButton = document.getElementById("capture-page");
 const inspectElementButton = document.getElementById("inspect-element");
 const inspectWithJobButton = document.getElementById("inspect-with-job");
 const copyRefactorPromptButton = document.getElementById("copy-refactor-prompt");
@@ -116,7 +115,6 @@ function canStartLiveCapture() {
 
 function syncButtonState() {
   connectDaemonButton.disabled = isBusy;
-  capturePageButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectElementButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   inspectWithJobButton.disabled = isBusy || !isConnected || !isCurrentPageReady;
   startLiveCaptureButton.disabled = isBusy || isCaptureSelectorActive || !canStartLiveCapture();

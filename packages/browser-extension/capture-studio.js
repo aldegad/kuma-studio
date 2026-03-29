@@ -228,12 +228,12 @@ function updateCompositionUi() {
   sectionButtonElements.forEach((button) => {
     button.classList.toggle("is-active", button.dataset.sectionButton === activeSectionId);
   });
-  useFullFrameButton.textContent = compositionMode === COMPOSITION_SPLIT ? "좌우 반반으로 재설정" : "전체 프레임 사용";
-  startRecordingButton.textContent = compositionMode === COMPOSITION_SPLIT ? "2-Up 녹화 시작" : "선택 영역 녹화 시작";
+  useFullFrameButton.textContent = compositionMode === COMPOSITION_SPLIT ? "Reset Split Layout" : "Use Full Frame";
+  startRecordingButton.textContent = compositionMode === COMPOSITION_SPLIT ? "Start 2-Up Recording" : "Start Recording Selection";
   studioHintElement.textContent =
     compositionMode === COMPOSITION_SPLIT
-      ? "`2-Up` 모드에서는 Left와 Right를 각각 드래그하거나 9점 핸들로 조절해 한 화면짜리 영상으로 합칩니다."
-      : "`공유 대상 고르기`를 누르면 크롬의 공유 선택창이 열리고, 프리뷰에서 드래그하거나 9점 핸들로 프레임을 정할 수 있어요.";
+      ? "In 2-Up mode, drag or resize the Left and Right sections to combine them into a single video."
+      : "Click Choose Source to open Chrome's share picker, then drag or resize the frame in the preview.";
   updateButtonState();
 }
 
@@ -243,14 +243,14 @@ function applyStudioCopy() {
   }
 
   const label = studioContext.captureLabel || "Screen";
-  studioTitleElement.textContent = `${label}을 예쁘게 프레이밍해볼까요?`;
+  studioTitleElement.textContent = `Frame your ${label}`;
   studioSubtitleElement.textContent =
     label === "Window"
-      ? "창을 공유한 뒤, 필요한 부분만 드래그하거나 핸들로 맞춰서 깔끔하게 잘라 녹화하거나 2-up으로 합칠 수 있어요."
-      : "화면을 공유한 뒤, 필요한 부분만 드래그하거나 핸들로 맞춰서 보기 좋게 잘라 녹화하거나 2-up으로 합칠 수 있어요.";
+      ? "Share a window, then drag or resize to crop it cleanly or combine sections in 2-Up mode."
+      : "Share your screen, then drag or resize to crop it neatly or combine sections in 2-Up mode.";
   captureKindChipElement.textContent = label;
   updateCompositionUi();
-  setStatus("공유 대기 중", `${label} 공유를 시작하면 여기에서 실시간 프리뷰가 열립니다.`);
+  setStatus("Waiting for share", `Start sharing ${label}, and a live preview will appear here.`);
 }
 
 function clearSelectionBoxes() {
@@ -261,7 +261,7 @@ function clearCompositePreview() {
   compositePreviewContext.fillStyle = "#09111c";
   compositePreviewContext.fillRect(0, 0, compositePreviewCanvas.width, compositePreviewCanvas.height);
   compositePreviewEmptyElement.classList.remove("is-hidden");
-  compositeSizeChipElement.textContent = "대기 중";
+  compositeSizeChipElement.textContent = "Waiting";
 }
 
 function getPreviewBounds() {
@@ -409,10 +409,10 @@ function setCompositionMode(mode) {
   if (sourceStream) {
     applyDefaultSelections();
     setStatus(
-      compositionMode === COMPOSITION_SPLIT ? "2-Up 프레이밍 준비 완료" : "프레이밍 준비 완료",
+      compositionMode === COMPOSITION_SPLIT ? "2-Up framing ready" : "Framing ready",
       compositionMode === COMPOSITION_SPLIT
-        ? "Left와 Right를 각각 드래그하거나 핸들로 맞춰 한 화면짜리 영상으로 합쳐보세요."
-        : "마우스로 원하는 영역을 드래그하거나 핸들로 조정한 다음 녹화를 시작하세요.",
+        ? "Drag or resize the Left and Right sections to combine them into one video."
+        : "Drag the area you want or fine-tune it with the handles, then start recording.",
     );
   } else {
     renderSelectionBoxes();
@@ -649,7 +649,7 @@ function waitForVideoReady(video) {
   return new Promise((resolvePromise, rejectPromise) => {
     const timeoutId = setTimeout(() => {
       cleanup();
-      rejectPromise(new Error("공유된 화면을 여는 데 시간이 너무 오래 걸렸어요."));
+      rejectPromise(new Error("The shared source took too long to open."));
     }, 5_000);
 
     function cleanup() {
@@ -669,7 +669,7 @@ function waitForVideoReady(video) {
 
     function handleError() {
       cleanup();
-      rejectPromise(new Error("공유된 화면 프리뷰를 열지 못했어요."));
+      rejectPromise(new Error("Couldn't open the shared preview."));
     }
 
     video.addEventListener("loadedmetadata", handleReady);
@@ -718,7 +718,7 @@ function chooseDesktopSource() {
     const sources = [studioContext.captureKind === "window" ? "window" : "screen", "audio"];
     chrome.desktopCapture.chooseDesktopMedia(sources, async (streamId, options = {}) => {
       if (!streamId) {
-        rejectPromise(new Error(`${studioContext.captureLabel} 공유가 취소되었어요.`));
+        rejectPromise(new Error(`${studioContext.captureLabel} sharing was canceled.`));
         return;
       }
 
@@ -750,7 +750,7 @@ function stopSourceStream() {
 }
 
 async function preparePreview() {
-  setStatus("공유 선택창을 여는 중...", `${studioContext.captureLabel}을 하나 고른 뒤 공유를 눌러주세요.`);
+  setStatus("Opening share picker...", `Choose a ${studioContext.captureLabel} source, then click Share.`);
   const stream = await chooseDesktopSource();
   stopSourceStream();
   sourceStream = stream;
@@ -765,10 +765,10 @@ async function preparePreview() {
   applyDefaultSelections();
   ensureRenderLoop();
   setStatus(
-    compositionMode === COMPOSITION_SPLIT ? "2-Up 프레이밍 준비 완료" : "프레이밍 준비 완료",
+    compositionMode === COMPOSITION_SPLIT ? "2-Up framing ready" : "Framing ready",
     compositionMode === COMPOSITION_SPLIT
-      ? "Left와 Right를 각각 드래그하거나 핸들로 맞춰 하나의 영상으로 합쳐보세요."
-      : "마우스로 원하는 영역을 드래그하거나 핸들로 조정한 다음 녹화를 시작하세요.",
+      ? "Drag or resize the Left and Right sections to combine them into a single video."
+      : "Drag the area you want or adjust it with the handles, then start recording.",
   );
 }
 
@@ -796,7 +796,7 @@ function scalePlan(plan, factor) {
 function buildSingleRecordingPlan() {
   const rect = selectionRects.single ?? createInsetSelectionRect();
   if (!rect) {
-    throw new Error("먼저 프리뷰에서 녹화할 영역을 잡아주세요.");
+    throw new Error("Select a recording area in the preview first.");
   }
 
   return {
@@ -822,7 +822,7 @@ function buildSplitRecordingPlan() {
   const leftRect = selectionRects.left;
   const rightRect = selectionRects.right;
   if (!leftRect || !rightRect) {
-    throw new Error("2-Up 녹화는 Left와 Right 영역을 둘 다 잡아야 시작할 수 있어요.");
+    throw new Error("2-Up recording requires both Left and Right sections.");
   }
 
   const sourceRects = [
@@ -950,11 +950,11 @@ function blobToDataUrl(blob) {
   return new Promise((resolvePromise, rejectPromise) => {
     const reader = new FileReader();
     reader.onerror = () => {
-      rejectPromise(reader.error ?? new Error("녹화 데이터를 읽지 못했어요."));
+      rejectPromise(reader.error ?? new Error("Couldn't read the recording data."));
     };
     reader.onload = () => {
       if (typeof reader.result !== "string") {
-        rejectPromise(new Error("녹화 데이터를 변환하지 못했어요."));
+        rejectPromise(new Error("Couldn't convert the recording data."));
         return;
       }
 
@@ -1056,10 +1056,10 @@ async function startRecording() {
   stopping = false;
   updateButtonState();
   setStatus(
-    compositionMode === COMPOSITION_SPLIT ? "2-Up 녹화 중" : "녹화 중",
+    compositionMode === COMPOSITION_SPLIT ? "Recording 2-Up" : "Recording",
     compositionMode === COMPOSITION_SPLIT
-      ? "선택한 Left/Right 영역을 하나의 영상으로 합성해서 기록하고 있어요."
-      : "팝업이나 터미널에서도 이 녹화를 종료할 수 있어요.",
+      ? "Recording the selected Left and Right sections as one combined video."
+      : "You can stop this recording from the popup or the terminal.",
   );
   ensureRenderLoop();
   recorder.start(1_000);
@@ -1072,7 +1072,7 @@ function requestStopRecordingFromStudio() {
 
   stopping = true;
   updateButtonState();
-  setStatus("녹화를 정리하는 중...", "완료되면 Downloads 폴더로 저장됩니다.");
+  setStatus("Finishing recording...", "It will be saved to your Downloads folder when it's ready.");
   return chrome.runtime.sendMessage({
     type: "kuma-picker:stop-live-capture",
   });
@@ -1114,7 +1114,7 @@ chooseSourceButton.addEventListener("click", async () => {
   try {
     await preparePreview();
   } catch (error) {
-    setStatus("공유를 시작하지 못했어요", error instanceof Error ? error.message : String(error));
+    setStatus("Couldn't start sharing", error instanceof Error ? error.message : String(error));
   }
 });
 
@@ -1125,7 +1125,7 @@ useFullFrameButton.addEventListener("click", () => {
 
   if (compositionMode === COMPOSITION_SPLIT) {
     applyDefaultSelections({ useStored: false });
-    setStatus("2-Up 기본 구도로 재설정했어요", "좌우를 각각 다시 드래그하거나 핸들로 맞춰보세요.");
+    setStatus("Reset to the default 2-Up layout", "Drag or resize each side again to adjust the layout.");
     void persistStudioPreferences();
     return;
   }
@@ -1138,7 +1138,7 @@ useFullFrameButton.addEventListener("click", () => {
   });
   renderSelectionBoxes();
   updateButtonState();
-  setStatus("전체 프레임 사용", "전체 공유 화면을 그대로 녹화합니다.");
+  setStatus("Using full frame", "The entire shared source will be recorded.");
   void persistStudioPreferences();
 });
 
@@ -1149,10 +1149,10 @@ resetCompositionButton.addEventListener("click", () => {
 
   applyDefaultSelections({ useStored: false });
   setStatus(
-    compositionMode === COMPOSITION_SPLIT ? "2-Up 기본 구도로 재설정했어요" : "기본 프레임으로 되돌렸어요",
+    compositionMode === COMPOSITION_SPLIT ? "Reset to the default 2-Up layout" : "Reset to the default frame",
     compositionMode === COMPOSITION_SPLIT
-      ? "Left와 Right를 각각 다시 드래그하거나 핸들로 맞춰보세요."
-      : "프레임을 다시 드래그하거나 핸들로 잡아보세요.",
+      ? "Drag or resize Left and Right again to adjust the layout."
+      : "Drag the frame again or adjust it with the handles.",
   );
   void persistStudioPreferences();
 });
@@ -1175,7 +1175,7 @@ startRecordingButton.addEventListener("click", async () => {
   try {
     await startRecording();
   } catch (error) {
-    setStatus("녹화를 시작하지 못했어요", error instanceof Error ? error.message : String(error));
+    setStatus("Couldn't start recording", error instanceof Error ? error.message : String(error));
   }
 });
 
@@ -1183,11 +1183,11 @@ stopRecordingButton.addEventListener("click", async () => {
   try {
     const result = await requestStopRecordingFromStudio();
     if (result?.ok) {
-      setStatus("녹화가 저장되었어요", "Downloads 폴더에서 바로 확인할 수 있어요.");
+      setStatus("Recording saved", "You can find it in your Downloads folder.");
       window.setTimeout(() => window.close(), 700);
     }
   } catch (error) {
-    setStatus("녹화 종료에 실패했어요", error instanceof Error ? error.message : String(error));
+    setStatus("Couldn't stop recording", error instanceof Error ? error.message : String(error));
   }
 });
 
@@ -1293,5 +1293,5 @@ setPreviewScale(previewScaleElement.value);
 clearCompositePreview();
 
 void loadStudioContext().catch((error) => {
-  setStatus("Capture Studio를 열지 못했어요", error instanceof Error ? error.message : String(error));
+  setStatus("Couldn't open Capture Studio", error instanceof Error ? error.message : String(error));
 });

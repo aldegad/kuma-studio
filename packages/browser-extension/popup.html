@@ -4,14 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kuma Picker Bridge</title>
-    <link rel="stylesheet" href="./popup.css?v=senior-design-1" />
+    <link rel="stylesheet" href="./popup.css?v=popup-status-rail-2" />
   </head>
   <body>
     <main class="popup">
       <section class="status-overview">
         <header id="connection-status" class="connection-status">
-          <div class="connection-badge">
+          <div class="connection-rail">
             <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+            <div class="connection-inline">
+              <p id="connection-label" class="connection-label">Checking bridge...</p>
+              <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
+              <input
+                id="daemon-url"
+                class="connection-url-input is-hidden"
+                type="url"
+                spellcheck="false"
+                placeholder="http://127.0.0.1:4312"
+              />
+            </div>
             <button
               id="connect-daemon"
               type="button"
@@ -24,19 +35,6 @@
                 <path d="M13.5 7.5l3 3" />
               </svg>
             </button>
-          </div>
-          <div class="connection-popover">
-            <div class="connection-inline">
-              <p id="connection-label" class="connection-label">Checking bridge...</p>
-              <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
-              <input
-                id="daemon-url"
-                class="connection-url-input is-hidden"
-                type="url"
-                spellcheck="false"
-                placeholder="http://127.0.0.1:4312"
-              />
-            </div>
           </div>
         </header>
 
@@ -184,15 +182,12 @@
         <button id="inspect-element" type="button" class="button button-primary action-feature">
           <span class="action-feature-copy">
             <span class="action-feature-title">Pick Element Or Drag Area</span>
-            <span class="action-feature-meta">Inspect exactly what you want to change.</span>
+            <span class="action-feature-meta">Click, drag, or press Space to preview the whole page.</span>
           </span>
         </button>
 
         <div class="action-utility-deck">
-          <div class="action-row action-support">
-            <button id="capture-page" type="button" class="button button-secondary">
-              Capture Current Page
-            </button>
+          <div class="action-row action-support action-support-single">
             <button id="inspect-with-job" type="button" class="button button-tertiary">
               Pick With Job
             </button>
@@ -240,8 +235,8 @@
         />
         <div class="footer-copy">
           <p id="feedback" class="feedback feedback-idle">
-            <span id="feedback-message">Click to pick an element, or drag to capture an area.</span>
-            <span id="feedback-shortcut">Press <kbd>Esc</kbd> to cancel.</span>
+            <span id="feedback-message">Click to pick, drag an area, or press Space to preview the whole page.</span>
+            <span id="feedback-shortcut">Press <kbd>Space</kbd> to preview, click to save, or <kbd>Esc</kbd> to cancel.</span>
           </p>
           <p id="last-saved" class="last-saved"></p>
         </div>
