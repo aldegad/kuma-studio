@@ -29,9 +29,6 @@
     "kuma-pickerd:parity:playwright": "node ./scripts/run-parity-scenarios.mjs --tool playwright --mode attach",
     "kuma-pickerd:parity:compare": "node ./scripts/compare-parity-results.mjs",
     "kuma-pickerd:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
-    "cws:package": "node ./scripts/package-extension.mjs",
-    "cws:assets": "python3 ./scripts/generate-cws-assets.py",
-    "cws:prep": "npm run cws:assets && npm run cws:package",
     "skill:install": "node ./scripts/install.mjs",
     "skill:doctor": "node ./scripts/doctor.mjs"
   },
