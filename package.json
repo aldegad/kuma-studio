@@ -2,7 +2,7 @@
   "name": "kuma-picker",
   "version": "0.1.0",
   "private": true,
-  "description": "Browser extension, local daemon, and bundled test web for visual UI selection bridging with coding agents.",
+  "description": "Playwright-shaped browser sharing for coding agents, with picks, job cards, and visible paw feedback in your real browser.",
   "workspaces": [
     "example/next-host"
   ],

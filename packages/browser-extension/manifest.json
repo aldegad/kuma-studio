@@ -3,7 +3,7 @@
   "name": "Kuma Picker Bridge",
   "version": "0.1.0",
   "minimum_chrome_version": "116",
-  "description": "Inspect the current webpage and send element or area picks to a local Kuma Picker daemon.",
+  "description": "Share your real browser with coding agents using picks, job cards, and visible paw feedback.",
   "permissions": [
     "activeTab",
     "contentSettings",
