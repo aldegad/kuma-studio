@@ -9,11 +9,12 @@
 <h1 align="center">Kuma Picker</h1>
 
 <p align="center">
-  Playwright-shaped browser control for agents, with a shared live tab, visible paw-feedback, and zero Playwright runtime dependency.
+  The human picks. The agent sees. The paw taps.<br />
+  A shared browser surface for human-plus-agent work.
 </p>
 
 <p align="center">
-  <code>run</code> · <code>page.locator()</code> · <code>shared selection</code> · <code>job cards</code> · <code>cute but honest</code>
+  <code>pick & job cards</code> · <code>visible paw feedback</code> · <code>Playwright-shaped API</code> · <code>your real browser</code>
 </p>
 
 <p align="center">
@@ -27,86 +28,63 @@
 
 ---
 
-## Why This Exists
+## Playwright Can Drive a Browser. Kuma Shares One.
 
-Kuma Picker is a Chrome extension plus local daemon for agents that need to work in the same real browser state as a human.
+Playwright opens an isolated browser, runs a script, and tears it down. Kuma Picker walks into **the browser you already have open** — your tabs, your cookies, your scroll position — and works right there, next to you.
 
-The idea is simple:
+### Pick an Element, Hand It to the Agent
 
-- agents already understand Playwright well
-- humans benefit from visible, reassuring interaction feedback
-- real work often starts from an already-open tab, not a fresh automation browser
+You **pick** an element on the page — a button, a form, a broken layout — and the agent instantly gets the selector, bounding box, text content, and full page context. Attach a job note ("fix this layout," "translate this card") and the agent picks it up, updates a work card to `in_progress`, and marks `completed` when it's done.
 
-So Kuma keeps the browser where it already is, exposes a Playwright-shaped `page` API, and shows a small paw animation when the agent clicks, scrolls, or drags.
+A conversation loop through the live browser, not a one-way script.
 
-It is not trying to be a faster clone of Playwright. It is trying to be a better shared browser surface for human-plus-agent work.
+### Watch the Paw
 
-## What You Get
+When the agent clicks, a bear paw taps the screen. When it scrolls, the paw drags. When it holds, the paw presses down. You always see where the agent is and what it just did.
 
-- `run`-based scripting with a small Playwright-shaped API
-- no `playwright` package required to use Kuma Picker itself
-- shared selection state and job cards for multi-agent coordination
-- extension-driven control over the tab you already have open
-- visible click, scroll, hold, and drag feedback instead of invisible automation
-- bundled test surfaces for smoke, measurement, and parity runs
+### Playwright-Shaped API
 
-The repo is open source, but the root `package.json` stays `private: true` so the project is not accidentally published as an npm package.
+```js
+await page.goto(url);
+await page.getByRole("button", { name: "Send" }).click();
+await page.getByLabel("Email").fill("hello@example.com");
+```
 
-## Honest Benchmark Snapshot
+No `playwright` package required. Same mental model, but running in your real browser.
 
-The current verified parity snapshot is much tighter than before.
+## Kuma vs Playwright
 
-Playwright still has the simpler architecture, so it should remain very competitive on raw latency. Kuma still pays for the daemon bridge, extension hop, content script execution, and the visible interaction layer.
+| | Kuma Picker | Playwright |
+| --- | --- | --- |
+| Browser | Your real tabs, cookies, state | Isolated instance |
+| Human input | Pick elements, attach jobs | None |
+| Visibility | Paw animations on every action | Invisible |
+| Coordination | Shared selection + job cards | Not built-in |
+| API shape | Playwright-compatible subset | Full Playwright API |
+| Runtime dep | None | `playwright` package |
+| Multi-agent | Shared state home | Separate processes |
 
-What we care about is staying in the same range where Kuma still feels responsive while preserving its product value. After the latest round of overhead cuts, that is now true in attach mode.
+## Benchmark
 
-Latest verified parity snapshot on **2026-03-29**:
+Attach mode, `repeat 1`, **2026-03-29**:
 
-| Scenario | Kuma | Playwright | Result |
+| Scenario | Kuma | Playwright | |
 | --- | ---: | ---: | --- |
-| `agent-chat` | `461ms` | `505ms` | Kuma faster |
-| `contenteditable-lab` | `456ms` | `452ms` | Playwright faster |
-| `sudoku` | `440ms` | `501ms` | Kuma faster |
-| `cafe-control-room` | `595ms` | `583ms` | Playwright faster |
-| `shooting` | `1371ms` | `1047ms` | Playwright faster |
+| `agent-chat` | `461ms` | `505ms` | Kuma |
+| `contenteditable-lab` | `456ms` | `452ms` | Playwright |
+| `sudoku` | `440ms` | `501ms` | Kuma |
+| `cafe-control-room` | `595ms` | `583ms` | Playwright |
+| `shooting` | `1371ms` | `1047ms` | Playwright |
 
-Both sides completed these runs at `100%` success, and the parity compare step passed.
-
-This is a `repeat 1`, attach-mode snapshot on the same browser build, not a sweeping claim that Kuma is now universally faster than Playwright.
-
-The benchmark rules are intentionally strict:
-
-- same scenario boundary
-- same browser version
-- same starting target
-- same timeout budget
-- same attach mode
-- compare step must pass, or the run does not count
-
-See [docs/PLAYWRIGHT-PARITY-BENCHMARK.md](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md) for the rules, commands, and caveats.
-
-## Why Kuma Anyway
-
-Kuma's value is not "we beat Playwright in a stopwatch."
-
-Kuma's value is:
-
-- the agent can work inside the browser session you already have
-- the user can see what the agent is doing
-- the browser becomes shared coordination state instead of a hidden automation box
-- the API still feels familiar because it is shaped like Playwright
-
-The paw feedback is not an excuse for slowness. It is a product choice. We still keep trimming avoidable wait overhead so Kuma stays pleasant to use, and the latest parity run shows that this trade-off no longer means "multi-second by default."
+100% success both sides. [Full benchmark rules](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md).
 
 ## Getting Started
-
-Fast path:
 
 ```bash
 node scripts/install.mjs
 ```
 
-This installs dependencies, starts the daemon, creates shared Kuma Picker state in `~/.kuma-picker/`, installs the active agent skill by default, and explains the one manual step left: loading the unpacked Chrome extension. Add `--all` if you also want to stamp both Codex and Claude skill folders. See [INSTALL.md](./INSTALL.md) for full details.
+Installs deps, starts the daemon, creates `~/.kuma-picker/`, and sets up the agent skill. The one manual step: load the unpacked Chrome extension from `packages/browser-extension/`. See [INSTALL.md](./INSTALL.md).
 
 Manual path:
 
@@ -115,18 +93,10 @@ npm install
 node packages/server/src/cli.mjs serve
 ```
 
-Then load the unpacked extension from `packages/browser-extension/` in `chrome://extensions` and point the popup at the daemon URL, which defaults to `http://127.0.0.1:4312`.
-
 Health check:
 
 ```bash
 node scripts/doctor.mjs
-```
-
-Bundled test web:
-
-```bash
-npm run dev:web
 ```
 
 ## Quick Example
@@ -138,62 +108,44 @@ await page.getByRole("button", { name: "Send from 1P" }).click();
 console.log(await page.getByText("hello from kuma").textContent());
 ```
 
-## Common Commands
+## Commands
 
-- `npm run kuma-pickerd:serve`
-- `npm run kuma-pickerd:get-selection`
-- `npm run kuma-pickerd:get-job-card`
-- `npm run kuma-pickerd:get-extension-status`
-- `npm run kuma-pickerd:get-browser-session`
-- `npm run kuma-pickerd:run -- --url-contains "localhost:3000" ./tmp/script.js`
-- `npm run kuma-pickerd:smoke -- --scenario agent-chat`
-- `npm run kuma-pickerd:measure -- --tab-id 123 --repeat 3`
-- `npm run kuma-pickerd:parity:kuma -- --url-contains "localhost:3000" --browser-version "146.0.7680.165" --repeat 3`
-- `npm run kuma-pickerd:parity:playwright -- --cdp-url "http://127.0.0.1:9222" --url-contains "localhost:3000" --browser-version "146.0.7680.165" --playwright-module-path /tmp/kuma-picker-parity-playwright/node_modules/playwright/index.mjs --repeat 3`
-- `npm run kuma-pickerd:parity:compare -- --kuma ./artifacts/parity/kuma.json --playwright ./artifacts/parity/playwright.json`
-- `npm run test`
+```
+npm run kuma-pickerd:serve
+npm run kuma-pickerd:get-selection
+npm run kuma-pickerd:get-job-card
+npm run kuma-pickerd:get-browser-session
+npm run kuma-pickerd:run -- --url-contains "localhost:3000" ./tmp/script.js
+npm run kuma-pickerd:smoke -- --scenario agent-chat
+npm run kuma-pickerd:measure -- --tab-id 123 --repeat 3
+npm run test
+```
 
-`playwright` is **not** a runtime dependency of Kuma Picker. It is only needed when you want to run the Playwright side of a parity comparison.
+Parity commands: see [docs/PLAYWRIGHT-PARITY-BENCHMARK.md](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md).
 
-## Repository Layout
+## Layout
 
-- `packages/browser-extension/`: unpacked Chrome extension that bridges arbitrary pages into `kuma-pickerd`
-- `packages/server/`: `kuma-pickerd` entrypoint shim
-- `tools/kuma-pickerd/`: local daemon and shared-state implementation
-- `example/next-host/`: bundled test web for smoke, measurement, and parity flows
+- `packages/browser-extension/` — Chrome extension
+- `packages/server/` — daemon entrypoint
+- `tools/kuma-pickerd/` — daemon + shared-state implementation
+- `example/next-host/` — bundled test web
 
 ## Agent Workflow
 
-Kuma Picker has a shared selection and job-card model so multiple coding agents can coordinate through the same browser state.
+- `get-selection` — latest picked element
+- `get-job-card` — latest work card
+- `set-job-status -- --status in_progress --message "..."` — update work card
 
-- latest selection: `npm run kuma-pickerd:get-selection`
-- latest work card: `npm run kuma-pickerd:get-job-card`
-- browser extension status: `npm run kuma-pickerd:get-extension-status`
-- update work card: `npm run kuma-pickerd:set-job-status -- --status in_progress --message "..."`
-
-Agent-specific guidance:
-
-- [AGENTS.md](./AGENTS.md)
-- [CLAUDE.md](./CLAUDE.md)
-- [GEMINI.md](./GEMINI.md)
+Agent-specific docs: [AGENTS.md](./AGENTS.md) · [CLAUDE.md](./CLAUDE.md) · [GEMINI.md](./GEMINI.md)
 
 ## Docs
 
-- [docs/BROWSER-CONTROL-CHECKLIST.md](./docs/BROWSER-CONTROL-CHECKLIST.md)
-- [docs/PLAYWRIGHT-PARITY-BENCHMARK.md](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md)
-- [docs/maintainers.md](./docs/maintainers.md)
-- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
-- [SECURITY.md](./SECURITY.md)
-- [tools/kuma-pickerd/README.md](./tools/kuma-pickerd/README.md)
-- [packages/browser-extension/README.md](./packages/browser-extension/README.md)
+[Browser Control Checklist](./docs/BROWSER-CONTROL-CHECKLIST.md) · [Parity Benchmark](./docs/PLAYWRIGHT-PARITY-BENCHMARK.md) · [Maintainers](./docs/maintainers.md) · [Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md)
 
 ## Acknowledgements
 
-The Playwright-shaped scripting direction and some of the agent ergonomics work in Kuma Picker were informed by [SawyerHood/dev-browser](https://github.com/SawyerHood/dev-browser).
+Scripting direction informed by [SawyerHood/dev-browser](https://github.com/SawyerHood/dev-browser).
 
 ## License
 
 [Apache-2.0](./LICENSE)
-
-The current repository state is distributed under Apache License 2.0. Earlier published revisions may have been available under different terms.
