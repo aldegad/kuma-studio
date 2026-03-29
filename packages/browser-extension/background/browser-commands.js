@@ -93,29 +93,6 @@ async function sendAutomationCommandToTab(tabId, command) {
   return response.result ?? null;
 }
 
-async function collectPageContextWithRetry(tabId, attempts = 8, delayMs = null) {
-  let lastError = null;
-
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await collectPageContext(tabId);
-    } catch (error) {
-      lastError = error;
-      if (attempt < attempts - 1 && isTransientAutomationError(error)) {
-        invalidateAutomationBridge(tabId);
-        await ensureAutomationBridge(tabId);
-        await waitForDelay(
-          typeof delayMs === "number" && Number.isFinite(delayMs) ? delayMs : getAutomationRetryDelayMs(attempt),
-        );
-        continue;
-      }
-      break;
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error("Failed to read the page after reloading.");
-}
-
 function normalizeScreenshotClipRect(command) {
   const candidate = command?.clip;
   if (!candidate || typeof candidate !== "object") {

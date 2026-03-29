@@ -32,36 +32,6 @@ function getRoot() {
   return document.body || document.documentElement;
 }
 
-function toLocatorCommand(locator) {
-  if (!locator || typeof locator !== "object") {
-    throw new Error("A locator payload is required.");
-  }
-
-  switch (locator.kind) {
-    case "selector":
-      return {
-        selector: typeof locator.selector === "string" ? locator.selector : null,
-      };
-    case "text":
-      return {
-        text: typeof locator.text === "string" ? locator.text : null,
-        exactText: locator.exact === true,
-      };
-    case "role":
-      return {
-        role: typeof locator.role === "string" ? locator.role : null,
-        text: typeof locator.name === "string" ? locator.name : null,
-        exactText: locator.exact === true,
-      };
-    case "label":
-      return {
-        label: typeof locator.text === "string" ? locator.text : null,
-      };
-    default:
-      throw new Error(`Unsupported locator kind: ${String(locator.kind)}`);
-  }
-}
-
 function scoreText(candidate, expected, exact) {
   if (!candidate || !expected) {
     return 0;
@@ -529,58 +499,49 @@ async function executeMouseDrag(command) {
 }
 
 async function executeAutomationCommand(command) {
-  let normalizedCommand = command;
-  while (
-    normalizedCommand?.command &&
-    typeof normalizedCommand.command === "object" &&
-    !Array.isArray(normalizedCommand.command)
-  ) {
-    normalizedCommand = normalizedCommand.command;
+  if (command?.type !== "playwright") {
+    throw new Error(`Unsupported automation payload: ${String(command?.type)}`);
   }
 
-  if (normalizedCommand?.type !== "playwright") {
-    throw new Error(`Unsupported automation payload: ${String(normalizedCommand?.type)}`);
-  }
-
-  switch (normalizedCommand.action) {
+  switch (command.action) {
     case "page.title":
       return executePageTitle();
     case "page.evaluate":
-      return executePageEvaluate(normalizedCommand);
+      return executePageEvaluate(command);
     case "page.waitForSelector":
-      return executePageWaitForSelector(normalizedCommand);
+      return executePageWaitForSelector(command);
     case "locator.click":
-      return executeLocatorClick(normalizedCommand);
+      return executeLocatorClick(command);
     case "locator.fill":
-      return executeLocatorFill(normalizedCommand);
+      return executeLocatorFill(command);
     case "locator.press":
-      return executeLocatorPress(normalizedCommand);
+      return executeLocatorPress(command);
     case "locator.textContent":
-      return executeLocatorTextContent(normalizedCommand);
+      return executeLocatorTextContent(command);
     case "locator.inputValue":
-      return executeLocatorInputValue(normalizedCommand);
+      return executeLocatorInputValue(command);
     case "locator.isVisible":
-      return executeLocatorIsVisible(normalizedCommand);
+      return executeLocatorIsVisible(command);
     case "locator.waitFor":
-      return executeLocatorWaitFor(normalizedCommand);
+      return executeLocatorWaitFor(command);
     case "locator.measure":
-      return executeLocatorMeasure(normalizedCommand);
+      return executeLocatorMeasure(command);
     case "keyboard.press":
-      return executeKeyboardPress(normalizedCommand);
+      return executeKeyboardPress(command);
     case "keyboard.down":
-      return executeKeyboardDown(normalizedCommand);
+      return executeKeyboardDown(command);
     case "keyboard.up":
-      return executeKeyboardUp(normalizedCommand);
+      return executeKeyboardUp(command);
     case "mouse.move":
-      return executeMouseMove(normalizedCommand);
+      return executeMouseMove(command);
     case "mouse.down":
-      return executeMouseDown(normalizedCommand);
+      return executeMouseDown(command);
     case "mouse.up":
-      return executeMouseUp(normalizedCommand);
+      return executeMouseUp(command);
     case "mouse.drag":
-      return executeMouseDrag(normalizedCommand);
+      return executeMouseDrag(command);
     default:
-      throw new Error(`Unsupported Kuma Playwright action: ${String(normalizedCommand.action)}`);
+      throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }
 }
 
