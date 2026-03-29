@@ -74,4 +74,124 @@ describe("playwright page facade", () => {
       },
     });
   });
+
+  it("passes role name matching through the locator descriptor", async () => {
+    const client = createClientStub(async () => ({ page: { url: "https://example.com" } }));
+    const page = createPage(client, createPageState());
+
+    await page.getByRole("button", { name: "Download" }).click();
+
+    expect(client.send).toHaveBeenCalledWith(
+      "locator.click",
+      {
+        locator: {
+          kind: "role",
+          role: "button",
+          name: "Download",
+          exact: false,
+        },
+      },
+      { timeoutMs: undefined },
+    );
+  });
+
+  it("supports locator nth chaining with Playwright-style zero-based indices", async () => {
+    const client = createClientStub(async () => ({ page: { url: "https://example.com" } }));
+    const page = createPage(client, createPageState());
+
+    await page.getByText("+ URI 추가").nth(1).click();
+
+    expect(client.send).toHaveBeenCalledWith(
+      "locator.click",
+      {
+        locator: {
+          kind: "text",
+          text: "+ URI 추가",
+          exact: false,
+          nth: 1,
+        },
+      },
+      { timeoutMs: undefined },
+    );
+  });
+
+  it("supports locator first and last helpers", async () => {
+    const client = createClientStub(async () => ({ page: { url: "https://example.com" } }));
+    const page = createPage(client, createPageState());
+
+    await page.locator(".download").first().click();
+    await page.locator(".download").last().click();
+
+    expect(client.send).toHaveBeenNthCalledWith(
+      1,
+      "locator.click",
+      {
+        locator: {
+          kind: "selector",
+          selector: ".download",
+          nth: 0,
+        },
+      },
+      { timeoutMs: undefined },
+    );
+    expect(client.send).toHaveBeenNthCalledWith(
+      2,
+      "locator.click",
+      {
+        locator: {
+          kind: "selector",
+          selector: ".download",
+          nth: "last",
+        },
+      },
+      { timeoutMs: undefined },
+    );
+  });
+
+  it("supports page.mouse.click for coordinate-based clicks", async () => {
+    const client = createClientStub(async () => ({ page: { url: "https://example.com" } }));
+    const page = createPage(client, createPageState());
+
+    await page.mouse.click(320, 240);
+
+    expect(client.send).toHaveBeenCalledWith(
+      "mouse.click",
+      {
+        x: 320,
+        y: 240,
+        button: "left",
+      },
+      { timeoutMs: undefined },
+    );
+  });
+
+  it("writes a warning when page.evaluate falls back from debugger execution", async () => {
+    const client = createClientStub(async () => ({
+      page: { url: "https://example.com" },
+      value: "hello",
+      fallbackUsed: true,
+      fallbackReason: "Chrome DevTools or another debugger is already attached to this tab.",
+      evaluateBackend: "content-script",
+    }));
+    const page = createPage(client, createPageState());
+    const originalStderrWrite = process.stderr.write.bind(process.stderr);
+    const chunks = [];
+    process.stderr.write = ((chunk, encoding, callback) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk.toString(typeof encoding === "string" ? encoding : undefined) : String(chunk));
+      if (typeof encoding === "function") {
+        encoding();
+      } else if (typeof callback === "function") {
+        callback();
+      }
+      return true;
+    });
+
+    try {
+      await expect(page.evaluate(() => "hello")).resolves.toBe("hello");
+    } finally {
+      process.stderr.write = originalStderrWrite;
+    }
+
+    expect(chunks.join("")).toContain("page.evaluate fell back to content-script");
+  });
 });

@@ -18,6 +18,7 @@ const {
 const {
   waitForDelay,
   executeClickCommand,
+  executeClickPointCommand,
   executeFillCommand,
   executeKeyCommand,
   executeKeyDownCommand,
@@ -53,27 +54,49 @@ function scoreText(candidate, expected, exact) {
   return 0;
 }
 
+function resolveLocatorMatch(matches, locator, description) {
+  if (!Array.isArray(matches) || matches.length === 0) {
+    return null;
+  }
+
+  if (locator?.nth === "last") {
+    return matches.at(-1) ?? null;
+  }
+
+  if (locator?.nth == null) {
+    return matches[0] ?? null;
+  }
+
+  if (!Number.isInteger(locator.nth) || locator.nth < 0) {
+    throw new Error(`${description} requires a non-negative integer nth index.`);
+  }
+
+  return matches[locator.nth] ?? null;
+}
+
 function resolveSelectorElement(locator, { allowHidden = false } = {}) {
   const selector = typeof locator?.selector === "string" ? locator.selector.trim() : "";
   if (!selector) {
     throw new Error("The selector locator requires a non-empty selector.");
   }
 
-  const target = document.querySelector(selector);
-  if (!(target instanceof Element)) {
-    return null;
-  }
+  const matches = Array.from(document.querySelectorAll(selector)).filter(
+    (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
+  );
 
-  if (!allowHidden && !isVisibleElement(target)) {
-    return null;
-  }
-
-  return target;
+  return resolveLocatorMatch(matches, locator, "The selector locator");
 }
 
 function resolveTextOrRoleElement(locator, { allowHidden = false } = {}) {
   const candidates = getCommandCandidatesWithinRoot(getRoot());
-  const expectedText = typeof locator?.text === "string" ? normalizeText(locator.text) : "";
+  const expectedText =
+    locator?.kind === "role"
+      ? typeof locator?.name === "string"
+        ? normalizeText(locator.name)
+        : ""
+      : typeof locator?.text === "string"
+        ? normalizeText(locator.text)
+        : "";
   const exact = locator?.exact === true;
 
   const ranked = candidates
@@ -88,7 +111,11 @@ function resolveTextOrRoleElement(locator, { allowHidden = false } = {}) {
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score);
 
-  return ranked[0]?.element ?? null;
+  return resolveLocatorMatch(
+    ranked.map((entry) => entry.element),
+    locator,
+    `The ${locator?.kind === "role" ? "role" : "text"} locator`,
+  );
 }
 
 function resolveLabelElement(locator, { allowHidden = false } = {}) {
@@ -110,7 +137,7 @@ function resolveLabelElement(locator, { allowHidden = false } = {}) {
     .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score);
 
-  return ranked[0]?.element ?? null;
+  return resolveLocatorMatch(ranked.map((entry) => entry.element), locator, "The label locator");
 }
 
 function resolveLocatorElement(locator, options = {}) {
@@ -262,6 +289,8 @@ async function executePageEvaluate(command) {
     return {
       page: pageRecord,
       value: serializeValue(value),
+      executionWorld: "content-script",
+      evaluateBackend: "content-script",
     };
   }
 
@@ -290,6 +319,8 @@ async function executePageEvaluate(command) {
     return {
       page: pageRecord,
       value: serializeValue(value),
+      executionWorld: "content-script",
+      evaluateBackend: "content-script",
     };
   }
 
@@ -473,6 +504,14 @@ async function executeMouseMove(command) {
   });
 }
 
+async function executeMouseClick(command) {
+  return executeClickPointCommand({
+    x: command.x,
+    y: command.y,
+    postActionDelayMs: command.postActionDelayMs,
+  });
+}
+
 async function executeMouseDown(command) {
   return executeMouseDownCommand({
     x: command.x,
@@ -534,6 +573,8 @@ async function executeAutomationCommand(command) {
       return executeKeyboardUp(command);
     case "mouse.move":
       return executeMouseMove(command);
+    case "mouse.click":
+      return executeMouseClick(command);
     case "mouse.down":
       return executeMouseDown(command);
     case "mouse.up":

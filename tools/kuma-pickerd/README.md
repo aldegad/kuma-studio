@@ -65,8 +65,8 @@ The supported API is a deliberate Playwright-shaped subset:
 - `page.goto`, `page.reload`, `page.url`, `page.title`, `page.screenshot`, `page.evaluate`
 - `page.locator`, `page.getByText`, `page.getByRole`, `page.getByLabel`, `page.waitForSelector`
 - `page.keyboard.press|down|up`
-- `page.mouse.move|down|up|drag`
-- `locator.click|fill|press|textContent|inputValue|isVisible|waitFor|screenshot`
+- `page.mouse.click|move|down|up|drag`
+- `locator.click|fill|press|textContent|inputValue|isVisible|waitFor|screenshot|first|last|nth`
 - `locator.boundingBox`
 
 Unsupported APIs hard-fail. There are no compatibility shims for the removed `browser-*` command surface.

@@ -28,8 +28,8 @@ Make Kuma Picker feel natural to agents that already think in Playwright terms, 
 - [x] `page.getByLabel`
 - [x] `page.waitForSelector`
 - [x] `page.keyboard.press|down|up`
-- [x] `page.mouse.move|down|up|drag`
-- [x] `locator.click|fill|press|textContent|inputValue|isVisible|waitFor|screenshot`
+- [x] `page.mouse.click|move|down|up|drag`
+- [x] `locator.click|fill|press|textContent|inputValue|isVisible|waitFor|screenshot|first|last|nth`
 - [x] `locator.boundingBox`
 
 ## Runtime expectations

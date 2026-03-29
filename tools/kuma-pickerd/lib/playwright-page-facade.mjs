@@ -11,6 +11,13 @@ function createLocatorDescriptor(kind, fields) {
   return { kind, ...fields };
 }
 
+function cloneLocatorDescriptor(descriptor, fields) {
+  return {
+    ...descriptor,
+    ...fields,
+  };
+}
+
 function requireFinitePoint(point, label) {
   if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) {
     return {
@@ -78,6 +85,10 @@ export function updatePageState(state, payload) {
 }
 
 export function createLocator(client, state, descriptor) {
+  function withDescriptor(fields) {
+    return createLocator(client, state, cloneLocatorDescriptor(descriptor, fields));
+  }
+
   const locatorTarget = {
     async click(options = {}) {
       const result = await client.send(
@@ -177,6 +188,19 @@ export function createLocator(client, state, descriptor) {
       writeScreenshotBuffer(buffer, options.path);
       return buffer;
     },
+    first() {
+      return withDescriptor({ nth: 0 });
+    },
+    last() {
+      return withDescriptor({ nth: "last" });
+    },
+    nth(index) {
+      if (!Number.isInteger(index) || index < 0) {
+        throw new Error("locator.nth requires a non-negative integer index.");
+      }
+
+      return withDescriptor({ nth: index });
+    },
   };
 
   return createUnsupportedProxy("locator", locatorTarget);
@@ -225,6 +249,24 @@ export function createPage(client, state) {
   });
 
   const mouse = createUnsupportedProxy("page.mouse", {
+    async click(x, y, options = {}) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error("page.mouse.click requires finite x/y coordinates.");
+      }
+
+      const result = await client.send(
+        "mouse.click",
+        {
+          x,
+          y,
+          button: options.button ?? "left",
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      state.mousePoint = { x, y };
+      return result;
+    },
     async move(x, y) {
       const result = await client.send("mouse.move", { x, y });
       updatePageState(state, result);
@@ -331,6 +373,13 @@ export function createPage(client, state) {
     async evaluate(fnOrExpression, arg) {
       const result = await client.send("page.evaluate", serializeEvaluateInput(fnOrExpression, arg));
       updatePageState(state, result);
+      if (result?.fallbackUsed === true) {
+        process.stderr.write(
+          `[kuma-picker] page.evaluate fell back to ${result?.evaluateBackend ?? "content-script"} after debugger failure: ${
+            typeof result?.fallbackReason === "string" ? result.fallbackReason : "unknown error"
+          }\n`,
+        );
+      }
       return result?.value ?? null;
     },
     locator(selector) {

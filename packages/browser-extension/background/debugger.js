@@ -1,6 +1,7 @@
 const DEBUGGER_PROTOCOL_VERSION = "1.3";
 const DEFAULT_DEBUGGER_CAPTURE_MS = 3_000;
 const MAX_DEBUGGER_EVENTS = 100;
+const DebuggerAsyncFunction = Object.getPrototypeOf(async function noop() {}).constructor;
 
 function createDebuggerTarget(tabId) {
   return { tabId };
@@ -109,27 +110,173 @@ function describeRemoteObject(remoteObject) {
   };
 }
 
-async function evaluateDebuggerExpression(tab, command = {}) {
-  if (!tab?.id) {
-    throw new Error("Failed to resolve the target browser tab for debugger evaluation.");
+function serializeDebuggerEvaluateArg(arg) {
+  try {
+    return JSON.stringify(arg === undefined ? null : arg);
+  } catch (error) {
+    throw new Error(
+      `page.evaluate received an arg that could not be serialized for debugger execution: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+function getDebuggerEvaluateSource(command = {}) {
+  const kind = command?.kind === "function" ? "function" : "expression";
+  const source = typeof command?.source === "string" ? command.source.trim() : "";
+  if (!source) {
+    throw new Error("page.evaluate requires a function or non-empty expression string.");
   }
 
-  const expressionCandidate =
-    typeof command?.expression === "string"
-      ? command.expression
-      : typeof command?.text === "string"
-        ? command.text
-        : typeof command?.value === "string"
-          ? command.value
-          : "";
-  const expression = expressionCandidate.trim();
-  if (!expression) {
-    throw new Error("page.evaluate requires an expression.");
+  return {
+    kind,
+    source,
+    argLiteral: serializeDebuggerEvaluateArg(command?.arg ?? null),
+  };
+}
+
+function buildExpressionEvaluateBody(source) {
+  try {
+    void new DebuggerAsyncFunction("window", "document", "globalThis", "page", "arg", `return (${source});`);
+    return `return (${source});`;
+  } catch {
+    return source;
+  }
+}
+
+function buildDebuggerEvaluateExpression(command = {}) {
+  const evaluateInput = getDebuggerEvaluateSource(command);
+  const executionBody =
+    evaluateInput.kind === "function" ? `return await (${evaluateInput.source})(arg);` : buildExpressionEvaluateBody(evaluateInput.source);
+
+  return `(
+    async () => {
+      const page = {
+        url: window.location.href,
+        pathname: window.location.pathname,
+        title: document.title,
+      };
+      const arg = ${evaluateInput.argLiteral};
+      function serializeValue(value, depth = 0, seen = new WeakSet()) {
+        if (value == null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+          return value ?? null;
+        }
+
+        if (typeof value === "bigint") {
+          return { kind: "bigint", value: String(value) };
+        }
+
+        if (typeof value === "undefined") {
+          return { kind: "undefined" };
+        }
+
+        if (typeof value === "function") {
+          return { kind: "function", name: value.name || null };
+        }
+
+        if (depth >= 4) {
+          return { kind: "max-depth" };
+        }
+
+        if (value instanceof Element) {
+          return {
+            kind: "element",
+            element: {
+              tagName: value.tagName || null,
+              id: value.id || null,
+              role: value.getAttribute?.("role") || null,
+              label:
+                value.getAttribute?.("aria-label") ||
+                value.getAttribute?.("title") ||
+                value.textContent?.trim?.() ||
+                null,
+            },
+          };
+        }
+
+        if (value instanceof Error) {
+          return {
+            kind: "error",
+            name: value.name,
+            message: value.message,
+            stack: typeof value.stack === "string" ? value.stack : null,
+          };
+        }
+
+        if (value instanceof Date) {
+          return {
+            kind: "date",
+            value: value.toISOString(),
+          };
+        }
+
+        if (Array.isArray(value)) {
+          return value.slice(0, 50).map((entry) => serializeValue(entry, depth + 1, seen));
+        }
+
+        if (typeof value === "object") {
+          if (seen.has(value)) {
+            return { kind: "circular" };
+          }
+
+          seen.add(value);
+          return Object.fromEntries(
+            Object.entries(value)
+              .slice(0, 50)
+              .map(([key, entry]) => [key, serializeValue(entry, depth + 1, seen)]),
+          );
+        }
+
+        return String(value);
+      }
+
+      try {
+        const value = await (async () => {
+          ${executionBody}
+        })();
+        return {
+          ok: true,
+          page,
+          value: serializeValue(value),
+          executionWorld: "main-world",
+          evaluateBackend: "debugger",
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          page,
+          exception: {
+            name: error instanceof Error ? error.name : null,
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error && typeof error.stack === "string" ? error.stack : null,
+            value: serializeValue(error),
+          },
+          executionWorld: "main-world",
+          evaluateBackend: "debugger",
+        };
+      }
+    }
+  )()`;
+}
+
+function shouldFallbackDebuggerEvaluate(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.includes("Chrome DevTools or another debugger is already attached") ||
+    message.includes("Failed to attach chrome.debugger")
+  );
+}
+
+async function executeDebuggerEvaluateCommand(tab, command = {}) {
+  if (!tab?.id) {
+    throw new Error("Failed to resolve the target browser tab for debugger evaluation.");
   }
 
   const tabId = tab.id;
   const debuggee = createDebuggerTarget(tabId);
   let attached = false;
+  const expression = buildDebuggerEvaluateExpression(command);
 
   try {
     try {
@@ -171,16 +318,33 @@ async function evaluateDebuggerExpression(tab, command = {}) {
           exception: describeRemoteObject(evaluation.exceptionDetails.exception),
         },
         value: null,
+        executionWorld: "main-world",
+        evaluateBackend: "debugger",
       };
+    }
+
+    const value =
+      "value" in (evaluation?.result ?? {})
+        ? summarizeDebuggerValue(evaluation.result.value)
+        : describeRemoteObject(evaluation?.result);
+
+    if (value?.ok === false) {
+      const message = value?.exception?.message || "page.evaluate failed in the debugger execution world.";
+      const error = new Error(message);
+      error.name = value?.exception?.name || error.name;
+      throw error;
+    }
+
+    if (value?.ok === true) {
+      return value;
     }
 
     return {
       page: createPageRecordFromDebugTab(currentTab),
       expression,
-      value:
-        "value" in (evaluation?.result ?? {})
-          ? summarizeDebuggerValue(evaluation.result.value)
-          : describeRemoteObject(evaluation?.result),
+      value,
+      executionWorld: "main-world",
+      evaluateBackend: "debugger",
     };
   } finally {
     if (attached) {

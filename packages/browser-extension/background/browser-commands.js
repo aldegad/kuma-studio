@@ -115,6 +115,26 @@ function getRefreshTimeoutMs(command) {
     : 15_000;
 }
 
+async function executePageEvaluateCommand(tab, command) {
+  try {
+    return await executeDebuggerEvaluateCommand(tab, command);
+  } catch (error) {
+    if (!shouldFallbackDebuggerEvaluate(error)) {
+      throw error;
+    }
+
+    const fallbackResult = await sendAutomationCommandToTab(tab.id, command);
+    return {
+      ...fallbackResult,
+      executionWorld: fallbackResult?.executionWorld ?? "content-script",
+      evaluateBackend: fallbackResult?.evaluateBackend ?? "content-script",
+      fallbackUsed: true,
+      fallbackReason: error instanceof Error ? error.message : String(error),
+      fallbackFrom: "debugger",
+    };
+  }
+}
+
 async function executePageScreenshotCommand(tab, command) {
   const pageContext = await collectPageContext(tab.id);
   const capture = await captureTargetTabScreenshot(tab, {
@@ -206,6 +226,8 @@ async function executePlaywrightCommand(tab, command) {
       return executePageGotoCommand(tab, command);
     case "page.reload":
       return executePageReloadCommand(tab, command);
+    case "page.evaluate":
+      return executePageEvaluateCommand(tab, command);
     case "page.screenshot":
       return executePageScreenshotCommand(tab, command);
     default:
