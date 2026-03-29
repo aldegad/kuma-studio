@@ -13,3 +13,6 @@ tmp/
 .claude/worktrees/
 .playwright-cli/
 output/
+.env*
+client_secret*.json
+cws-credentials.json
