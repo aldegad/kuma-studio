@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kuma Picker Capture Studio</title>
+    <link rel="stylesheet" href="./capture-studio.css" />
+  </head>
+  <body>
+    <main class="studio-shell">
+      <section class="studio-hero">
+        <div class="studio-hero-copy">
+          <p class="studio-kicker">Capture Studio</p>
+          <h1 id="studio-title" class="studio-title">Frame your capture</h1>
+          <p id="studio-subtitle" class="studio-subtitle">Choose a source, then crop only what you need.</p>
+        </div>
+        <div class="studio-actions">
+          <button id="choose-source" type="button" class="button button-primary">Choose Source</button>
+          <button id="start-recording" type="button" class="button button-emerald" disabled>Start Recording Selection</button>
+          <button id="stop-recording" type="button" class="button button-rose" disabled>Stop Recording</button>
+        </div>
+      </section>
+
+      <section class="studio-workbench">
+        <section class="studio-panel studio-panel-glass studio-preview-panel">
+          <div class="studio-preview-head">
+            <div class="studio-chip-row">
+              <span id="capture-kind-chip" class="studio-chip">Screen</span>
+              <span id="composition-chip" class="studio-chip studio-chip-accent">Single</span>
+              <span id="capture-size-chip" class="studio-chip studio-chip-muted">Waiting</span>
+            </div>
+            <div class="studio-inline-tools">
+              <div class="studio-segmented">
+                <button id="layout-single" type="button" class="studio-segment-button is-active">Single</button>
+                <button id="layout-split" type="button" class="studio-segment-button">2-Up</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="preview-stage" class="preview-stage">
+            <video id="preview-video" class="preview-video" playsinline muted></video>
+            <div id="selection-overlays" class="selection-overlays"></div>
+            <div id="preview-empty" class="preview-empty">
+              <p class="preview-empty-title">No source selected</p>
+              <p class="preview-empty-copy">Pick a screen or window to start framing.</p>
+            </div>
+            <button id="open-output-preview" type="button" class="preview-inset-button" aria-expanded="false" disabled>
+              <span class="preview-inset-meta">
+                <span class="preview-inset-label">Output</span>
+                <span id="composite-size-chip" class="preview-inset-chip">Waiting</span>
+              </span>
+              <span id="output-preview-stage" class="output-preview-stage preview-inset-stage">
+                <canvas id="composite-preview-canvas" class="output-preview-canvas" width="1" height="1"></canvas>
+                <span id="composite-preview-empty" class="output-preview-empty">
+                  <span class="output-preview-empty-title">Preview appears here</span>
+                </span>
+              </span>
+            </button>
+          </div>
+
+          <div class="studio-toolbar">
+            <div class="studio-toolbar-meta">
+              <div class="studio-status-inline">
+                <p id="status-line" class="status-line">Getting ready...</p>
+                <p id="status-meta" class="status-meta"></p>
+              </div>
+              <p id="studio-hint" class="studio-hint">Choose a source to begin.</p>
+            </div>
+            <div class="studio-toolbar-actions">
+              <button id="reset-composition" type="button" class="button button-ghost button-compact" disabled>Reset</button>
+              <button id="use-full-frame" type="button" class="button button-secondary" disabled>Full Frame</button>
+              <button id="close-studio" type="button" class="button button-ghost">Close</button>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <div id="output-preview-modal" class="output-preview-modal is-hidden" aria-hidden="true">
+      <div id="output-preview-backdrop" class="output-preview-backdrop"></div>
+      <section class="output-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="output-preview-dialog-title">
+        <div class="output-preview-dialog-head">
+          <div>
+            <p class="studio-panel-kicker">Output Preview</p>
+            <h2 id="output-preview-dialog-title" class="output-preview-dialog-title">Composite preview</h2>
+          </div>
+          <div class="output-preview-dialog-actions">
+            <span id="modal-composite-size-chip" class="preview-inset-chip preview-inset-chip-dark">Waiting</span>
+            <button id="close-output-preview" type="button" class="button button-ghost button-compact">Close</button>
+          </div>
+        </div>
+        <div id="output-preview-modal-stage" class="output-preview-stage output-preview-modal-stage">
+          <canvas id="composite-preview-modal-canvas" class="output-preview-canvas output-preview-modal-canvas" width="1" height="1"></canvas>
+          <div id="composite-preview-modal-empty" class="output-preview-empty">
+            <p class="output-preview-empty-title">Preview appears here</p>
+            <p class="output-preview-empty-copy">The final output keeps its real aspect ratio.</p>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <canvas id="recording-canvas" class="recording-canvas" width="1" height="1"></canvas>
+    <script src="./shared/runtime.js"></script>
+    <script src="./shared/live-capture-settings.js"></script>
+    <script src="./shared/recording-media.js"></script>
+    <script src="./capture-studio.js"></script>
+  </body>
+</html>

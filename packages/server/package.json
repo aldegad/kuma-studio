@@ -1,0 +1,14 @@
+{
+  "name": "@kuma-studio/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.mjs",
+  "bin": {
+    "kuma-studio": "src/cli.mjs"
+  },
+  "scripts": {
+    "serve": "node src/cli.mjs serve",
+    "test": "vitest run --passWithNoTests"
+  }
+}

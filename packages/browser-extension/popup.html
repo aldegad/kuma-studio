@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kuma Picker Bridge</title>
+    <link rel="stylesheet" href="./popup.css?v=popup-status-rail-3" />
+  </head>
+  <body>
+    <main class="popup">
+      <section class="status-overview">
+        <header id="connection-status" class="connection-status">
+          <div class="connection-rail">
+            <span id="connection-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+            <div class="connection-inline">
+              <p id="connection-label" class="connection-label">Checking bridge...</p>
+              <div class="connection-detail-stack">
+                <p id="connection-summary" class="connection-summary is-hidden"></p>
+                <p id="connection-url" class="connection-url">http://127.0.0.1:4312</p>
+                <input
+                  id="daemon-url"
+                  class="connection-url-input is-hidden"
+                  type="url"
+                  spellcheck="false"
+                  placeholder="http://127.0.0.1:4312"
+                />
+              </div>
+            </div>
+            <button
+              id="connect-daemon"
+              type="button"
+              class="icon-button connection-edit-button"
+              aria-label="Edit bridge URL"
+              title="Edit bridge URL"
+            >
+              <svg id="connect-daemon-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20l4.5-1 9.25-9.25a1.5 1.5 0 0 0 0-2.12l-1.38-1.38a1.5 1.5 0 0 0-2.12 0L5 15.5 4 20z" />
+                <path d="M13.5 7.5l3 3" />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <section id="page-status" class="page-status" data-state="checking">
+          <span id="page-status-dot" class="status-dot status-dot-checking" aria-hidden="true"></span>
+          <div class="page-status-copy">
+            <div class="page-status-inline">
+              <p id="page-status-label" class="page-status-label">Checking current page...</p>
+              <p id="page-tab-id" class="page-status-value is-hidden"></p>
+            </div>
+            <p id="page-status-meta" class="page-status-meta"></p>
+          </div>
+          <button
+            id="copy-page-tab-id"
+            type="button"
+            class="icon-button is-hidden"
+            aria-label="Copy current tab ID"
+            title="Copy current tab ID"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
+              />
+              <path
+                d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
+              />
+            </svg>
+          </button>
+        </section>
+      </section>
+
+      <section class="live-capture-stack">
+        <details id="live-capture-status" class="page-status live-capture-status live-capture-panel" data-state="idle">
+          <summary class="live-capture-summary">
+            <div class="live-capture-summary-main">
+              <span id="live-capture-dot" class="status-dot status-dot-connected" aria-hidden="true"></span>
+              <div class="live-capture-summary-copy">
+                <p id="live-capture-label" class="page-status-label">Live capture idle</p>
+                <p id="live-capture-meta" class="page-status-meta">Current tab selected</p>
+              </div>
+            </div>
+            <div class="live-capture-summary-side">
+              <span id="live-capture-source-chip" class="live-capture-source-chip" data-source="tab">
+                <span id="live-capture-source-icon" class="live-capture-source-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" />
+                    <path d="M4.5 8.5h15" />
+                  </svg>
+                </span>
+                <span id="live-capture-source-label" class="live-capture-source-label">Current tab</span>
+              </span>
+              <span class="accordion-toggle" aria-hidden="true"></span>
+            </div>
+          </summary>
+          <div class="live-capture-body">
+            <fieldset class="capture-source-list">
+              <legend class="field-label">Capture source</legend>
+              <label class="capture-source-option">
+                <input type="radio" name="live-capture-source" value="tab" checked />
+                <span class="capture-source-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" />
+                    <path d="M4.5 8.5h15" />
+                  </svg>
+                </span>
+                <span class="capture-source-text">
+                  <span class="capture-source-title">Current tab</span>
+                  <span class="capture-source-meta">Start instantly from the active page.</span>
+                </span>
+              </label>
+              <label class="capture-source-option">
+                <input type="radio" name="live-capture-source" value="window" />
+                <span class="capture-source-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 17.25z" />
+                    <path d="M8 9h8" />
+                    <path d="M8 12h8" />
+                  </svg>
+                </span>
+                <span class="capture-source-text">
+                  <span class="capture-source-title">Window</span>
+                  <span class="capture-source-meta">Open Capture Studio and frame just the shared window.</span>
+                </span>
+              </label>
+              <label class="capture-source-option">
+                <input type="radio" name="live-capture-source" value="screen" />
+                <span class="capture-source-mark" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4.5 6.75A2.25 2.25 0 0 1 6.75 4.5h10.5A2.25 2.25 0 0 1 19.5 6.75v7.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 14.25z" />
+                    <path d="M9.5 19.5h5" />
+                    <path d="M12 16.5v3" />
+                  </svg>
+                </span>
+                <span class="capture-source-text">
+                  <span class="capture-source-title">Entire screen</span>
+                  <span class="capture-source-meta">Pick any monitor, then crop inside Capture Studio.</span>
+                </span>
+              </label>
+            </fieldset>
+            <p class="live-capture-tip">Window and screen captures open a separate studio window where you can drag the frame and fine-tune the preview scale.</p>
+          </div>
+        </details>
+        <div class="live-capture-footer">
+          <div class="live-capture-toolbar">
+            <button id="start-live-capture" type="button" class="button button-primary live-capture-action">
+              Start Live Capture
+            </button>
+            <button id="stop-live-capture" type="button" class="button button-danger live-capture-action">
+              Stop
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="capture-selector-panel" class="capture-selector-panel is-hidden">
+        <div class="capture-selector-head">
+          <div class="capture-selector-copy">
+            <p id="capture-selector-title" class="capture-selector-title">Frame your capture</p>
+            <p id="capture-selector-meta" class="capture-selector-meta">Drag across the preview to choose the exact recording area.</p>
+          </div>
+          <button id="capture-selector-close" type="button" class="button button-ghost capture-selector-close">
+            Cancel
+          </button>
+        </div>
+        <div id="capture-preview-stage" class="capture-preview-stage">
+          <img id="capture-preview-image" class="capture-preview-image" alt="Live capture preview" />
+          <div id="capture-selection-box" class="capture-selection-box is-hidden">
+            <span id="capture-selection-size" class="capture-selection-size"></span>
+          </div>
+        </div>
+        <div class="capture-selector-footer">
+          <p id="capture-selector-hint" class="capture-selector-hint">Click and drag to draw a crop. Use full frame if you want the whole shared surface.</p>
+          <div class="capture-selector-actions">
+            <button id="capture-selector-full" type="button" class="button button-secondary">
+              Use Full Frame
+            </button>
+            <button id="capture-selector-start" type="button" class="button button-primary">
+              Start Selected Capture
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="action-stack">
+        <button id="inspect-element" type="button" class="button button-primary action-feature">
+          <span class="action-feature-copy">
+            <span class="action-feature-title">Pick Element Or Drag Area</span>
+            <span class="action-feature-meta">Click, drag, or press Space to preview the whole page.</span>
+          </span>
+        </button>
+
+        <div class="action-utility-deck">
+          <div class="action-row action-support action-support-single">
+            <button id="inspect-with-job" type="button" class="button button-tertiary">
+              Pick With Job
+            </button>
+          </div>
+
+          <details class="prompt-panel prompt-panel-inline">
+            <summary class="prompt-summary">
+              <span class="prompt-summary-copy">
+                <span class="prompt-summary-label">Refactor Prompt</span>
+                <span class="prompt-summary-hint">Expand for the generated prompt.</span>
+              </span>
+              <span class="prompt-summary-actions">
+                <span class="accordion-toggle" aria-hidden="true"></span>
+                <button
+                  id="copy-refactor-prompt"
+                  type="button"
+                  class="icon-button prompt-copy-button"
+                  aria-label="Copy refactor prompt"
+                  title="Copy refactor prompt"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M9 9.75A2.25 2.25 0 0 1 11.25 7.5h7.5A2.25 2.25 0 0 1 21 9.75v9A2.25 2.25 0 0 1 18.75 21h-7.5A2.25 2.25 0 0 1 9 18.75z"
+                    />
+                    <path
+                      d="M6.75 16.5A2.25 2.25 0 0 1 4.5 14.25v-9A2.25 2.25 0 0 1 6.75 3h7.5A2.25 2.25 0 0 1 16.5 5.25"
+                    />
+                  </svg>
+                </button>
+              </span>
+            </summary>
+            <div class="prompt-shell">
+              <textarea id="refactor-prompt" class="prompt-text" readonly></textarea>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <section class="footer-status" aria-live="polite">
+        <img
+          class="footer-paw"
+          src="./assets/gestures/kuma-paw-tap.png"
+          alt=""
+          aria-hidden="true"
+        />
+        <div class="footer-copy">
+          <p id="feedback" class="feedback feedback-idle">
+            <span id="feedback-message">Click to pick, drag an area, or press Space to preview the whole page.</span>
+            <span id="feedback-shortcut">Press <kbd>Space</kbd> to preview, click to save, or <kbd>Esc</kbd> to cancel.</span>
+          </p>
+          <p id="last-saved" class="last-saved"></p>
+        </div>
+      </section>
+    </main>
+    <script src="./shared/runtime.js"></script>
+    <script src="./shared/live-capture-settings.js"></script>
+    <script src="./popup/state.js"></script>
+    <script src="./popup/view.js"></script>
+    <script src="./popup/main.js"></script>
+  </body>
+</html>

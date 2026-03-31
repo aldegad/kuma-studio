@@ -1,0 +1,38 @@
+{
+  "name": "kuma-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI agent virtual office — browser automation bridge with visual dashboard and team characters",
+  "workspaces": [
+    "packages/server",
+    "packages/studio-web"
+  ],
+  "license": "Apache-2.0",
+  "packageManager": "npm@10.9.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "kuma-studio:serve": "node ./packages/server/src/cli.mjs serve",
+    "kuma-studio:get-selection": "node ./packages/server/src/cli.mjs get-selection",
+    "kuma-studio:get-job-card": "node ./packages/server/src/cli.mjs get-job-card",
+    "kuma-studio:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status",
+    "kuma-studio:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
+    "kuma-studio:run": "node ./packages/server/src/cli.mjs run",
+    "kuma-studio:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
+    "kuma-studio:dashboard": "open http://localhost:4312/studio",
+    "dev:studio": "npm run dev --workspace=studio-web",
+    "build:studio": "npm run build --workspace=studio-web",
+    "test": "vitest run --passWithNoTests",
+    "skill:install": "node ./scripts/install.mjs",
+    "skill:doctor": "node ./scripts/doctor.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}
