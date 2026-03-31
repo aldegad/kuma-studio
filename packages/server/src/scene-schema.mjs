@@ -8,6 +8,11 @@ const DEFAULT_SCENE = {
 };
 
 const ALLOWED_VIEWPORTS = new Set(["desktop", "mobile", "original", "mark"]);
+const DEFAULT_OFFICE_LAYOUT = {
+  background: "woodland-office",
+  characters: [],
+  furniture: [],
+};
 
 export function createEmptyScene() {
   return structuredClone(DEFAULT_SCENE);
@@ -20,6 +25,46 @@ export function normalizeViewport(value) {
 
 export function currentTimestamp() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+export function createEmptyOfficeLayout() {
+  return structuredClone(DEFAULT_OFFICE_LAYOUT);
+}
+
+export function ensureOfficeLayoutShape(layout) {
+  if (layout == null) {
+    return createEmptyOfficeLayout();
+  }
+
+  if (typeof layout !== "object" || Array.isArray(layout)) {
+    throw new Error("Office layout must be an object");
+  }
+
+  const background = typeof layout.background === "string" && layout.background.trim()
+    ? layout.background
+    : DEFAULT_OFFICE_LAYOUT.background;
+
+  if (!Array.isArray(layout.characters)) {
+    throw new Error("Office layout characters must be an array");
+  }
+
+  if (!Array.isArray(layout.furniture)) {
+    throw new Error("Office layout furniture must be an array");
+  }
+
+  return {
+    background,
+    characters: layout.characters.map((character) => ({
+      id: String(character?.id ?? ""),
+      position: ensureOfficePosition(character?.position),
+    })),
+    furniture: layout.furniture.map((furniture) => ({
+      id: String(furniture?.id ?? ""),
+      type: typeof furniture?.type === "string" && furniture.type.trim() ? furniture.type : "item",
+      position: ensureOfficePosition(furniture?.position),
+      imageUrl: typeof furniture?.imageUrl === "string" ? furniture.imageUrl : "",
+    })),
+  };
 }
 
 export function ensureSceneShape(scene) {
@@ -44,6 +89,10 @@ export function ensureSceneShape(scene) {
     normalizedMeta.selectedStudyId = null;
   } else if (typeof meta.selectedStudyId === "string") {
     normalizedMeta.selectedStudyId = meta.selectedStudyId;
+  }
+
+  if (meta.officeLayout != null) {
+    normalizedMeta.officeLayout = ensureOfficeLayoutShape(meta.officeLayout);
   }
 
   if (!Array.isArray(scene.nodes)) {
@@ -88,6 +137,17 @@ export function ensureSceneShape(scene) {
     version,
     meta: normalizedMeta,
     nodes: normalizedNodes.sort((left, right) => left.zIndex - right.zIndex),
+  };
+}
+
+function ensureOfficePosition(position) {
+  if (!position || typeof position !== "object" || Array.isArray(position)) {
+    return { x: 0, y: 0 };
+  }
+
+  return {
+    x: typeof position.x === "number" && Number.isFinite(position.x) ? position.x : 0,
+    y: typeof position.y === "number" && Number.isFinite(position.y) ? position.y : 0,
   };
 }
 

@@ -1,9 +1,13 @@
 import { useDashboardStore } from "../../stores/use-dashboard-store";
+import { KUMA_TEAM } from "../../types/agent";
 import { AgentAvatar } from "../shared/AgentAvatar";
 
 export function AceAgentWidget() {
   const aceAgent = useDashboardStore((s) => s.stats.aceAgent);
   const tokensByAgent = useDashboardStore((s) => s.stats.tokensByAgent);
+  const aceAgentName = aceAgent
+    ? KUMA_TEAM.find((agent) => agent.id === aceAgent.id)?.name ?? aceAgent.name
+    : null;
 
   const agentEntries = Object.entries(tokensByAgent)
     .sort(([, a], [, b]) => b - a)
@@ -17,9 +21,9 @@ export function AceAgentWidget() {
       <div className="p-5">
         {aceAgent ? (
           <div className="mb-4 flex items-center gap-3 rounded-lg bg-amber-50 p-4">
-            <AgentAvatar name={aceAgent.name} size="lg" />
+            <AgentAvatar name={aceAgentName ?? aceAgent.name} size="lg" />
             <div>
-              <p className="text-sm font-bold text-amber-900">{aceAgent.name}</p>
+              <p className="text-sm font-bold text-amber-900">{aceAgentName}</p>
               <p className="text-xs text-amber-700">
                 Score: {aceAgent.score.toFixed(1)}
               </p>
@@ -36,7 +40,9 @@ export function AceAgentWidget() {
             <p className="text-xs font-medium text-stone-500 uppercase">Top Agents by Tokens</p>
             {agentEntries.map(([agent, tokens]) => (
               <div key={agent} className="flex items-center justify-between text-sm">
-                <span className="text-stone-700">{agent}</span>
+                <span className="text-stone-700">
+                  {KUMA_TEAM.find((member) => member.id === agent)?.name ?? agent}
+                </span>
                 <span className="text-stone-500">{tokens.toLocaleString()}</span>
               </div>
             ))}

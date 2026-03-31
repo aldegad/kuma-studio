@@ -1,7 +1,9 @@
 import { useEffect } from "react";
+import { fetchJobCards } from "../lib/api";
 import { useWsStore } from "../stores/use-ws-store";
 import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
+import type { JobCard } from "../types/job-card";
 
 interface StudioEvent {
   type: "kuma-studio:event";
@@ -10,17 +12,36 @@ interface StudioEvent {
     | { kind: "agent-state-change"; agentId: string; state: import("../types/agent").AgentState }
     | { kind: "token-usage"; agentId: string; tokens: number; model: string }
     | { kind: "stats-snapshot"; stats: import("../types/stats").DashboardStats }
-    | { kind: "office-scene-update"; scene: import("../types/office").OfficeScene };
+    | { kind: "office-layout-update"; layout: import("../types/office").OfficeLayoutSnapshot };
 }
 
 export function useWebSocket() {
   const { connect, ws, status } = useWsStore();
-  const { addJob, updateJob, setStats, addTokenUsage } = useDashboardStore();
-  const { updateCharacterState, setScene } = useOfficeStore();
+  const { upsertJob, setJobs, setStats, addTokenUsage } = useDashboardStore();
+  const { updateCharacterState, applyLayout } = useOfficeStore();
 
   useEffect(() => {
     connect();
   }, [connect]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const jobs = await fetchJobCards();
+        if (!cancelled && Array.isArray(jobs)) {
+          setJobs(jobs as JobCard[]);
+        }
+      } catch {
+        // Live updates over websocket will still populate the feed.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setJobs]);
 
   useEffect(() => {
     if (!ws) return;
@@ -33,7 +54,7 @@ export function useWebSocket() {
         const evt = data.event;
         switch (evt.kind) {
           case "job-card-update":
-            updateJob(evt.card);
+            upsertJob(evt.card);
             break;
           case "agent-state-change":
             updateCharacterState(evt.agentId, evt.state);
@@ -49,8 +70,8 @@ export function useWebSocket() {
           case "stats-snapshot":
             setStats(evt.stats);
             break;
-          case "office-scene-update":
-            setScene(evt.scene);
+          case "office-layout-update":
+            applyLayout(evt.layout);
             break;
         }
       } catch {
@@ -60,7 +81,7 @@ export function useWebSocket() {
 
     ws.addEventListener("message", handleMessage);
     return () => ws.removeEventListener("message", handleMessage);
-  }, [ws, addJob, updateJob, setStats, addTokenUsage, updateCharacterState, setScene]);
+  }, [ws, upsertJob, setStats, addTokenUsage, updateCharacterState, applyLayout]);
 
   return { status };
 }

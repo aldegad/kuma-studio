@@ -1,6 +1,12 @@
 import { mkdirSync, readFileSync, watchFile, unwatchFile, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { createEmptyScene, currentTimestamp, ensureSceneShape } from "./scene-schema.mjs";
+import {
+  createEmptyOfficeLayout,
+  createEmptyScene,
+  currentTimestamp,
+  ensureOfficeLayoutShape,
+  ensureSceneShape,
+} from "./scene-schema.mjs";
 import { resolveKumaPickerStateDir } from "./state-home.mjs";
 
 export class SceneStore {
@@ -51,6 +57,21 @@ export class SceneStore {
     return normalized;
   }
 
+  readOfficeLayout() {
+    const scene = this.read();
+    return ensureOfficeLayoutShape(scene.meta?.officeLayout ?? createEmptyOfficeLayout());
+  }
+
+  writeOfficeLayout(layout, source = "studio-office-layout") {
+    const scene = this.read();
+    scene.meta = {
+      ...scene.meta,
+      officeLayout: ensureOfficeLayoutShape(layout),
+    };
+    const next = this.write(scene, source);
+    return ensureOfficeLayoutShape(next.meta?.officeLayout ?? createEmptyOfficeLayout());
+  }
+
   addNode(node) {
     const scene = this.read();
     scene.nodes.push(node);
@@ -84,6 +105,10 @@ export class SceneStore {
 
     if ("selectedStudyId" in updates) {
       nextMeta.selectedStudyId = updates.selectedStudyId == null ? null : String(updates.selectedStudyId);
+    }
+
+    if ("officeLayout" in updates) {
+      nextMeta.officeLayout = ensureOfficeLayoutShape(updates.officeLayout);
     }
 
     scene.meta = nextMeta;

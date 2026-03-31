@@ -15,7 +15,6 @@ export class StatsStore {
   #db = null;
   #inMemoryJobEvents = [];
   #inMemoryTokenUsage = [];
-  #inMemoryAgentSessions = [];
 
   /**
    * @param {string} [dbPath] path to SQLite database file. If omitted, runs in-memory only.
@@ -67,9 +66,6 @@ export class StatsStore {
     `);
   }
 
-  /**
-   * Record a job event.
-   */
   recordJobEvent({ jobId, sessionId, agentId, status, message, tokensUsed = 0, model = null }) {
     const entry = { jobId, sessionId, agentId, status, message, tokensUsed, model, createdAt: new Date().toISOString() };
 
@@ -85,9 +81,6 @@ export class StatsStore {
     }
   }
 
-  /**
-   * Record token usage.
-   */
   recordTokenUsage({ agentId, model, tokens }) {
     if (this.#db) {
       this.#db
@@ -98,57 +91,203 @@ export class StatsStore {
     }
   }
 
-  /**
-   * Get dashboard statistics snapshot.
-   * @returns {object}
-   */
   getStats() {
-    if (this.#db) {
-      const jobStats = this.#db
-        .prepare(
-          `SELECT
-             COUNT(*) as totalJobs,
-             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completedJobs,
-             SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as inProgressJobs,
-             SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errorJobs,
-             SUM(tokens_used) as totalTokens
-           FROM job_events`,
-        )
-        .get();
-
-      return {
-        totalJobs: jobStats.totalJobs ?? 0,
-        completedJobs: jobStats.completedJobs ?? 0,
-        inProgressJobs: jobStats.inProgressJobs ?? 0,
-        errorJobs: jobStats.errorJobs ?? 0,
-        totalTokens: jobStats.totalTokens ?? 0,
-        tokensByModel: {},
-        tokensByAgent: {},
-        aceAgent: null,
-      };
-    }
-
-    // In-memory fallback
-    const events = this.#inMemoryJobEvents;
+    const aggregate = buildAggregateSnapshot(this.#readJobEvents(), this.#readTokenUsage());
     return {
-      totalJobs: events.length,
-      completedJobs: events.filter((e) => e.status === "completed").length,
-      inProgressJobs: events.filter((e) => e.status === "in_progress").length,
-      errorJobs: events.filter((e) => e.status === "error").length,
-      totalTokens: events.reduce((s, e) => s + (e.tokensUsed ?? 0), 0),
-      tokensByModel: {},
-      tokensByAgent: {},
-      aceAgent: null,
+      totalJobs: aggregate.totalJobs,
+      completedJobs: aggregate.completedJobs,
+      inProgressJobs: aggregate.inProgressJobs,
+      errorJobs: aggregate.errorJobs,
+      totalTokens: aggregate.totalTokens,
+      tokensByModel: aggregate.tokensByModel,
+      tokensByAgent: aggregate.tokensByAgent,
+      aceAgent: aggregate.aceAgent,
     };
   }
 
-  /**
-   * Close the database connection.
-   */
+  getDailyReport() {
+    const today = startOfToday();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const aggregate = buildAggregateSnapshot(
+      this.#readJobEvents().filter((event) => isWithinDay(event.createdAt, today, tomorrow)),
+      this.#readTokenUsage().filter((entry) => isWithinDay(entry.recordedAt, today, tomorrow)),
+    );
+
+    const completionRate = aggregate.totalJobs > 0
+      ? (aggregate.completedJobs / aggregate.totalJobs) * 100
+      : 0;
+
+    return {
+      date: formatLocalDate(today),
+      totalTasks: aggregate.totalJobs,
+      completedTasks: aggregate.completedJobs,
+      completionRate,
+      tokenConsumption: aggregate.totalTokens,
+      mvpAgent: aggregate.mvpAgent
+        ? {
+            id: aggregate.mvpAgent.id,
+            completedTasks: aggregate.aceAgentCompletedJobs,
+            totalTokens: aggregate.tokensByAgent[aggregate.mvpAgent.id] ?? 0,
+          }
+        : null,
+    };
+  }
+
   close() {
     if (this.#db) {
       this.#db.close();
       this.#db = null;
     }
   }
+
+  #readJobEvents() {
+    if (!this.#db) {
+      return this.#inMemoryJobEvents;
+    }
+
+    return this.#db
+      .prepare(
+        `SELECT
+          job_id AS jobId,
+          session_id AS sessionId,
+          agent_id AS agentId,
+          status,
+          message,
+          created_at AS createdAt,
+          tokens_used AS tokensUsed,
+          model
+        FROM job_events
+        ORDER BY created_at ASC, id ASC`,
+      )
+      .all()
+      .map((entry) => ({
+        ...entry,
+        createdAt: normalizeDbTimestamp(entry.createdAt),
+        tokensUsed: Number(entry.tokensUsed ?? 0),
+      }));
+  }
+
+  #readTokenUsage() {
+    if (!this.#db) {
+      return this.#inMemoryTokenUsage;
+    }
+
+    return this.#db
+      .prepare(
+        `SELECT
+          agent_id AS agentId,
+          model,
+          tokens,
+          recorded_at AS recordedAt
+        FROM token_usage
+        ORDER BY recorded_at ASC, id ASC`,
+      )
+      .all()
+      .map((entry) => ({
+        ...entry,
+        recordedAt: normalizeDbTimestamp(entry.recordedAt),
+        tokens: Number(entry.tokens ?? 0),
+      }));
+  }
+}
+
+function buildAggregateSnapshot(jobEvents, tokenEntries) {
+  const latestJobs = new Map();
+  const completedJobsByAgent = {};
+  const tokensByAgent = {};
+  const tokensByModel = {};
+
+  for (const event of jobEvents) {
+    if (!event?.jobId) {
+      continue;
+    }
+
+    latestJobs.set(event.jobId, event);
+  }
+
+  for (const entry of tokenEntries) {
+    if (typeof entry?.agentId === "string" && entry.agentId) {
+      tokensByAgent[entry.agentId] = (tokensByAgent[entry.agentId] ?? 0) + Number(entry.tokens ?? 0);
+    }
+
+    if (typeof entry?.model === "string" && entry.model) {
+      tokensByModel[entry.model] = (tokensByModel[entry.model] ?? 0) + Number(entry.tokens ?? 0);
+    }
+  }
+
+  let completedJobs = 0;
+  let inProgressJobs = 0;
+  let errorJobs = 0;
+
+  for (const event of latestJobs.values()) {
+    if (event.status === "completed") {
+      completedJobs += 1;
+      if (typeof event.agentId === "string" && event.agentId) {
+        completedJobsByAgent[event.agentId] = (completedJobsByAgent[event.agentId] ?? 0) + 1;
+      }
+    } else if (event.status === "in_progress") {
+      inProgressJobs += 1;
+    } else if (event.status === "error") {
+      errorJobs += 1;
+    }
+  }
+
+  const aceAgentId = Object.keys(completedJobsByAgent).sort((left, right) => {
+    const completedDiff = (completedJobsByAgent[right] ?? 0) - (completedJobsByAgent[left] ?? 0);
+    if (completedDiff !== 0) {
+      return completedDiff;
+    }
+
+    return (tokensByAgent[right] ?? 0) - (tokensByAgent[left] ?? 0);
+  })[0] ?? null;
+
+  const aceAgentScore = aceAgentId
+    ? (completedJobsByAgent[aceAgentId] ?? 0) * 10 + (tokensByAgent[aceAgentId] ?? 0) / 1000
+    : null;
+
+  return {
+    totalJobs: latestJobs.size,
+    completedJobs,
+    inProgressJobs,
+    errorJobs,
+    totalTokens: Object.values(tokensByModel).reduce((sum, value) => sum + value, 0),
+    tokensByModel,
+    tokensByAgent,
+    aceAgentCompletedJobs: aceAgentId ? completedJobsByAgent[aceAgentId] ?? 0 : 0,
+    aceAgent: aceAgentId
+      ? {
+          id: aceAgentId,
+          name: aceAgentId,
+          score: aceAgentScore ?? 0,
+        }
+      : null,
+  };
+}
+
+function normalizeDbTimestamp(value) {
+  if (typeof value !== "string" || !value) {
+    return new Date().toISOString();
+  }
+
+  return value.includes("T") ? value : `${value.replace(" ", "T")}Z`;
+}
+
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
+function isWithinDay(value, start, end) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date >= start && date < end;
+}
+
+function formatLocalDate(date) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

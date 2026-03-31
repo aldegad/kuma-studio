@@ -11,7 +11,7 @@ export function Whiteboard({ position }: WhiteboardProps) {
 
   return (
     <div
-      className="absolute rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"
+      className="pointer-events-none absolute rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"
       style={{
         left: position.x,
         top: position.y,

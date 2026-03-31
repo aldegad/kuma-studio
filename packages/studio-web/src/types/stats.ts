@@ -15,3 +15,16 @@ export interface TokenUsageEntry {
   tokens: number;
   recordedAt: string;
 }
+
+export interface DailyReport {
+  date: string;
+  totalTasks: number;
+  completedTasks: number;
+  completionRate: number;
+  tokenConsumption: number;
+  mvpAgent: {
+    id: string;
+    completedTasks: number;
+    totalTokens: number;
+  } | null;
+}

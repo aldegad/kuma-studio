@@ -1,38 +1,54 @@
 import { create } from "zustand";
-import type { OfficeScene, OfficeCharacter, OfficeFurniture } from "../types/office";
+import type { OfficeLayoutSnapshot, OfficeScene } from "../types/office";
 import type { AgentState } from "../types/agent";
-import { KUMA_TEAM } from "../types/agent";
+import { DEFAULT_OFFICE_SCENE } from "../lib/office-scene";
 
 interface OfficeState {
   scene: OfficeScene;
   setScene: (scene: OfficeScene) => void;
+  applyLayout: (layout: OfficeLayoutSnapshot) => void;
   updateCharacterState: (characterId: string, state: AgentState) => void;
+  updateCharacterPosition: (characterId: string, position: { x: number; y: number }) => void;
+  updateFurniturePosition: (furnitureId: string, position: { x: number; y: number }) => void;
 }
 
-const defaultCharacters: OfficeCharacter[] = KUMA_TEAM.map((agent, i) => ({
-  ...agent,
-  position: { x: 80 + (i % 4) * 200, y: 120 + Math.floor(i / 4) * 160 },
-  spriteSheet: "",
-}));
-
-const defaultFurniture: OfficeFurniture[] = [
-  { id: "desk-1", type: "desk", position: { x: 100, y: 200 }, imageUrl: "" },
-  { id: "desk-2", type: "desk", position: { x: 300, y: 200 }, imageUrl: "" },
-  { id: "desk-3", type: "desk", position: { x: 500, y: 200 }, imageUrl: "" },
-  { id: "desk-4", type: "desk", position: { x: 700, y: 200 }, imageUrl: "" },
-  { id: "whiteboard-1", type: "whiteboard", position: { x: 400, y: 50 }, imageUrl: "" },
-  { id: "plant-1", type: "plant", position: { x: 50, y: 50 }, imageUrl: "" },
-  { id: "plant-2", type: "plant", position: { x: 850, y: 50 }, imageUrl: "" },
-];
-
 export const useOfficeStore = create<OfficeState>((set) => ({
-  scene: {
-    characters: defaultCharacters,
-    furniture: defaultFurniture,
-    background: "woodland-office",
-  },
+  scene: DEFAULT_OFFICE_SCENE,
 
   setScene: (scene) => set({ scene }),
+
+  applyLayout: (layout) =>
+    set((prev) => {
+      const characterPositions = new Map(layout.characters.map((character) => [character.id, character.position]));
+      const furnitureById = new Map(layout.furniture.map((furniture) => [furniture.id, furniture]));
+      const knownFurnitureIds = new Set(prev.scene.furniture.map((furniture) => furniture.id));
+      const appendedFurniture = layout.furniture.filter((furniture) => !knownFurnitureIds.has(furniture.id));
+
+      return {
+        scene: {
+          ...prev.scene,
+          background: layout.background,
+          characters: prev.scene.characters.map((character) => {
+            const position = characterPositions.get(character.id);
+            return position ? { ...character, position } : character;
+          }),
+          furniture: [
+            ...prev.scene.furniture.map((furniture) => {
+              const nextFurniture = furnitureById.get(furniture.id);
+              return nextFurniture
+                ? {
+                    ...furniture,
+                    type: nextFurniture.type,
+                    position: nextFurniture.position,
+                    imageUrl: nextFurniture.imageUrl,
+                  }
+                : furniture;
+            }),
+            ...appendedFurniture,
+          ],
+        },
+      };
+    }),
 
   updateCharacterState: (characterId, state) =>
     set((prev) => ({
@@ -40,6 +56,26 @@ export const useOfficeStore = create<OfficeState>((set) => ({
         ...prev.scene,
         characters: prev.scene.characters.map((c) =>
           c.id === characterId ? { ...c, state } : c,
+        ),
+      },
+    })),
+
+  updateCharacterPosition: (characterId, position) =>
+    set((prev) => ({
+      scene: {
+        ...prev.scene,
+        characters: prev.scene.characters.map((character) =>
+          character.id === characterId ? { ...character, position } : character,
+        ),
+      },
+    })),
+
+  updateFurniturePosition: (furnitureId, position) =>
+    set((prev) => ({
+      scene: {
+        ...prev.scene,
+        furniture: prev.scene.furniture.map((furniture) =>
+          furniture.id === furnitureId ? { ...furniture, position } : furniture,
         ),
       },
     })),

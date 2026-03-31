@@ -1,5 +1,10 @@
 import type { AgentState } from "./agent";
 
+export interface OfficePosition {
+  x: number;
+  y: number;
+}
+
 export interface OfficeCharacter {
   id: string;
   name: string;
@@ -7,19 +12,25 @@ export interface OfficeCharacter {
   role: string;
   team: string;
   state: AgentState;
-  position: { x: number; y: number };
+  position: OfficePosition;
   spriteSheet: string;
 }
 
 export interface OfficeFurniture {
   id: string;
   type: "desk" | "chair" | "whiteboard" | "plant" | "coffee" | string;
-  position: { x: number; y: number };
+  position: OfficePosition;
   imageUrl: string;
 }
 
 export interface OfficeScene {
   characters: OfficeCharacter[];
+  furniture: OfficeFurniture[];
+  background: string;
+}
+
+export interface OfficeLayoutSnapshot {
+  characters: Array<Pick<OfficeCharacter, "id" | "position">>;
   furniture: OfficeFurniture[];
   background: string;
 }

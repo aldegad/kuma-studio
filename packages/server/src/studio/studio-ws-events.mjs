@@ -77,13 +77,13 @@ export class StudioWsEvents {
   }
 
   /**
-   * Broadcast an office scene update.
-   * @param {object} scene
+   * Broadcast an office layout update.
+   * @param {object} layout
    */
-  broadcastOfficeSceneUpdate(scene) {
+  broadcastOfficeLayoutUpdate(layout) {
     this.#broadcast({
       type: "kuma-studio:event",
-      event: { kind: "office-scene-update", scene },
+      event: { kind: "office-layout-update", layout },
     });
   }
 

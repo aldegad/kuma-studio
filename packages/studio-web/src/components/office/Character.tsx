@@ -1,17 +1,23 @@
+import type { MouseEvent } from "react";
 import type { OfficeCharacter } from "../../types/office";
 import { CharacterSprite } from "./CharacterSprite";
 import { STATE_COLORS } from "../../lib/constants";
 
 interface CharacterProps {
   character: OfficeCharacter;
+  isDragging?: boolean;
+  onDragStart?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
-export function Character({ character }: CharacterProps) {
+export function Character({ character, isDragging = false, onDragStart }: CharacterProps) {
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
 
   return (
     <div
-      className="absolute flex flex-col items-center transition-all duration-500 ease-in-out"
+      className={`absolute flex select-none flex-col items-center transition-all duration-500 ease-in-out ${
+        isDragging ? "z-20 cursor-grabbing" : "cursor-grab"
+      }`}
+      onMouseDown={onDragStart}
       style={{
         left: character.position.x,
         top: character.position.y,

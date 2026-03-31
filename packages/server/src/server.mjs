@@ -8,6 +8,7 @@ import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mj
 import { DevSelectionStore } from "./dev-selection-store.mjs";
 import { buildJobCardFromSelection, JobCardStore } from "./job-card-store.mjs";
 import { SceneStore, watchSceneFile } from "./scene-store.mjs";
+import { ensureOfficeLayoutShape } from "./scene-schema.mjs";
 import {
   SceneEventBroker,
   buildBrowserSessionResponse,
@@ -29,9 +30,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export function createServer({ host, port, root }) {
   const broker = new SceneEventBroker();
+  const studioWsEvents = new StudioWsEvents();
+  let lastOfficeLayoutSignature = "";
   const store = new SceneStore(root, {
     onChange(scene, source) {
       broker.publishScene(scene, source);
+      broadcastOfficeLayout(scene.meta?.officeLayout, source);
     },
   });
   const selectionStore = new DevSelectionStore(root);
@@ -40,7 +44,6 @@ export function createServer({ host, port, root }) {
   const browserSessionStore = new BrowserSessionStore();
 
   // --- Studio extensions ---
-  const studioWsEvents = new StudioWsEvents();
   const statsStore = new StatsStore(resolve(root, ".kuma-studio", "stats.db"));
   const agentStateManager = new AgentStateManager();
   const tokenTracker = new TokenTracker();
@@ -57,13 +60,16 @@ export function createServer({ host, port, root }) {
 
   // Studio web static files path
   const studioStaticDir = resolve(__dirname, "../../studio-web/dist");
-  const handleStudioRoute = createStudioRouteHandler({ staticDir: studioStaticDir, statsStore });
+  const handleStudioRoute = createStudioRouteHandler({ staticDir: studioStaticDir, statsStore, sceneStore: store });
 
   store.ensure();
-  broker.publishScene(store.read(), "startup");
+  const initialScene = store.read();
+  broker.publishScene(initialScene, "startup");
+  broadcastOfficeLayout(initialScene.meta?.officeLayout, "startup");
 
   const stopWatching = watchSceneFile(store, (scene, source) => {
     broker.publishScene(scene, source);
+    broadcastOfficeLayout(scene.meta?.officeLayout, source);
   });
   const socketServer = new WebSocketServer({ noServer: true });
   const socketStates = new Map();
@@ -87,6 +93,21 @@ export function createServer({ host, port, root }) {
   function disconnectSocket(connectionId) {
     socketStates.delete(connectionId);
     browserSessionStore.disconnect(connectionId);
+  }
+
+  function broadcastOfficeLayout(layout, source) {
+    if (layout == null) {
+      return;
+    }
+
+    const normalized = ensureOfficeLayoutShape(layout);
+    const signature = JSON.stringify(normalized);
+    if (signature === lastOfficeLayoutSignature && source !== "studio-layout-drag") {
+      return;
+    }
+
+    lastOfficeLayoutSignature = signature;
+    studioWsEvents.broadcastOfficeLayoutUpdate(normalized);
   }
 
   function publishJobCard(card, source, deleted = false) {
@@ -285,7 +306,7 @@ export function createServer({ host, port, root }) {
     }
 
     // --- Studio routes (static files + API) ---
-    if (handleStudioRoute(request, response)) {
+    if (await handleStudioRoute(request, response)) {
       return;
     }
 
@@ -522,8 +543,24 @@ export function createServer({ host, port, root }) {
     if (url.pathname === "/studio/ws") {
       socketServer.handleUpgrade(request, socket, head, (websocket) => {
         studioWsEvents.addClient(websocket);
-        // Send initial stats snapshot
-        studioWsEvents.broadcastStatsSnapshot(statsStore.getStats());
+        websocket.on("message", (rawMessage) => {
+          try {
+            const message = readSocketJson(rawMessage);
+            if (message?.type === "kuma-studio:layout-update") {
+              broadcastOfficeLayout(message.layout, "studio-layout-drag");
+            }
+          } catch {
+            // Ignore malformed studio client messages.
+          }
+        });
+        sendSocketJson(websocket, {
+          type: "kuma-studio:event",
+          event: { kind: "stats-snapshot", stats: statsStore.getStats() },
+        });
+        sendSocketJson(websocket, {
+          type: "kuma-studio:event",
+          event: { kind: "office-layout-update", layout: store.readOfficeLayout() },
+        });
       });
       return;
     }

@@ -1,10 +1,11 @@
 /**
  * Studio HTTP routes -- serves the studio-web static files
- * and provides REST API endpoints for stats.
+ * and provides REST API endpoints for stats and office layout state.
  */
 
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { resolve, join, extname } from "node:path";
+import { readJsonBody, sendJson } from "../server-support.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -22,34 +23,42 @@ const MIME_TYPES = {
 };
 
 /**
- * Attach studio routes to an existing HTTP server request handler.
- *
  * @param {object} options
- * @param {string} options.staticDir - absolute path to the studio-web dist directory
+ * @param {string} options.staticDir
  * @param {import("./stats-store.mjs").StatsStore} options.statsStore
- * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => boolean}
- *   Returns true if the request was handled, false otherwise.
+ * @param {import("../scene-store.mjs").SceneStore} options.sceneStore
+ * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
-export function createStudioRouteHandler({ staticDir, statsStore }) {
-  return (req, res) => {
+export function createStudioRouteHandler({ staticDir, statsStore, sceneStore }) {
+  return async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
-    // REST API: stats endpoint
     if (url.pathname === "/studio/stats" && req.method === "GET") {
-      const stats = statsStore.getStats();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(stats));
+      sendJson(res, 200, statsStore.getStats());
       return true;
     }
 
-    // Static file serving for /studio/*
+    if (url.pathname === "/studio/daily-report" && req.method === "GET") {
+      sendJson(res, 200, statsStore.getDailyReport());
+      return true;
+    }
+
+    if (url.pathname === "/studio/office-layout" && req.method === "GET") {
+      sendJson(res, 200, sceneStore.readOfficeLayout());
+      return true;
+    }
+
+    if (url.pathname === "/studio/office-layout" && req.method === "PUT") {
+      sendJson(res, 200, sceneStore.writeOfficeLayout(await readJsonBody(req)));
+      return true;
+    }
+
     if (url.pathname.startsWith("/studio")) {
       let filePath = url.pathname.replace(/^\/studio\/?/, "");
       if (!filePath || filePath === "") filePath = "index.html";
 
       const fullPath = resolve(join(staticDir, filePath));
 
-      // Security: ensure we're not escaping the static dir
       if (!fullPath.startsWith(staticDir)) {
         res.writeHead(403);
         res.end("Forbidden");
@@ -65,7 +74,6 @@ export function createStudioRouteHandler({ staticDir, statsStore }) {
         return true;
       }
 
-      // SPA fallback: serve index.html for client-side routing
       const indexPath = resolve(join(staticDir, "index.html"));
       if (existsSync(indexPath)) {
         const content = readFileSync(indexPath);
