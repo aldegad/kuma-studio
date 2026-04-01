@@ -7,6 +7,7 @@ import { STATE_COLORS, STATE_LABELS_KO } from "../../lib/constants";
 interface CharacterProps {
   character: OfficeCharacter;
   isDragging?: boolean;
+  speechBubble?: string;
   onDragStart?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
@@ -27,7 +28,7 @@ function modelShortName(model: string | undefined): string | null {
   return model;
 }
 
-export function Character({ character, isDragging = false, onDragStart, onDoubleClick }: CharacterProps) {
+export function Character({ character, isDragging = false, speechBubble, onDragStart, onDoubleClick }: CharacterProps) {
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
   const stateLabel = STATE_LABELS_KO[character.state] ?? character.state;
   const teamMember = KUMA_TEAM.find((m) => m.id === character.id);
@@ -52,6 +53,14 @@ export function Character({ character, isDragging = false, onDragStart, onDouble
         animation: isDragging ? "none" : `float-idle ${2.5 + (character.id.charCodeAt(0) % 5) * 0.3}s ease-in-out infinite`,
       }}
     >
+      {/* Speech bubble */}
+      {speechBubble && (
+        <div className="mb-1 max-w-32 rounded-lg bg-white/95 border border-stone-200 px-2 py-1 shadow-sm relative">
+          <p className="text-[8px] text-stone-600 leading-tight truncate">{speechBubble}</p>
+          <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white/95 border-r border-b border-stone-200 rotate-45" />
+        </div>
+      )}
+
       {/* Card container */}
       <div className="flex w-30 flex-col items-center rounded-xl border border-white/50 bg-white/80 p-2 shadow-md backdrop-blur-sm hover:shadow-lg hover:bg-white/90 transition-shadow duration-200">
         {/* Avatar */}

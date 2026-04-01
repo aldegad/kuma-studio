@@ -434,6 +434,11 @@ export function StudioPage() {
               key={character.id}
               character={character}
               isDragging={dragState?.kind === "character" && dragState.id === character.id}
+              speechBubble={
+                PIPELINE_STAGE_ORDER.flatMap((s) => stages[s])
+                  .find((a) => a.id === character.id && a.status === "working")
+                  ?.currentTask
+              }
               onDoubleClick={(event) => {
                 event.stopPropagation();
                 const container = containerRef.current;
