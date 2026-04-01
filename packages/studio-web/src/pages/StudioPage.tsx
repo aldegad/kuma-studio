@@ -195,13 +195,15 @@ export function StudioPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const poll = async () => {
       try {
         const [s, report] = await Promise.all([fetchStats(), fetchDailyReport()]);
         if (!cancelled) { setStats(s); setDailyReport(report); }
       } catch { /* live via websocket */ }
-    })();
-    return () => { cancelled = true; };
+    };
+    void poll();
+    const timer = setInterval(poll, 30_000); // refresh every 30s
+    return () => { cancelled = true; clearInterval(timer); };
   }, [setDailyReport, setStats]);
 
   useEffect(() => {
