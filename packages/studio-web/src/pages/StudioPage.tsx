@@ -22,6 +22,7 @@ import { Whiteboard } from "../components/office/Whiteboard";
 import { SkillsPanel } from "../components/dashboard/SkillsPanel";
 import { ToastContainer, pushToast } from "../components/shared/Toast";
 import { ActivityFeed } from "../components/shared/ActivityFeed";
+import { AmbientParticles } from "../components/office/AmbientParticles";
 import { useActivityStore } from "../stores/use-activity-store";
 
 // ---------------------------------------------------------------------------
@@ -464,6 +465,9 @@ export function StudioPage() {
   return (
     <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: ambientBg, transition: "background 60s ease" }}>
 
+      {/* Ambient particles — subtle floating effect */}
+      <AmbientParticles isNight={isNight} />
+
       {/* ------------------------------------------------------------------ */}
       {/* Office canvas — full background with zoom/pan                       */}
       {/* ------------------------------------------------------------------ */}
@@ -610,6 +614,9 @@ export function StudioPage() {
           <span className={`text-lg font-black tracking-tight ${isNight ? "text-amber-200" : "text-amber-900"}`}>쿠마 스튜디오</span>
           <span className={`text-xs font-medium hidden sm:inline ${isNight ? "text-indigo-300" : "text-stone-400"}`}>가상 사무실</span>
           <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5">{scene.characters.length}명</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isNight ? "bg-indigo-800 text-indigo-300" : "bg-sky-100 text-sky-700"}`}>
+            {isNight ? "🌙" : hour < 12 ? "☀️" : "🌤️"} {String(hour).padStart(2, "0")}:{String(new Date().getMinutes()).padStart(2, "0")}
+          </span>
           <button onClick={() => setShowHelp(true)} className={`rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold ${isNight ? "bg-indigo-800 text-indigo-300 hover:bg-indigo-700" : "bg-stone-100 text-stone-400 hover:bg-stone-200"}`} title="단축키 도움말 (?)">?</button>
         </div>
 
