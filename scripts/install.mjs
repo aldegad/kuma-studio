@@ -5,7 +5,7 @@
  *
  * Installs:
  *   1. npm dependencies
- *   2. Skill files → ~/.claude/skills/{kuma,dev-team,analytics-team,strategy-team}
+ *   2. Skill files → ~/.claude/skills/{kuma,dev-team,analytics-team,strategy-team}/skill.md
  *   3. State directory → ~/.kuma-picker/
  *   4. Team metadata → ~/.kuma-picker/team.json
  *   5. Studio-web production build
@@ -14,10 +14,11 @@
  *   node scripts/install.mjs [--skip-build] [--skip-deps]
  */
 
-import { existsSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { access } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
+import { dirname, relative, resolve } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -25,10 +26,23 @@ const ROOT = resolve(__dirname, "..");
 const HOME = homedir();
 
 const SKILLS = ["kuma", "dev-team", "analytics-team", "strategy-team"];
+const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
+const summary = [];
 
 function log(msg) { process.stdout.write(`  ✓ ${msg}\n`); }
 function warn(msg) { process.stdout.write(`  ⚠ ${msg}\n`); }
 function header(msg) { process.stdout.write(`\n🐻 ${msg}\n${"─".repeat(40)}\n`); }
+
+function addSummary(status, detail) {
+  summary.push({ status, detail });
+}
+
+function summarizePath(targetPath) {
+  if (targetPath.startsWith(HOME)) {
+    return `~${targetPath.slice(HOME.length)}`;
+  }
+  return relative(ROOT, targetPath) || targetPath;
+}
 
 function parseFlags(argv) {
   const flags = new Set();
@@ -38,51 +52,117 @@ function parseFlags(argv) {
   return flags;
 }
 
-function ensureDir(dir) {
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+async function pathExists(target) {
+  try {
+    await access(target);
     return true;
+  } catch {
+    return false;
   }
-  return false;
 }
 
-function installSkills() {
+async function ensureDir(dir) {
+  const existed = await pathExists(dir);
+  if (!existed) {
+    await mkdir(dir, { recursive: true });
+  }
+  return !existed;
+}
+
+async function ensureDirWithSummary(dir) {
+  const created = await ensureDir(dir);
+  if (created) {
+    log(`Created ${summarizePath(dir)}`);
+    addSummary("created", `Created directory ${summarizePath(dir)}`);
+  } else {
+    log(`${summarizePath(dir)} already exists`);
+    addSummary("skipped", `Skipped existing directory ${summarizePath(dir)}`);
+  }
+}
+
+async function copyFileIfChanged(src, dest) {
+  const srcContents = await readFile(src);
+  const destExists = await pathExists(dest);
+
+  if (destExists) {
+    const destContents = await readFile(dest);
+    if (srcContents.equals(destContents)) {
+      return "skipped";
+    }
+  }
+
+  await mkdir(dirname(dest), { recursive: true });
+  await copyFile(src, dest);
+  return destExists ? "updated" : "copied";
+}
+
+async function installSkills() {
   header("Installing skills");
-  const claudeSkillsDir = resolve(HOME, ".claude", "skills");
-  ensureDir(claudeSkillsDir);
+  const claudeDir = resolve(HOME, ".claude");
+  const claudeSkillsDir = resolve(claudeDir, "skills");
+
+  await ensureDirWithSummary(claudeDir);
+  await ensureDirWithSummary(claudeSkillsDir);
 
   for (const skill of SKILLS) {
-    const srcDir = resolve(ROOT, "skills", skill);
+    const srcFile = resolve(ROOT, ".claude", "skills", skill, "skill.md");
     const destDir = resolve(claudeSkillsDir, skill);
+    const destFile = resolve(destDir, "skill.md");
 
-    if (!existsSync(resolve(srcDir, "skill.md"))) {
-      warn(`skill source not found: skills/${skill}/skill.md — skipping`);
+    if (!(await pathExists(srcFile))) {
+      warn(`skill source not found: ${summarizePath(srcFile)} — skipping`);
+      addSummary("missing", `Missing skill source ${summarizePath(srcFile)}`);
       continue;
     }
 
-    ensureDir(destDir);
+    await ensureDirWithSummary(destDir);
 
-    // Copy all files in skill directory
-    const files = readdirSync(srcDir);
-    for (const file of files) {
-      copyFileSync(resolve(srcDir, file), resolve(destDir, file));
+    const result = await copyFileIfChanged(srcFile, destFile);
+    if (result === "copied") {
+      log(`${skill} → ${summarizePath(destFile)}`);
+      addSummary("copied", `Copied ${summarizePath(srcFile)} → ${summarizePath(destFile)}`);
+    } else if (result === "updated") {
+      log(`Updated ${skill} → ${summarizePath(destFile)}`);
+      addSummary("updated", `Updated ${summarizePath(destFile)} from ${summarizePath(srcFile)}`);
+    } else {
+      log(`${summarizePath(destFile)} already up to date`);
+      addSummary("skipped", `Skipped existing file ${summarizePath(destFile)}`);
     }
-    log(`${skill} → ${destDir}`);
   }
 }
 
-function setupStateDir() {
-  header("Setting up state directory");
-  const stateDir = resolve(HOME, ".kuma-picker");
-  const created = ensureDir(stateDir);
-  if (created) {
-    log(`Created ${stateDir}`);
-  } else {
-    log(`${stateDir} already exists`);
+async function findRepoTeamMetadata(dir = ROOT) {
+  const candidates = [
+    resolve(ROOT, ".claude", "team.json"),
+    resolve(ROOT, "team.json"),
+  ];
+
+  if (dir === ROOT) {
+    for (const candidate of candidates) {
+      if (await pathExists(candidate)) {
+        return candidate;
+      }
+    }
   }
 
-  // Write team metadata
-  const teamMetaPath = resolve(stateDir, "team.json");
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (IGNORED_DIRS.has(entry.name)) continue;
+      const found = await findRepoTeamMetadata(resolve(dir, entry.name));
+      if (found) return found;
+      continue;
+    }
+
+    if (entry.isFile() && entry.name === "team.json") {
+      return resolve(dir, entry.name);
+    }
+  }
+
+  return null;
+}
+
+async function writeDefaultTeamMetadata(dest) {
   const teamMeta = {
     name: "쿠마팀",
     version: "1.0.0",
@@ -95,50 +175,93 @@ function setupStateDir() {
     },
     updatedAt: new Date().toISOString(),
   };
-  writeFileSync(teamMetaPath, JSON.stringify(teamMeta, null, 2) + "\n");
-  log(`Team metadata → ${teamMetaPath}`);
+
+  await writeFile(dest, JSON.stringify(teamMeta, null, 2) + "\n");
+}
+
+async function setupStateDir() {
+  header("Setting up state directory");
+  const stateDir = resolve(HOME, ".kuma-picker");
+  const teamMetaPath = resolve(stateDir, "team.json");
+
+  await ensureDirWithSummary(stateDir);
+
+  const repoTeamMetadata = await findRepoTeamMetadata();
+  if (repoTeamMetadata) {
+    const result = await copyFileIfChanged(repoTeamMetadata, teamMetaPath);
+    if (result === "copied") {
+      log(`Team metadata → ${summarizePath(teamMetaPath)}`);
+      addSummary("copied", `Copied ${summarizePath(repoTeamMetadata)} → ${summarizePath(teamMetaPath)}`);
+    } else if (result === "updated") {
+      log(`Updated team metadata → ${summarizePath(teamMetaPath)}`);
+      addSummary("updated", `Updated ${summarizePath(teamMetaPath)} from ${summarizePath(repoTeamMetadata)}`);
+    } else {
+      log(`${summarizePath(teamMetaPath)} already up to date`);
+      addSummary("skipped", `Skipped existing file ${summarizePath(teamMetaPath)}`);
+    }
+    return;
+  }
+
+  if (await pathExists(teamMetaPath)) {
+    log(`${summarizePath(teamMetaPath)} already exists`);
+    addSummary("skipped", `Skipped existing file ${summarizePath(teamMetaPath)}`);
+    return;
+  }
+
+  await writeDefaultTeamMetadata(teamMetaPath);
+  log(`Created default team metadata → ${summarizePath(teamMetaPath)}`);
+  addSummary("created", `Created default metadata ${summarizePath(teamMetaPath)}`);
 }
 
 function installDeps(flags) {
   if (flags.has("skip-deps")) {
     warn("Skipping npm install (--skip-deps)");
+    addSummary("skipped", "Skipped npm install (--skip-deps)");
     return;
   }
   header("Installing dependencies");
   try {
     execSync("npm install", { cwd: ROOT, stdio: "inherit", timeout: 120_000 });
     log("Dependencies installed");
+    addSummary("completed", "Installed npm dependencies");
   } catch {
     warn("npm install failed — you may need to run it manually");
+    addSummary("warning", "npm install failed");
   }
 }
 
 function buildStudio(flags) {
   if (flags.has("skip-build")) {
     warn("Skipping build (--skip-build)");
+    addSummary("skipped", "Skipped studio build (--skip-build)");
     return;
   }
   header("Building studio-web");
   try {
     execSync("npm run build:studio", { cwd: ROOT, stdio: "inherit", timeout: 60_000 });
     log("Studio-web built successfully");
+    addSummary("completed", "Built studio-web");
   } catch {
     warn("Build failed — you can run 'npm run build:studio' manually");
+    addSummary("warning", "Studio-web build failed");
   }
 }
 
-function registerSettings() {
+async function registerSettings() {
   header("Registering settings");
   const settingsPath = resolve(HOME, ".claude", "settings.json");
   let settings = {};
-  if (existsSync(settingsPath)) {
+
+  if (await pathExists(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-    } catch { settings = {}; }
+      settings = JSON.parse(await readFile(settingsPath, "utf8"));
+    } catch {
+      settings = {};
+    }
   }
 
-  // Ensure enabledPlugins includes kuma skills
   if (!settings.enabledPlugins) settings.enabledPlugins = {};
+
   let changed = false;
   for (const skill of SKILLS) {
     const key = `${skill}@user-skills`;
@@ -149,11 +272,25 @@ function registerSettings() {
   }
 
   if (changed) {
-    ensureDir(dirname(settingsPath));
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    await mkdir(dirname(settingsPath), { recursive: true });
+    await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n");
     log("Skills registered in settings.json");
+    addSummary("updated", `Updated ${summarizePath(settingsPath)}`);
   } else {
     log("Skills already registered");
+    addSummary("skipped", `Skipped existing settings ${summarizePath(settingsPath)}`);
+  }
+}
+
+function printSummary() {
+  header("Installation summary");
+  if (summary.length === 0) {
+    process.stdout.write("  • No actions recorded\n");
+    return;
+  }
+
+  for (const entry of summary) {
+    process.stdout.write(`  • [${entry.status}] ${entry.detail}\n`);
   }
 }
 
@@ -164,9 +301,9 @@ async function main() {
   process.stdout.write("========================\n");
 
   installDeps(flags);
-  installSkills();
-  setupStateDir();
-  registerSettings();
+  await installSkills();
+  await setupStateDir();
+  await registerSettings();
   buildStudio(flags);
 
   header("Installation complete!");
@@ -185,6 +322,8 @@ ${SKILLS.map((s) => `    /claude ${s}`).join("\n")}
     3. Load unpacked → ${resolve(ROOT, "packages/browser-extension")}
 
 `);
+
+  printSummary();
 }
 
 main().catch((err) => {
