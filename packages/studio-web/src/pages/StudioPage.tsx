@@ -142,6 +142,9 @@ export function StudioPage() {
   // Pipeline HUD collapsed state
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
 
+  // Help overlay
+  const [showHelp, setShowHelp] = useState(false);
+
   // Fit-to-screen: compute zoom & pan to show all characters
   const fitToScreen = useCallback(() => {
     const container = containerRef.current;
@@ -318,6 +321,15 @@ export function StudioPage() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
+        e.preventDefault();
+        setShowHelp((v) => !v);
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowHelp(false);
+        return;
+      }
       if (!e.ctrlKey && !e.metaKey) return;
       if (e.key === "=" || e.key === "+") {
         e.preventDefault();
@@ -652,6 +664,33 @@ export function StudioPage() {
           </div>
         )}
       </div>
+
+      {/* Help overlay */}
+      {showHelp && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowHelp(false)}>
+          <div className="rounded-2xl bg-white/95 backdrop-blur-md shadow-2xl p-6 max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-sm font-bold text-stone-800 mb-3">키보드 단축키</h2>
+            <div className="space-y-1.5 text-xs text-stone-600">
+              {[
+                ["Ctrl + =", "줌 인"],
+                ["Ctrl + -", "줌 아웃"],
+                ["Ctrl + 0", "줌 초기화"],
+                ["Ctrl + 1", "전체 보기"],
+                ["드래그", "캔버스 이동"],
+                ["휠", "커서 중심 줌"],
+                ["더블클릭", "캐릭터 포커스"],
+                ["?", "이 도움말 토글"],
+              ].map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between gap-4">
+                  <kbd className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-mono font-medium text-stone-700">{key}</kbd>
+                  <span className="text-stone-500">{desc}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[10px] text-stone-400 text-center">ESC 또는 배경 클릭으로 닫기</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
