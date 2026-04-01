@@ -134,10 +134,26 @@ export function StudioPage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
 
-  // Zoom & pan state
-  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
-  const [panX, setPanX] = useState(0);
-  const [panY, setPanY] = useState(0);
+  // Zoom & pan state (restore from localStorage)
+  const [zoom, setZoom] = useState(() => {
+    const saved = localStorage.getItem("kuma-studio-zoom");
+    return saved ? Number(saved) : ZOOM_DEFAULT;
+  });
+  const [panX, setPanX] = useState(() => {
+    const saved = localStorage.getItem("kuma-studio-panX");
+    return saved ? Number(saved) : 0;
+  });
+  const [panY, setPanY] = useState(() => {
+    const saved = localStorage.getItem("kuma-studio-panY");
+    return saved ? Number(saved) : 0;
+  });
+
+  // Persist zoom/pan to localStorage
+  useEffect(() => {
+    localStorage.setItem("kuma-studio-zoom", String(zoom));
+    localStorage.setItem("kuma-studio-panX", String(panX));
+    localStorage.setItem("kuma-studio-panY", String(panY));
+  }, [zoom, panX, panY]);
 
   // Pipeline HUD collapsed state
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
