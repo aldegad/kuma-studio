@@ -12,14 +12,32 @@ interface SkillEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Simple markdown-ish renderer (headings, bold, code blocks, lists)
+// ---------------------------------------------------------------------------
+
+function renderContent(text: string) {
+  return text.split("\n").map((line, i) => {
+    if (line.startsWith("### ")) return <p key={i} className="text-[10px] font-bold text-stone-700 mt-2 mb-0.5">{line.slice(4)}</p>;
+    if (line.startsWith("## ")) return <p key={i} className="text-[11px] font-bold text-stone-800 mt-2.5 mb-0.5">{line.slice(3)}</p>;
+    if (line.startsWith("# ")) return <p key={i} className="text-xs font-bold text-stone-900 mt-3 mb-1">{line.slice(2)}</p>;
+    if (line.startsWith("```")) return <hr key={i} className="border-stone-200/50 my-1" />;
+    if (line.startsWith("- ") || line.startsWith("* ")) return <p key={i} className="text-[10px] text-stone-600 pl-2 leading-relaxed">{"\u2022 "}{line.slice(2)}</p>;
+    if (line.startsWith("|")) return <p key={i} className="text-[9px] text-stone-500 font-mono leading-relaxed">{line}</p>;
+    if (line.trim() === "") return <div key={i} className="h-1" />;
+    return <p key={i} className="text-[10px] text-stone-600 leading-relaxed">{line}</p>;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // SkillsPanel — bottom-right floating HUD
 // ---------------------------------------------------------------------------
 
 export function SkillsPanel() {
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [plugins, setPlugins] = useState<string[]>([]);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
+  const [fullScreenSkill, setFullScreenSkill] = useState<SkillEntry | null>(null);
 
   // -------------------------------------------------------------------------
   // Data fetching
@@ -106,10 +124,17 @@ export function SkillsPanel() {
 
                     {/* Expanded skill content */}
                     {expandedSkill === skill.name && skill.content && (
-                      <div className="mt-1 mx-1 rounded-lg bg-stone-50/80 border border-stone-200/50 p-2.5 max-h-48 overflow-y-auto">
-                        <pre className="text-[10px] text-stone-600 whitespace-pre-wrap font-mono leading-relaxed">
-                          {skill.content}
-                        </pre>
+                      <div className="mt-1 mx-1 rounded-lg bg-stone-50/80 border border-stone-200/50 p-2.5 max-h-52 overflow-y-auto">
+                        <div className="flex justify-end mb-1">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setFullScreenSkill(skill); }}
+                            className="text-[9px] text-blue-500 hover:text-blue-700 font-medium"
+                          >
+                            전체 보기
+                          </button>
+                        </div>
+                        {renderContent(skill.content)}
                       </div>
                     )}
                   </div>
@@ -147,6 +172,22 @@ export function SkillsPanel() {
           </div>
         )}
       </div>
+
+      {/* Full-screen skill viewer */}
+      {fullScreenSkill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setFullScreenSkill(null)}>
+          <div className="rounded-2xl bg-white/95 backdrop-blur-md shadow-2xl p-6 max-w-2xl max-h-[80vh] overflow-y-auto w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-stone-800">{fullScreenSkill.name}</h2>
+              <button onClick={() => setFullScreenSkill(null)} className="text-stone-400 hover:text-stone-600 text-sm">✕</button>
+            </div>
+            <p className="text-[11px] text-stone-500 mb-3">{fullScreenSkill.description}</p>
+            <div className="border-t border-stone-200/50 pt-3">
+              {renderContent(fullScreenSkill.content)}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
