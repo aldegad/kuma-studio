@@ -21,6 +21,8 @@ import { Furniture } from "../components/office/Furniture";
 import { Whiteboard } from "../components/office/Whiteboard";
 import { SkillsPanel } from "../components/dashboard/SkillsPanel";
 import { ToastContainer, pushToast } from "../components/shared/Toast";
+import { ActivityFeed } from "../components/shared/ActivityFeed";
+import { useActivityStore } from "../stores/use-activity-store";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -246,6 +248,18 @@ export function StudioPage() {
           pushToast(`${statusLabel}: ${ev.card.message?.slice(0, 40) || ev.card.id}`, ev.card.status === "error" ? "error" : ev.card.status === "completed" ? "success" : "info");
         } else if (ev.kind === "agent-state-change") {
           updateAgentState(ev.agentId, ev.state);
+          const member = KUMA_TEAM.find((m) => m.id === ev.agentId);
+          if (member) {
+            const stateMsg: Record<string, string> = { working: "작업 시작", thinking: "생각 중", completed: "작업 완료", error: "오류 발생", idle: "대기 상태" };
+            const eventType = ev.state === "error" ? "error" as const : ev.state === "completed" ? "task-complete" as const : ev.state === "working" ? "task-start" as const : "state-change" as const;
+            useActivityStore.getState().push({
+              agentId: ev.agentId,
+              agentName: member.nameKo,
+              emoji: member.emoji ?? "",
+              type: eventType,
+              message: stateMsg[ev.state] ?? ev.state,
+            });
+          }
         }
       } catch { /* ignore */ }
     };
@@ -343,6 +357,19 @@ export function StudioPage() {
   // Keyboard shortcuts: Ctrl+/- zoom, Ctrl+0 reset
   // -------------------------------------------------------------------------
 
+  const focusOnZone = useCallback((zoneIndex: number) => {
+    const zone = TEAM_ZONES[zoneIndex];
+    if (!zone) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const focusZoom = 1.4;
+    const cx = zone.x + zone.w / 2;
+    const cy = zone.y + zone.h / 2;
+    setZoom(focusZoom);
+    setPanX(container.clientWidth / 2 - cx * focusZoom);
+    setPanY(container.clientHeight / 2 - cy * focusZoom);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
@@ -354,6 +381,23 @@ export function StudioPage() {
         setShowHelp(false);
         return;
       }
+
+      // Arrow keys for panning (no modifier needed)
+      const PAN_STEP = 80;
+      if (e.key === "ArrowLeft") { e.preventDefault(); setPanX((v) => v + PAN_STEP); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); setPanX((v) => v - PAN_STEP); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setPanY((v) => v + PAN_STEP); return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); setPanY((v) => v - PAN_STEP); return; }
+
+      // F key for fit to screen
+      if (e.key === "f" && !e.ctrlKey && !e.metaKey) { fitToScreen(); return; }
+
+      // 1-4 to focus team zones (no modifier)
+      if (!e.ctrlKey && !e.metaKey && e.key >= "1" && e.key <= "4") {
+        focusOnZone(Number(e.key) - 1);
+        return;
+      }
+
       if (!e.ctrlKey && !e.metaKey) return;
       if (e.key === "=" || e.key === "+") {
         e.preventDefault();
@@ -366,14 +410,11 @@ export function StudioPage() {
         setZoom(ZOOM_DEFAULT);
         setPanX(0);
         setPanY(0);
-      } else if (e.key === "1") {
-        e.preventDefault();
-        fitToScreen();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [fitToScreen]);
+  }, [fitToScreen, focusOnZone]);
 
   // -------------------------------------------------------------------------
   // Container mousedown → start pan (only fires on empty space)
@@ -590,6 +631,9 @@ export function StudioPage() {
       {/* Toast notifications */}
       <ToastContainer />
 
+      {/* Activity feed — bottom-right */}
+      <ActivityFeed />
+
       {/* ------------------------------------------------------------------ */}
       {/* Pipeline HUD — top-right floating panel                             */}
       {/* ------------------------------------------------------------------ */}
@@ -781,7 +825,12 @@ export function StudioPage() {
                 ["Ctrl + =", "줌 인"],
                 ["Ctrl + -", "줌 아웃"],
                 ["Ctrl + 0", "줌 초기화"],
-                ["Ctrl + 1", "전체 보기"],
+                ["F", "전체 보기"],
+                ["1", "총괄 포커스"],
+                ["2", "개발팀 포커스"],
+                ["3", "분석팀 포커스"],
+                ["4", "전략팀 포커스"],
+                ["← → ↑ ↓", "캔버스 이동"],
                 ["드래그", "캔버스 이동"],
                 ["휠", "커서 중심 줌"],
                 ["더블클릭", "캐릭터 포커스"],
