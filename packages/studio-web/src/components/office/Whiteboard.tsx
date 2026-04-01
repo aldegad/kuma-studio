@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
+import { KUMA_TEAM } from "../../types/agent";
+import { fetchGitLog } from "../../lib/api";
 import { StatusBadge } from "../shared/StatusBadge";
-
-interface GitCommit { hash: string; message: string; }
 
 interface WhiteboardProps {
   position: { x: number; y: number };
@@ -14,10 +14,9 @@ export function Whiteboard({ position }: WhiteboardProps) {
   const dailyReport = useDashboardStore((s) => s.dailyReport);
   const recentJobs = jobs.slice(0, 3);
 
-  const [commits, setCommits] = useState<GitCommit[]>([]);
+  const [commits, setCommits] = useState<{ hash: string; message: string }[]>([]);
   useEffect(() => {
-    fetch("/studio/git-log")
-      .then((r) => r.json())
+    void fetchGitLog()
       .then((d) => setCommits(d.commits?.slice(0, 5) || []))
       .catch(() => {});
   }, []);
@@ -71,9 +70,14 @@ export function Whiteboard({ position }: WhiteboardProps) {
         <div className="space-y-1 text-[10px] text-stone-500">
           <p>전체 {dailyReport.totalTasks}건 / 완료 {dailyReport.completedTasks}건</p>
           <p>달성률 {Math.round(dailyReport.completionRate * 100)}%</p>
-          {dailyReport.mvpAgent && (
-            <p className="text-amber-600 font-medium">MVP: {dailyReport.mvpAgent.id}</p>
-          )}
+          {dailyReport.mvpAgent && (() => {
+            const mvpMember = KUMA_TEAM.find((m) => m.id === dailyReport.mvpAgent!.id);
+            return (
+              <p className="text-amber-600 font-medium">
+                MVP: {mvpMember?.emoji ?? ""} {mvpMember?.nameKo ?? dailyReport.mvpAgent!.id}
+              </p>
+            );
+          })()}
         </div>
       ) : (
         <p className="text-center text-[10px] text-stone-400 py-2">오늘의 작업을 시작해보세요</p>
