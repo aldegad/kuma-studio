@@ -1749,6 +1749,26 @@ async function executePageOnDialog(command) {
   };
 }
 
+function executePageContent() {
+  return {
+    page: buildPageRecord(),
+    content: document.documentElement.outerHTML,
+  };
+}
+
+async function executePageSetContent(command) {
+  const html = command?.html;
+  if (typeof html !== "string") {
+    throw new Error("page.setContent requires an 'html' string parameter.");
+  }
+  document.open();
+  document.write(html);
+  document.close();
+  return {
+    page: buildPageRecord(),
+  };
+}
+
 async function executePageOffDialog() {
   const captured = [...dialogInterceptState.capturedDialogs];
   uninstallDialogIntercept();
@@ -1979,6 +1999,10 @@ async function executeAutomationCommand(command) {
       return executePageOnDialog(command);
     case "page.offDialog":
       return executePageOffDialog();
+    case "page.content":
+      return executePageContent();
+    case "page.setContent":
+      return executePageSetContent(command);
     default:
       throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }

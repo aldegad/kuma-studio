@@ -1048,6 +1048,22 @@ export function createPage(client, state) {
       }
       return createFrameHandle(client, state, selector.trim());
     },
+    async content() {
+      const result = await client.send("page.content", {});
+      updatePageState(state, result);
+      return result?.content ?? "";
+    },
+    async setContent(html, options = {}) {
+      if (typeof html !== "string") {
+        throw new Error("page.setContent requires an HTML string.");
+      }
+      const result = await client.send(
+        "page.setContent",
+        { html },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+    },
     frameLocator(selector) {
       if (typeof selector !== "string" || !selector.trim()) {
         throw new Error("page.frameLocator requires a non-empty iframe selector.");
