@@ -34,17 +34,25 @@ async function reportStoredExtensionHeartbeat(source, page = null) {
 
 chrome.runtime.onInstalled.addListener(() => {
   void (async () => {
-    const daemonUrl = await getStoredDaemonUrl();
-    await ensureDaemonTransport(daemonUrl, { force: true });
-    await reportStoredExtensionHeartbeat("runtime:on-installed");
+    try {
+      const daemonUrl = await getStoredDaemonUrl();
+      await ensureDaemonTransport(daemonUrl, { force: true });
+      await reportStoredExtensionHeartbeat("runtime:on-installed");
+    } catch (err) {
+      console.error("[kuma-studio] onInstalled bootstrap error:", err);
+    }
   })();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   void (async () => {
-    const daemonUrl = await getStoredDaemonUrl();
-    await ensureDaemonTransport(daemonUrl, { force: true });
-    await reportStoredExtensionHeartbeat("runtime:on-startup");
+    try {
+      const daemonUrl = await getStoredDaemonUrl();
+      await ensureDaemonTransport(daemonUrl, { force: true });
+      await reportStoredExtensionHeartbeat("runtime:on-startup");
+    } catch (err) {
+      console.error("[kuma-studio] onStartup bootstrap error:", err);
+    }
   })();
 });
 

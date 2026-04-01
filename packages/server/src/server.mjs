@@ -75,6 +75,10 @@ export function createServer({ host, port, root }) {
   const socketServer = new WebSocketServer({ noServer: true });
   const socketStates = new Map();
   let nextSocketId = 1;
+  const inFlightCommandCleanupInterval = setInterval(() => {
+    browserSessionStore.pruneExpiredInFlightCommands();
+  }, 30_000);
+
   const pingInterval = setInterval(() => {
     for (const state of socketStates.values()) {
       if (state.awaitingPong) {
@@ -264,8 +268,10 @@ export function createServer({ host, port, root }) {
 
     socket.on("close", () => {
       const state = socketStates.get(connectionId);
+      disconnectSocket(connectionId);
+      const hasActiveBrowserSocket = Array.from(socketStates.values()).some((s) => s.role === "browser");
       const summary = extensionStatusStore.readSummary();
-      if (state?.role === "browser" && summary.detected) {
+      if (state?.role === "browser" && summary.detected && !hasActiveBrowserSocket) {
         extensionStatusStore.write({
           extensionId: summary.extensionId,
           browserTransport: "websocket",
@@ -274,13 +280,14 @@ export function createServer({ host, port, root }) {
           lastSeenAt: new Date().toISOString(),
         });
       }
-      disconnectSocket(connectionId);
     });
 
     socket.on("error", () => {
       const state = socketStates.get(connectionId);
+      disconnectSocket(connectionId);
+      const hasActiveBrowserSocket = Array.from(socketStates.values()).some((s) => s.role === "browser");
       const summary = extensionStatusStore.readSummary();
-      if (state?.role === "browser" && summary.detected) {
+      if (state?.role === "browser" && summary.detected && !hasActiveBrowserSocket) {
         extensionStatusStore.write({
           extensionId: summary.extensionId,
           browserTransport: "websocket",
@@ -289,7 +296,6 @@ export function createServer({ host, port, root }) {
           lastSeenAt: new Date().toISOString(),
         });
       }
-      disconnectSocket(connectionId);
     });
   });
 
@@ -584,6 +590,7 @@ export function createServer({ host, port, root }) {
   server.on("close", () => {
     stopWatching();
     clearInterval(pingInterval);
+    clearInterval(inFlightCommandCleanupInterval);
     socketServer.close();
     statsStore.close();
   });

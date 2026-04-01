@@ -247,26 +247,30 @@ function openDaemonSocket(daemonUrl) {
         return;
       }
 
-      switch (message?.type) {
-        case "hello":
-          daemonSocketReady = true;
-          flushQueuedSocketMessages();
-          flushQueuedPresenceUpdate();
-          return;
-        case "ping":
-          sendDaemonSocketMessage({
-            type: "pong",
-            sentAt: new Date().toISOString(),
-          });
-          return;
-        case "command.request":
-          await handleSocketCommandRequest(daemonUrl, message);
-          return;
-        case "job-card.updated":
-          await relayJobCardUpdate(message);
-          return;
-        default:
-          return;
+      try {
+        switch (message?.type) {
+          case "hello":
+            daemonSocketReady = true;
+            flushQueuedSocketMessages();
+            flushQueuedPresenceUpdate();
+            return;
+          case "ping":
+            sendDaemonSocketMessage({
+              type: "pong",
+              sentAt: new Date().toISOString(),
+            });
+            return;
+          case "command.request":
+            await handleSocketCommandRequest(daemonUrl, message);
+            return;
+          case "job-card.updated":
+            await relayJobCardUpdate(message);
+            return;
+          default:
+            return;
+        }
+      } catch (err) {
+        console.error("[kuma-studio] socket message handler error:", err);
       }
     })();
   });
