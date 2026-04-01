@@ -286,6 +286,30 @@ export function StudioPage() {
   }, [handleWheel]);
 
   // -------------------------------------------------------------------------
+  // Keyboard shortcuts: Ctrl+/- zoom, Ctrl+0 reset
+  // -------------------------------------------------------------------------
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        setZoom((z) => clamp(z * 1.2, ZOOM_MIN, ZOOM_MAX));
+      } else if (e.key === "-") {
+        e.preventDefault();
+        setZoom((z) => clamp(z / 1.2, ZOOM_MIN, ZOOM_MAX));
+      } else if (e.key === "0") {
+        e.preventDefault();
+        setZoom(ZOOM_DEFAULT);
+        setPanX(0);
+        setPanY(0);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // -------------------------------------------------------------------------
   // Container mousedown → start pan (only fires on empty space)
   // -------------------------------------------------------------------------
 
