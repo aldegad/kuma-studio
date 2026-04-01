@@ -495,7 +495,7 @@ export function StudioPage() {
             transition: dragState ? "none" : "transform 0.2s ease-out",
           }}
         >
-          <OfficeBackground background={scene.background} />
+          <OfficeBackground background={scene.background} isNight={isNight} />
 
           {/* Team zone backgrounds — data-driven from TEAM_ZONES */}
           {TEAM_ZONES.map((zone) => (
