@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchDailyReport, fetchJobCards, fetchOfficeLayout, fetchStats } from "../lib/api";
 import { useWebSocket } from "../hooks/use-websocket";
 import { useDashboardStore } from "../stores/use-dashboard-store";
@@ -34,7 +34,8 @@ interface StudioEvent {
 
 type DragState =
   | { kind: "character"; id: string; offsetX: number; offsetY: number }
-  | { kind: "furniture"; id: string; offsetX: number; offsetY: number };
+  | { kind: "furniture"; id: string; offsetX: number; offsetY: number }
+  | { kind: "pan"; startX: number; startY: number; startPanX: number; startPanY: number };
 
 // ---------------------------------------------------------------------------
 // Pipeline HUD metadata
@@ -67,12 +68,21 @@ function extractJobs(payload: unknown): JobCard[] {
   return [];
 }
 
+// Canvas internal dimensions (the world inside the transform)
+const CANVAS_WIDTH = 2000;
+const CANVAS_HEIGHT = 1500;
+
+// Zoom defaults & limits
+const ZOOM_DEFAULT = 0.7;
+const ZOOM_MIN = 0.3;
+const ZOOM_MAX = 2.0;
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
 
 function clampPosition(
-  kind: DragState["kind"],
+  kind: "character" | "furniture",
   id: string,
   position: OfficePosition,
   width: number,
@@ -123,6 +133,11 @@ export function StudioPage() {
   // Canvas drag
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+
+  // Zoom & pan state
+  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
 
   // Pipeline HUD collapsed state
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
@@ -194,13 +209,25 @@ export function StudioPage() {
     const handleMouseMove = (e: MouseEvent) => {
       const container = containerRef.current;
       if (!container) return;
+
+      if (dragState.kind === "pan") {
+        const dx = e.clientX - dragState.startX;
+        const dy = e.clientY - dragState.startY;
+        setPanX(dragState.startPanX + dx);
+        setPanY(dragState.startPanY + dy);
+        return;
+      }
+
       const rect = container.getBoundingClientRect();
+      // Convert screen coords to canvas coords (accounting for zoom & pan)
+      const canvasX = (e.clientX - rect.left - panX) / zoom - dragState.offsetX;
+      const canvasY = (e.clientY - rect.top - panY) / zoom - dragState.offsetY;
       const position = clampPosition(
         dragState.kind,
         dragState.id,
-        { x: e.clientX - rect.left - dragState.offsetX, y: e.clientY - rect.top - dragState.offsetY },
-        rect.width,
-        rect.height,
+        { x: canvasX, y: canvasY },
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT,
       );
       if (dragState.kind === "character") updateCharacterPosition(dragState.id, position);
       else updateFurniturePosition(dragState.id, position);
@@ -208,8 +235,11 @@ export function StudioPage() {
     };
 
     const handleMouseUp = () => {
+      const wasPan = dragState.kind === "pan";
       setDragState(null);
-      void saveOfficeLayout(sceneToLayout(useOfficeStore.getState().scene)).catch(() => {});
+      if (!wasPan) {
+        void saveOfficeLayout(sceneToLayout(useOfficeStore.getState().scene)).catch(() => {});
+      }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -218,7 +248,65 @@ export function StudioPage() {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [dragState, send, updateCharacterPosition, updateFurniturePosition]);
+  }, [dragState, zoom, panX, panY, send, updateCharacterPosition, updateFurniturePosition]);
+
+  // -------------------------------------------------------------------------
+  // Wheel → zoom (cursor-centered)
+  // -------------------------------------------------------------------------
+
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault();
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      const newZoom = clamp(zoom * zoomFactor, ZOOM_MIN, ZOOM_MAX);
+
+      // Keep the point under the cursor stationary
+      const newPanX = mouseX - (mouseX - panX) * (newZoom / zoom);
+      const newPanY = mouseY - (mouseY - panY) * (newZoom / zoom);
+
+      setZoom(newZoom);
+      setPanX(newPanX);
+      setPanY(newPanY);
+    },
+    [zoom, panX, panY],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    // passive: false so we can preventDefault to stop page scroll
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
+
+  // -------------------------------------------------------------------------
+  // Container mousedown → start pan (only fires on empty space)
+  // -------------------------------------------------------------------------
+
+  const handleCanvasMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      // Only primary button
+      if (e.button !== 0) return;
+      // If the click target is NOT the container itself or the background,
+      // a child (character/furniture) already called stopPropagation so we
+      // won't reach here.
+      e.preventDefault();
+      setDragState({
+        kind: "pan",
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: panX,
+        startPanY: panY,
+      });
+    },
+    [panX, panY],
+  );
 
   // -------------------------------------------------------------------------
   // Whiteboard position
@@ -237,46 +325,64 @@ export function StudioPage() {
     <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 30%, #fef9ee 100%)" }}>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Office canvas — full background                                     */}
+      {/* Office canvas — full background with zoom/pan                       */}
       {/* ------------------------------------------------------------------ */}
-      <div ref={containerRef} className="absolute inset-0">
-        <OfficeBackground background={scene.background} />
+      <div
+        ref={containerRef}
+        className="absolute inset-0 overflow-hidden"
+        onMouseDown={handleCanvasMouseDown}
+        style={{ cursor: dragState?.kind === "pan" ? "grabbing" : "grab" }}
+      >
+        <div
+          style={{
+            width: CANVAS_WIDTH,
+            height: CANVAS_HEIGHT,
+            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+            transformOrigin: "0 0",
+          }}
+        >
+          <OfficeBackground background={scene.background} />
 
-        {scene.furniture.map((item) => (
-          <Furniture
-            key={item.id}
-            furniture={item}
-            isDragging={dragState?.kind === "furniture" && dragState.id === item.id}
-            onDragStart={(event) => {
-              event.preventDefault();
-              setDragState({
-                kind: "furniture",
-                id: item.id,
-                offsetX: event.clientX - event.currentTarget.getBoundingClientRect().left - event.currentTarget.offsetWidth / 2,
-                offsetY: event.clientY - event.currentTarget.getBoundingClientRect().top - event.currentTarget.offsetHeight / 2,
-              });
-            }}
-          />
-        ))}
+          {scene.furniture.map((item) => (
+            <Furniture
+              key={item.id}
+              furniture={item}
+              isDragging={dragState?.kind === "furniture" && dragState.id === item.id}
+              onDragStart={(event) => {
+                event.preventDefault();
+                event.stopPropagation(); // prevent canvas pan
+                const elRect = event.currentTarget.getBoundingClientRect();
+                setDragState({
+                  kind: "furniture",
+                  id: item.id,
+                  offsetX: (event.clientX - elRect.left) / zoom - event.currentTarget.offsetWidth / 2,
+                  offsetY: (event.clientY - elRect.top) / zoom - event.currentTarget.offsetHeight / 2,
+                });
+              }}
+            />
+          ))}
 
-        {scene.characters.map((character) => (
-          <Character
-            key={character.id}
-            character={character}
-            isDragging={dragState?.kind === "character" && dragState.id === character.id}
-            onDragStart={(event) => {
-              event.preventDefault();
-              setDragState({
-                kind: "character",
-                id: character.id,
-                offsetX: event.clientX - event.currentTarget.getBoundingClientRect().left - event.currentTarget.offsetWidth / 2,
-                offsetY: event.clientY - event.currentTarget.getBoundingClientRect().top - event.currentTarget.offsetHeight / 2,
-              });
-            }}
-          />
-        ))}
+          {scene.characters.map((character) => (
+            <Character
+              key={character.id}
+              character={character}
+              isDragging={dragState?.kind === "character" && dragState.id === character.id}
+              onDragStart={(event) => {
+                event.preventDefault();
+                event.stopPropagation(); // prevent canvas pan
+                const elRect = event.currentTarget.getBoundingClientRect();
+                setDragState({
+                  kind: "character",
+                  id: character.id,
+                  offsetX: (event.clientX - elRect.left) / zoom - event.currentTarget.offsetWidth / 2,
+                  offsetY: (event.clientY - elRect.top) / zoom - event.currentTarget.offsetHeight / 2,
+                });
+              }}
+            />
+          ))}
 
-        <Whiteboard position={whiteboardPosition} />
+          <Whiteboard position={whiteboardPosition} />
+        </div>
       </div>
 
       {/* ------------------------------------------------------------------ */}
