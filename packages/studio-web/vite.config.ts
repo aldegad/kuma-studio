@@ -5,6 +5,7 @@ import { resolve } from "path";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: "/studio/",
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),

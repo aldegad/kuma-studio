@@ -376,6 +376,10 @@ function getViewportMetrics() {
     width: window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0,
     height: window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0,
     devicePixelRatio: window.devicePixelRatio || 1,
+    scrollX: window.scrollX || 0,
+    scrollY: window.scrollY || 0,
+    scrollWidth: document.documentElement.scrollWidth || document.body?.scrollWidth || 0,
+    scrollHeight: document.documentElement.scrollHeight || document.body?.scrollHeight || 0,
   };
 }
 

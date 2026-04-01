@@ -14,6 +14,7 @@ export interface OfficeCharacter {
   state: AgentState;
   position: OfficePosition;
   spriteSheet: string;
+  image?: string;
 }
 
 export interface OfficeFurniture {

@@ -136,14 +136,50 @@ async function executePageEvaluateCommand(tab, command) {
 }
 
 async function executePageScreenshotCommand(tab, command) {
+  const fullPage = command?.fullPage === true;
   const pageContext = await collectPageContext(tab.id);
+  const viewport = pageContext?.viewport ?? {};
+  const viewportWidth = Number(viewport.width) || 0;
+  const viewportHeight = Number(viewport.height) || 0;
+  const devicePixelRatio = Number(viewport.devicePixelRatio) || 1;
+  const scrollX = Number(viewport.scrollX) || 0;
+  const scrollY = Number(viewport.scrollY) || 0;
+  const scrollWidth = Number(viewport.scrollWidth) || viewportWidth;
+  const scrollHeight = Number(viewport.scrollHeight) || viewportHeight;
+
+  const selector = typeof command?.selector === "string" ? command.selector : null;
+  const clipRect = normalizeScreenshotClipRect(command);
+
+  if (fullPage && !selector && !clipRect) {
+    // Capture the full page by scrolling through it and stitching strips together.
+    const fullWidth = Math.max(viewportWidth, scrollWidth);
+    const fullHeight = Math.max(viewportHeight, scrollHeight);
+    const stitched = await captureFullPageScreenshot(tab, tab.id, {
+      viewportWidth,
+      viewportHeight,
+      fullWidth,
+      fullHeight,
+      devicePixelRatio,
+      scrollX,
+      scrollY,
+    });
+    return {
+      page: pageContext.page,
+      screenshot: {
+        dataUrl: stitched.dataUrl,
+        mimeType: "image/png",
+        width: stitched.width,
+        height: stitched.height,
+        capturedAt: new Date().toISOString(),
+      },
+    };
+  }
+
   const capture = await captureTargetTabScreenshot(tab, {
     focusTabFirst: true,
     restorePreviousActiveTab: false,
   });
-  const viewportWidth = Number(pageContext?.viewport?.width) || 0;
-  const viewportHeight = Number(pageContext?.viewport?.height) || 0;
-  const devicePixelRatio = Number(pageContext?.viewport?.devicePixelRatio) || 1;
+
   let screenshot = {
     dataUrl: capture.dataUrl,
     mimeType: "image/png",
@@ -151,9 +187,6 @@ async function executePageScreenshotCommand(tab, command) {
     height: Math.max(0, Math.round(viewportHeight * devicePixelRatio)),
     capturedAt: new Date().toISOString(),
   };
-
-  const selector = typeof command?.selector === "string" ? command.selector : null;
-  const clipRect = normalizeScreenshotClipRect(command);
 
   if (selector || clipRect) {
     const measured = selector
@@ -166,8 +199,10 @@ async function executePageScreenshotCommand(tab, command) {
           },
         })
       : null;
+    // clip rect from locator.measure uses getBoundingClientRect() which is already
+    // viewport-relative, so no scroll offset adjustment is needed here.
     const rect = clipRect ?? measured?.rect ?? null;
-    const cropped = await cropTabScreenshot(capture.dataUrl, rect, pageContext.viewport);
+    const cropped = await cropTabScreenshot(capture.dataUrl, rect, viewport);
     screenshot = {
       dataUrl: cropped.dataUrl,
       mimeType: cropped.mimeType,
@@ -180,6 +215,79 @@ async function executePageScreenshotCommand(tab, command) {
   return {
     page: pageContext.page,
     screenshot,
+  };
+}
+
+async function captureFullPageScreenshot(tab, tabId, { viewportWidth, viewportHeight, fullWidth, fullHeight, devicePixelRatio, scrollX, scrollY }) {
+  const strips = [];
+  let captureY = 0;
+
+  // Scroll through the page top-to-bottom, capturing viewport-sized strips.
+  // Use the debugger path so window.scrollTo runs in the real page (main world),
+  // not the isolated content-script world where scrollTo has no effect.
+  while (captureY < fullHeight) {
+    await executeDebuggerEvaluateCommand(tab, {
+      kind: "function",
+      source: `function(arg) { window.scrollTo(arg.x, arg.y); }`,
+      arg: { x: 0, y: captureY },
+    });
+
+    // Small settle delay so the browser composites the new scroll position.
+    await waitForDelay(60);
+
+    const capture = await captureTargetTabScreenshot(tab, {
+      focusTabFirst: true,
+      restorePreviousActiveTab: false,
+      paintSettleDelayMs: 0,
+    });
+
+    strips.push({ dataUrl: capture.dataUrl, offsetY: captureY });
+    captureY += viewportHeight;
+  }
+
+  // Restore original scroll position.
+  await executeDebuggerEvaluateCommand(tab, {
+    kind: "function",
+    source: `function(arg) { window.scrollTo(arg.x, arg.y); }`,
+    arg: { x: scrollX, y: scrollY },
+  }).catch(() => null);
+
+  // Stitch strips into a single full-page image using OffscreenCanvas.
+  const physicalWidth = Math.round(fullWidth * devicePixelRatio);
+  const physicalHeight = Math.round(fullHeight * devicePixelRatio);
+  const physicalViewportHeight = Math.round(viewportHeight * devicePixelRatio);
+  const canvas = new OffscreenCanvas(physicalWidth, physicalHeight);
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("Failed to create canvas context for full-page screenshot.");
+  }
+
+  for (const strip of strips) {
+    const response = await fetch(strip.dataUrl);
+    const blob = await response.blob();
+    const bitmap = await createImageBitmap(blob);
+    try {
+      const destY = Math.round(strip.offsetY * devicePixelRatio);
+      const sourceHeight = Math.min(physicalViewportHeight, physicalHeight - destY);
+      ctx.drawImage(bitmap, 0, 0, bitmap.width, sourceHeight, 0, destY, physicalWidth, sourceHeight);
+    } finally {
+      bitmap.close();
+    }
+  }
+
+  const resultBlob = await canvas.convertToBlob({ type: "image/png" });
+  const resultBytes = new Uint8Array(await resultBlob.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < resultBytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...resultBytes.subarray(i, i + chunkSize));
+  }
+
+  return {
+    dataUrl: `data:image/png;base64,${btoa(binary)}`,
+    width: physicalWidth,
+    height: physicalHeight,
   };
 }
 

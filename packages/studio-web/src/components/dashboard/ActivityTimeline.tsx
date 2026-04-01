@@ -8,12 +8,12 @@ export function ActivityTimeline() {
   return (
     <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
       <div className="border-b border-stone-200 px-5 py-4">
-        <h3 className="text-sm font-semibold text-stone-900">Activity Timeline</h3>
+        <h3 className="text-sm font-semibold text-stone-900">활동 타임라인</h3>
       </div>
       <div className="max-h-80 overflow-y-auto p-5">
         {recent.length === 0 ? (
           <div className="py-8 text-center text-sm text-stone-400">
-            Activity will appear here as agents work.
+            에이전트가 작업하면 활동 내역이 여기에 표시됩니다.
           </div>
         ) : (
           <div className="relative space-y-4">
@@ -27,7 +27,7 @@ export function ActivityTimeline() {
                     <StatusBadge status={job.status} />
                   </div>
                   <p className="text-xs text-stone-400">
-                    {job.author} &middot; {new Date(job.updatedAt).toLocaleTimeString()}
+                    {job.author} &middot; {new Date(job.updatedAt).toLocaleTimeString("ko-KR")}
                   </p>
                 </div>
               </div>

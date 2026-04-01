@@ -32,14 +32,44 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
   const emoji = animalEmoji[character.animal] ?? "bear";
   const animation = stateAnimation[character.state] ?? "";
 
-  // Use sprite sheet if available, otherwise fall back to emoji
+  // Use sprite sheet if available
   if (character.spriteSheet) {
+    const spriteSrc = character.spriteSheet.startsWith("/")
+      ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}${character.spriteSheet}`
+      : character.spriteSheet;
     return (
-      <div className={`h-12 w-12 ${animation}`}>
+      <div className={`h-16 w-16 ${animation}`}>
         <img
-          src={character.spriteSheet}
+          src={spriteSrc}
           alt={character.name}
-          className="h-full w-full object-contain"
+          className="h-full w-full rounded-full object-cover shadow-md"
+        />
+      </div>
+    );
+  }
+
+  // Use character image if available, falling back to emoji on error
+  if (character.image) {
+    const imageSrc = character.image.startsWith("/")
+      ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}${character.image}`
+      : character.image;
+    return (
+      <div className={`h-16 w-16 ${animation}`}>
+        <img
+          src={imageSrc}
+          alt={character.name}
+          className="h-full w-full rounded-full object-cover shadow-md"
+          onError={(e) => {
+            const img = e.target as HTMLImageElement;
+            img.style.display = "none";
+            const parent = img.parentElement;
+            if (parent) {
+              parent.className = `flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-2xl shadow-md ${animation}`;
+              parent.setAttribute("role", "img");
+              parent.setAttribute("aria-label", `${character.name} (${character.animal}) - ${character.state}`);
+              parent.textContent = getAnimalFallback(character.animal);
+            }
+          }}
         />
       </div>
     );
@@ -47,7 +77,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
 
   return (
     <div
-      className={`flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-2xl shadow-md ${animation}`}
+      className={`flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-2xl shadow-md ${animation}`}
       role="img"
       aria-label={`${character.name} (${character.animal}) - ${character.state}`}
     >

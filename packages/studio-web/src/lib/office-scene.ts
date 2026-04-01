@@ -7,6 +7,7 @@ export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeC
     ...agent,
     position: { x: 80 + (index % 4) * 200, y: 120 + Math.floor(index / 4) * 160 },
     spriteSheet: "",
+    image: agent.image,
   }));
 }
 

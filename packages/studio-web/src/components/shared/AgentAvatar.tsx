@@ -10,12 +10,15 @@ const sizeClasses = {
 };
 
 export function AgentAvatar({ name, size = "md" }: AgentAvatarProps) {
-  const initials = name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  // For Korean names take the first character, for English take first letters of words
+  const initials = /[\u3131-\uD79D]/.test(name)
+    ? name.slice(0, 1)
+    : name
+        .split(" ")
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2);
 
   return (
     <div

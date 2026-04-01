@@ -765,6 +765,7 @@ export function createPage(client, state) {
         {
           selector: typeof options.selector === "string" ? options.selector : null,
           clip: normalizeClipRect(options.clip),
+          fullPage: options.fullPage === true,
         },
         { timeoutMs: options.timeout },
       );

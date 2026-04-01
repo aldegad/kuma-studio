@@ -15,12 +15,12 @@ export function JobCard({ job }: JobCardProps) {
       <p className="text-sm text-stone-800">{job.message}</p>
       {job.tokensUsed > 0 && (
         <p className="mt-2 text-xs text-stone-400">
-          {job.tokensUsed.toLocaleString()} tokens
+          {job.tokensUsed.toLocaleString()} 토큰
           {job.model && ` (${job.model})`}
         </p>
       )}
       <p className="mt-1 text-xs text-stone-300">
-        {new Date(job.updatedAt).toLocaleString()}
+        {new Date(job.updatedAt).toLocaleString("ko-KR")}
       </p>
     </div>
   );

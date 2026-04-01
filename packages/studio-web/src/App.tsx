@@ -1,8 +1,6 @@
 import { useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import { Layout } from "./components/layout/Layout";
-import { DashboardPage } from "./components/dashboard/DashboardPage";
-import { OfficePage } from "./components/office/OfficePage";
+import { Routes, Route } from "react-router-dom";
+import { StudioPage } from "./pages/StudioPage";
 import { fetchTeamMetadata } from "./lib/api";
 import { useOfficeStore } from "./stores/use-office-store";
 import { applyTeamMetadata } from "./types/agent";
@@ -29,11 +27,7 @@ export default function App() {
 
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/office" element={<OfficePage />} />
-      </Route>
+      <Route path="/" element={<StudioPage />} />
     </Routes>
   );
 }

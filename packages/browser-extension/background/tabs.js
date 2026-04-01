@@ -224,7 +224,7 @@ async function waitForFocusedTargetTab(tab, attempts = 5, delayMs = 100) {
   };
 }
 
-async function captureTargetTabScreenshot(tab, { focusTabFirst = true, restorePreviousActiveTab: restoreAfterCapture = false } = {}) {
+async function captureTargetTabScreenshot(tab, { focusTabFirst = true, restorePreviousActiveTab: restoreAfterCapture = false, paintSettleDelayMs = 60 } = {}) {
   const previouslyActiveTab = focusTabFirst && restoreAfterCapture ? await queryActiveTab().catch(() => null) : null;
   const targetTab = focusTabFirst ? await focusTargetTab(tab) : tab;
 
@@ -235,6 +235,13 @@ async function captureTargetTabScreenshot(tab, { focusTabFirst = true, restorePr
 
     if (confirmedTab.active !== true) {
       throw new Error("Failed to activate the target tab before taking a screenshot.");
+    }
+
+    // Allow the browser to composite any pending scroll/paint before capturing.
+    // Without this delay, a scroll set via page.evaluate (debugger) may not yet
+    // be reflected in the visual frame that captureVisibleTab reads.
+    if (paintSettleDelayMs > 0) {
+      await waitForDelay(paintSettleDelayMs);
     }
 
     return {

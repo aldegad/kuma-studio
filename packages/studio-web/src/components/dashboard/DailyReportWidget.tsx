@@ -10,7 +10,7 @@ export function DailyReportWidget() {
   return (
     <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
       <div className="border-b border-stone-200 px-5 py-4">
-        <h3 className="text-sm font-semibold text-stone-900">Daily Report</h3>
+        <h3 className="text-sm font-semibold text-stone-900">일일 리포트</h3>
       </div>
       <div className="p-5">
         {dailyReport ? (
@@ -18,34 +18,34 @@ export function DailyReportWidget() {
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{dailyReport.date}</p>
               <p className="mt-1 text-3xl font-bold text-stone-900">{dailyReport.totalTasks.toLocaleString()}</p>
-              <p className="text-sm text-stone-500">tasks tracked today</p>
+              <p className="text-sm text-stone-500">오늘 추적된 작업 수</p>
             </div>
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <Metric label="Completion Rate" value={`${dailyReport.completionRate.toFixed(1)}%`} tone="text-green-600" />
-              <Metric label="Completed Tasks" value={dailyReport.completedTasks.toLocaleString()} tone="text-stone-900" />
-              <Metric label="Token Consumption" value={dailyReport.tokenConsumption.toLocaleString()} tone="text-amber-700" />
+              <Metric label="완료율" value={`${dailyReport.completionRate.toFixed(1)}%`} tone="text-green-600" />
+              <Metric label="완료 작업" value={dailyReport.completedTasks.toLocaleString()} tone="text-stone-900" />
+              <Metric label="토큰 소모량" value={dailyReport.tokenConsumption.toLocaleString()} tone="text-amber-700" />
             </div>
 
             <div className="rounded-lg bg-amber-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-amber-700">MVP Agent</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-amber-700">오늘의 MVP</p>
               {dailyReport.mvpAgent ? (
                 <>
                   <p className="mt-2 text-lg font-semibold text-amber-950">
-                    {mvpAgent?.name ?? dailyReport.mvpAgent.id}
+                    {mvpAgent?.nameKo ?? dailyReport.mvpAgent.id}
                   </p>
                   <p className="text-sm text-amber-800">
-                    {dailyReport.mvpAgent.completedTasks.toLocaleString()} completed tasks and {dailyReport.mvpAgent.totalTokens.toLocaleString()} tokens
+                    {dailyReport.mvpAgent.completedTasks.toLocaleString()}개 작업 완료, {dailyReport.mvpAgent.totalTokens.toLocaleString()} 토큰 사용
                   </p>
                 </>
               ) : (
-                <p className="mt-2 text-sm text-amber-800">No standout agent yet for today.</p>
+                <p className="mt-2 text-sm text-amber-800">아직 오늘의 MVP가 결정되지 않았습니다.</p>
               )}
             </div>
           </div>
         ) : (
           <div className="py-10 text-center text-sm text-stone-400">
-            Daily report data will appear here after the server aggregates today's work.
+            서버에서 오늘의 작업을 집계하면 일일 리포트가 여기에 표시됩니다.
           </div>
         )}
       </div>

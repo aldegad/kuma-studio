@@ -1,22 +1,16 @@
 import { NavLink } from "react-router-dom";
+import { useWsStore } from "../../stores/use-ws-store";
 
 const navItems = [
-  { to: "/dashboard", label: "Dashboard", icon: "grid" },
-  { to: "/office", label: "Office", icon: "building" },
+  { to: "/", label: "스튜디오", icon: "studio" },
 ] as const;
 
 function NavIcon({ icon }: { icon: string }) {
   switch (icon) {
-    case "grid":
+    case "studio":
       return (
         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-        </svg>
-      );
-    case "building":
-      return (
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
       );
     default:
@@ -25,6 +19,22 @@ function NavIcon({ icon }: { icon: string }) {
 }
 
 export function Sidebar() {
+  const wsStatus = useWsStore((s) => s.status);
+
+  const statusColor =
+    wsStatus === "connected"
+      ? "bg-green-500"
+      : wsStatus === "connecting"
+        ? "bg-amber-400 animate-pulse"
+        : "bg-stone-300";
+
+  const statusLabel =
+    wsStatus === "connected"
+      ? "서버 연결됨"
+      : wsStatus === "connecting"
+        ? "연결 중..."
+        : "연결 끊김";
+
   return (
     <aside className="flex w-60 flex-col border-r border-stone-200 bg-white">
       <div className="flex h-16 items-center gap-3 border-b border-stone-200 px-5">
@@ -32,7 +42,7 @@ export function Sidebar() {
           K
         </div>
         <div>
-          <h1 className="text-sm font-bold text-stone-900">Kuma Studio</h1>
+          <h1 className="text-sm font-bold text-stone-900">쿠마 스튜디오</h1>
           <p className="text-xs text-stone-500">v0.1.0</p>
         </div>
       </div>
@@ -42,6 +52,7 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
+            end
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
@@ -58,8 +69,8 @@ export function Sidebar() {
 
       <div className="border-t border-stone-200 p-4">
         <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-xs text-stone-500">Server connected</span>
+          <div className={`h-2 w-2 rounded-full ${statusColor}`} />
+          <span className="text-xs text-stone-500">{statusLabel}</span>
         </div>
       </div>
     </aside>

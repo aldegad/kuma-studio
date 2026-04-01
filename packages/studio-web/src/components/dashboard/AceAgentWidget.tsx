@@ -5,8 +5,8 @@ import { AgentAvatar } from "../shared/AgentAvatar";
 export function AceAgentWidget() {
   const aceAgent = useDashboardStore((s) => s.stats.aceAgent);
   const tokensByAgent = useDashboardStore((s) => s.stats.tokensByAgent);
-  const aceAgentName = aceAgent
-    ? KUMA_TEAM.find((agent) => agent.id === aceAgent.id)?.name ?? aceAgent.name
+  const aceTeamMember = aceAgent
+    ? KUMA_TEAM.find((agent) => agent.id === aceAgent.id) ?? null
     : null;
 
   const agentEntries = Object.entries(tokensByAgent)
@@ -16,36 +16,40 @@ export function AceAgentWidget() {
   return (
     <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
       <div className="border-b border-stone-200 px-5 py-4">
-        <h3 className="text-sm font-semibold text-stone-900">Ace Agent</h3>
+        <h3 className="text-sm font-semibold text-stone-900">오늘의 MVP</h3>
       </div>
       <div className="p-5">
-        {aceAgent ? (
+        {aceAgent && aceTeamMember ? (
           <div className="mb-4 flex items-center gap-3 rounded-lg bg-amber-50 p-4">
-            <AgentAvatar name={aceAgentName ?? aceAgent.name} size="lg" />
+            <AgentAvatar name={aceTeamMember.nameKo} size="lg" />
             <div>
-              <p className="text-sm font-bold text-amber-900">{aceAgentName}</p>
-              <p className="text-xs text-amber-700">
-                Score: {aceAgent.score.toFixed(1)}
+              <p className="text-sm font-bold text-amber-900">{aceTeamMember.nameKo}</p>
+              <p className="text-xs text-amber-700">{aceTeamMember.roleKo}</p>
+              <p className="text-xs text-amber-600">
+                점수: {aceAgent.score.toFixed(1)}
               </p>
             </div>
           </div>
         ) : (
           <div className="mb-4 rounded-lg bg-stone-50 p-4 text-center text-sm text-stone-400">
-            No ace agent determined yet
+            아직 MVP가 결정되지 않았습니다
           </div>
         )}
 
         {agentEntries.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-medium text-stone-500 uppercase">Top Agents by Tokens</p>
-            {agentEntries.map(([agent, tokens]) => (
-              <div key={agent} className="flex items-center justify-between text-sm">
-                <span className="text-stone-700">
-                  {KUMA_TEAM.find((member) => member.id === agent)?.name ?? agent}
-                </span>
-                <span className="text-stone-500">{tokens.toLocaleString()}</span>
-              </div>
-            ))}
+            <p className="text-xs font-medium uppercase tracking-wide text-stone-500">토큰 사용 상위 에이전트</p>
+            {agentEntries.map(([agent, tokens]) => {
+              const member = KUMA_TEAM.find((m) => m.id === agent);
+              return (
+                <div key={agent} className="flex items-center justify-between text-sm">
+                  <span className="text-stone-700">
+                    {member?.nameKo ?? agent}
+                  </span>
+                  <span className="text-stone-500">{tokens.toLocaleString()}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

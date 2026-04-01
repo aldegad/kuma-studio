@@ -20,11 +20,11 @@ export function Whiteboard({ position }: WhiteboardProps) {
         transform: "translate(-50%, 0)",
       }}
     >
-      <div className="mb-2 text-center text-xs font-bold text-stone-600 uppercase tracking-wide">
-        Job Board
+      <div className="mb-2 text-center text-xs font-bold uppercase tracking-wide text-stone-600">
+        작업 보드
       </div>
       {recentJobs.length === 0 ? (
-        <p className="text-center text-[10px] text-stone-400">No active jobs</p>
+        <p className="text-center text-[10px] text-stone-400">진행 중인 작업 없음</p>
       ) : (
         <div className="space-y-1.5">
           {recentJobs.map((job) => (

@@ -21,6 +21,7 @@
     "kuma-studio:run": "node ./packages/server/src/cli.mjs run",
     "kuma-studio:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
     "kuma-studio:dashboard": "open http://localhost:4312/studio",
+    "dev": "npm run dev:studio",
     "dev:studio": "npm run dev --workspace=studio-web",
     "build:studio": "npm run build --workspace=studio-web",
     "test": "vitest run --passWithNoTests",
