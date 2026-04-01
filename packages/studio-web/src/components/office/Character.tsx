@@ -1,7 +1,8 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { OfficeCharacter } from "../../types/office";
 import { KUMA_TEAM } from "../../types/agent";
 import { CharacterSprite } from "./CharacterSprite";
+import { CharacterTooltip } from "./CharacterTooltip";
 import { STATE_COLORS, STATE_LABELS_KO } from "../../lib/constants";
 
 interface CharacterProps {
@@ -29,6 +30,7 @@ function modelShortName(model: string | undefined): string | null {
 }
 
 export function Character({ character, isDragging = false, speechBubble, onDragStart, onDoubleClick }: CharacterProps) {
+  const [hovered, setHovered] = useState(false);
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
   const stateLabel = STATE_LABELS_KO[character.state] ?? character.state;
   const teamMember = KUMA_TEAM.find((m) => m.id === character.id);
@@ -46,6 +48,8 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
       }`}
       onMouseDown={onDragStart}
       onDoubleClick={onDoubleClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         left: character.position.x,
         top: character.position.y,
@@ -53,6 +57,9 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
         animation: isDragging ? "none" : `float-idle ${2.5 + (character.id.charCodeAt(0) % 5) * 0.3}s ease-in-out infinite`,
       }}
     >
+      {/* Hover tooltip */}
+      {hovered && !isDragging && <CharacterTooltip character={character} />}
+
       {/* Speech bubble */}
       {speechBubble && (
         <div className="mb-1 max-w-32 rounded-lg bg-white/95 border border-stone-200 px-2 py-1 shadow-sm relative">
