@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { createUnsupportedProxy, parseDataUrl, serializeEvaluateInput } from "./playwright-runner-support.mjs";
@@ -245,8 +245,51 @@ export function createLocator(client, state, descriptor) {
 
       return withDescriptor({ nth: index });
     },
+    async setInputFiles(files, options = {}) {
+      const fileArray = Array.isArray(files) ? files : [files];
+      const fileDescs = fileArray.map((f) => {
+        if (typeof f === "string") {
+          const absPath = toAbsolutePath(f);
+          const fileBuffer = readFileSync(absPath);
+          return { name: f.split("/").pop() || "file", base64: fileBuffer.toString("base64"), type: "application/octet-stream" };
+        }
+        return {
+          name: f.name || "file",
+          type: f.type || "application/octet-stream",
+          content: typeof f.content === "string" ? f.content : undefined,
+          base64: typeof f.base64 === "string" ? f.base64 : undefined,
+        };
+      });
+      const result = await client.send(
+        "locator.setInputFiles",
+        {
+          locator: descriptor,
+          files: fileDescs,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async dragTo(targetLocator, options = {}) {
+      if (!targetLocator || typeof targetLocator !== "object") {
+        throw new Error("locator.dragTo requires a target locator.");
+      }
+      const destDescriptor = targetLocator._descriptor ?? targetLocator;
+      const result = await client.send(
+        "locator.dragTo",
+        {
+          locator: descriptor,
+          destLocator: destDescriptor,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
   };
 
+  locatorTarget._descriptor = descriptor;
   return createUnsupportedProxy("locator", locatorTarget);
 }
 
@@ -802,6 +845,60 @@ export function createPage(client, state) {
           waitMs: Number.isFinite(waitMs) ? Math.round(waitMs) : 500,
         },
         { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async dragAndDrop(source, target, options = {}) {
+      if (typeof source !== "string" || !source.trim()) {
+        throw new Error("page.dragAndDrop requires a non-empty source selector.");
+      }
+      if (typeof target !== "string" || !target.trim()) {
+        throw new Error("page.dragAndDrop requires a non-empty target selector.");
+      }
+      const result = await client.send(
+        "page.dragAndDrop",
+        {
+          source: source.trim(),
+          target: target.trim(),
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async route(urlPattern, handler) {
+      if (!urlPattern) {
+        throw new Error("page.route requires a URL pattern.");
+      }
+      let routeHandler;
+      if (typeof handler === "function") {
+        const routeApi = {};
+        const routePromise = new Promise((resolve) => {
+          routeApi.fulfill = (opts) => resolve({ fulfill: opts });
+          routeApi.abort = () => resolve({ abort: true });
+        });
+        handler(routeApi);
+        routeHandler = await routePromise;
+      } else {
+        routeHandler = handler ?? {};
+      }
+      const result = await client.send(
+        "page.route",
+        {
+          urlPattern: typeof urlPattern === "string" ? urlPattern : String(urlPattern),
+          handler: routeHandler,
+        },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async unroute(urlPattern) {
+      const result = await client.send(
+        "page.unroute",
+        {
+          urlPattern: urlPattern ? (typeof urlPattern === "string" ? urlPattern : String(urlPattern)) : null,
+        },
       );
       updatePageState(state, result);
       return result;

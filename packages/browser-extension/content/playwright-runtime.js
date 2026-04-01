@@ -27,6 +27,8 @@ const {
   executeMouseDownCommand,
   executeMouseUpCommand,
   executePointerDragCommand,
+  executeDragAndDropCommand,
+  executeSetInputFilesCommand,
 } = interaction;
 
 function getRoot() {
@@ -547,14 +549,34 @@ async function executeLocatorPress(command) {
     throw new Error("Failed to resolve a locator target for key input.");
   }
 
+  let key = command.key;
+  let shiftKey = command.shiftKey === true;
+  let altKey = command.altKey === true;
+  let ctrlKey = command.ctrlKey === true;
+  let metaKey = command.metaKey === true;
+
+  // Parse combo keys like "Control+a", "Shift+Tab", "Meta+c"
+  if (typeof key === "string" && key.includes("+")) {
+    const parts = key.split("+");
+    const finalKey = parts.pop();
+    for (const modifier of parts) {
+      const mod = modifier.trim().toLowerCase();
+      if (mod === "control" || mod === "ctrl") ctrlKey = true;
+      else if (mod === "shift") shiftKey = true;
+      else if (mod === "alt") altKey = true;
+      else if (mod === "meta" || mod === "command" || mod === "cmd") metaKey = true;
+    }
+    key = finalKey.trim();
+  }
+
   return executeKeyCommand({
     targetElement: target,
-    key: command.key,
+    key,
     holdMs: command.holdMs,
-    shiftKey: command.shiftKey === true,
-    altKey: command.altKey === true,
-    ctrlKey: command.ctrlKey === true,
-    metaKey: command.metaKey === true,
+    shiftKey,
+    altKey,
+    ctrlKey,
+    metaKey,
   });
 }
 
@@ -629,15 +651,36 @@ async function executeLocatorMeasure(command) {
 }
 
 async function executeKeyboardPress(command) {
+  let key = command.key;
+  let shiftKey = command.shiftKey === true;
+  let altKey = command.altKey === true;
+  let ctrlKey = command.ctrlKey === true;
+  let metaKey = command.metaKey === true;
+
+  // Parse combo keys like "Control+a", "Shift+Tab", "Meta+c"
+  if (typeof key === "string" && key.includes("+")) {
+    const parts = key.split("+");
+    const finalKey = parts.pop();
+    for (const modifier of parts) {
+      const mod = modifier.trim().toLowerCase();
+      if (mod === "control" || mod === "ctrl") ctrlKey = true;
+      else if (mod === "shift") shiftKey = true;
+      else if (mod === "alt") altKey = true;
+      else if (mod === "meta" || mod === "command" || mod === "cmd") metaKey = true;
+    }
+    key = finalKey.trim();
+  }
+
   return executeKeyCommand({
-    key: command.key,
+    key,
     holdMs: command.holdMs,
-    shiftKey: command.shiftKey === true,
-    altKey: command.altKey === true,
-    ctrlKey: command.ctrlKey === true,
-    metaKey: command.metaKey === true,
+    shiftKey,
+    altKey,
+    ctrlKey,
+    metaKey,
   });
 }
+
 
 async function executeKeyboardDown(command) {
   return executeKeyDownCommand({
@@ -900,6 +943,52 @@ async function executePageWaitForLoadState(command) {
   return { page: buildPageRecord(), loadState: state };
 }
 
+// --- Shared fetch middleware chain ---
+// Both networkidle tracking and route interception register as middlewares
+// instead of independently overwriting window.fetch.
+const _sharedFetchState = {
+  installed: false,
+  originalFetch: null,
+  middlewares: [], // { id: string, handler: async (args) => Response|null }
+};
+
+function _installSharedFetchProxy() {
+  if (_sharedFetchState.installed) return;
+  _sharedFetchState.originalFetch = window.fetch;
+  _sharedFetchState.installed = true;
+
+  window.fetch = async function (...args) {
+    // Walk middlewares in order; first one to return a Response wins
+    for (const mw of _sharedFetchState.middlewares) {
+      const result = await mw.handler(args);
+      if (result) return result;
+    }
+    return _sharedFetchState.originalFetch.apply(window, args);
+  };
+}
+
+function _uninstallSharedFetchProxy() {
+  if (!_sharedFetchState.installed) return;
+  // Only tear down if no middlewares remain
+  if (_sharedFetchState.middlewares.length > 0) return;
+  window.fetch = _sharedFetchState.originalFetch;
+  _sharedFetchState.originalFetch = null;
+  _sharedFetchState.installed = false;
+}
+
+function _addFetchMiddleware(id, handler) {
+  _installSharedFetchProxy();
+  // Avoid duplicates
+  if (!_sharedFetchState.middlewares.some((m) => m.id === id)) {
+    _sharedFetchState.middlewares.push({ id, handler });
+  }
+}
+
+function _removeFetchMiddleware(id) {
+  _sharedFetchState.middlewares = _sharedFetchState.middlewares.filter((m) => m.id !== id);
+  _uninstallSharedFetchProxy();
+}
+
 const xhrNetworkIdleTrackedSymbol = Symbol("kumaNetworkIdleTracked");
 
 const networkIdlePatchState = {
@@ -929,21 +1018,21 @@ function handleNetworkIdleRequestEnd() {
 
 function retainNetworkIdlePatch() {
   if (networkIdlePatchState.activePatchCount === 0) {
-    networkIdlePatchState.originalFetch = window.fetch;
     networkIdlePatchState.originalXHROpen = XMLHttpRequest.prototype.open;
     networkIdlePatchState.originalXHRSend = XMLHttpRequest.prototype.send;
 
-    if (typeof networkIdlePatchState.originalFetch === "function") {
-      window.fetch = function (...args) {
-        handleNetworkIdleRequestStart();
-        try {
-          return Promise.resolve(networkIdlePatchState.originalFetch.apply(this, args)).finally(handleNetworkIdleRequestEnd);
-        } catch (error) {
-          handleNetworkIdleRequestEnd();
-          throw error;
-        }
-      };
-    }
+    // Use shared fetch middleware instead of directly overwriting window.fetch
+    _addFetchMiddleware("networkidle", async (args) => {
+      handleNetworkIdleRequestStart();
+      try {
+        const response = await _sharedFetchState.originalFetch.apply(window, args);
+        handleNetworkIdleRequestEnd();
+        return response;
+      } catch (error) {
+        handleNetworkIdleRequestEnd();
+        throw error;
+      }
+    });
 
     XMLHttpRequest.prototype.open = function (...args) {
       this[xhrNetworkIdleTrackedSymbol] = true;
@@ -976,10 +1065,9 @@ function releaseNetworkIdlePatch() {
     return;
   }
 
-  window.fetch = networkIdlePatchState.originalFetch;
+  _removeFetchMiddleware("networkidle");
   XMLHttpRequest.prototype.open = networkIdlePatchState.originalXHROpen;
   XMLHttpRequest.prototype.send = networkIdlePatchState.originalXHRSend;
-  networkIdlePatchState.originalFetch = null;
   networkIdlePatchState.originalXHROpen = null;
   networkIdlePatchState.originalXHRSend = null;
   networkIdlePatchState.pendingRequests = 0;
@@ -1132,6 +1220,166 @@ async function executeHoverAndClick(command) {
   };
 }
 
+
+async function executeLocatorDragTo(command) {
+  const sourceTarget = resolveLocatorElement(command.locator);
+  if (!(sourceTarget instanceof Element)) {
+    throw new Error("Failed to resolve the source locator target for drag.");
+  }
+
+  const destTarget = resolveLocatorElement(command.destLocator);
+  if (!(destTarget instanceof Element)) {
+    throw new Error("Failed to resolve the destination locator target for drag.");
+  }
+
+  return executeDragAndDropCommand({
+    sourceElement: sourceTarget,
+    targetElement: destTarget,
+  });
+}
+
+async function executeDragAndDrop(command) {
+  const sourceSelector = typeof command?.source === "string" ? command.source.trim() : "";
+  const targetSelector = typeof command?.target === "string" ? command.target.trim() : "";
+  if (!sourceSelector || !targetSelector) {
+    throw new Error("page.dragAndDrop requires non-empty source and target selectors.");
+  }
+
+  const root = document;
+  const sourceElement = resolveSelectorTarget(sourceSelector, root, { allowHidden: false });
+  const targetElement = resolveSelectorTarget(targetSelector, root, { allowHidden: false });
+
+  if (!(sourceElement instanceof Element)) {
+    throw new Error(`dragAndDrop: no element found for source selector "${sourceSelector}".`);
+  }
+  if (!(targetElement instanceof Element)) {
+    throw new Error(`dragAndDrop: no element found for target selector "${targetSelector}".`);
+  }
+
+  return executeDragAndDropCommand({
+    sourceElement,
+    targetElement,
+  });
+}
+
+async function executeLocatorSetInputFiles(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for setInputFiles.");
+  }
+
+  return executeSetInputFilesCommand({
+    targetElement: target,
+    files: command.files,
+  });
+}
+
+// --- Network interception (content-script level) ---
+
+const networkInterceptState = {
+  routes: [],
+  patchedFetch: false,
+};
+
+function matchUrlPattern(url, pattern) {
+  if (typeof pattern === "string") {
+    if (pattern === "**/*" || pattern === "*") return true;
+    // Glob-style: **/ matches any path prefix, * matches any segment
+    const regexStr = pattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*\*/g, "<<DOUBLESTAR>>")
+      .replace(/\*/g, "[^/]*")
+      .replace(/<<DOUBLESTAR>>/g, ".*");
+    return new RegExp(`^${regexStr}$`).test(url);
+  }
+  if (pattern instanceof RegExp) {
+    return pattern.test(url);
+  }
+  return false;
+}
+
+function findMatchingRoute(url) {
+  for (let i = networkInterceptState.routes.length - 1; i >= 0; i--) {
+    const route = networkInterceptState.routes[i];
+    if (matchUrlPattern(url, route.pattern)) {
+      return route;
+    }
+  }
+  return null;
+}
+
+function installNetworkInterception() {
+  if (networkInterceptState.patchedFetch) return;
+  networkInterceptState.patchedFetch = true;
+
+  // Use shared fetch middleware instead of directly overwriting window.fetch
+  _addFetchMiddleware("route", async (args) => {
+    const request = args[0];
+    const url = typeof request === "string" ? request : request?.url ?? "";
+    const route = findMatchingRoute(url);
+
+    if (route && route.handler) {
+      if (route.handler.fulfill) {
+        const { status, headers, body, contentType } = route.handler.fulfill;
+        const responseHeaders = { ...(headers ?? {}) };
+        if (contentType) responseHeaders["content-type"] = contentType;
+        return new Response(body ?? "", {
+          status: status ?? 200,
+          headers: responseHeaders,
+        });
+      }
+      if (route.handler.abort) {
+        throw new TypeError("Failed to fetch (aborted by route)");
+      }
+    }
+
+    return null; // Not intercepted, pass to next middleware
+  });
+}
+
+function uninstallNetworkInterception() {
+  if (!networkInterceptState.patchedFetch) return;
+  _removeFetchMiddleware("route");
+  networkInterceptState.patchedFetch = false;
+}
+
+async function executePageRoute(command) {
+  const pattern = command?.urlPattern;
+  if (!pattern) {
+    throw new Error("page.route requires a urlPattern.");
+  }
+
+  const handler = command?.handler ?? {};
+  networkInterceptState.routes.push({ pattern, handler });
+  installNetworkInterception();
+
+  return {
+    page: buildPageRecord(),
+    routePattern: typeof pattern === "string" ? pattern : String(pattern),
+    activeRoutes: networkInterceptState.routes.length,
+  };
+}
+
+async function executePageUnroute(command) {
+  const pattern = command?.urlPattern;
+  if (pattern) {
+    networkInterceptState.routes = networkInterceptState.routes.filter(
+      (r) => String(r.pattern) !== String(pattern),
+    );
+  } else {
+    networkInterceptState.routes = [];
+  }
+
+  if (networkInterceptState.routes.length === 0) {
+    uninstallNetworkInterception();
+  }
+
+  return {
+    page: buildPageRecord(),
+    activeRoutes: networkInterceptState.routes.length,
+  };
+}
+
 async function executeAutomationCommand(command) {
   if (command?.type !== "playwright") {
     throw new Error(`Unsupported automation payload: ${String(command?.type)}`);
@@ -1200,6 +1448,16 @@ async function executeAutomationCommand(command) {
       return executeFrameLocatorAction(command);
     case "page.frame":
       return executePageFrameEvaluate(command);
+    case "locator.dragTo":
+      return executeLocatorDragTo(command);
+    case "page.dragAndDrop":
+      return executeDragAndDrop(command);
+    case "locator.setInputFiles":
+      return executeLocatorSetInputFiles(command);
+    case "page.route":
+      return executePageRoute(command);
+    case "page.unroute":
+      return executePageUnroute(command);
     case "page.hoverAndClick":
       return executeHoverAndClick(command);
     default:

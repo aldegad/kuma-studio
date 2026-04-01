@@ -1413,6 +1413,145 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+  async function executeDragAndDropCommand(command) {
+    const sourceElement = command?.sourceElement;
+    const targetElement = command?.targetElement;
+
+    if (!(sourceElement instanceof Element)) {
+      throw new Error("drag-and-drop requires a valid source element.");
+    }
+    if (!(targetElement instanceof Element)) {
+      throw new Error("drag-and-drop requires a valid target element.");
+    }
+
+    await focusElement(sourceElement);
+    const sourceRect = sourceElement.getBoundingClientRect();
+    const targetRect = targetElement.getBoundingClientRect();
+    const sourceX = sourceRect.left + sourceRect.width / 2;
+    const sourceY = sourceRect.top + sourceRect.height / 2;
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + targetRect.height / 2;
+
+    const dataTransfer = typeof DataTransfer === "function" ? new DataTransfer() : null;
+    const dragEventInit = (type, clientX, clientY, extra) => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX,
+      clientY,
+      view: window,
+      dataTransfer,
+      ...extra,
+    });
+
+    const pointerEventInit = (clientX, clientY) => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX,
+      clientY,
+      view: window,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    const mouseEventInit = (clientX, clientY) => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX,
+      clientY,
+      view: window,
+      button: 0,
+    });
+
+    // Full drag-and-drop sequence for React DnD and native HTML5 compatibility
+    sourceElement.dispatchEvent(new PointerEvent("pointerdown", pointerEventInit(sourceX, sourceY)));
+    sourceElement.dispatchEvent(new MouseEvent("mousedown", mouseEventInit(sourceX, sourceY)));
+
+    sourceElement.dispatchEvent(new DragEvent("dragstart", dragEventInit("dragstart", sourceX, sourceY)));
+    sourceElement.dispatchEvent(new DragEvent("drag", dragEventInit("drag", sourceX, sourceY)));
+
+    // Intermediate mousemove to trigger drag recognition
+    sourceElement.dispatchEvent(new MouseEvent("mousemove", mouseEventInit(
+      sourceX + (targetX - sourceX) / 2,
+      sourceY + (targetY - sourceY) / 2,
+    )));
+
+    targetElement.dispatchEvent(new DragEvent("dragenter", dragEventInit("dragenter", targetX, targetY)));
+    targetElement.dispatchEvent(new DragEvent("dragover", dragEventInit("dragover", targetX, targetY)));
+    targetElement.dispatchEvent(new DragEvent("drop", dragEventInit("drop", targetX, targetY)));
+
+    sourceElement.dispatchEvent(new DragEvent("dragend", dragEventInit("dragend", targetX, targetY)));
+    sourceElement.dispatchEvent(new PointerEvent("pointerup", pointerEventInit(targetX, targetY)));
+    sourceElement.dispatchEvent(new MouseEvent("mouseup", mouseEventInit(targetX, targetY)));
+
+    await waitForPostActionDelay(command, 60);
+    return {
+      page: buildPageRecord(),
+      sourceElement: coreDescribeElementForCommand(sourceElement),
+      targetElement: coreDescribeElementForCommand(targetElement),
+    };
+  }
+
+  async function executeSetInputFilesCommand(command) {
+    const target = command?.targetElement;
+    if (!(target instanceof HTMLInputElement) || target.type !== "file") {
+      throw new Error("setInputFiles requires an input[type='file'] element.");
+    }
+
+    const files = command?.files;
+    if (!Array.isArray(files)) {
+      throw new Error("setInputFiles requires an array of file descriptors.");
+    }
+
+    const dataTransfer = new DataTransfer();
+    for (const fileDesc of files) {
+      const name = typeof fileDesc?.name === "string" ? fileDesc.name : "file";
+      const type = typeof fileDesc?.type === "string" ? fileDesc.type : "application/octet-stream";
+      let content;
+      if (typeof fileDesc?.content === "string") {
+        content = new TextEncoder().encode(fileDesc.content);
+      } else if (fileDesc?.base64 && typeof fileDesc.base64 === "string") {
+        try {
+          const binaryString = atob(fileDesc.base64);
+          content = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            content[i] = binaryString.charCodeAt(i);
+          }
+        } catch (decodeError) {
+          console.warn(`[kuma-picker] Skipping file "${name}": invalid base64 data -`, decodeError.message);
+          continue;
+        }
+      } else {
+        content = new Uint8Array(0);
+      }
+      const file = new File([content], name, { type });
+      dataTransfer.items.add(file);
+    }
+
+    try {
+      target.files = dataTransfer.files;
+    } catch {
+      Object.defineProperty(target, "files", {
+        value: dataTransfer.files,
+        writable: true,
+        configurable: true,
+      });
+    }
+
+    target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+
+    await waitForPostActionDelay(command, 16);
+    return {
+      page: buildPageRecord(),
+      fileCount: files.length,
+      fileNames: files.map((f) => f?.name ?? "file"),
+      targetElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+
   return {
     waitForDelay,
     executeClickCommand,
@@ -1429,6 +1568,8 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     executeHoverCommand,
     executeDblClickCommand,
     executeMouseWheelCommand,
+    executeDragAndDropCommand,
+    executeSetInputFilesCommand,
   };
 })();
 
