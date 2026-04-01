@@ -74,21 +74,77 @@ function resolveLocatorMatch(matches, locator, description) {
   return matches[locator.nth] ?? null;
 }
 
+function resolveChainedSelector(selectorString, root, allowHidden) {
+  const segments = selectorString.split(">>").map((s) => s.trim()).filter(Boolean);
+  if (segments.length === 0) {
+    return [];
+  }
+
+  let currentElements = [root];
+
+  for (const segment of segments) {
+    const textMatch = segment.match(/^text=["']?(.+?)["']?$/i);
+    const nextElements = [];
+
+    for (const parent of currentElements) {
+      if (textMatch) {
+        const expectedText = normalizeText(textMatch[1]);
+        const walker = document.createTreeWalker(parent, NodeFilter.SHOW_ELEMENT, null);
+        let node = walker.nextNode();
+        while (node) {
+          if (node instanceof Element) {
+            const nodeText = normalizeText(node.textContent || "");
+            if (nodeText.includes(expectedText) && (allowHidden || isVisibleElement(node))) {
+              nextElements.push(node);
+            }
+          }
+          node = walker.nextNode();
+        }
+      } else {
+        try {
+          const found = Array.from(parent.querySelectorAll(segment)).filter(
+            (el) => el instanceof Element && (allowHidden || isVisibleElement(el)),
+          );
+          nextElements.push(...found);
+        } catch {
+          throw new Error(`Invalid CSS selector segment: "${segment}"`);
+        }
+      }
+    }
+
+    if (nextElements.length === 0) {
+      return [];
+    }
+    currentElements = nextElements;
+  }
+
+  return currentElements;
+}
+
 function resolveSelectorElement(locator, { allowHidden = false } = {}) {
   const selector = typeof locator?.selector === "string" ? locator.selector.trim() : "";
   if (!selector) {
     throw new Error("The selector locator requires a non-empty selector.");
   }
 
-  const matches = Array.from(document.querySelectorAll(selector)).filter(
-    (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
-  );
+  const useChaining = selector.includes(">>");
+  const root = locator?._iframeContext ?? document;
+
+  let matches;
+  if (useChaining) {
+    matches = resolveChainedSelector(selector, root, allowHidden);
+  } else {
+    matches = Array.from(root.querySelectorAll(selector)).filter(
+      (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
+    );
+  }
 
   return resolveLocatorMatch(matches, locator, "The selector locator");
 }
 
 function resolveTextOrRoleElement(locator, { allowHidden = false } = {}) {
-  const candidates = getCommandCandidatesWithinRoot(getRoot());
+  const root = locator?._iframeContext ? locator._iframeContext.body || locator._iframeContext.documentElement : getRoot();
+  const candidates = getCommandCandidatesWithinRoot(root);
   const expectedText =
     locator?.kind === "role"
       ? typeof locator?.name === "string"
@@ -380,6 +436,58 @@ async function executePageEvaluate(command) {
   throw new Error("Unsupported evaluate payload.");
 }
 
+function waitForSelectorWithObserver(selector, state, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      const current = document.querySelector(selector);
+      if (readWaitState(current, state)) {
+        return current;
+      }
+      return null;
+    };
+
+    const immediate = check();
+    if (immediate !== null || (state === "detached" && !document.querySelector(selector))) {
+      resolve(immediate);
+      return;
+    }
+
+    let observer = null;
+    let timer = null;
+
+    const cleanup = () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    observer = new MutationObserver(() => {
+      const result = check();
+      if (result !== null || (state === "detached" && !document.querySelector(selector))) {
+        cleanup();
+        resolve(result);
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class", "hidden", "aria-hidden"],
+    });
+
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for selector "${selector}" to reach state "${state}".`));
+    }, timeoutMs);
+  });
+}
+
 async function executePageWaitForSelector(command) {
   const selector = typeof command?.selector === "string" ? command.selector.trim() : "";
   if (!selector) {
@@ -387,19 +495,9 @@ async function executePageWaitForSelector(command) {
   }
 
   const timeoutMs =
-    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 15_000;
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
   const state = typeof command?.state === "string" ? command.state : "visible";
-  const target = await pollUntil(
-    timeoutMs,
-    () => {
-      const current = document.querySelector(selector);
-      return {
-        matched: readWaitState(current, state),
-        value: current,
-      };
-    },
-    `Timed out waiting for selector "${selector}" to reach state "${state}".`,
-  );
+  const target = await waitForSelectorWithObserver(selector, state, timeoutMs);
 
   return {
     page: buildPageRecord(),
@@ -760,6 +858,191 @@ async function executePageGoForward() {
   };
 }
 
+
+async function executePageWaitForLoadState(command) {
+  const state = typeof command?.state === "string" ? command.state : "load";
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+
+  if (state === "domcontentloaded") {
+    if (document.readyState === "interactive" || document.readyState === "complete") {
+      return { page: buildPageRecord(), loadState: state };
+    }
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for load state "${state}".`)), timeoutMs);
+      document.addEventListener("DOMContentLoaded", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  } else if (state === "load") {
+    if (document.readyState === "complete") {
+      return { page: buildPageRecord(), loadState: state };
+    }
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for load state "${state}".`)), timeoutMs);
+      window.addEventListener("load", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  } else if (state === "networkidle") {
+    await waitForNetworkIdle(timeoutMs);
+  } else {
+    throw new Error(`Unsupported load state: "${state}". Use "load", "domcontentloaded", or "networkidle".`);
+  }
+
+  return { page: buildPageRecord(), loadState: state };
+}
+
+function waitForNetworkIdle(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let pendingRequests = 0;
+    let idleTimer = null;
+    let overallTimer = null;
+    const idleThresholdMs = 2000;
+
+    const originalFetch = window.fetch;
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    const originalXHRSend = XMLHttpRequest.prototype.send;
+
+    function onRequestStart() {
+      pendingRequests++;
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        idleTimer = null;
+      }
+    }
+
+    function onRequestEnd() {
+      pendingRequests = Math.max(0, pendingRequests - 1);
+      if (pendingRequests === 0) {
+        idleTimer = setTimeout(() => {
+          cleanup();
+          resolve();
+        }, idleThresholdMs);
+      }
+    }
+
+    function cleanup() {
+      if (overallTimer) { clearTimeout(overallTimer); overallTimer = null; }
+      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      window.fetch = originalFetch;
+      XMLHttpRequest.prototype.open = originalXHROpen;
+      XMLHttpRequest.prototype.send = originalXHRSend;
+    }
+
+    window.fetch = function (...args) {
+      onRequestStart();
+      return originalFetch.apply(this, args).finally(onRequestEnd);
+    };
+
+    XMLHttpRequest.prototype.open = function (...args) {
+      this._kumaNetworkIdleTracked = true;
+      return originalXHROpen.apply(this, args);
+    };
+
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (this._kumaNetworkIdleTracked) {
+        onRequestStart();
+        this.addEventListener("loadend", onRequestEnd, { once: true });
+      }
+      return originalXHRSend.apply(this, args);
+    };
+
+    overallTimer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out waiting for network idle."));
+    }, timeoutMs);
+
+    if (pendingRequests === 0) {
+      idleTimer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, idleThresholdMs);
+    }
+  });
+}
+
+function resolveIframeDocument(command) {
+  const selector = typeof command?.selector === "string" ? command.selector.trim() : "";
+  if (!selector) {
+    throw new Error("page.frame requires a non-empty iframe selector.");
+  }
+
+  const iframe = document.querySelector(selector);
+  if (!iframe || !(iframe instanceof HTMLIFrameElement)) {
+    throw new Error(`No iframe found matching selector "${selector}".`);
+  }
+
+  let iframeDoc;
+  try {
+    iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  } catch (e) {
+    throw new Error(`Cannot access iframe "${selector}": cross-origin access is not supported.`);
+  }
+
+  if (!iframeDoc) {
+    throw new Error(`Cannot access iframe "${selector}": contentDocument is null (likely cross-origin).`);
+  }
+
+  return iframeDoc;
+}
+
+async function executeFrameLocatorAction(command) {
+  const iframeDoc = resolveIframeDocument(command);
+  const innerCommand = command.innerCommand;
+  if (!innerCommand || typeof innerCommand !== "object") {
+    throw new Error("frameLocator action requires an innerCommand.");
+  }
+
+  if (innerCommand.locator) {
+    innerCommand.locator._iframeContext = iframeDoc;
+  }
+  if (innerCommand.selector && !innerCommand.locator) {
+    innerCommand._iframeContext = iframeDoc;
+  }
+
+  return executeAutomationCommand({ ...innerCommand, type: "playwright" });
+}
+
+async function executePageFrameEvaluate(command) {
+  const iframeDoc = resolveIframeDocument(command);
+  return {
+    page: buildPageRecord(),
+    frameUrl: iframeDoc.location?.href ?? null,
+    frameTitle: iframeDoc.title ?? null,
+  };
+}
+
+async function executeHoverAndClick(command) {
+  const hoverSelector = typeof command?.hoverSelector === "string" ? command.hoverSelector.trim() : "";
+  const clickSelector = typeof command?.clickSelector === "string" ? command.clickSelector.trim() : "";
+  const waitMs = typeof command?.waitMs === "number" && Number.isFinite(command.waitMs) ? command.waitMs : 500;
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+
+  if (!hoverSelector || !clickSelector) {
+    throw new Error("hoverAndClick requires both hoverSelector and clickSelector.");
+  }
+
+  const hoverTarget = document.querySelector(hoverSelector);
+  if (!hoverTarget || !(hoverTarget instanceof Element)) {
+    throw new Error(`hoverAndClick: no element found for hover selector "${hoverSelector}".`);
+  }
+
+  await interaction.executeHoverCommand({ targetElement: hoverTarget });
+  await waitForDelay(waitMs);
+
+  const clickTarget = await waitForSelectorWithObserver(clickSelector, "visible", timeoutMs);
+  if (!clickTarget || !(clickTarget instanceof Element)) {
+    throw new Error(`hoverAndClick: click target "${clickSelector}" did not appear after hover.`);
+  }
+
+  const clickResult = await interaction.executeClickCommand({ targetElement: clickTarget });
+
+  return {
+    page: buildPageRecord(),
+    hoveredElement: describeElementForCommand(hoverTarget),
+    clickedElement: describeElementForCommand(clickTarget),
+    ...clickResult,
+  };
+}
+
 async function executeAutomationCommand(command) {
   if (command?.type !== "playwright") {
     throw new Error(`Unsupported automation payload: ${String(command?.type)}`);
@@ -822,6 +1105,14 @@ async function executeAutomationCommand(command) {
       return executePageGoBack();
     case "page.goForward":
       return executePageGoForward();
+    case "page.waitForLoadState":
+      return executePageWaitForLoadState(command);
+    case "page.frameLocator":
+      return executeFrameLocatorAction(command);
+    case "page.frame":
+      return executePageFrameEvaluate(command);
+    case "page.hoverAndClick":
+      return executeHoverAndClick(command);
     default:
       throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }
