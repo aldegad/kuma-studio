@@ -9,6 +9,10 @@
   },
   "scripts": {
     "serve": "node src/cli.mjs serve",
+    "mcp": "node src/mcp-channel-server.mjs",
     "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
   }
 }
