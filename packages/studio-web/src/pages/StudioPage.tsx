@@ -24,6 +24,7 @@ import { ToastContainer, pushToast } from "../components/shared/Toast";
 import { ActivityFeed } from "../components/shared/ActivityFeed";
 import { AmbientParticles } from "../components/office/AmbientParticles";
 import { DailyReportBadge } from "../components/dashboard/DailyReportBadge";
+import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { useActivityStore } from "../stores/use-activity-store";
 
 // ---------------------------------------------------------------------------
@@ -165,6 +166,7 @@ export function StudioPage() {
 
   // Help overlay
   const [showHelp, setShowHelp] = useState(false);
+  const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
 
   // Fit-to-screen: compute zoom & pan to show all characters
   const fitToScreen = useCallback(() => {
@@ -572,11 +574,16 @@ export function StudioPage() {
               key={character.id}
               character={character}
               isDragging={dragState?.kind === "character" && dragState.id === character.id}
+              isSelected={selectedCharId === character.id}
               speechBubble={
                 PIPELINE_STAGE_ORDER.flatMap((s) => stages[s])
                   .find((a) => a.id === character.id && a.status === "working")
                   ?.currentTask
               }
+              onClick={(event) => {
+                event.stopPropagation();
+                setSelectedCharId((prev) => prev === character.id ? null : character.id);
+              }}
               onDoubleClick={(event) => {
                 event.stopPropagation();
                 const container = containerRef.current;
@@ -641,6 +648,12 @@ export function StudioPage() {
 
       {/* Daily report — top-left */}
       <DailyReportBadge isNight={isNight} />
+
+      {/* Character detail panel */}
+      {selectedCharId && (() => {
+        const char = scene.characters.find((c) => c.id === selectedCharId);
+        return char ? <CharacterDetailPanel character={char} isNight={isNight} onClose={() => setSelectedCharId(null)} /> : null;
+      })()}
 
       {/* Activity feed — bottom-right */}
       <ActivityFeed />

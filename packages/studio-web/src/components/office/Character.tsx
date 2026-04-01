@@ -8,7 +8,9 @@ import { STATE_COLORS, STATE_LABELS_KO } from "../../lib/constants";
 interface CharacterProps {
   character: OfficeCharacter;
   isDragging?: boolean;
+  isSelected?: boolean;
   speechBubble?: string;
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onDragStart?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
@@ -29,7 +31,7 @@ function modelShortName(model: string | undefined): string | null {
   return model;
 }
 
-export function Character({ character, isDragging = false, speechBubble, onDragStart, onDoubleClick }: CharacterProps) {
+export function Character({ character, isDragging = false, isSelected = false, speechBubble, onClick, onDragStart, onDoubleClick }: CharacterProps) {
   const [hovered, setHovered] = useState(false);
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
   const stateLabel = STATE_LABELS_KO[character.state] ?? character.state;
@@ -47,6 +49,7 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
         isDragging ? "z-20 cursor-grabbing" : "transition-all duration-500 ease-in-out cursor-grab"
       }`}
       onMouseDown={onDragStart}
+      onClick={onClick}
       onDoubleClick={onDoubleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -80,6 +83,7 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
             : character.state === "idle"
             ? "border-white/50 bg-white/80 animate-zzz"
             : "border-white/50 bg-white/80"
+        } ${isSelected ? "ring-2 ring-amber-400 ring-offset-1" : ""
         }`}
         style={{
           "--glow-color": character.state === "working" || character.state === "thinking"
