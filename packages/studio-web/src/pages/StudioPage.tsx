@@ -142,6 +142,33 @@ export function StudioPage() {
   // Pipeline HUD collapsed state
   const [pipelineCollapsed, setPipelineCollapsed] = useState(false);
 
+  // Fit-to-screen: compute zoom & pan to show all characters
+  const fitToScreen = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const positions = scene.characters.map((c) => c.position);
+    if (positions.length === 0) return;
+
+    const PAD = 80;
+    const minX = Math.min(...positions.map((p) => p.x)) - PAD;
+    const minY = Math.min(...positions.map((p) => p.y)) - PAD;
+    const maxX = Math.max(...positions.map((p) => p.x)) + PAD;
+    const maxY = Math.max(...positions.map((p) => p.y)) + PAD;
+
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const viewW = container.clientWidth;
+    const viewH = container.clientHeight;
+
+    const newZoom = clamp(Math.min(viewW / contentW, viewH / contentH), ZOOM_MIN, ZOOM_MAX);
+    const newPanX = (viewW - contentW * newZoom) / 2 - minX * newZoom;
+    const newPanY = (viewH - contentH * newZoom) / 2 - minY * newZoom;
+
+    setZoom(newZoom);
+    setPanX(newPanX);
+    setPanY(newPanY);
+  }, [scene.characters]);
+
   // -------------------------------------------------------------------------
   // Data fetching
   // -------------------------------------------------------------------------
@@ -303,11 +330,14 @@ export function StudioPage() {
         setZoom(ZOOM_DEFAULT);
         setPanX(0);
         setPanY(0);
+      } else if (e.key === "1") {
+        e.preventDefault();
+        fitToScreen();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [fitToScreen]);
 
   // -------------------------------------------------------------------------
   // Container mousedown → start pan (only fires on empty space)
@@ -363,15 +393,22 @@ export function StudioPage() {
             height: CANVAS_HEIGHT,
             transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
             transformOrigin: "0 0",
+            transition: dragState ? "none" : "transform 0.2s ease-out",
           }}
         >
           <OfficeBackground background={scene.background} />
 
-          {/* Team area labels — behind characters & furniture */}
+          {/* Team zone backgrounds — subtle colored regions */}
+          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 380, top: 20, width: 260, height: 160, background: "radial-gradient(ellipse, rgba(168,162,158,0.08) 0%, transparent 70%)" }} />
+          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 40, top: 100, width: 400, height: 350, background: "radial-gradient(ellipse, rgba(59,130,246,0.06) 0%, transparent 70%)" }} />
+          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 550, top: 100, width: 350, height: 250, background: "radial-gradient(ellipse, rgba(249,115,22,0.06) 0%, transparent 70%)" }} />
+          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 550, top: 320, width: 350, height: 250, background: "radial-gradient(ellipse, rgba(34,197,94,0.06) 0%, transparent 70%)" }} />
+
+          {/* Team area labels */}
           <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 470, top: 40 }}>총괄</span>
-          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 100, top: 120 }}>🐺 개발팀</span>
-          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 630, top: 120 }}>🦊 분석팀</span>
-          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 630, top: 340 }}>🦌 전략팀</span>
+          <span className="absolute text-lg font-bold text-blue-300/50 select-none pointer-events-none" style={{ left: 100, top: 120 }}>🐺 개발팀</span>
+          <span className="absolute text-lg font-bold text-orange-300/50 select-none pointer-events-none" style={{ left: 630, top: 120 }}>🦊 분석팀</span>
+          <span className="absolute text-lg font-bold text-green-300/50 select-none pointer-events-none" style={{ left: 630, top: 340 }}>🦌 전략팀</span>
 
           {scene.furniture.map((item) => (
             <Furniture
@@ -397,6 +434,17 @@ export function StudioPage() {
               key={character.id}
               character={character}
               isDragging={dragState?.kind === "character" && dragState.id === character.id}
+              onDoubleClick={(event) => {
+                event.stopPropagation();
+                const container = containerRef.current;
+                if (!container) return;
+                const focusZoom = 1.2;
+                const viewW = container.clientWidth;
+                const viewH = container.clientHeight;
+                setZoom(focusZoom);
+                setPanX(viewW / 2 - character.position.x * focusZoom);
+                setPanY(viewH / 2 - character.position.y * focusZoom);
+              }}
               onDragStart={(event) => {
                 event.preventDefault();
                 event.stopPropagation(); // prevent canvas pan
@@ -419,10 +467,11 @@ export function StudioPage() {
       {/* Top bar HUD                                                         */}
       {/* ------------------------------------------------------------------ */}
       <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-2 bg-white/60 backdrop-blur-md border-b border-white/40 shadow-sm">
-        {/* Logo */}
-        <div className="flex items-center gap-2">
+        {/* Logo + team count */}
+        <div className="flex items-center gap-3">
           <span className="text-lg font-black tracking-tight text-amber-900">쿠마 스튜디오</span>
           <span className="text-xs font-medium text-stone-400 hidden sm:inline">가상 사무실</span>
+          <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5">{scene.characters.length}명</span>
         </div>
 
         {/* Connection badge */}
@@ -509,13 +558,52 @@ export function StudioPage() {
         <button onClick={() => setZoom(z => clamp(z * 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold">+</button>
         <span className="text-[10px] text-stone-500 font-medium min-w-[32px] text-center">{Math.round(zoom * 100)}%</span>
         <button onClick={() => setZoom(z => clamp(z / 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold">{"\u2212"}</button>
-        <button onClick={() => { setZoom(ZOOM_DEFAULT); setPanX(0); setPanY(0); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs">{"\u21BA"}</button>
+        <button onClick={() => { setZoom(ZOOM_DEFAULT); setPanX(0); setPanY(0); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="초기화">{"\u21BA"}</button>
+        <button onClick={fitToScreen} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="전체 보기">{"\u2B1C"}</button>
       </div>
 
       {/* ------------------------------------------------------------------ */}
       {/* Skills Panel — bottom-right floating panel                          */}
       {/* ------------------------------------------------------------------ */}
       <SkillsPanel />
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Minimap — bottom-left                                               */}
+      {/* ------------------------------------------------------------------ */}
+      {(() => {
+        const MINIMAP_W = 140;
+        const MINIMAP_H = MINIMAP_W * (CANVAS_HEIGHT / CANVAS_WIDTH);
+        const scaleX = MINIMAP_W / CANVAS_WIDTH;
+        const scaleY = MINIMAP_H / CANVAS_HEIGHT;
+        const container = containerRef.current;
+        const vpW = container ? container.clientWidth / zoom * scaleX : 40;
+        const vpH = container ? container.clientHeight / zoom * scaleY : 30;
+        const vpX = -panX / zoom * scaleX;
+        const vpY = -panY / zoom * scaleY;
+        return (
+          <div
+            className="absolute bottom-44 left-4 z-30 rounded-xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg p-1.5 cursor-pointer"
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = (e.clientX - rect.left - 6) / scaleX;
+              const clickY = (e.clientY - rect.top - 6) / scaleY;
+              const ctr = containerRef.current;
+              if (!ctr) return;
+              setPanX(ctr.clientWidth / 2 - clickX * zoom);
+              setPanY(ctr.clientHeight / 2 - clickY * zoom);
+            }}
+          >
+            <div className="relative overflow-hidden rounded-lg" style={{ width: MINIMAP_W, height: MINIMAP_H, background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
+              {/* Viewport rectangle */}
+              <div className="absolute border border-blue-400/60 bg-blue-200/15 rounded-sm" style={{ left: clamp(vpX, 0, MINIMAP_W), top: clamp(vpY, 0, MINIMAP_H), width: Math.min(vpW, MINIMAP_W), height: Math.min(vpH, MINIMAP_H) }} />
+              {/* Character dots */}
+              {scene.characters.map((c) => (
+                <div key={c.id} className="absolute w-2 h-2 rounded-full bg-stone-500/70" style={{ left: c.position.x * scaleX - 4, top: c.position.y * scaleY - 4 }} title={c.name} />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ------------------------------------------------------------------ */}
       {/* Stats HUD — bottom-left floating badges                             */}

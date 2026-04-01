@@ -8,6 +8,7 @@ interface CharacterProps {
   character: OfficeCharacter;
   isDragging?: boolean;
   onDragStart?: (event: MouseEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
 function modelBadgeClass(model: string | undefined): string {
@@ -26,7 +27,7 @@ function modelShortName(model: string | undefined): string | null {
   return model;
 }
 
-export function Character({ character, isDragging = false, onDragStart }: CharacterProps) {
+export function Character({ character, isDragging = false, onDragStart, onDoubleClick }: CharacterProps) {
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
   const stateLabel = STATE_LABELS_KO[character.state] ?? character.state;
   const teamMember = KUMA_TEAM.find((m) => m.id === character.id);
@@ -43,14 +44,16 @@ export function Character({ character, isDragging = false, onDragStart }: Charac
         isDragging ? "z-20 cursor-grabbing" : "transition-all duration-500 ease-in-out cursor-grab"
       }`}
       onMouseDown={onDragStart}
+      onDoubleClick={onDoubleClick}
       style={{
         left: character.position.x,
         top: character.position.y,
         transform: "translate(-50%, -50%)",
+        animation: isDragging ? "none" : `float-idle ${2.5 + (character.id.charCodeAt(0) % 5) * 0.3}s ease-in-out infinite`,
       }}
     >
       {/* Card container */}
-      <div className="flex w-30 flex-col items-center rounded-xl border border-white/50 bg-white/80 p-2 shadow-md backdrop-blur-sm">
+      <div className="flex w-30 flex-col items-center rounded-xl border border-white/50 bg-white/80 p-2 shadow-md backdrop-blur-sm hover:shadow-lg hover:bg-white/90 transition-shadow duration-200">
         {/* Avatar */}
         <CharacterSprite character={character} />
 

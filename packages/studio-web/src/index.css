@@ -58,3 +58,9 @@ body {
 .animate-typing {
   animation: typing 0.3s ease-in-out infinite;
 }
+
+/* Idle floating for character cards — each character uses a slightly different duration */
+@keyframes float-idle {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  50% { transform: translate(-50%, -50%) translateY(-3px); }
+}
