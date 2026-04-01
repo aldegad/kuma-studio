@@ -29,12 +29,89 @@ export function mapJobStatusToAgentState(jobStatus) {
   }
 }
 
+/** @typedef {"session" | "team" | "worker"} NodeType */
+
 export class AgentStateManager {
   /** @type {Map<string, string>} agentId -> current state */
   #states = new Map();
 
+  /** @type {Map<string, {nodeType: string, parentId: string|null, team: string|null}>} */
+  #registry = new Map();
+
   /** @type {((agentId: string, state: string) => void)[]} */
   #listeners = [];
+
+  /**
+   * Register an agent in the hierarchy.
+   * @param {string} agentId
+   * @param {{ nodeType?: string, parentId?: string, team?: string }} meta
+   */
+  registerAgent(agentId, meta = {}) {
+    this.#registry.set(agentId, {
+      nodeType: meta.nodeType ?? "worker",
+      parentId: meta.parentId ?? null,
+      team: meta.team ?? null,
+    });
+  }
+
+  /**
+   * Get registry entry for an agent.
+   * @param {string} agentId
+   * @returns {{ nodeType: string, parentId: string|null, team: string|null } | null}
+   */
+  getAgentMeta(agentId) {
+    return this.#registry.get(agentId) ?? null;
+  }
+
+  /**
+   * Get direct children of an agent.
+   * @param {string} parentId
+   * @returns {string[]}
+   */
+  getChildren(parentId) {
+    const children = [];
+    for (const [id, meta] of this.#registry) {
+      if (meta.parentId === parentId) {
+        children.push(id);
+      }
+    }
+    return children;
+  }
+
+  /**
+   * Get all descendants (recursive) of an agent.
+   * @param {string} rootId
+   * @returns {string[]}
+   */
+  getDescendants(rootId) {
+    const result = [];
+    const queue = [rootId];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const children = this.getChildren(current);
+      for (const child of children) {
+        result.push(child);
+        queue.push(child);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Get the aggregated tree state for a node and its descendants.
+   * @param {string} agentId
+   * @returns {{ id: string, state: string, nodeType: string, children: object[] }}
+   */
+  getTreeState(agentId) {
+    const meta = this.#registry.get(agentId);
+    const children = this.getChildren(agentId);
+    return {
+      id: agentId,
+      state: this.getState(agentId),
+      nodeType: meta?.nodeType ?? "worker",
+      children: children.map((childId) => this.getTreeState(childId)),
+    };
+  }
 
   /**
    * Get the current state of an agent.

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { realpathSync } from "node:fs";
 import os from "node:os";
 import { resolve } from "node:path";
 import process from "node:process";
@@ -19,7 +20,13 @@ export function resolveKumaPickerStateDir() {
 }
 
 export function computeProjectHash(projectRoot) {
-  return createHash("sha256").update(resolve(projectRoot)).digest("hex").slice(0, 12);
+  let canonical = resolve(projectRoot);
+  try {
+    canonical = realpathSync(canonical);
+  } catch {
+    // Fall back to resolved path if realpath fails (e.g., directory not yet created).
+  }
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 12);
 }
 
 export function resolveProjectStateDir(projectRoot) {
