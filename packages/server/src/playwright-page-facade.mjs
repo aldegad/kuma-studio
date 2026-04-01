@@ -1008,6 +1008,17 @@ export function createPage(client, state) {
       updatePageState(state, result);
       return result;
     },
+    async setViewportSize({ width, height } = {}) {
+      if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+        throw new Error("page.setViewportSize requires finite positive width and height values.");
+      }
+      const result = await client.send("page.setViewportSize", {
+        width: Math.round(width),
+        height: Math.round(height),
+      });
+      updatePageState(state, result);
+      return result;
+    },
     async waitForLoadState(loadState = "load", options = {}) {
       const validStates = ["load", "domcontentloaded", "networkidle"];
       if (!validStates.includes(loadState)) {
@@ -1037,6 +1048,34 @@ export function createPage(client, state) {
       const result = await client.send(
         "page.waitForURL",
         { value },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async waitForResponse(urlOrPredicate, options = {}) {
+      if (typeof urlOrPredicate !== "string" || !urlOrPredicate.trim()) {
+        throw new Error("page.waitForResponse requires a non-empty URL pattern string.");
+      }
+      const result = await client.send(
+        "page.waitForResponse",
+        {
+          urlPattern: urlOrPredicate.trim(),
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async waitForRequest(urlOrPredicate, options = {}) {
+      if (typeof urlOrPredicate !== "string" || !urlOrPredicate.trim()) {
+        throw new Error("page.waitForRequest requires a non-empty URL pattern string.");
+      }
+      const result = await client.send(
+        "page.waitForRequest",
+        {
+          urlPattern: urlOrPredicate.trim(),
+        },
         { timeoutMs: options.timeout },
       );
       updatePageState(state, result);

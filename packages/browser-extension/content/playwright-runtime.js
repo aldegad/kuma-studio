@@ -1142,6 +1142,35 @@ async function executePageWaitForURL(command) {
   throw new Error(`Timed out waiting for URL matching "${display}" (current: ${window.location.href}).`);
 }
 
+const viewportSimulationState = {
+  width: null,
+  height: null,
+};
+
+function executePageSetViewportSize(command) {
+  const width = Number(command?.width);
+  const height = Number(command?.height);
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+    throw new Error("page.setViewportSize requires finite positive width and height values.");
+  }
+
+  const nextViewport = {
+    width: Math.round(width),
+    height: Math.round(height),
+  };
+
+  viewportSimulationState.width = nextViewport.width;
+  viewportSimulationState.height = nextViewport.height;
+  document.documentElement.style.width = `${nextViewport.width}px`;
+  document.documentElement.style.height = `${nextViewport.height}px`;
+
+  return {
+    page: buildPageRecord(),
+    viewportSize: nextViewport,
+    simulated: true,
+  };
+}
+
 // --- Shared fetch middleware chain ---
 // Both networkidle tracking and route interception register as middlewares
 // instead of independently overwriting window.fetch.
@@ -1783,6 +1812,216 @@ async function executePageOffDialog() {
 
 // --- Network interception (content-script level) ---
 
+const xhrNetworkWaitUrlSymbol = Symbol("kumaNetworkWaitUrl");
+const xhrNetworkWaitMethodSymbol = Symbol("kumaNetworkWaitMethod");
+const networkWaitState = {
+  activePatchCount: 0,
+  waiters: new Set(),
+  originalFetch: null,
+  originalXHROpen: null,
+  originalXHRSend: null,
+};
+
+function matchNetworkWaitUrlPattern(url, pattern) {
+  if (typeof pattern !== "string" || !pattern) {
+    return false;
+  }
+  if (pattern === "**/*" || pattern === "*") {
+    return true;
+  }
+
+  const regexStr = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "<<DOUBLESTAR>>")
+    .replace(/\*/g, "[^/]*")
+    .replace(/<<DOUBLESTAR>>/g, ".*");
+  return new RegExp(`^${regexStr}$`).test(url);
+}
+
+function settleNetworkWaiters(kind, entry) {
+  if (!entry || typeof entry.url !== "string" || !entry.url) {
+    return;
+  }
+
+  for (const waiter of [...networkWaitState.waiters]) {
+    if (waiter.kind !== kind) {
+      continue;
+    }
+    if (!matchNetworkWaitUrlPattern(entry.url, waiter.urlPattern)) {
+      continue;
+    }
+    waiter.resolve(entry);
+  }
+}
+
+function retainNetworkWaitPatch() {
+  if (networkWaitState.activePatchCount === 0) {
+    networkWaitState.originalFetch = window.fetch;
+    networkWaitState.originalXHROpen = XMLHttpRequest.prototype.open;
+    networkWaitState.originalXHRSend = XMLHttpRequest.prototype.send;
+
+    window.fetch = async function (...args) {
+      const request = args[0];
+      const init = args[1];
+      const url = typeof request === "string" ? request : request?.url ?? "";
+      const method = typeof init?.method === "string" ? init.method : request?.method ?? "GET";
+
+      settleNetworkWaiters("request", {
+        url,
+        method,
+        resourceType: "fetch",
+      });
+
+      const response = await networkWaitState.originalFetch.apply(this, args);
+      settleNetworkWaiters("response", {
+        url: response?.url || url,
+        method,
+        status: Number.isFinite(response?.status) ? response.status : null,
+        ok: response?.ok === true,
+        resourceType: "fetch",
+      });
+      return response;
+    };
+
+    XMLHttpRequest.prototype.open = function (method, url, ...args) {
+      this[xhrNetworkWaitMethodSymbol] = typeof method === "string" && method ? method : "GET";
+      this[xhrNetworkWaitUrlSymbol] = typeof url === "string" ? url : String(url ?? "");
+      return networkWaitState.originalXHROpen.call(this, method, url, ...args);
+    };
+
+    XMLHttpRequest.prototype.send = function (...args) {
+      const method = this[xhrNetworkWaitMethodSymbol] ?? "GET";
+      const url = this[xhrNetworkWaitUrlSymbol] ?? this.responseURL ?? "";
+
+      settleNetworkWaiters("request", {
+        url,
+        method,
+        resourceType: "xhr",
+      });
+
+      const handleLoadEnd = () => {
+        settleNetworkWaiters("response", {
+          url: this.responseURL || url,
+          method,
+          status: Number.isFinite(this.status) ? this.status : null,
+          ok: this.status >= 200 && this.status < 300,
+          resourceType: "xhr",
+        });
+      };
+
+      this.addEventListener("loadend", handleLoadEnd, { once: true });
+
+      try {
+        return networkWaitState.originalXHRSend.apply(this, args);
+      } catch (error) {
+        this.removeEventListener("loadend", handleLoadEnd);
+        throw error;
+      }
+    };
+  }
+
+  networkWaitState.activePatchCount += 1;
+}
+
+function releaseNetworkWaitPatch() {
+  networkWaitState.activePatchCount = Math.max(0, networkWaitState.activePatchCount - 1);
+  if (networkWaitState.activePatchCount > 0) {
+    return;
+  }
+
+  window.fetch = networkWaitState.originalFetch;
+  XMLHttpRequest.prototype.open = networkWaitState.originalXHROpen;
+  XMLHttpRequest.prototype.send = networkWaitState.originalXHRSend;
+  networkWaitState.originalFetch = null;
+  networkWaitState.originalXHROpen = null;
+  networkWaitState.originalXHRSend = null;
+}
+
+function waitForNetworkEvent(kind, urlPattern, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const waiter = {
+      kind,
+      urlPattern,
+      timer: null,
+      settled: false,
+      resolve(entry) {
+        if (this.settled) {
+          return;
+        }
+        this.settled = true;
+        cleanup();
+        resolve(entry);
+      },
+      reject(error) {
+        if (this.settled) {
+          return;
+        }
+        this.settled = true;
+        cleanup();
+        reject(error);
+      },
+    };
+
+    const cleanup = () => {
+      networkWaitState.waiters.delete(waiter);
+      if (waiter.timer) {
+        clearTimeout(waiter.timer);
+        waiter.timer = null;
+      }
+    };
+
+    waiter.timer = setTimeout(() => {
+      waiter.reject(new Error(`Timed out waiting for ${kind} matching "${urlPattern}".`));
+    }, timeoutMs);
+
+    networkWaitState.waiters.add(waiter);
+  });
+}
+
+async function executePageWaitForResponse(command) {
+  const urlPattern = typeof command?.urlPattern === "string" ? command.urlPattern.trim() : "";
+  if (!urlPattern) {
+    throw new Error("page.waitForResponse requires a non-empty urlPattern string.");
+  }
+
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+
+  retainNetworkWaitPatch();
+  try {
+    const response = await waitForNetworkEvent("response", urlPattern, timeoutMs);
+    return {
+      page: buildPageRecord(),
+      urlPattern,
+      response,
+    };
+  } finally {
+    releaseNetworkWaitPatch();
+  }
+}
+
+async function executePageWaitForRequest(command) {
+  const urlPattern = typeof command?.urlPattern === "string" ? command.urlPattern.trim() : "";
+  if (!urlPattern) {
+    throw new Error("page.waitForRequest requires a non-empty urlPattern string.");
+  }
+
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+
+  retainNetworkWaitPatch();
+  try {
+    const request = await waitForNetworkEvent("request", urlPattern, timeoutMs);
+    return {
+      page: buildPageRecord(),
+      urlPattern,
+      request,
+    };
+  } finally {
+    releaseNetworkWaitPatch();
+  }
+}
+
 const networkInterceptState = {
   routes: [],
   patchedFetch: false,
@@ -1957,6 +2196,12 @@ async function executeAutomationCommand(command) {
       return executePageWaitForLoadState(command);
     case "page.waitForURL":
       return executePageWaitForURL(command);
+    case "page.setViewportSize":
+      return executePageSetViewportSize(command);
+    case "page.waitForResponse":
+      return executePageWaitForResponse(command);
+    case "page.waitForRequest":
+      return executePageWaitForRequest(command);
     case "page.frameLocator":
       return executeFrameLocatorAction(command);
     case "page.frame":
