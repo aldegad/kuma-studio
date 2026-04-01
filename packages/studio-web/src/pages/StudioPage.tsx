@@ -375,8 +375,17 @@ export function StudioPage() {
   // Render
   // -------------------------------------------------------------------------
 
+  // Time-based ambient lighting (day/night cycle)
+  const hour = new Date().getHours();
+  const ambientBg =
+    hour >= 6 && hour < 10 ? "linear-gradient(135deg, #fef3c7 0%, #fde68a 30%, #fef9ee 100%)" // morning
+    : hour >= 10 && hour < 17 ? "linear-gradient(135deg, #fefce8 0%, #fef08a 30%, #fffbeb 100%)" // daytime
+    : hour >= 17 && hour < 20 ? "linear-gradient(135deg, #fed7aa 0%, #fdba74 30%, #fff7ed 100%)" // sunset
+    : "linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #1e1b4b 100%)"; // night
+  const isNight = hour >= 20 || hour < 6;
+
   return (
-    <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 30%, #fef9ee 100%)" }}>
+    <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: ambientBg, transition: "background 60s ease" }}>
 
       {/* ------------------------------------------------------------------ */}
       {/* Office canvas — full background with zoom/pan                       */}
@@ -471,11 +480,11 @@ export function StudioPage() {
       {/* ------------------------------------------------------------------ */}
       {/* Top bar HUD                                                         */}
       {/* ------------------------------------------------------------------ */}
-      <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-2 bg-white/60 backdrop-blur-md border-b border-white/40 shadow-sm">
+      <div className={`absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-2 backdrop-blur-md border-b shadow-sm ${isNight ? "bg-indigo-950/60 border-indigo-800/40" : "bg-white/60 border-white/40"}`}>
         {/* Logo + team count */}
         <div className="flex items-center gap-3">
-          <span className="text-lg font-black tracking-tight text-amber-900">쿠마 스튜디오</span>
-          <span className="text-xs font-medium text-stone-400 hidden sm:inline">가상 사무실</span>
+          <span className={`text-lg font-black tracking-tight ${isNight ? "text-amber-200" : "text-amber-900"}`}>쿠마 스튜디오</span>
+          <span className={`text-xs font-medium hidden sm:inline ${isNight ? "text-indigo-300" : "text-stone-400"}`}>가상 사무실</span>
           <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5">{scene.characters.length}명</span>
         </div>
 
