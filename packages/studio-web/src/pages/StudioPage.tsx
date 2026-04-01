@@ -23,6 +23,7 @@ import { SkillsPanel } from "../components/dashboard/SkillsPanel";
 import { ToastContainer, pushToast } from "../components/shared/Toast";
 import { ActivityFeed } from "../components/shared/ActivityFeed";
 import { AmbientParticles } from "../components/office/AmbientParticles";
+import { DailyReportBadge } from "../components/dashboard/DailyReportBadge";
 import { useActivityStore } from "../stores/use-activity-store";
 
 // ---------------------------------------------------------------------------
@@ -637,6 +638,9 @@ export function StudioPage() {
 
       {/* Toast notifications */}
       <ToastContainer />
+
+      {/* Daily report — top-left */}
+      <DailyReportBadge isNight={isNight} />
 
       {/* Activity feed — bottom-right */}
       <ActivityFeed />
