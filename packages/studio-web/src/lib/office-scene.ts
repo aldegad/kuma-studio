@@ -64,6 +64,10 @@ export const DEFAULT_OFFICE_FURNITURE: OfficeFurniture[] = [
   { id: "bookshelf-1", type: "bookshelf", position: { x: 460, y: 480 }, imageUrl: "" },
   // Lounge sofa
   { id: "sofa-1", type: "sofa", position: { x: 460, y: 350 }, imageUrl: "" },
+  // Printer
+  { id: "printer-1", type: "printer", position: { x: 350, y: 520 }, imageUrl: "" },
+  // Water cooler
+  { id: "watercooler-1", type: "watercooler", position: { x: 550, y: 520 }, imageUrl: "" },
 ];
 
 export const DEFAULT_OFFICE_SCENE: OfficeScene = {
@@ -85,6 +89,8 @@ export const FURNITURE_SIZES: Record<string, { w: number; h: number }> = {
   coffee: { w: 72, h: 52 },
   bookshelf: { w: 64, h: 72 },
   sofa: { w: 80, h: 56 },
+  printer: { w: 48, h: 48 },
+  watercooler: { w: 32, h: 44 },
 };
 
 /** Team zone bounding rectangles for visual grouping in the office */
