@@ -1444,14 +1444,46 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       ...extra,
     });
 
+    const pointerEventInit = (clientX, clientY) => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX,
+      clientY,
+      view: window,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    const mouseEventInit = (clientX, clientY) => ({
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX,
+      clientY,
+      view: window,
+      button: 0,
+    });
+
+    // Full drag-and-drop sequence for React DnD and native HTML5 compatibility
+    sourceElement.dispatchEvent(new PointerEvent("pointerdown", pointerEventInit(sourceX, sourceY)));
+    sourceElement.dispatchEvent(new MouseEvent("mousedown", mouseEventInit(sourceX, sourceY)));
+
     sourceElement.dispatchEvent(new DragEvent("dragstart", dragEventInit("dragstart", sourceX, sourceY)));
     sourceElement.dispatchEvent(new DragEvent("drag", dragEventInit("drag", sourceX, sourceY)));
+
+    // Intermediate mousemove to trigger drag recognition
+    sourceElement.dispatchEvent(new MouseEvent("mousemove", mouseEventInit(
+      sourceX + (targetX - sourceX) / 2,
+      sourceY + (targetY - sourceY) / 2,
+    )));
 
     targetElement.dispatchEvent(new DragEvent("dragenter", dragEventInit("dragenter", targetX, targetY)));
     targetElement.dispatchEvent(new DragEvent("dragover", dragEventInit("dragover", targetX, targetY)));
     targetElement.dispatchEvent(new DragEvent("drop", dragEventInit("drop", targetX, targetY)));
 
     sourceElement.dispatchEvent(new DragEvent("dragend", dragEventInit("dragend", targetX, targetY)));
+    sourceElement.dispatchEvent(new PointerEvent("pointerup", pointerEventInit(targetX, targetY)));
+    sourceElement.dispatchEvent(new MouseEvent("mouseup", mouseEventInit(targetX, targetY)));
 
     await waitForPostActionDelay(command, 60);
     return {
@@ -1480,10 +1512,15 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       if (typeof fileDesc?.content === "string") {
         content = new TextEncoder().encode(fileDesc.content);
       } else if (fileDesc?.base64 && typeof fileDesc.base64 === "string") {
-        const binaryString = atob(fileDesc.base64);
-        content = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          content[i] = binaryString.charCodeAt(i);
+        try {
+          const binaryString = atob(fileDesc.base64);
+          content = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            content[i] = binaryString.charCodeAt(i);
+          }
+        } catch (decodeError) {
+          console.warn(`[kuma-picker] Skipping file "${name}": invalid base64 data -`, decodeError.message);
+          continue;
         }
       } else {
         content = new Uint8Array(0);

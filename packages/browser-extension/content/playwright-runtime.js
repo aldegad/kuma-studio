@@ -943,6 +943,52 @@ async function executePageWaitForLoadState(command) {
   return { page: buildPageRecord(), loadState: state };
 }
 
+// --- Shared fetch middleware chain ---
+// Both networkidle tracking and route interception register as middlewares
+// instead of independently overwriting window.fetch.
+const _sharedFetchState = {
+  installed: false,
+  originalFetch: null,
+  middlewares: [], // { id: string, handler: async (args) => Response|null }
+};
+
+function _installSharedFetchProxy() {
+  if (_sharedFetchState.installed) return;
+  _sharedFetchState.originalFetch = window.fetch;
+  _sharedFetchState.installed = true;
+
+  window.fetch = async function (...args) {
+    // Walk middlewares in order; first one to return a Response wins
+    for (const mw of _sharedFetchState.middlewares) {
+      const result = await mw.handler(args);
+      if (result) return result;
+    }
+    return _sharedFetchState.originalFetch.apply(window, args);
+  };
+}
+
+function _uninstallSharedFetchProxy() {
+  if (!_sharedFetchState.installed) return;
+  // Only tear down if no middlewares remain
+  if (_sharedFetchState.middlewares.length > 0) return;
+  window.fetch = _sharedFetchState.originalFetch;
+  _sharedFetchState.originalFetch = null;
+  _sharedFetchState.installed = false;
+}
+
+function _addFetchMiddleware(id, handler) {
+  _installSharedFetchProxy();
+  // Avoid duplicates
+  if (!_sharedFetchState.middlewares.some((m) => m.id === id)) {
+    _sharedFetchState.middlewares.push({ id, handler });
+  }
+}
+
+function _removeFetchMiddleware(id) {
+  _sharedFetchState.middlewares = _sharedFetchState.middlewares.filter((m) => m.id !== id);
+  _uninstallSharedFetchProxy();
+}
+
 const xhrNetworkIdleTrackedSymbol = Symbol("kumaNetworkIdleTracked");
 
 const networkIdlePatchState = {
@@ -972,21 +1018,21 @@ function handleNetworkIdleRequestEnd() {
 
 function retainNetworkIdlePatch() {
   if (networkIdlePatchState.activePatchCount === 0) {
-    networkIdlePatchState.originalFetch = window.fetch;
     networkIdlePatchState.originalXHROpen = XMLHttpRequest.prototype.open;
     networkIdlePatchState.originalXHRSend = XMLHttpRequest.prototype.send;
 
-    if (typeof networkIdlePatchState.originalFetch === "function") {
-      window.fetch = function (...args) {
-        handleNetworkIdleRequestStart();
-        try {
-          return Promise.resolve(networkIdlePatchState.originalFetch.apply(this, args)).finally(handleNetworkIdleRequestEnd);
-        } catch (error) {
-          handleNetworkIdleRequestEnd();
-          throw error;
-        }
-      };
-    }
+    // Use shared fetch middleware instead of directly overwriting window.fetch
+    _addFetchMiddleware("networkidle", async (args) => {
+      handleNetworkIdleRequestStart();
+      try {
+        const response = await _sharedFetchState.originalFetch.apply(window, args);
+        handleNetworkIdleRequestEnd();
+        return response;
+      } catch (error) {
+        handleNetworkIdleRequestEnd();
+        throw error;
+      }
+    });
 
     XMLHttpRequest.prototype.open = function (...args) {
       this[xhrNetworkIdleTrackedSymbol] = true;
@@ -1019,10 +1065,9 @@ function releaseNetworkIdlePatch() {
     return;
   }
 
-  window.fetch = networkIdlePatchState.originalFetch;
+  _removeFetchMiddleware("networkidle");
   XMLHttpRequest.prototype.open = networkIdlePatchState.originalXHROpen;
   XMLHttpRequest.prototype.send = networkIdlePatchState.originalXHRSend;
-  networkIdlePatchState.originalFetch = null;
   networkIdlePatchState.originalXHROpen = null;
   networkIdlePatchState.originalXHRSend = null;
   networkIdlePatchState.pendingRequests = 0;
@@ -1234,10 +1279,6 @@ async function executeLocatorSetInputFiles(command) {
 const networkInterceptState = {
   routes: [],
   patchedFetch: false,
-  patchedXHR: false,
-  originalFetch: null,
-  originalXHROpen: null,
-  originalXHRSend: null,
 };
 
 function matchUrlPattern(url, pattern) {
@@ -1269,11 +1310,10 @@ function findMatchingRoute(url) {
 
 function installNetworkInterception() {
   if (networkInterceptState.patchedFetch) return;
-
-  networkInterceptState.originalFetch = window.fetch;
   networkInterceptState.patchedFetch = true;
 
-  window.fetch = async function (...args) {
+  // Use shared fetch middleware instead of directly overwriting window.fetch
+  _addFetchMiddleware("route", async (args) => {
     const request = args[0];
     const url = typeof request === "string" ? request : request?.url ?? "";
     const route = findMatchingRoute(url);
@@ -1293,15 +1333,14 @@ function installNetworkInterception() {
       }
     }
 
-    return networkInterceptState.originalFetch.apply(this, args);
-  };
+    return null; // Not intercepted, pass to next middleware
+  });
 }
 
 function uninstallNetworkInterception() {
   if (!networkInterceptState.patchedFetch) return;
-  window.fetch = networkInterceptState.originalFetch;
+  _removeFetchMiddleware("route");
   networkInterceptState.patchedFetch = false;
-  networkInterceptState.originalFetch = null;
 }
 
 async function executePageRoute(command) {

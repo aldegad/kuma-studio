@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { createUnsupportedProxy, parseDataUrl, serializeEvaluateInput } from "./playwright-runner-support.mjs";
@@ -249,7 +249,9 @@ export function createLocator(client, state, descriptor) {
       const fileArray = Array.isArray(files) ? files : [files];
       const fileDescs = fileArray.map((f) => {
         if (typeof f === "string") {
-          return { name: f.split("/").pop() || "file", content: "", type: "application/octet-stream" };
+          const absPath = toAbsolutePath(f);
+          const fileBuffer = readFileSync(absPath);
+          return { name: f.split("/").pop() || "file", base64: fileBuffer.toString("base64"), type: "application/octet-stream" };
         }
         return {
           name: f.name || "file",
@@ -869,9 +871,18 @@ export function createPage(client, state) {
       if (!urlPattern) {
         throw new Error("page.route requires a URL pattern.");
       }
-      const routeHandler = typeof handler === "function"
-        ? { fulfill: { status: 200, body: "", contentType: "text/plain" } }
-        : handler ?? {};
+      let routeHandler;
+      if (typeof handler === "function") {
+        const routeApi = {};
+        const routePromise = new Promise((resolve) => {
+          routeApi.fulfill = (opts) => resolve({ fulfill: opts });
+          routeApi.abort = () => resolve({ abort: true });
+        });
+        handler(routeApi);
+        routeHandler = await routePromise;
+      } else {
+        routeHandler = handler ?? {};
+      }
       const result = await client.send(
         "page.route",
         {
