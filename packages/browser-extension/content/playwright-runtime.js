@@ -20,6 +20,7 @@ const {
   executeClickCommand,
   executeClickPointCommand,
   executeFillCommand,
+  executeSelectOptionCommand,
   executeKeyCommand,
   executeKeyDownCommand,
   executeKeyUpCommand,
@@ -540,6 +541,19 @@ async function executeLocatorFill(command) {
   return executeFillCommand({
     targetElement: target,
     value: String(command.value ?? ""),
+  });
+}
+
+async function executeLocatorSelectOption(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve a selectOption locator target.");
+  }
+
+  return executeSelectOptionCommand({
+    targetElement: target,
+    values: command.values,
+    timeoutMs: command.timeoutMs,
   });
 }
 
@@ -1396,6 +1410,8 @@ async function executeAutomationCommand(command) {
       return executeLocatorClick(command);
     case "locator.fill":
       return executeLocatorFill(command);
+    case "locator.selectOption":
+      return executeLocatorSelectOption(command);
     case "locator.press":
       return executeLocatorPress(command);
     case "locator.textContent":

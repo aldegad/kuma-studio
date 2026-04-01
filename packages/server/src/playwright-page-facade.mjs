@@ -58,6 +58,31 @@ function writeScreenshotBuffer(buffer, filePath) {
   }
 }
 
+function normalizeSelectOptionValues(values) {
+  const valueList = Array.isArray(values) ? values : [values];
+  if (valueList.length === 0) {
+    throw new Error("locator.selectOption requires at least one value.");
+  }
+
+  return valueList.map((value) => {
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (value && typeof value === "object") {
+      if (typeof value.label === "string") {
+        return { label: value.label };
+      }
+
+      if (Number.isInteger(value.index) && value.index >= 0) {
+        return { index: value.index };
+      }
+    }
+
+    throw new Error("locator.selectOption requires a string, { label }, { index }, or an array of those values.");
+  });
+}
+
 export function createPageState() {
   return {
     url: null,
@@ -107,6 +132,19 @@ export function createLocator(client, state, descriptor) {
         {
           locator: descriptor,
           value: String(value ?? ""),
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async selectOption(values, options = {}) {
+      const result = await client.send(
+        "locator.selectOption",
+        {
+          locator: descriptor,
+          values: normalizeSelectOptionValues(values),
+          timeoutMs: Number.isFinite(options.timeout) ? Math.round(options.timeout) : null,
         },
         { timeoutMs: options.timeout },
       );
@@ -352,6 +390,18 @@ export function createFrameLocator(client, state, iframeSelector) {
           updatePageState(state, result);
           return result;
         },
+        async selectOption(values, options = {}) {
+          const result = await wrapInnerCommand(
+            "locator.selectOption",
+            {
+              locator: descriptor,
+              values: normalizeSelectOptionValues(values),
+            },
+            options,
+          );
+          updatePageState(state, result);
+          return result;
+        },
         async textContent() {
           const result = await wrapInnerCommand("locator.textContent", { locator: descriptor });
           updatePageState(state, result);
@@ -418,6 +468,18 @@ export function createFrameLocator(client, state, iframeSelector) {
               updatePageState(state, result);
               return result;
             },
+            async selectOption(values, options = {}) {
+              const result = await wrapInnerCommand(
+                "locator.selectOption",
+                {
+                  locator: nthDescriptor,
+                  values: normalizeSelectOptionValues(values),
+                },
+                options,
+              );
+              updatePageState(state, result);
+              return result;
+            },
             async textContent() {
               const result = await wrapInnerCommand("locator.textContent", { locator: nthDescriptor });
               updatePageState(state, result);
@@ -443,6 +505,18 @@ export function createFrameLocator(client, state, iframeSelector) {
               const result = await wrapInnerCommand(
                 "locator.fill",
                 { locator: nthDescriptor, value: String(value ?? "") },
+                options,
+              );
+              updatePageState(state, result);
+              return result;
+            },
+            async selectOption(values, options = {}) {
+              const result = await wrapInnerCommand(
+                "locator.selectOption",
+                {
+                  locator: nthDescriptor,
+                  values: normalizeSelectOptionValues(values),
+                },
                 options,
               );
               updatePageState(state, result);
@@ -475,6 +549,18 @@ export function createFrameLocator(client, state, iframeSelector) {
       const locatorTarget = {
         async click(options2 = {}) {
           const result = await wrapInnerCommand("locator.click", { locator: descriptor }, options2);
+          updatePageState(state, result);
+          return result;
+        },
+        async selectOption(values, options2 = {}) {
+          const result = await wrapInnerCommand(
+            "locator.selectOption",
+            {
+              locator: descriptor,
+              values: normalizeSelectOptionValues(values),
+            },
+            options2,
+          );
           updatePageState(state, result);
           return result;
         },
