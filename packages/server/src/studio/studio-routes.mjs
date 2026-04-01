@@ -5,6 +5,7 @@
 
 import { readFileSync, existsSync, statSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, join, extname } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
@@ -109,6 +110,20 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore }) 
 
     if (url.pathname === "/studio/plugins" && req.method === "GET") {
       sendJson(res, 200, { plugins: await readStudioPlugins() });
+      return true;
+    }
+
+    if (url.pathname === "/studio/git-log" && req.method === "GET") {
+      try {
+        const raw = execSync("git log --oneline -10 --no-color", { cwd: resolve(join(staticDir, "..", "..")), encoding: "utf-8", timeout: 3000 });
+        const commits = raw.trim().split("\n").map((line) => {
+          const [hash, ...rest] = line.split(" ");
+          return { hash, message: rest.join(" ") };
+        });
+        sendJson(res, 200, { commits });
+      } catch {
+        sendJson(res, 200, { commits: [] });
+      }
       return true;
     }
 

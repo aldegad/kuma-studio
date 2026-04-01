@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import { StatusBadge } from "../shared/StatusBadge";
+
+interface GitCommit { hash: string; message: string; }
 
 interface WhiteboardProps {
   position: { x: number; y: number };
@@ -10,6 +13,14 @@ export function Whiteboard({ position }: WhiteboardProps) {
   const stats = useDashboardStore((s) => s.stats);
   const dailyReport = useDashboardStore((s) => s.dailyReport);
   const recentJobs = jobs.slice(0, 3);
+
+  const [commits, setCommits] = useState<GitCommit[]>([]);
+  useEffect(() => {
+    fetch("/studio/git-log")
+      .then((r) => r.json())
+      .then((d) => setCommits(d.commits?.slice(0, 5) || []))
+      .catch(() => {});
+  }, []);
 
   const today = new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" });
 
@@ -66,6 +77,21 @@ export function Whiteboard({ position }: WhiteboardProps) {
         </div>
       ) : (
         <p className="text-center text-[10px] text-stone-400 py-2">오늘의 작업을 시작해보세요</p>
+      )}
+
+      {/* Recent commits */}
+      {commits.length > 0 && (
+        <div className="mt-2 border-t border-stone-200/50 pt-1.5">
+          <p className="text-[9px] font-bold text-stone-400 uppercase mb-1">최근 커밋</p>
+          <div className="space-y-0.5">
+            {commits.map((c) => (
+              <p key={c.hash} className="text-[8px] text-stone-400 truncate">
+                <span className="font-mono text-stone-500">{c.hash.slice(0, 7)}</span>{" "}
+                {c.message.slice(0, 35)}
+              </p>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
