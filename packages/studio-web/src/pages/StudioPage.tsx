@@ -20,6 +20,7 @@ import { Character } from "../components/office/Character";
 import { Furniture } from "../components/office/Furniture";
 import { Whiteboard } from "../components/office/Whiteboard";
 import { SkillsPanel } from "../components/dashboard/SkillsPanel";
+import { ToastContainer, pushToast } from "../components/shared/Toast";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -237,8 +238,13 @@ export function StudioPage() {
         const data: StudioEvent = JSON.parse(e.data as string);
         if (data.type !== "kuma-studio:event") return;
         const ev = data.event;
-        if (ev.kind === "job-card-update") syncJob(ev.card);
-        else if (ev.kind === "agent-state-change") updateAgentState(ev.agentId, ev.state);
+        if (ev.kind === "job-card-update") {
+          syncJob(ev.card);
+          const statusLabel = ev.card.status === "completed" ? "완료" : ev.card.status === "error" ? "오류" : "업데이트";
+          pushToast(`${statusLabel}: ${ev.card.message?.slice(0, 40) || ev.card.id}`, ev.card.status === "error" ? "error" : ev.card.status === "completed" ? "success" : "info");
+        } else if (ev.kind === "agent-state-change") {
+          updateAgentState(ev.agentId, ev.state);
+        }
       } catch { /* ignore */ }
     };
     ws.addEventListener("message", handleMessage);
@@ -531,6 +537,9 @@ export function StudioPage() {
           {status === "connected" ? "연결됨" : status === "connecting" ? "연결 중..." : "연결 끊김"}
         </div>
       </div>
+
+      {/* Toast notifications */}
+      <ToastContainer />
 
       {/* ------------------------------------------------------------------ */}
       {/* Pipeline HUD — top-right floating panel                             */}
