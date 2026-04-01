@@ -12,7 +12,7 @@ import {
 import { useWsStore } from "../stores/use-ws-store";
 import { saveOfficeLayout } from "../lib/api";
 import { FURNITURE_SIZES, sceneToLayout } from "../lib/office-scene";
-import type { AgentState } from "../types/agent";
+import { KUMA_TEAM, type AgentState } from "../types/agent";
 import type { JobCard } from "../types/job-card";
 import type { OfficePosition } from "../types/office";
 import { OfficeBackground } from "../components/office/OfficeBackground";
@@ -650,10 +650,12 @@ export function StudioPage() {
             <div className="relative overflow-hidden rounded-lg" style={{ width: MINIMAP_W, height: MINIMAP_H, background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
               {/* Viewport rectangle */}
               <div className="absolute border border-blue-400/60 bg-blue-200/15 rounded-sm" style={{ left: clamp(vpX, 0, MINIMAP_W), top: clamp(vpY, 0, MINIMAP_H), width: Math.min(vpW, MINIMAP_W), height: Math.min(vpH, MINIMAP_H) }} />
-              {/* Character dots */}
-              {scene.characters.map((c) => (
-                <div key={c.id} className="absolute w-2 h-2 rounded-full bg-stone-500/70" style={{ left: c.position.x * scaleX - 4, top: c.position.y * scaleY - 4 }} title={c.name} />
-              ))}
+              {/* Character dots — team colored */}
+              {scene.characters.map((c) => {
+                const team = KUMA_TEAM.find((m) => m.id === c.id)?.team;
+                const dotColor = team === "dev" ? "#3b82f6" : team === "analytics" ? "#f97316" : team === "strategy" ? "#22c55e" : "#78716c";
+                return <div key={c.id} className="absolute w-2 h-2 rounded-full" style={{ left: c.position.x * scaleX - 4, top: c.position.y * scaleY - 4, backgroundColor: dotColor, opacity: 0.8 }} title={c.name} />;
+              })}
             </div>
           </div>
         );
