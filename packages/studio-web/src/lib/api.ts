@@ -55,6 +55,14 @@ export async function fetchTeamMetadata(): Promise<TeamMetadataResponse> {
   return res.json();
 }
 
+export async function fetchGitLog(): Promise<{ commits: { hash: string; message: string }[] }> {
+  const res = await fetch(`${BASE_URL}/studio/git-log`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch git log: ${res.statusText}`);
+  return res.json();
+}
+
 export async function saveOfficeLayout(layout: OfficeLayoutSnapshot): Promise<OfficeLayoutSnapshot> {
   const res = await fetch(`${BASE_URL}/studio/office-layout`, {
     method: "PUT",

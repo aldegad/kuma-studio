@@ -24,6 +24,7 @@ import { ToastContainer, pushToast } from "../components/shared/Toast";
 import { ActivityFeed } from "../components/shared/ActivityFeed";
 import { AmbientParticles } from "../components/office/AmbientParticles";
 import { DailyReportBadge } from "../components/dashboard/DailyReportBadge";
+import { GitLogPanel } from "../components/dashboard/GitLogPanel";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { useActivityStore } from "../stores/use-activity-store";
 
@@ -383,6 +384,7 @@ export function StudioPage() {
       }
       if (e.key === "Escape") {
         setShowHelp(false);
+        setSelectedCharId(null);
         return;
       }
 
@@ -432,6 +434,7 @@ export function StudioPage() {
       // a child (character/furniture) already called stopPropagation so we
       // won't reach here.
       e.preventDefault();
+      setSelectedCharId(null); // deselect on canvas click
       setDragState({
         kind: "pan",
         startX: e.clientX,
@@ -646,8 +649,11 @@ export function StudioPage() {
       {/* Toast notifications */}
       <ToastContainer />
 
-      {/* Daily report — top-left */}
-      <DailyReportBadge isNight={isNight} />
+      {/* Left panels — daily report + git log */}
+      <div className="absolute top-14 left-4 z-30 w-56 space-y-2">
+        <DailyReportBadge isNight={isNight} />
+        <GitLogPanel isNight={isNight} />
+      </div>
 
       {/* Character detail panel */}
       {selectedCharId && (() => {

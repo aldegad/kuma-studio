@@ -9,7 +9,7 @@ export function DailyReportBadge({ isNight }: { isNight: boolean }) {
   const mvpMember = mvp ? KUMA_TEAM.find((m) => m.id === mvp.id) : null;
 
   return (
-    <div className={`absolute top-14 left-4 z-30 w-56 rounded-2xl backdrop-blur-md border shadow-lg p-3 ${
+    <div className={`rounded-2xl backdrop-blur-md border shadow-lg p-3 ${
       isNight ? "bg-indigo-950/70 border-indigo-800/40" : "bg-white/75 border-white/50"
     }`}>
       <p className={`text-[10px] font-bold uppercase tracking-wider mb-2 ${isNight ? "text-indigo-400" : "text-stone-500"}`}>
