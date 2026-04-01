@@ -89,12 +89,21 @@ async function readStudioPlugins() {
  * @param {import("../scene-store.mjs").SceneStore} options.sceneStore
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
-export function createStudioRouteHandler({ staticDir, statsStore, sceneStore }) {
+export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager }) {
   return async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (url.pathname === "/studio/stats" && req.method === "GET") {
       sendJson(res, 200, statsStore.getStats());
+      return true;
+    }
+
+    if (url.pathname === "/studio/team-tree" && req.method === "GET") {
+      if (agentStateManager) {
+        sendJson(res, 200, agentStateManager.getTreeState("kuma"));
+      } else {
+        sendJson(res, 200, { id: "kuma", state: "idle", nodeType: "session", children: [] });
+      }
       return true;
     }
 
