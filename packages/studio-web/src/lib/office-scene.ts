@@ -74,11 +74,11 @@ export const OFFICE_CANVAS_SIZE = {
 } as const;
 
 export const FURNITURE_SIZES: Record<string, { w: number; h: number }> = {
-  desk: { w: 64, h: 40 },
-  chair: { w: 32, h: 32 },
-  whiteboard: { w: 80, h: 60 },
-  plant: { w: 28, h: 36 },
-  coffee: { w: 20, h: 20 },
+  desk: { w: 80, h: 56 },
+  chair: { w: 40, h: 40 },
+  whiteboard: { w: 88, h: 72 },
+  plant: { w: 36, h: 44 },
+  coffee: { w: 72, h: 52 },
 };
 
 /** Team zone bounding rectangles for visual grouping in the office */
