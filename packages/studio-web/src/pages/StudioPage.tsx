@@ -11,7 +11,7 @@ import {
 } from "../stores/use-pipeline-store";
 import { useWsStore } from "../stores/use-ws-store";
 import { saveOfficeLayout } from "../lib/api";
-import { FURNITURE_SIZES, sceneToLayout } from "../lib/office-scene";
+import { FURNITURE_SIZES, TEAM_ZONES, TEAM_POSITIONS, HIERARCHY_LINES, sceneToLayout } from "../lib/office-scene";
 import { KUMA_TEAM, type AgentState } from "../types/agent";
 import type { JobCard } from "../types/job-card";
 import type { OfficePosition } from "../types/office";
@@ -443,17 +443,64 @@ export function StudioPage() {
         >
           <OfficeBackground background={scene.background} />
 
-          {/* Team zone backgrounds — subtle colored regions */}
-          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 380, top: 20, width: 260, height: 160, background: "radial-gradient(ellipse, rgba(168,162,158,0.08) 0%, transparent 70%)" }} />
-          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 40, top: 100, width: 400, height: 350, background: "radial-gradient(ellipse, rgba(59,130,246,0.06) 0%, transparent 70%)" }} />
-          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 550, top: 100, width: 350, height: 250, background: "radial-gradient(ellipse, rgba(249,115,22,0.06) 0%, transparent 70%)" }} />
-          <div className="absolute rounded-3xl pointer-events-none" style={{ left: 550, top: 320, width: 350, height: 250, background: "radial-gradient(ellipse, rgba(34,197,94,0.06) 0%, transparent 70%)" }} />
+          {/* Team zone backgrounds — data-driven from TEAM_ZONES */}
+          {TEAM_ZONES.map((zone) => (
+            <div
+              key={zone.team}
+              className="absolute rounded-3xl pointer-events-none"
+              style={{
+                left: zone.x,
+                top: zone.y,
+                width: zone.w,
+                height: zone.h,
+                background: `radial-gradient(ellipse, ${zone.color} 0%, transparent 70%)`,
+              }}
+            />
+          ))}
 
           {/* Team area labels */}
-          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 470, top: 40 }}>총괄</span>
-          <span className="absolute text-lg font-bold text-blue-300/50 select-none pointer-events-none" style={{ left: 100, top: 120 }}>🐺 개발팀</span>
-          <span className="absolute text-lg font-bold text-orange-300/50 select-none pointer-events-none" style={{ left: 630, top: 120 }}>🦊 분석팀</span>
-          <span className="absolute text-lg font-bold text-green-300/50 select-none pointer-events-none" style={{ left: 630, top: 340 }}>🦌 전략팀</span>
+          {TEAM_ZONES.map((zone) => {
+            const teamEmoji: Record<string, string> = { dev: "🐺", analytics: "🦊", strategy: "🦌" };
+            const labelColor: Record<string, string> = { management: "text-stone-300/50", dev: "text-blue-300/50", analytics: "text-orange-300/50", strategy: "text-green-300/50" };
+            return (
+              <span
+                key={`label-${zone.team}`}
+                className={`absolute text-lg font-bold select-none pointer-events-none ${labelColor[zone.team] ?? "text-stone-300/50"}`}
+                style={{ left: zone.x + 20, top: zone.y + 10 }}
+              >
+                {teamEmoji[zone.team] ? `${teamEmoji[zone.team]} ` : ""}{zone.label}
+              </span>
+            );
+          })}
+
+          {/* SVG hierarchy connection lines — glow when either endpoint is active */}
+          <svg className="absolute inset-0 pointer-events-none" width={CANVAS_WIDTH} height={CANVAS_HEIGHT}>
+            {HIERARCHY_LINES.map(({ from, to, color }) => {
+              const fromPos = TEAM_POSITIONS[from];
+              const toPos = TEAM_POSITIONS[to];
+              if (!fromPos || !toPos) return null;
+              const midY = (fromPos.y + toPos.y) / 2;
+              const fromChar = scene.characters.find((c) => c.id === from);
+              const toChar = scene.characters.find((c) => c.id === to);
+              const isActive = fromChar?.state === "working" || fromChar?.state === "thinking" || toChar?.state === "working" || toChar?.state === "thinking";
+              return (
+                <path
+                  key={`${from}-${to}`}
+                  d={`M ${fromPos.x} ${fromPos.y + 20} C ${fromPos.x} ${midY}, ${toPos.x} ${midY}, ${toPos.x} ${toPos.y - 20}`}
+                  stroke={color}
+                  strokeWidth={isActive ? 3 : 2}
+                  fill="none"
+                  strokeDasharray={isActive ? "none" : "6 4"}
+                  opacity={isActive ? 0.9 : 0.5}
+                  style={isActive ? { filter: `drop-shadow(0 0 4px ${color.replace(/[\d.]+\)$/, "0.5)")})` } : undefined}
+                >
+                  {isActive && (
+                    <animate attributeName="stroke-dashoffset" from="20" to="0" dur="1s" repeatCount="indefinite" />
+                  )}
+                </path>
+              );
+            })}
+          </svg>
 
           {scene.furniture.map((item) => (
             <Furniture
@@ -648,6 +695,22 @@ export function StudioPage() {
             }}
           >
             <div className="relative overflow-hidden rounded-lg" style={{ width: MINIMAP_W, height: MINIMAP_H, background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
+              {/* Minimap hierarchy lines */}
+              <svg className="absolute inset-0 pointer-events-none" width={MINIMAP_W} height={MINIMAP_H}>
+                {HIERARCHY_LINES.map(({ from, to, color }) => {
+                  const fp = TEAM_POSITIONS[from];
+                  const tp = TEAM_POSITIONS[to];
+                  if (!fp || !tp) return null;
+                  return (
+                    <line
+                      key={`mini-${from}-${to}`}
+                      x1={fp.x * scaleX} y1={fp.y * scaleY}
+                      x2={tp.x * scaleX} y2={tp.y * scaleY}
+                      stroke={color} strokeWidth={1} opacity={0.5}
+                    />
+                  );
+                })}
+              </svg>
               {/* Viewport rectangle */}
               <div className="absolute border border-blue-400/60 bg-blue-200/15 rounded-sm" style={{ left: clamp(vpX, 0, MINIMAP_W), top: clamp(vpY, 0, MINIMAP_H), width: Math.min(vpW, MINIMAP_W), height: Math.min(vpH, MINIMAP_H) }} />
               {/* Character dots — team colored with labels */}

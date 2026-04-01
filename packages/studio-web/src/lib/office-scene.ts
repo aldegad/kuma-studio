@@ -6,7 +6,7 @@ import type { OfficeCharacter, OfficeFurniture, OfficeLayoutSnapshot, OfficeScen
  * Team-grouped initial positions.
  * Characters are clustered by team so the office layout feels organized.
  */
-const TEAM_POSITIONS: Record<string, { x: number; y: number }> = {
+export const TEAM_POSITIONS: Record<string, { x: number; y: number }> = {
   // -- 총괄 (center top) --
   kuma:      { x: 500, y: 80 },
   // -- 개발팀 (left area) --
@@ -65,6 +65,34 @@ export const FURNITURE_SIZES: Record<string, { w: number; h: number }> = {
   plant: { w: 28, h: 36 },
   coffee: { w: 20, h: 20 },
 };
+
+/** Team zone bounding rectangles for visual grouping in the office */
+export const TEAM_ZONES: { team: string; label: string; color: string; x: number; y: number; w: number; h: number }[] = [
+  { team: "management", label: "총괄", color: "rgba(217, 119, 6, 0.06)", x: 430, y: 30, w: 160, h: 100 },
+  { team: "dev", label: "개발팀", color: "rgba(59, 130, 246, 0.06)", x: 60, y: 110, w: 280, h: 380 },
+  { team: "analytics", label: "분석팀", color: "rgba(249, 115, 22, 0.06)", x: 600, y: 110, w: 260, h: 230 },
+  { team: "strategy", label: "전략팀", color: "rgba(34, 197, 94, 0.06)", x: 600, y: 330, w: 260, h: 240 },
+];
+
+/** Hierarchy connection lines: from parent → child positions */
+export const HIERARCHY_LINES: { from: string; to: string; color: string }[] = [
+  // kuma → team leads
+  { from: "kuma", to: "howl", color: "rgba(59, 130, 246, 0.15)" },
+  { from: "kuma", to: "rumi", color: "rgba(249, 115, 22, 0.15)" },
+  { from: "kuma", to: "noeuri", color: "rgba(34, 197, 94, 0.15)" },
+  // howl → dev workers
+  { from: "howl", to: "tookdaki", color: "rgba(59, 130, 246, 0.1)" },
+  { from: "howl", to: "saemi", color: "rgba(59, 130, 246, 0.1)" },
+  { from: "howl", to: "koon", color: "rgba(59, 130, 246, 0.1)" },
+  { from: "howl", to: "bamdori", color: "rgba(59, 130, 246, 0.1)" },
+  // rumi → analytics workers
+  { from: "rumi", to: "darami", color: "rgba(249, 115, 22, 0.1)" },
+  { from: "rumi", to: "buri", color: "rgba(249, 115, 22, 0.1)" },
+  // noeuri → strategy workers
+  { from: "noeuri", to: "kongkongi", color: "rgba(34, 197, 94, 0.1)" },
+  { from: "noeuri", to: "moongchi", color: "rgba(34, 197, 94, 0.1)" },
+  { from: "noeuri", to: "jjooni", color: "rgba(34, 197, 94, 0.1)" },
+];
 
 export const ANIMAL_FALLBACKS: Record<string, string> = {
   bear: "B",
