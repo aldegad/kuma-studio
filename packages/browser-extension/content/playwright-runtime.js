@@ -27,6 +27,8 @@ const {
   executeMouseDownCommand,
   executeMouseUpCommand,
   executePointerDragCommand,
+  executeDragAndDropCommand,
+  executeSetInputFilesCommand,
 } = interaction;
 
 function getRoot() {
@@ -547,14 +549,34 @@ async function executeLocatorPress(command) {
     throw new Error("Failed to resolve a locator target for key input.");
   }
 
+  let key = command.key;
+  let shiftKey = command.shiftKey === true;
+  let altKey = command.altKey === true;
+  let ctrlKey = command.ctrlKey === true;
+  let metaKey = command.metaKey === true;
+
+  // Parse combo keys like "Control+a", "Shift+Tab", "Meta+c"
+  if (typeof key === "string" && key.includes("+")) {
+    const parts = key.split("+");
+    const finalKey = parts.pop();
+    for (const modifier of parts) {
+      const mod = modifier.trim().toLowerCase();
+      if (mod === "control" || mod === "ctrl") ctrlKey = true;
+      else if (mod === "shift") shiftKey = true;
+      else if (mod === "alt") altKey = true;
+      else if (mod === "meta" || mod === "command" || mod === "cmd") metaKey = true;
+    }
+    key = finalKey.trim();
+  }
+
   return executeKeyCommand({
     targetElement: target,
-    key: command.key,
+    key,
     holdMs: command.holdMs,
-    shiftKey: command.shiftKey === true,
-    altKey: command.altKey === true,
-    ctrlKey: command.ctrlKey === true,
-    metaKey: command.metaKey === true,
+    shiftKey,
+    altKey,
+    ctrlKey,
+    metaKey,
   });
 }
 
@@ -629,15 +651,36 @@ async function executeLocatorMeasure(command) {
 }
 
 async function executeKeyboardPress(command) {
+  let key = command.key;
+  let shiftKey = command.shiftKey === true;
+  let altKey = command.altKey === true;
+  let ctrlKey = command.ctrlKey === true;
+  let metaKey = command.metaKey === true;
+
+  // Parse combo keys like "Control+a", "Shift+Tab", "Meta+c"
+  if (typeof key === "string" && key.includes("+")) {
+    const parts = key.split("+");
+    const finalKey = parts.pop();
+    for (const modifier of parts) {
+      const mod = modifier.trim().toLowerCase();
+      if (mod === "control" || mod === "ctrl") ctrlKey = true;
+      else if (mod === "shift") shiftKey = true;
+      else if (mod === "alt") altKey = true;
+      else if (mod === "meta" || mod === "command" || mod === "cmd") metaKey = true;
+    }
+    key = finalKey.trim();
+  }
+
   return executeKeyCommand({
-    key: command.key,
+    key,
     holdMs: command.holdMs,
-    shiftKey: command.shiftKey === true,
-    altKey: command.altKey === true,
-    ctrlKey: command.ctrlKey === true,
-    metaKey: command.metaKey === true,
+    shiftKey,
+    altKey,
+    ctrlKey,
+    metaKey,
   });
 }
+
 
 async function executeKeyboardDown(command) {
   return executeKeyDownCommand({
@@ -1132,6 +1175,172 @@ async function executeHoverAndClick(command) {
   };
 }
 
+
+async function executeLocatorDragTo(command) {
+  const sourceTarget = resolveLocatorElement(command.locator);
+  if (!(sourceTarget instanceof Element)) {
+    throw new Error("Failed to resolve the source locator target for drag.");
+  }
+
+  const destTarget = resolveLocatorElement(command.destLocator);
+  if (!(destTarget instanceof Element)) {
+    throw new Error("Failed to resolve the destination locator target for drag.");
+  }
+
+  return executeDragAndDropCommand({
+    sourceElement: sourceTarget,
+    targetElement: destTarget,
+  });
+}
+
+async function executeDragAndDrop(command) {
+  const sourceSelector = typeof command?.source === "string" ? command.source.trim() : "";
+  const targetSelector = typeof command?.target === "string" ? command.target.trim() : "";
+  if (!sourceSelector || !targetSelector) {
+    throw new Error("page.dragAndDrop requires non-empty source and target selectors.");
+  }
+
+  const root = document;
+  const sourceElement = resolveSelectorTarget(sourceSelector, root, { allowHidden: false });
+  const targetElement = resolveSelectorTarget(targetSelector, root, { allowHidden: false });
+
+  if (!(sourceElement instanceof Element)) {
+    throw new Error(`dragAndDrop: no element found for source selector "${sourceSelector}".`);
+  }
+  if (!(targetElement instanceof Element)) {
+    throw new Error(`dragAndDrop: no element found for target selector "${targetSelector}".`);
+  }
+
+  return executeDragAndDropCommand({
+    sourceElement,
+    targetElement,
+  });
+}
+
+async function executeLocatorSetInputFiles(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for setInputFiles.");
+  }
+
+  return executeSetInputFilesCommand({
+    targetElement: target,
+    files: command.files,
+  });
+}
+
+// --- Network interception (content-script level) ---
+
+const networkInterceptState = {
+  routes: [],
+  patchedFetch: false,
+  patchedXHR: false,
+  originalFetch: null,
+  originalXHROpen: null,
+  originalXHRSend: null,
+};
+
+function matchUrlPattern(url, pattern) {
+  if (typeof pattern === "string") {
+    if (pattern === "**/*" || pattern === "*") return true;
+    // Glob-style: **/ matches any path prefix, * matches any segment
+    const regexStr = pattern
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*\*/g, "<<DOUBLESTAR>>")
+      .replace(/\*/g, "[^/]*")
+      .replace(/<<DOUBLESTAR>>/g, ".*");
+    return new RegExp(`^${regexStr}$`).test(url);
+  }
+  if (pattern instanceof RegExp) {
+    return pattern.test(url);
+  }
+  return false;
+}
+
+function findMatchingRoute(url) {
+  for (let i = networkInterceptState.routes.length - 1; i >= 0; i--) {
+    const route = networkInterceptState.routes[i];
+    if (matchUrlPattern(url, route.pattern)) {
+      return route;
+    }
+  }
+  return null;
+}
+
+function installNetworkInterception() {
+  if (networkInterceptState.patchedFetch) return;
+
+  networkInterceptState.originalFetch = window.fetch;
+  networkInterceptState.patchedFetch = true;
+
+  window.fetch = async function (...args) {
+    const request = args[0];
+    const url = typeof request === "string" ? request : request?.url ?? "";
+    const route = findMatchingRoute(url);
+
+    if (route && route.handler) {
+      if (route.handler.fulfill) {
+        const { status, headers, body, contentType } = route.handler.fulfill;
+        const responseHeaders = { ...(headers ?? {}) };
+        if (contentType) responseHeaders["content-type"] = contentType;
+        return new Response(body ?? "", {
+          status: status ?? 200,
+          headers: responseHeaders,
+        });
+      }
+      if (route.handler.abort) {
+        throw new TypeError("Failed to fetch (aborted by route)");
+      }
+    }
+
+    return networkInterceptState.originalFetch.apply(this, args);
+  };
+}
+
+function uninstallNetworkInterception() {
+  if (!networkInterceptState.patchedFetch) return;
+  window.fetch = networkInterceptState.originalFetch;
+  networkInterceptState.patchedFetch = false;
+  networkInterceptState.originalFetch = null;
+}
+
+async function executePageRoute(command) {
+  const pattern = command?.urlPattern;
+  if (!pattern) {
+    throw new Error("page.route requires a urlPattern.");
+  }
+
+  const handler = command?.handler ?? {};
+  networkInterceptState.routes.push({ pattern, handler });
+  installNetworkInterception();
+
+  return {
+    page: buildPageRecord(),
+    routePattern: typeof pattern === "string" ? pattern : String(pattern),
+    activeRoutes: networkInterceptState.routes.length,
+  };
+}
+
+async function executePageUnroute(command) {
+  const pattern = command?.urlPattern;
+  if (pattern) {
+    networkInterceptState.routes = networkInterceptState.routes.filter(
+      (r) => String(r.pattern) !== String(pattern),
+    );
+  } else {
+    networkInterceptState.routes = [];
+  }
+
+  if (networkInterceptState.routes.length === 0) {
+    uninstallNetworkInterception();
+  }
+
+  return {
+    page: buildPageRecord(),
+    activeRoutes: networkInterceptState.routes.length,
+  };
+}
+
 async function executeAutomationCommand(command) {
   if (command?.type !== "playwright") {
     throw new Error(`Unsupported automation payload: ${String(command?.type)}`);
@@ -1200,6 +1409,16 @@ async function executeAutomationCommand(command) {
       return executeFrameLocatorAction(command);
     case "page.frame":
       return executePageFrameEvaluate(command);
+    case "locator.dragTo":
+      return executeLocatorDragTo(command);
+    case "page.dragAndDrop":
+      return executeDragAndDrop(command);
+    case "locator.setInputFiles":
+      return executeLocatorSetInputFiles(command);
+    case "page.route":
+      return executePageRoute(command);
+    case "page.unroute":
+      return executePageUnroute(command);
     case "page.hoverAndClick":
       return executeHoverAndClick(command);
     default:
