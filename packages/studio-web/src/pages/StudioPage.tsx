@@ -343,6 +343,12 @@ export function StudioPage() {
         >
           <OfficeBackground background={scene.background} />
 
+          {/* Team area labels — behind characters & furniture */}
+          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 470, top: 40 }}>총괄</span>
+          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 100, top: 120 }}>🐺 개발팀</span>
+          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 630, top: 120 }}>🦊 분석팀</span>
+          <span className="absolute text-lg font-bold text-stone-300/50 select-none pointer-events-none" style={{ left: 630, top: 340 }}>🦌 전략팀</span>
+
           {scene.furniture.map((item) => (
             <Furniture
               key={item.id}
@@ -470,6 +476,16 @@ export function StudioPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Zoom controls — bottom-right                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <div className="absolute bottom-4 right-4 z-40 flex items-center gap-1 bg-white/75 backdrop-blur-md rounded-full border border-white/50 shadow-lg px-2 py-1">
+        <button onClick={() => setZoom(z => clamp(z * 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold">+</button>
+        <span className="text-[10px] text-stone-500 font-medium min-w-[32px] text-center">{Math.round(zoom * 100)}%</span>
+        <button onClick={() => setZoom(z => clamp(z / 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold">{"\u2212"}</button>
+        <button onClick={() => { setZoom(ZOOM_DEFAULT); setPanX(0); setPanY(0); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs">{"\u21BA"}</button>
       </div>
 
       {/* ------------------------------------------------------------------ */}

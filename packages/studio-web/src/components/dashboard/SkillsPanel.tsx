@@ -41,7 +41,7 @@ export function SkillsPanel() {
   // -------------------------------------------------------------------------
 
   return (
-    <div className="absolute bottom-4 right-4 z-30 w-80">
+    <div className="absolute bottom-16 right-4 z-30 w-80">
       <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg overflow-hidden">
         {/* Header — always visible, acts as toggle */}
         <button
