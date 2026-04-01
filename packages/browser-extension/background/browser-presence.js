@@ -1,5 +1,21 @@
 const knownBrowserTabs = new Map();
 const BROWSER_COMMAND_CAPABILITIES = ["run"];
+const KNOWN_TAB_MAX_AGE_MS = 300_000; // 5 minutes
+
+function removeKnownBrowserTab(tabId) {
+  knownBrowserTabs.delete(tabId);
+}
+
+function pruneKnownBrowserTabs() {
+  const cutoff = new Date(Date.now() - KNOWN_TAB_MAX_AGE_MS).toISOString();
+  for (const [tabId, entry] of knownBrowserTabs) {
+    if (entry.lastSeenAt < cutoff) {
+      knownBrowserTabs.delete(tabId);
+    }
+  }
+}
+
+setInterval(pruneKnownBrowserTabs, 60_000);
 
 async function reportExtensionHeartbeatSafely(daemonUrl, payload) {
   try {

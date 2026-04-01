@@ -1,4 +1,5 @@
 /* global clearInspectState, invalidateInteractiveKumaPicker, invalidateAutomationBridge,
+   removeKnownBrowserTab,
    reportExtensionHeartbeat, getStoredDaemonUrl, setStoredDaemonUrl, fetchDaemonHealth,
    ensureDaemonTransport, waitForDaemonSocketReady, getDaemonSocketDiagnostics,
    probeCurrentPageReadiness, handlePageHeartbeat, ensureRuntimeObserver,
@@ -12,6 +13,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void clearInspectState(tabId);
   invalidateInteractiveKumaPicker(tabId);
   invalidateAutomationBridge(tabId);
+  removeKnownBrowserTab(tabId);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
