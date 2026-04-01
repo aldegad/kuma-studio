@@ -8,10 +8,12 @@
 
 import { existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
+const HOME = homedir();
 
 function check(label, condition) {
   const status = condition ? "OK" : "FAIL";
@@ -44,6 +46,20 @@ async function main() {
   if (!studioDistExists) {
     process.stdout.write("    Run: npm run build:studio\n");
   }
+
+  // Check skills
+  const skills = ["kuma", "dev-team", "analytics-team", "strategy-team"];
+  for (const skill of skills) {
+    const ok = existsSync(resolve(HOME, ".claude", "skills", skill, "skill.md"));
+    allOk = check(`Skill: ${skill}`, ok) && allOk;
+    if (!ok) process.stdout.write("    Run: node scripts/install.mjs\n");
+  }
+
+  // Check state directory and team metadata
+  allOk = check("State dir (~/.kuma-picker/)", existsSync(resolve(HOME, ".kuma-picker"))) && allOk;
+  const hasTeamMeta = existsSync(resolve(HOME, ".kuma-picker", "team.json"));
+  allOk = check("Team metadata", hasTeamMeta) && allOk;
+  if (!hasTeamMeta) process.stdout.write("    Run: node scripts/install.mjs\n");
 
   // Check for OpenAI API key
   const hasApiKey = !!process.env.OPENAI_API_KEY;
