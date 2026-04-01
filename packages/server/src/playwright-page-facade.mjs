@@ -271,7 +271,8 @@ export function createFrameHandle(client, state, iframeSelector) {
 }
 
 export function createFrameLocator(client, state, iframeSelector) {
-  function wrapInnerCommand(action, params) {
+  function wrapInnerCommand(action, params, options = {}) {
+    const timeoutMs = Number.isFinite(options?.timeout) ? Math.round(options.timeout) : null;
     return client.send(
       "page.frameLocator",
       {
@@ -280,8 +281,10 @@ export function createFrameLocator(client, state, iframeSelector) {
           type: "playwright",
           action,
           ...params,
+          timeoutMs,
         },
       },
+      { timeoutMs: options.timeout },
     );
   }
 
@@ -294,7 +297,7 @@ export function createFrameLocator(client, state, iframeSelector) {
 
       const locatorTarget = {
         async click(options = {}) {
-          const result = await wrapInnerCommand("locator.click", { locator: descriptor });
+          const result = await wrapInnerCommand("locator.click", { locator: descriptor }, options);
           updatePageState(state, result);
           return result;
         },
@@ -302,7 +305,7 @@ export function createFrameLocator(client, state, iframeSelector) {
           const result = await wrapInnerCommand("locator.fill", {
             locator: descriptor,
             value: String(value ?? ""),
-          });
+          }, options);
           updatePageState(state, result);
           return result;
         },
@@ -325,7 +328,7 @@ export function createFrameLocator(client, state, iframeSelector) {
           const result = await wrapInnerCommand("locator.waitFor", {
             locator: descriptor,
             state: options.state ?? "visible",
-          });
+          }, options);
           updatePageState(state, result);
           return result;
         },
@@ -334,12 +337,12 @@ export function createFrameLocator(client, state, iframeSelector) {
             locator: descriptor,
             key,
             holdMs: Number.isFinite(options.holdMs) ? Math.round(options.holdMs) : null,
-          });
+          }, options);
           updatePageState(state, result);
           return result;
         },
         async hover(options = {}) {
-          const result = await wrapInnerCommand("locator.hover", { locator: descriptor });
+          const result = await wrapInnerCommand("locator.hover", { locator: descriptor }, options);
           updatePageState(state, result);
           return result;
         },
@@ -368,7 +371,7 @@ export function createFrameLocator(client, state, iframeSelector) {
           const nthDescriptor = { ...descriptor, nth: "last" };
           const nthTarget = {
             async click(options = {}) {
-              const result = await wrapInnerCommand("locator.click", { locator: nthDescriptor });
+              const result = await wrapInnerCommand("locator.click", { locator: nthDescriptor }, options);
               updatePageState(state, result);
               return result;
             },
@@ -389,12 +392,16 @@ export function createFrameLocator(client, state, iframeSelector) {
           const nthDescriptor = { ...descriptor, nth: index };
           const nthTarget = {
             async click(options = {}) {
-              const result = await wrapInnerCommand("locator.click", { locator: nthDescriptor });
+              const result = await wrapInnerCommand("locator.click", { locator: nthDescriptor }, options);
               updatePageState(state, result);
               return result;
             },
             async fill(value, options = {}) {
-              const result = await wrapInnerCommand("locator.fill", { locator: nthDescriptor, value: String(value ?? "") });
+              const result = await wrapInnerCommand(
+                "locator.fill",
+                { locator: nthDescriptor, value: String(value ?? "") },
+                options,
+              );
               updatePageState(state, result);
               return result;
             },
@@ -424,7 +431,7 @@ export function createFrameLocator(client, state, iframeSelector) {
 
       const locatorTarget = {
         async click(options2 = {}) {
-          const result = await wrapInnerCommand("locator.click", { locator: descriptor });
+          const result = await wrapInnerCommand("locator.click", { locator: descriptor }, options2);
           updatePageState(state, result);
           return result;
         },

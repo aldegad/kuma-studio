@@ -121,23 +121,32 @@ function resolveChainedSelector(selectorString, root, allowHidden) {
   return currentElements;
 }
 
+function resolveSelectorMatches(selector, root, { allowHidden = false } = {}) {
+  if (typeof selector !== "string" || !selector.trim()) {
+    return [];
+  }
+
+  if (selector.includes(">>")) {
+    return resolveChainedSelector(selector, root, allowHidden);
+  }
+
+  return Array.from(root.querySelectorAll(selector)).filter(
+    (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
+  );
+}
+
+function resolveSelectorTarget(selector, root, options) {
+  return resolveSelectorMatches(selector, root, options)[0] ?? null;
+}
+
 function resolveSelectorElement(locator, { allowHidden = false } = {}) {
   const selector = typeof locator?.selector === "string" ? locator.selector.trim() : "";
   if (!selector) {
     throw new Error("The selector locator requires a non-empty selector.");
   }
 
-  const useChaining = selector.includes(">>");
   const root = locator?._iframeContext ?? document;
-
-  let matches;
-  if (useChaining) {
-    matches = resolveChainedSelector(selector, root, allowHidden);
-  } else {
-    matches = Array.from(root.querySelectorAll(selector)).filter(
-      (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
-    );
-  }
+  const matches = resolveSelectorMatches(selector, root, { allowHidden });
 
   return resolveLocatorMatch(matches, locator, "The selector locator");
 }
@@ -438,8 +447,10 @@ async function executePageEvaluate(command) {
 
 function waitForSelectorWithObserver(selector, state, timeoutMs) {
   return new Promise((resolve, reject) => {
+    const findTarget = () => resolveSelectorTarget(selector, document, { allowHidden: true });
+
     const check = () => {
-      const current = document.querySelector(selector);
+      const current = findTarget();
       if (readWaitState(current, state)) {
         return current;
       }
@@ -447,7 +458,7 @@ function waitForSelectorWithObserver(selector, state, timeoutMs) {
     };
 
     const immediate = check();
-    if (immediate !== null || (state === "detached" && !document.querySelector(selector))) {
+    if (immediate !== null || (state === "detached" && !findTarget())) {
       resolve(immediate);
       return;
     }
@@ -468,7 +479,7 @@ function waitForSelectorWithObserver(selector, state, timeoutMs) {
 
     observer = new MutationObserver(() => {
       const result = check();
-      if (result !== null || (state === "detached" && !document.querySelector(selector))) {
+      if (result !== null || (state === "detached" && !findTarget())) {
         cleanup();
         resolve(result);
       }
@@ -889,68 +900,146 @@ async function executePageWaitForLoadState(command) {
   return { page: buildPageRecord(), loadState: state };
 }
 
-function waitForNetworkIdle(timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let pendingRequests = 0;
-    let idleTimer = null;
-    let overallTimer = null;
-    const idleThresholdMs = 2000;
+const xhrNetworkIdleTrackedSymbol = Symbol("kumaNetworkIdleTracked");
 
-    const originalFetch = window.fetch;
-    const originalXHROpen = XMLHttpRequest.prototype.open;
-    const originalXHRSend = XMLHttpRequest.prototype.send;
+const networkIdlePatchState = {
+  activePatchCount: 0,
+  pendingRequests: 0,
+  waiters: new Set(),
+  originalFetch: null,
+  originalXHROpen: null,
+  originalXHRSend: null,
+};
 
-    function onRequestStart() {
-      pendingRequests++;
-      if (idleTimer) {
-        clearTimeout(idleTimer);
-        idleTimer = null;
-      }
+function notifyNetworkIdleWaiters(methodName) {
+  for (const waiter of networkIdlePatchState.waiters) {
+    waiter[methodName]();
+  }
+}
+
+function handleNetworkIdleRequestStart() {
+  networkIdlePatchState.pendingRequests += 1;
+  notifyNetworkIdleWaiters("onRequestStart");
+}
+
+function handleNetworkIdleRequestEnd() {
+  networkIdlePatchState.pendingRequests = Math.max(0, networkIdlePatchState.pendingRequests - 1);
+  notifyNetworkIdleWaiters("onRequestEnd");
+}
+
+function retainNetworkIdlePatch() {
+  if (networkIdlePatchState.activePatchCount === 0) {
+    networkIdlePatchState.originalFetch = window.fetch;
+    networkIdlePatchState.originalXHROpen = XMLHttpRequest.prototype.open;
+    networkIdlePatchState.originalXHRSend = XMLHttpRequest.prototype.send;
+
+    if (typeof networkIdlePatchState.originalFetch === "function") {
+      window.fetch = function (...args) {
+        handleNetworkIdleRequestStart();
+        try {
+          return Promise.resolve(networkIdlePatchState.originalFetch.apply(this, args)).finally(handleNetworkIdleRequestEnd);
+        } catch (error) {
+          handleNetworkIdleRequestEnd();
+          throw error;
+        }
+      };
     }
-
-    function onRequestEnd() {
-      pendingRequests = Math.max(0, pendingRequests - 1);
-      if (pendingRequests === 0) {
-        idleTimer = setTimeout(() => {
-          cleanup();
-          resolve();
-        }, idleThresholdMs);
-      }
-    }
-
-    function cleanup() {
-      if (overallTimer) { clearTimeout(overallTimer); overallTimer = null; }
-      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-      window.fetch = originalFetch;
-      XMLHttpRequest.prototype.open = originalXHROpen;
-      XMLHttpRequest.prototype.send = originalXHRSend;
-    }
-
-    window.fetch = function (...args) {
-      onRequestStart();
-      return originalFetch.apply(this, args).finally(onRequestEnd);
-    };
 
     XMLHttpRequest.prototype.open = function (...args) {
-      this._kumaNetworkIdleTracked = true;
-      return originalXHROpen.apply(this, args);
+      this[xhrNetworkIdleTrackedSymbol] = true;
+      return networkIdlePatchState.originalXHROpen.apply(this, args);
     };
 
     XMLHttpRequest.prototype.send = function (...args) {
-      if (this._kumaNetworkIdleTracked) {
-        onRequestStart();
-        this.addEventListener("loadend", onRequestEnd, { once: true });
+      if (!this[xhrNetworkIdleTrackedSymbol]) {
+        return networkIdlePatchState.originalXHRSend.apply(this, args);
       }
-      return originalXHRSend.apply(this, args);
+
+      handleNetworkIdleRequestStart();
+      this.addEventListener("loadend", handleNetworkIdleRequestEnd, { once: true });
+
+      try {
+        return networkIdlePatchState.originalXHRSend.apply(this, args);
+      } catch (error) {
+        handleNetworkIdleRequestEnd();
+        throw error;
+      }
+    };
+  }
+
+  networkIdlePatchState.activePatchCount += 1;
+}
+
+function releaseNetworkIdlePatch() {
+  networkIdlePatchState.activePatchCount = Math.max(0, networkIdlePatchState.activePatchCount - 1);
+  if (networkIdlePatchState.activePatchCount > 0) {
+    return;
+  }
+
+  window.fetch = networkIdlePatchState.originalFetch;
+  XMLHttpRequest.prototype.open = networkIdlePatchState.originalXHROpen;
+  XMLHttpRequest.prototype.send = networkIdlePatchState.originalXHRSend;
+  networkIdlePatchState.originalFetch = null;
+  networkIdlePatchState.originalXHROpen = null;
+  networkIdlePatchState.originalXHRSend = null;
+  networkIdlePatchState.pendingRequests = 0;
+}
+
+function waitForNetworkIdle(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const idleThresholdMs = 2000;
+    const waiter = {
+      pendingRequests: networkIdlePatchState.pendingRequests,
+      idleTimer: null,
+      overallTimer: null,
+      settled: false,
+      onRequestStart() {
+        this.pendingRequests += 1;
+        if (this.idleTimer) {
+          clearTimeout(this.idleTimer);
+          this.idleTimer = null;
+        }
+      },
+      onRequestEnd() {
+        this.pendingRequests = Math.max(0, this.pendingRequests - 1);
+        if (this.pendingRequests === 0) {
+          this.idleTimer = setTimeout(() => {
+            cleanup();
+            resolve();
+          }, idleThresholdMs);
+        }
+      },
     };
 
-    overallTimer = setTimeout(() => {
+    function cleanup() {
+      if (waiter.settled) {
+        return;
+      }
+
+      waiter.settled = true;
+      if (waiter.overallTimer) {
+        clearTimeout(waiter.overallTimer);
+        waiter.overallTimer = null;
+      }
+      if (waiter.idleTimer) {
+        clearTimeout(waiter.idleTimer);
+        waiter.idleTimer = null;
+      }
+
+      networkIdlePatchState.waiters.delete(waiter);
+      releaseNetworkIdlePatch();
+    }
+
+    retainNetworkIdlePatch();
+    networkIdlePatchState.waiters.add(waiter);
+
+    waiter.overallTimer = setTimeout(() => {
       cleanup();
       reject(new Error("Timed out waiting for network idle."));
     }, timeoutMs);
 
-    if (pendingRequests === 0) {
-      idleTimer = setTimeout(() => {
+    if (waiter.pendingRequests === 0) {
+      waiter.idleTimer = setTimeout(() => {
         cleanup();
         resolve();
       }, idleThresholdMs);
@@ -1020,7 +1109,7 @@ async function executeHoverAndClick(command) {
     throw new Error("hoverAndClick requires both hoverSelector and clickSelector.");
   }
 
-  const hoverTarget = document.querySelector(hoverSelector);
+  const hoverTarget = resolveSelectorTarget(hoverSelector, document, { allowHidden: true });
   if (!hoverTarget || !(hoverTarget instanceof Element)) {
     throw new Error(`hoverAndClick: no element found for hover selector "${hoverSelector}".`);
   }
