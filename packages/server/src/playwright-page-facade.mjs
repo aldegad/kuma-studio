@@ -170,6 +170,50 @@ export function createLocator(client, state, descriptor) {
       updatePageState(state, result);
       return result;
     },
+    async hover(options = {}) {
+      const result = await client.send(
+        "locator.hover",
+        {
+          locator: descriptor,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async dblclick(options = {}) {
+      const result = await client.send(
+        "locator.dblclick",
+        {
+          locator: descriptor,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async getAttribute(name) {
+      const result = await client.send("locator.getAttribute", {
+        locator: descriptor,
+        name: String(name ?? ""),
+      });
+      updatePageState(state, result);
+      return result?.attributeValue ?? null;
+    },
+    async innerText() {
+      const result = await client.send("locator.innerText", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.innerText ?? null;
+    },
+    async innerHTML() {
+      const result = await client.send("locator.innerHTML", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.innerHTML ?? null;
+    },
     async screenshot(options = {}) {
       const measurement = await client.send("locator.measure", {
         locator: descriptor,
@@ -243,6 +287,18 @@ export function createPage(client, state) {
         ctrlKey: modifiers.ctrl === true,
         metaKey: modifiers.meta === true,
       });
+      updatePageState(state, result);
+      return result;
+    },
+    async type(text, options = {}) {
+      const result = await client.send(
+        "keyboard.type",
+        {
+          text: String(text ?? ""),
+          delay: Number.isFinite(options.delay) ? Math.round(options.delay) : 0,
+        },
+        { timeoutMs: options.timeout },
+      );
       updatePageState(state, result);
       return result;
     },
@@ -320,6 +376,20 @@ export function createPage(client, state) {
       if (to && Number.isFinite(to.x) && Number.isFinite(to.y)) {
         state.mousePoint = { x: to.x, y: to.y };
       }
+      return result;
+    },
+    async wheel(deltaX, deltaY, options = {}) {
+      const result = await client.send(
+        "mouse.wheel",
+        {
+          deltaX: Number.isFinite(deltaX) ? deltaX : 0,
+          deltaY: Number.isFinite(deltaY) ? deltaY : 0,
+          x: Number.isFinite(options.x) ? options.x : null,
+          y: Number.isFinite(options.y) ? options.y : null,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
       return result;
     },
   });
@@ -425,6 +495,49 @@ export function createPage(client, state) {
         createLocatorDescriptor("label", {
           text: text.trim(),
           exact: options.exact === true,
+        }),
+      );
+    },
+    async goBack(options = {}) {
+      const result = await client.send(
+        "page.goBack",
+        {},
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async goForward(options = {}) {
+      const result = await client.send(
+        "page.goForward",
+        {},
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    getByPlaceholder(text, options = {}) {
+      if (typeof text !== "string" || !text.trim()) {
+        throw new Error("page.getByPlaceholder requires a non-empty placeholder text.");
+      }
+      return createLocator(
+        client,
+        state,
+        createLocatorDescriptor("placeholder", {
+          text: text.trim(),
+          exact: options.exact === true,
+        }),
+      );
+    },
+    getByTestId(testId) {
+      if (typeof testId !== "string" || !testId.trim()) {
+        throw new Error("page.getByTestId requires a non-empty test ID.");
+      }
+      return createLocator(
+        client,
+        state,
+        createLocatorDescriptor("testid", {
+          testId: testId.trim(),
         }),
       );
     },

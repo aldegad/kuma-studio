@@ -1315,6 +1315,104 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     };
   }
 
+
+  async function executeHoverCommand(command) {
+    const target = command?.targetElement instanceof Element ? command.targetElement : coreResolveCommandTarget(command);
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a matching element to hover in the active tab.");
+    }
+
+    await focusElement(target);
+    const rect = target.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    fireAndForgetGesture(() => getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY }));
+
+    dispatchMouseEvent(target, "pointerover", centerX, centerY);
+    dispatchMouseEvent(target, "pointerenter", centerX, centerY);
+    dispatchMouseEvent(target, "mouseover", centerX, centerY);
+    dispatchMouseEvent(target, "mouseenter", centerX, centerY);
+    dispatchMouseEvent(target, "pointermove", centerX, centerY);
+    dispatchMouseEvent(target, "mousemove", centerX, centerY);
+
+    await waitForPostActionDelay(command, 60);
+    return {
+      page: buildPageRecord(),
+      hoveredElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeDblClickCommand(command) {
+    const target = command?.targetElement instanceof Element ? command.targetElement : coreResolveCommandTarget(command);
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a matching element to double-click in the active tab.");
+    }
+
+    await focusElement(target);
+    const rect = target.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+
+    fireAndForgetGesture(() => getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY }));
+
+    dispatchMouseEvent(target, "pointerdown", centerX, centerY, { detail: 1 });
+    dispatchMouseEvent(target, "mousedown", centerX, centerY, { detail: 1 });
+    dispatchMouseEvent(target, "pointerup", centerX, centerY, { detail: 1 });
+    dispatchMouseEvent(target, "mouseup", centerX, centerY, { detail: 1 });
+    dispatchMouseEvent(target, "click", centerX, centerY, { detail: 1 });
+    dispatchMouseEvent(target, "pointerdown", centerX, centerY, { detail: 2 });
+    dispatchMouseEvent(target, "mousedown", centerX, centerY, { detail: 2 });
+    dispatchMouseEvent(target, "pointerup", centerX, centerY, { detail: 2 });
+    dispatchMouseEvent(target, "mouseup", centerX, centerY, { detail: 2 });
+    dispatchMouseEvent(target, "click", centerX, centerY, { detail: 2 });
+    dispatchMouseEvent(target, "dblclick", centerX, centerY, { detail: 2 });
+
+    if (target instanceof HTMLElement && document.contains(target)) {
+      target.focus?.({ preventScroll: true });
+    }
+
+    await waitForPostActionDelay(command, 60);
+    return {
+      page: buildPageRecord(),
+      dblClickedElement: coreDescribeElementForCommand(target),
+    };
+  }
+
+  async function executeMouseWheelCommand(command) {
+    const deltaX = Number.isFinite(command?.deltaX) ? command.deltaX : 0;
+    const deltaY = Number.isFinite(command?.deltaY) ? command.deltaY : 0;
+
+    const targetX = Number.isFinite(command?.x) ? command.x : window.innerWidth / 2;
+    const targetY = Number.isFinite(command?.y) ? command.y : window.innerHeight / 2;
+
+    const target = document.elementFromPoint(targetX, targetY) || document.documentElement;
+
+    const wheelEvent = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: targetX,
+      clientY: targetY,
+      deltaX,
+      deltaY,
+      deltaMode: 0,
+      view: window,
+    });
+    target.dispatchEvent(wheelEvent);
+
+    window.scrollBy(deltaX, deltaY);
+
+    await waitForPostActionDelay(command, 60);
+    return {
+      page: buildPageRecord(),
+      deltaX,
+      deltaY,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+  }
+
   return {
     waitForDelay,
     executeClickCommand,
@@ -1328,6 +1426,9 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     executeMouseDownCommand,
     executeMouseUpCommand,
     executePointerDragCommand,
+    executeHoverCommand,
+    executeDblClickCommand,
+    executeMouseWheelCommand,
   };
 })();
 

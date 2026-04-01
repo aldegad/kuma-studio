@@ -140,6 +140,55 @@ function resolveLabelElement(locator, { allowHidden = false } = {}) {
   return resolveLocatorMatch(ranked.map((entry) => entry.element), locator, "The label locator");
 }
 
+function resolvePlaceholderElement(locator, { allowHidden = false } = {}) {
+  const expected = typeof locator?.text === "string" ? normalizeText(locator.text) : "";
+  const exact = locator?.exact === true;
+  if (!expected) {
+    throw new Error("The placeholder locator requires a non-empty placeholder.");
+  }
+
+  const candidates = Array.from(document.querySelectorAll("input[placeholder], textarea[placeholder]"))
+    .filter((candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)));
+
+  const ranked = candidates
+    .map((candidate) => {
+      const placeholder = normalizeText(candidate.getAttribute("placeholder"));
+      return {
+        element: candidate,
+        score: scoreText(placeholder, expected, exact),
+      };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  return resolveLocatorMatch(ranked.map((entry) => entry.element), locator, "The placeholder locator");
+}
+
+function resolveTestIdElement(locator, { allowHidden = false } = {}) {
+  const testId = typeof locator?.testId === "string" ? locator.testId.trim() : "";
+  if (!testId) {
+    throw new Error("The testid locator requires a non-empty test ID.");
+  }
+
+  const selectors = [
+    `[data-testid="${CSS.escape(testId)}"]`,
+    `[data-test-id="${CSS.escape(testId)}"]`,
+    `[data-test="${CSS.escape(testId)}"]`,
+  ];
+
+  const matches = [];
+  for (const selector of selectors) {
+    try {
+      const elements = Array.from(document.querySelectorAll(selector))
+        .filter((candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)));
+      matches.push(...elements);
+    } catch {}
+  }
+
+  const unique = [...new Set(matches)];
+  return resolveLocatorMatch(unique, locator, "The testid locator");
+}
+
 function resolveLocatorElement(locator, options = {}) {
   switch (locator?.kind) {
     case "selector":
@@ -149,6 +198,10 @@ function resolveLocatorElement(locator, options = {}) {
       return resolveTextOrRoleElement(locator, options);
     case "label":
       return resolveLabelElement(locator, options);
+    case "placeholder":
+      return resolvePlaceholderElement(locator, options);
+    case "testid":
+      return resolveTestIdElement(locator, options);
     default:
       throw new Error(`Unsupported locator kind: ${String(locator?.kind)}`);
   }
@@ -537,6 +590,176 @@ async function executeMouseDrag(command) {
   });
 }
 
+
+async function executeLocatorHover(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for hover.");
+  }
+
+  return interaction.executeHoverCommand({
+    targetElement: target,
+  });
+}
+
+async function executeLocatorDblClick(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for double-click.");
+  }
+
+  return interaction.executeDblClickCommand({
+    targetElement: target,
+  });
+}
+
+async function executeLocatorGetAttribute(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target.");
+  }
+
+  const name = typeof command?.name === "string" ? command.name : "";
+  if (!name) {
+    throw new Error("locator.getAttribute requires an attribute name.");
+  }
+
+  return {
+    page: buildPageRecord(),
+    attributeValue: target.getAttribute(name),
+  };
+}
+
+async function executeLocatorInnerText(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target.");
+  }
+
+  return {
+    page: buildPageRecord(),
+    innerText: target instanceof HTMLElement ? target.innerText : (target.textContent ?? null),
+  };
+}
+
+async function executeLocatorInnerHTML(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target.");
+  }
+
+  return {
+    page: buildPageRecord(),
+    innerHTML: target.innerHTML,
+  };
+}
+
+async function executeKeyboardType(command) {
+  const text = typeof command?.text === "string" ? command.text : "";
+  if (!text) {
+    throw new Error("keyboard.type requires a non-empty text string.");
+  }
+
+  const delayMs = typeof command?.delay === "number" && Number.isFinite(command.delay) ? Math.max(0, command.delay) : 0;
+  const target = document.activeElement instanceof Element ? document.activeElement : document.body;
+
+  for (const char of text) {
+    const code = char === " " ? "Space" : `Key${char.toUpperCase()}`;
+    const keydownEvent = new KeyboardEvent("keydown", {
+      key: char,
+      code,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+    });
+    target.dispatchEvent(keydownEvent);
+
+    const keypressEvent = new KeyboardEvent("keypress", {
+      key: char,
+      code,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+    });
+    target.dispatchEvent(keypressEvent);
+
+    if (typeof InputEvent === "function") {
+      const inputEvent = new InputEvent("input", {
+        data: char,
+        inputType: "insertText",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+      });
+      target.dispatchEvent(inputEvent);
+    }
+
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      const pos = typeof target.selectionStart === "number" ? target.selectionStart : target.value.length;
+      const end = typeof target.selectionEnd === "number" ? target.selectionEnd : pos;
+      target.value = target.value.slice(0, pos) + char + target.value.slice(end);
+      target.selectionStart = target.selectionEnd = pos + 1;
+    } else if (target instanceof HTMLElement && target.isContentEditable) {
+      const selection = window.getSelection?.();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(document.createTextNode(char));
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    }
+
+    const keyupEvent = new KeyboardEvent("keyup", {
+      key: char,
+      code,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+    });
+    target.dispatchEvent(keyupEvent);
+
+    if (delayMs > 0) {
+      await waitForDelay(delayMs);
+    }
+  }
+
+  return {
+    page: buildPageRecord(),
+    typedText: text,
+    targetElement: target instanceof Element ? describeElementForCommand(target) : null,
+  };
+}
+
+async function executeMouseWheel(command) {
+  return interaction.executeMouseWheelCommand({
+    deltaX: command.deltaX,
+    deltaY: command.deltaY,
+    x: command.x,
+    y: command.y,
+  });
+}
+
+async function executePageGoBack() {
+  history.back();
+  await waitForDelay(100);
+  return {
+    page: buildPageRecord(),
+  };
+}
+
+async function executePageGoForward() {
+  history.forward();
+  await waitForDelay(100);
+  return {
+    page: buildPageRecord(),
+  };
+}
+
 async function executeAutomationCommand(command) {
   if (command?.type !== "playwright") {
     throw new Error(`Unsupported automation payload: ${String(command?.type)}`);
@@ -581,6 +804,24 @@ async function executeAutomationCommand(command) {
       return executeMouseUp(command);
     case "mouse.drag":
       return executeMouseDrag(command);
+    case "locator.hover":
+      return executeLocatorHover(command);
+    case "locator.dblclick":
+      return executeLocatorDblClick(command);
+    case "locator.getAttribute":
+      return executeLocatorGetAttribute(command);
+    case "locator.innerText":
+      return executeLocatorInnerText(command);
+    case "locator.innerHTML":
+      return executeLocatorInnerHTML(command);
+    case "keyboard.type":
+      return executeKeyboardType(command);
+    case "mouse.wheel":
+      return executeMouseWheel(command);
+    case "page.goBack":
+      return executePageGoBack();
+    case "page.goForward":
+      return executePageGoForward();
     default:
       throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }
