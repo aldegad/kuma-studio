@@ -74,21 +74,86 @@ function resolveLocatorMatch(matches, locator, description) {
   return matches[locator.nth] ?? null;
 }
 
+function resolveChainedSelector(selectorString, root, allowHidden) {
+  const segments = selectorString.split(">>").map((s) => s.trim()).filter(Boolean);
+  if (segments.length === 0) {
+    return [];
+  }
+
+  let currentElements = [root];
+
+  for (const segment of segments) {
+    const textMatch = segment.match(/^text=["']?(.+?)["']?$/i);
+    const nextElements = [];
+
+    for (const parent of currentElements) {
+      if (textMatch) {
+        const expectedText = normalizeText(textMatch[1]);
+        const walker = document.createTreeWalker(parent, NodeFilter.SHOW_ELEMENT, null);
+        let node = walker.nextNode();
+        while (node) {
+          if (node instanceof Element) {
+            const nodeText = normalizeText(node.textContent || "");
+            if (nodeText.includes(expectedText) && (allowHidden || isVisibleElement(node))) {
+              nextElements.push(node);
+            }
+          }
+          node = walker.nextNode();
+        }
+      } else {
+        try {
+          const found = Array.from(parent.querySelectorAll(segment)).filter(
+            (el) => el instanceof Element && (allowHidden || isVisibleElement(el)),
+          );
+          nextElements.push(...found);
+        } catch {
+          throw new Error(`Invalid CSS selector segment: "${segment}"`);
+        }
+      }
+    }
+
+    if (nextElements.length === 0) {
+      return [];
+    }
+    currentElements = nextElements;
+  }
+
+  return currentElements;
+}
+
+function resolveSelectorMatches(selector, root, { allowHidden = false } = {}) {
+  if (typeof selector !== "string" || !selector.trim()) {
+    return [];
+  }
+
+  if (selector.includes(">>")) {
+    return resolveChainedSelector(selector, root, allowHidden);
+  }
+
+  return Array.from(root.querySelectorAll(selector)).filter(
+    (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
+  );
+}
+
+function resolveSelectorTarget(selector, root, options) {
+  return resolveSelectorMatches(selector, root, options)[0] ?? null;
+}
+
 function resolveSelectorElement(locator, { allowHidden = false } = {}) {
   const selector = typeof locator?.selector === "string" ? locator.selector.trim() : "";
   if (!selector) {
     throw new Error("The selector locator requires a non-empty selector.");
   }
 
-  const matches = Array.from(document.querySelectorAll(selector)).filter(
-    (candidate) => candidate instanceof Element && (allowHidden || isVisibleElement(candidate)),
-  );
+  const root = locator?._iframeContext ?? document;
+  const matches = resolveSelectorMatches(selector, root, { allowHidden });
 
   return resolveLocatorMatch(matches, locator, "The selector locator");
 }
 
 function resolveTextOrRoleElement(locator, { allowHidden = false } = {}) {
-  const candidates = getCommandCandidatesWithinRoot(getRoot());
+  const root = locator?._iframeContext ? locator._iframeContext.body || locator._iframeContext.documentElement : getRoot();
+  const candidates = getCommandCandidatesWithinRoot(root);
   const expectedText =
     locator?.kind === "role"
       ? typeof locator?.name === "string"
@@ -380,6 +445,60 @@ async function executePageEvaluate(command) {
   throw new Error("Unsupported evaluate payload.");
 }
 
+function waitForSelectorWithObserver(selector, state, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const findTarget = () => resolveSelectorTarget(selector, document, { allowHidden: true });
+
+    const check = () => {
+      const current = findTarget();
+      if (readWaitState(current, state)) {
+        return current;
+      }
+      return null;
+    };
+
+    const immediate = check();
+    if (immediate !== null || (state === "detached" && !findTarget())) {
+      resolve(immediate);
+      return;
+    }
+
+    let observer = null;
+    let timer = null;
+
+    const cleanup = () => {
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    };
+
+    observer = new MutationObserver(() => {
+      const result = check();
+      if (result !== null || (state === "detached" && !findTarget())) {
+        cleanup();
+        resolve(result);
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["style", "class", "hidden", "aria-hidden"],
+    });
+
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Timed out waiting for selector "${selector}" to reach state "${state}".`));
+    }, timeoutMs);
+  });
+}
+
 async function executePageWaitForSelector(command) {
   const selector = typeof command?.selector === "string" ? command.selector.trim() : "";
   if (!selector) {
@@ -387,19 +506,9 @@ async function executePageWaitForSelector(command) {
   }
 
   const timeoutMs =
-    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 15_000;
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
   const state = typeof command?.state === "string" ? command.state : "visible";
-  const target = await pollUntil(
-    timeoutMs,
-    () => {
-      const current = document.querySelector(selector);
-      return {
-        matched: readWaitState(current, state),
-        value: current,
-      };
-    },
-    `Timed out waiting for selector "${selector}" to reach state "${state}".`,
-  );
+  const target = await waitForSelectorWithObserver(selector, state, timeoutMs);
 
   return {
     page: buildPageRecord(),
@@ -760,6 +869,269 @@ async function executePageGoForward() {
   };
 }
 
+
+async function executePageWaitForLoadState(command) {
+  const state = typeof command?.state === "string" ? command.state : "load";
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+
+  if (state === "domcontentloaded") {
+    if (document.readyState === "interactive" || document.readyState === "complete") {
+      return { page: buildPageRecord(), loadState: state };
+    }
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for load state "${state}".`)), timeoutMs);
+      document.addEventListener("DOMContentLoaded", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  } else if (state === "load") {
+    if (document.readyState === "complete") {
+      return { page: buildPageRecord(), loadState: state };
+    }
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timed out waiting for load state "${state}".`)), timeoutMs);
+      window.addEventListener("load", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+  } else if (state === "networkidle") {
+    await waitForNetworkIdle(timeoutMs);
+  } else {
+    throw new Error(`Unsupported load state: "${state}". Use "load", "domcontentloaded", or "networkidle".`);
+  }
+
+  return { page: buildPageRecord(), loadState: state };
+}
+
+const xhrNetworkIdleTrackedSymbol = Symbol("kumaNetworkIdleTracked");
+
+const networkIdlePatchState = {
+  activePatchCount: 0,
+  pendingRequests: 0,
+  waiters: new Set(),
+  originalFetch: null,
+  originalXHROpen: null,
+  originalXHRSend: null,
+};
+
+function notifyNetworkIdleWaiters(methodName) {
+  for (const waiter of networkIdlePatchState.waiters) {
+    waiter[methodName]();
+  }
+}
+
+function handleNetworkIdleRequestStart() {
+  networkIdlePatchState.pendingRequests += 1;
+  notifyNetworkIdleWaiters("onRequestStart");
+}
+
+function handleNetworkIdleRequestEnd() {
+  networkIdlePatchState.pendingRequests = Math.max(0, networkIdlePatchState.pendingRequests - 1);
+  notifyNetworkIdleWaiters("onRequestEnd");
+}
+
+function retainNetworkIdlePatch() {
+  if (networkIdlePatchState.activePatchCount === 0) {
+    networkIdlePatchState.originalFetch = window.fetch;
+    networkIdlePatchState.originalXHROpen = XMLHttpRequest.prototype.open;
+    networkIdlePatchState.originalXHRSend = XMLHttpRequest.prototype.send;
+
+    if (typeof networkIdlePatchState.originalFetch === "function") {
+      window.fetch = function (...args) {
+        handleNetworkIdleRequestStart();
+        try {
+          return Promise.resolve(networkIdlePatchState.originalFetch.apply(this, args)).finally(handleNetworkIdleRequestEnd);
+        } catch (error) {
+          handleNetworkIdleRequestEnd();
+          throw error;
+        }
+      };
+    }
+
+    XMLHttpRequest.prototype.open = function (...args) {
+      this[xhrNetworkIdleTrackedSymbol] = true;
+      return networkIdlePatchState.originalXHROpen.apply(this, args);
+    };
+
+    XMLHttpRequest.prototype.send = function (...args) {
+      if (!this[xhrNetworkIdleTrackedSymbol]) {
+        return networkIdlePatchState.originalXHRSend.apply(this, args);
+      }
+
+      handleNetworkIdleRequestStart();
+      this.addEventListener("loadend", handleNetworkIdleRequestEnd, { once: true });
+
+      try {
+        return networkIdlePatchState.originalXHRSend.apply(this, args);
+      } catch (error) {
+        handleNetworkIdleRequestEnd();
+        throw error;
+      }
+    };
+  }
+
+  networkIdlePatchState.activePatchCount += 1;
+}
+
+function releaseNetworkIdlePatch() {
+  networkIdlePatchState.activePatchCount = Math.max(0, networkIdlePatchState.activePatchCount - 1);
+  if (networkIdlePatchState.activePatchCount > 0) {
+    return;
+  }
+
+  window.fetch = networkIdlePatchState.originalFetch;
+  XMLHttpRequest.prototype.open = networkIdlePatchState.originalXHROpen;
+  XMLHttpRequest.prototype.send = networkIdlePatchState.originalXHRSend;
+  networkIdlePatchState.originalFetch = null;
+  networkIdlePatchState.originalXHROpen = null;
+  networkIdlePatchState.originalXHRSend = null;
+  networkIdlePatchState.pendingRequests = 0;
+}
+
+function waitForNetworkIdle(timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const idleThresholdMs = 2000;
+    const waiter = {
+      pendingRequests: networkIdlePatchState.pendingRequests,
+      idleTimer: null,
+      overallTimer: null,
+      settled: false,
+      onRequestStart() {
+        this.pendingRequests += 1;
+        if (this.idleTimer) {
+          clearTimeout(this.idleTimer);
+          this.idleTimer = null;
+        }
+      },
+      onRequestEnd() {
+        this.pendingRequests = Math.max(0, this.pendingRequests - 1);
+        if (this.pendingRequests === 0) {
+          this.idleTimer = setTimeout(() => {
+            cleanup();
+            resolve();
+          }, idleThresholdMs);
+        }
+      },
+    };
+
+    function cleanup() {
+      if (waiter.settled) {
+        return;
+      }
+
+      waiter.settled = true;
+      if (waiter.overallTimer) {
+        clearTimeout(waiter.overallTimer);
+        waiter.overallTimer = null;
+      }
+      if (waiter.idleTimer) {
+        clearTimeout(waiter.idleTimer);
+        waiter.idleTimer = null;
+      }
+
+      networkIdlePatchState.waiters.delete(waiter);
+      releaseNetworkIdlePatch();
+    }
+
+    retainNetworkIdlePatch();
+    networkIdlePatchState.waiters.add(waiter);
+
+    waiter.overallTimer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timed out waiting for network idle."));
+    }, timeoutMs);
+
+    if (waiter.pendingRequests === 0) {
+      waiter.idleTimer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, idleThresholdMs);
+    }
+  });
+}
+
+function resolveIframeDocument(command) {
+  const selector = typeof command?.selector === "string" ? command.selector.trim() : "";
+  if (!selector) {
+    throw new Error("page.frame requires a non-empty iframe selector.");
+  }
+
+  const iframe = document.querySelector(selector);
+  if (!iframe || !(iframe instanceof HTMLIFrameElement)) {
+    throw new Error(`No iframe found matching selector "${selector}".`);
+  }
+
+  let iframeDoc;
+  try {
+    iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  } catch (e) {
+    throw new Error(`Cannot access iframe "${selector}": cross-origin access is not supported.`);
+  }
+
+  if (!iframeDoc) {
+    throw new Error(`Cannot access iframe "${selector}": contentDocument is null (likely cross-origin).`);
+  }
+
+  return iframeDoc;
+}
+
+async function executeFrameLocatorAction(command) {
+  const iframeDoc = resolveIframeDocument(command);
+  const innerCommand = command.innerCommand;
+  if (!innerCommand || typeof innerCommand !== "object") {
+    throw new Error("frameLocator action requires an innerCommand.");
+  }
+
+  if (innerCommand.locator) {
+    innerCommand.locator._iframeContext = iframeDoc;
+  }
+  if (innerCommand.selector && !innerCommand.locator) {
+    innerCommand._iframeContext = iframeDoc;
+  }
+
+  return executeAutomationCommand({ ...innerCommand, type: "playwright" });
+}
+
+async function executePageFrameEvaluate(command) {
+  const iframeDoc = resolveIframeDocument(command);
+  return {
+    page: buildPageRecord(),
+    frameUrl: iframeDoc.location?.href ?? null,
+    frameTitle: iframeDoc.title ?? null,
+  };
+}
+
+async function executeHoverAndClick(command) {
+  const hoverSelector = typeof command?.hoverSelector === "string" ? command.hoverSelector.trim() : "";
+  const clickSelector = typeof command?.clickSelector === "string" ? command.clickSelector.trim() : "";
+  const waitMs = typeof command?.waitMs === "number" && Number.isFinite(command.waitMs) ? command.waitMs : 500;
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+
+  if (!hoverSelector || !clickSelector) {
+    throw new Error("hoverAndClick requires both hoverSelector and clickSelector.");
+  }
+
+  const hoverTarget = resolveSelectorTarget(hoverSelector, document, { allowHidden: true });
+  if (!hoverTarget || !(hoverTarget instanceof Element)) {
+    throw new Error(`hoverAndClick: no element found for hover selector "${hoverSelector}".`);
+  }
+
+  await interaction.executeHoverCommand({ targetElement: hoverTarget });
+  await waitForDelay(waitMs);
+
+  const clickTarget = await waitForSelectorWithObserver(clickSelector, "visible", timeoutMs);
+  if (!clickTarget || !(clickTarget instanceof Element)) {
+    throw new Error(`hoverAndClick: click target "${clickSelector}" did not appear after hover.`);
+  }
+
+  const clickResult = await interaction.executeClickCommand({ targetElement: clickTarget });
+
+  return {
+    page: buildPageRecord(),
+    hoveredElement: describeElementForCommand(hoverTarget),
+    clickedElement: describeElementForCommand(clickTarget),
+    ...clickResult,
+  };
+}
+
 async function executeAutomationCommand(command) {
   if (command?.type !== "playwright") {
     throw new Error(`Unsupported automation payload: ${String(command?.type)}`);
@@ -822,6 +1194,14 @@ async function executeAutomationCommand(command) {
       return executePageGoBack();
     case "page.goForward":
       return executePageGoForward();
+    case "page.waitForLoadState":
+      return executePageWaitForLoadState(command);
+    case "page.frameLocator":
+      return executeFrameLocatorAction(command);
+    case "page.frame":
+      return executePageFrameEvaluate(command);
+    case "page.hoverAndClick":
+      return executeHoverAndClick(command);
     default:
       throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }

@@ -250,6 +250,210 @@ export function createLocator(client, state, descriptor) {
   return createUnsupportedProxy("locator", locatorTarget);
 }
 
+export function createFrameHandle(client, state, iframeSelector) {
+  const frameTarget = {
+    async evaluate(fnOrExpression, arg) {
+      const result = await client.send("page.frame", {
+        selector: iframeSelector,
+      });
+      updatePageState(state, result);
+      return result;
+    },
+    locator(selector) {
+      return createFrameLocator(client, state, iframeSelector).locator(selector);
+    },
+    url() {
+      return null; // Frame URL is only available after evaluate
+    },
+  };
+
+  return createUnsupportedProxy("frame", frameTarget);
+}
+
+export function createFrameLocator(client, state, iframeSelector) {
+  function wrapInnerCommand(action, params, options = {}) {
+    const timeoutMs = Number.isFinite(options?.timeout) ? Math.round(options.timeout) : null;
+    return client.send(
+      "page.frameLocator",
+      {
+        selector: iframeSelector,
+        innerCommand: {
+          type: "playwright",
+          action,
+          ...params,
+          timeoutMs,
+        },
+      },
+      { timeoutMs: options.timeout },
+    );
+  }
+
+  const frameLocatorTarget = {
+    locator(selector) {
+      if (typeof selector !== "string" || !selector.trim()) {
+        throw new Error("frameLocator.locator requires a non-empty selector.");
+      }
+      const descriptor = { kind: "selector", selector: selector.trim() };
+
+      const locatorTarget = {
+        async click(options = {}) {
+          const result = await wrapInnerCommand("locator.click", { locator: descriptor }, options);
+          updatePageState(state, result);
+          return result;
+        },
+        async fill(value, options = {}) {
+          const result = await wrapInnerCommand("locator.fill", {
+            locator: descriptor,
+            value: String(value ?? ""),
+          }, options);
+          updatePageState(state, result);
+          return result;
+        },
+        async textContent() {
+          const result = await wrapInnerCommand("locator.textContent", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.textContent ?? null;
+        },
+        async innerText() {
+          const result = await wrapInnerCommand("locator.innerText", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.innerText ?? null;
+        },
+        async isVisible() {
+          const result = await wrapInnerCommand("locator.isVisible", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.visible === true;
+        },
+        async waitFor(options = {}) {
+          const result = await wrapInnerCommand("locator.waitFor", {
+            locator: descriptor,
+            state: options.state ?? "visible",
+          }, options);
+          updatePageState(state, result);
+          return result;
+        },
+        async press(key, options = {}) {
+          const result = await wrapInnerCommand("locator.press", {
+            locator: descriptor,
+            key,
+            holdMs: Number.isFinite(options.holdMs) ? Math.round(options.holdMs) : null,
+          }, options);
+          updatePageState(state, result);
+          return result;
+        },
+        async hover(options = {}) {
+          const result = await wrapInnerCommand("locator.hover", { locator: descriptor }, options);
+          updatePageState(state, result);
+          return result;
+        },
+        async getAttribute(name) {
+          const result = await wrapInnerCommand("locator.getAttribute", {
+            locator: descriptor,
+            name: String(name ?? ""),
+          });
+          updatePageState(state, result);
+          return result?.attributeValue ?? null;
+        },
+        async innerHTML() {
+          const result = await wrapInnerCommand("locator.innerHTML", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.innerHTML ?? null;
+        },
+        async inputValue() {
+          const result = await wrapInnerCommand("locator.inputValue", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.inputValue ?? null;
+        },
+        first() {
+          return createFrameLocator(client, state, iframeSelector).locator(descriptor.selector).nth(0);
+        },
+        last() {
+          const nthDescriptor = { ...descriptor, nth: "last" };
+          const nthTarget = {
+            async click(options = {}) {
+              const result = await wrapInnerCommand("locator.click", { locator: nthDescriptor }, options);
+              updatePageState(state, result);
+              return result;
+            },
+            async textContent() {
+              const result = await wrapInnerCommand("locator.textContent", { locator: nthDescriptor });
+              updatePageState(state, result);
+              return result?.textContent ?? null;
+            },
+            async isVisible() {
+              const result = await wrapInnerCommand("locator.isVisible", { locator: nthDescriptor });
+              updatePageState(state, result);
+              return result?.visible === true;
+            },
+          };
+          return createUnsupportedProxy("frameLocator.locator.last", nthTarget);
+        },
+        nth(index) {
+          const nthDescriptor = { ...descriptor, nth: index };
+          const nthTarget = {
+            async click(options = {}) {
+              const result = await wrapInnerCommand("locator.click", { locator: nthDescriptor }, options);
+              updatePageState(state, result);
+              return result;
+            },
+            async fill(value, options = {}) {
+              const result = await wrapInnerCommand(
+                "locator.fill",
+                { locator: nthDescriptor, value: String(value ?? "") },
+                options,
+              );
+              updatePageState(state, result);
+              return result;
+            },
+            async textContent() {
+              const result = await wrapInnerCommand("locator.textContent", { locator: nthDescriptor });
+              updatePageState(state, result);
+              return result?.textContent ?? null;
+            },
+            async isVisible() {
+              const result = await wrapInnerCommand("locator.isVisible", { locator: nthDescriptor });
+              updatePageState(state, result);
+              return result?.visible === true;
+            },
+          };
+          return createUnsupportedProxy("frameLocator.locator.nth", nthTarget);
+        },
+      };
+
+      return createUnsupportedProxy("frameLocator.locator", locatorTarget);
+    },
+    getByText(text, options = {}) {
+      const descriptor = { kind: "text", text: text.trim(), exact: options.exact === true };
+      return this.locator(`text=${text}`); // Simplified - delegates to inner locator
+    },
+    getByRole(role, options = {}) {
+      const descriptor = { kind: "role", role: role.trim(), name: options.name ?? null, exact: options.exact === true };
+
+      const locatorTarget = {
+        async click(options2 = {}) {
+          const result = await wrapInnerCommand("locator.click", { locator: descriptor }, options2);
+          updatePageState(state, result);
+          return result;
+        },
+        async textContent() {
+          const result = await wrapInnerCommand("locator.textContent", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.textContent ?? null;
+        },
+        async isVisible() {
+          const result = await wrapInnerCommand("locator.isVisible", { locator: descriptor });
+          updatePageState(state, result);
+          return result?.visible === true;
+        },
+      };
+
+      return createUnsupportedProxy("frameLocator.getByRole", locatorTarget);
+    },
+  };
+
+  return createUnsupportedProxy("frameLocator", frameLocatorTarget);
+}
+
 export function createPage(client, state) {
   const keyboard = createUnsupportedProxy("page.keyboard", {
     async press(key, options = {}) {
@@ -550,6 +754,52 @@ export function createPage(client, state) {
         {
           selector: selector.trim(),
           state: options.state ?? "visible",
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async waitForLoadState(loadState = "load", options = {}) {
+      const validStates = ["load", "domcontentloaded", "networkidle"];
+      if (!validStates.includes(loadState)) {
+        throw new Error(`page.waitForLoadState: invalid state "${loadState}". Use one of: ${validStates.join(", ")}`);
+      }
+      const result = await client.send(
+        "page.waitForLoadState",
+        {
+          state: loadState,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    frame(selector) {
+      if (typeof selector !== "string" || !selector.trim()) {
+        throw new Error("page.frame requires a non-empty iframe selector.");
+      }
+      return createFrameHandle(client, state, selector.trim());
+    },
+    frameLocator(selector) {
+      if (typeof selector !== "string" || !selector.trim()) {
+        throw new Error("page.frameLocator requires a non-empty iframe selector.");
+      }
+      return createFrameLocator(client, state, selector.trim());
+    },
+    async hoverAndClick(hoverSelector, clickSelector, waitMs = 500, options = {}) {
+      if (typeof hoverSelector !== "string" || !hoverSelector.trim()) {
+        throw new Error("page.hoverAndClick requires a non-empty hoverSelector.");
+      }
+      if (typeof clickSelector !== "string" || !clickSelector.trim()) {
+        throw new Error("page.hoverAndClick requires a non-empty clickSelector.");
+      }
+      const result = await client.send(
+        "page.hoverAndClick",
+        {
+          hoverSelector: hoverSelector.trim(),
+          clickSelector: clickSelector.trim(),
+          waitMs: Number.isFinite(waitMs) ? Math.round(waitMs) : 500,
         },
         { timeoutMs: options.timeout },
       );
