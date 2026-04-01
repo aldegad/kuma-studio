@@ -1,7 +1,16 @@
+import { useMemo } from "react";
 import type { OfficeCharacter } from "../../types/office";
 
 interface CharacterSpriteProps {
   character: OfficeCharacter;
+}
+
+/** Randomize blink delay so characters don't blink in sync */
+function useBlinkDelay(id: string): string {
+  return useMemo(() => {
+    const hash = id.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return `${(hash % 30) / 10}s`;
+  }, [id]);
 }
 
 /** Emoji-based fallback sprites until real assets are generated */
@@ -31,6 +40,8 @@ const stateAnimation: Record<string, string> = {
 export function CharacterSprite({ character }: CharacterSpriteProps) {
   const emoji = animalEmoji[character.animal] ?? "bear";
   const animation = stateAnimation[character.state] ?? "";
+  const blinkDelay = useBlinkDelay(character.id);
+  const isIdle = character.state === "idle";
 
   // Use sprite sheet if available
   if (character.spriteSheet) {
@@ -38,7 +49,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
       ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}${character.spriteSheet}`
       : character.spriteSheet;
     return (
-      <div className={`h-20 w-20 ${animation}`}>
+      <div className={`h-20 w-20 ${animation} ${isIdle ? "animate-idle-blink" : ""}`} style={isIdle ? { animationDelay: blinkDelay } : undefined}>
         <img
           src={spriteSrc}
           alt={character.name}
@@ -77,7 +88,8 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
 
   return (
     <div
-      className={`flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl shadow-md ${animation}`}
+      className={`flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl shadow-md ${animation} ${isIdle ? "animate-idle-blink" : ""}`}
+      style={isIdle ? { animationDelay: blinkDelay } : undefined}
       role="img"
       aria-label={`${character.name} (${character.animal}) - ${character.state}`}
     >

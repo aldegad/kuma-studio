@@ -74,3 +74,65 @@ body {
   0%, 100% { transform: translate(-50%, -50%) translateY(0); }
   50% { transform: translate(-50%, -50%) translateY(-3px); }
 }
+
+/* Idle blink — long cycle with brief blink at ~5% for a natural feel */
+@keyframes idle-blink {
+  0%, 4%, 6%, 100% { transform: scaleY(1); }
+  5% { transform: scaleY(0.1); }
+}
+
+.animate-idle-blink {
+  animation: idle-blink 4s ease-in-out infinite;
+}
+
+/* Character hover lift */
+@keyframes hover-lift {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+
+.character-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.character-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.15);
+  filter: brightness(1.03);
+}
+
+.character-card:active {
+  transform: scale(0.97);
+}
+
+/* Working character glow pulse */
+@keyframes state-glow {
+  0%, 100% { box-shadow: 0 0 8px 2px var(--glow-color, transparent); }
+  50% { box-shadow: 0 0 16px 6px var(--glow-color, transparent); }
+}
+
+.animate-state-glow {
+  animation: state-glow 2s ease-in-out infinite;
+}
+
+/* Completion pop — brief scale burst */
+@keyframes completion-pop {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.15); }
+  60% { transform: scale(0.95); }
+  100% { transform: scale(1); }
+}
+
+.animate-completion-pop {
+  animation: completion-pop 0.5s ease-out 1;
+}
+
+/* Tooltip reveal */
+@keyframes tooltip-reveal {
+  from { opacity: 0; transform: translateY(4px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.tooltip-enter {
+  animation: tooltip-reveal 0.15s ease-out;
+}

@@ -650,11 +650,24 @@ export function StudioPage() {
             <div className="relative overflow-hidden rounded-lg" style={{ width: MINIMAP_W, height: MINIMAP_H, background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
               {/* Viewport rectangle */}
               <div className="absolute border border-blue-400/60 bg-blue-200/15 rounded-sm" style={{ left: clamp(vpX, 0, MINIMAP_W), top: clamp(vpY, 0, MINIMAP_H), width: Math.min(vpW, MINIMAP_W), height: Math.min(vpH, MINIMAP_H) }} />
-              {/* Character dots — team colored */}
+              {/* Character dots — team colored with labels */}
               {scene.characters.map((c) => {
-                const team = KUMA_TEAM.find((m) => m.id === c.id)?.team;
+                const member = KUMA_TEAM.find((m) => m.id === c.id);
+                const team = member?.team;
                 const dotColor = team === "dev" ? "#3b82f6" : team === "analytics" ? "#f97316" : team === "strategy" ? "#22c55e" : "#78716c";
-                return <div key={c.id} className="absolute w-2 h-2 rounded-full" style={{ left: c.position.x * scaleX - 4, top: c.position.y * scaleY - 4, backgroundColor: dotColor, opacity: 0.8 }} title={c.name} />;
+                const isActive = c.state === "working" || c.state === "thinking";
+                return (
+                  <div key={c.id} className="absolute" style={{ left: c.position.x * scaleX - 4, top: c.position.y * scaleY - 4 }}>
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full ${isActive ? "animate-pulse" : ""}`}
+                      style={{ backgroundColor: dotColor, opacity: isActive ? 1 : 0.7, boxShadow: isActive ? `0 0 4px ${dotColor}` : "none" }}
+                      title={`${member?.emoji ?? ""} ${c.name} — ${c.state}`}
+                    />
+                    <span className="absolute left-3 top-[-2px] text-[5px] font-medium text-stone-600 whitespace-nowrap pointer-events-none">
+                      {member?.emoji ?? ""}{member?.nameKo?.[0] ?? c.name[0]}
+                    </span>
+                  </div>
+                );
               })}
             </div>
           </div>
