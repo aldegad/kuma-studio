@@ -26,6 +26,7 @@ import { AmbientParticles } from "../components/office/AmbientParticles";
 import { DailyReportBadge } from "../components/dashboard/DailyReportBadge";
 import { GitLogPanel } from "../components/dashboard/GitLogPanel";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
+import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,8 @@ export function StudioPage() {
   // Help overlay
   const [showHelp, setShowHelp] = useState(false);
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [particlesEnabled, setParticlesEnabled] = useState(true);
 
   // Fit-to-screen: compute zoom & pan to show all characters
   const fitToScreen = useCallback(() => {
@@ -472,7 +475,7 @@ export function StudioPage() {
     <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: ambientBg, transition: "background 60s ease" }}>
 
       {/* Ambient particles — subtle floating effect */}
-      <AmbientParticles isNight={isNight} />
+      {particlesEnabled && <AmbientParticles isNight={isNight} />}
 
       {/* ------------------------------------------------------------------ */}
       {/* Office canvas — full background with zoom/pan                       */}
@@ -654,6 +657,15 @@ export function StudioPage() {
         <DailyReportBadge isNight={isNight} />
         <GitLogPanel isNight={isNight} />
       </div>
+
+      {/* Settings panel */}
+      <SettingsPanel
+        isNight={isNight}
+        animationsEnabled={animationsEnabled}
+        onToggleAnimations={() => setAnimationsEnabled((v) => !v)}
+        particlesEnabled={particlesEnabled}
+        onToggleParticles={() => setParticlesEnabled((v) => !v)}
+      />
 
       {/* Character detail panel */}
       {selectedCharId && (() => {
