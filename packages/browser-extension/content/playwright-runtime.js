@@ -275,6 +275,121 @@ function resolveLocatorElement(locator, options = {}) {
   }
 }
 
+
+function resolveAllLocatorElements(locator, options = {}) {
+  const allowHidden = options.allowHidden === true;
+
+  function getMatches() {
+    switch (locator?.kind) {
+      case "selector": {
+        const selector = typeof locator?.selector === "string" ? locator.selector.trim() : "";
+        if (!selector) return [];
+        const root = locator?._iframeContext ?? document;
+        return resolveSelectorMatches(selector, root, { allowHidden });
+      }
+      case "text":
+      case "role": {
+        const root = locator?._iframeContext ? locator._iframeContext.body || locator._iframeContext.documentElement : getRoot();
+        const candidates = getCommandCandidatesWithinRoot(root);
+        const expectedText =
+          locator?.kind === "role"
+            ? typeof locator?.name === "string" ? normalizeText(locator.name) : ""
+            : typeof locator?.text === "string" ? normalizeText(locator.text) : "";
+        const exact = locator?.exact === true;
+        return candidates
+          .filter((c) => allowHidden || isVisibleElement(c))
+          .filter((c) => locator.kind === "role" ? matchesRequestedRole(c, locator.role) : true)
+          .map((c) => ({ element: c, score: expectedText ? scoreText(getAccessibleText(c), expectedText, exact) : 1 }))
+          .filter((e) => e.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .map((e) => e.element);
+      }
+      case "label": {
+        const expected = typeof locator?.text === "string" ? normalizeText(locator.text) : "";
+        const exact = locator?.exact === true;
+        if (!expected) return [];
+        return getFillableElements(getRoot())
+          .filter((c) => allowHidden || isVisibleElement(c))
+          .map((c) => ({ element: c, score: scoreText(normalizeText(describeElementForCommand(c).label), expected, exact) }))
+          .filter((e) => e.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .map((e) => e.element);
+      }
+      case "placeholder": {
+        const expected = typeof locator?.text === "string" ? normalizeText(locator.text) : "";
+        const exact = locator?.exact === true;
+        if (!expected) return [];
+        return Array.from(document.querySelectorAll("input[placeholder], textarea[placeholder]"))
+          .filter((c) => c instanceof Element && (allowHidden || isVisibleElement(c)))
+          .map((c) => ({ element: c, score: scoreText(normalizeText(c.getAttribute("placeholder")), expected, exact) }))
+          .filter((e) => e.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .map((e) => e.element);
+      }
+      case "testid": {
+        const testId = typeof locator?.testId === "string" ? locator.testId.trim() : "";
+        if (!testId) return [];
+        const selectors = [
+          `[data-testid="${CSS.escape(testId)}"]`,
+          `[data-test-id="${CSS.escape(testId)}"]`,
+          `[data-test="${CSS.escape(testId)}"]`,
+        ];
+        const matches = [];
+        for (const sel of selectors) {
+          try {
+            matches.push(...Array.from(document.querySelectorAll(sel)).filter((c) => c instanceof Element && (allowHidden || isVisibleElement(c))));
+          } catch {}
+        }
+        return [...new Set(matches)];
+      }
+      default:
+        return [];
+    }
+  }
+
+  let matches = getMatches();
+
+  // Apply filter if present
+  if (locator?.filter) {
+    matches = applyLocatorFilter(matches, locator.filter);
+  }
+
+  return matches;
+}
+
+function applyLocatorFilter(elements, filter) {
+  if (!filter || typeof filter !== "object") return elements;
+
+  let filtered = elements;
+
+  // hasText filter: keep only elements whose textContent contains the text
+  if (typeof filter.hasText === "string" && filter.hasText) {
+    const expected = normalizeText(filter.hasText);
+    filtered = filtered.filter((el) => {
+      const text = normalizeText(el.textContent || "");
+      return text.includes(expected);
+    });
+  }
+
+  // has filter: keep only elements that contain a descendant matching the sub-locator
+  if (filter.has && typeof filter.has === "object") {
+    filtered = filtered.filter((el) => {
+      const subLocator = { ...filter.has, _iframeContext: null };
+      // For selector kind, scope querySelectorAll to this element
+      if (subLocator.kind === "selector" && typeof subLocator.selector === "string") {
+        try {
+          return el.querySelector(subLocator.selector) !== null;
+        } catch { return false; }
+      }
+      // For other kinds, check if any resolved element is a descendant
+      const subMatches = resolveAllLocatorElements(subLocator, { allowHidden: true });
+      return subMatches.some((sub) => el.contains(sub));
+    });
+  }
+
+  return filtered;
+}
+
 function readInputValue(target) {
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
     return target.value;
@@ -1288,6 +1403,264 @@ async function executeLocatorSetInputFiles(command) {
   });
 }
 
+// --- P3: check/uncheck ---
+
+async function executeLocatorCheck(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for check.");
+  }
+
+  const isChecked =
+    (target instanceof HTMLInputElement && (target.type === "checkbox" || target.type === "radio"))
+      ? target.checked
+      : target.getAttribute("aria-checked") === "true";
+
+  if (!isChecked) {
+    await executeClickCommand({ targetElement: target });
+  }
+
+  return {
+    page: buildPageRecord(),
+    checked: true,
+    wasAlreadyChecked: isChecked,
+    element: describeElementForCommand(target),
+  };
+}
+
+async function executeLocatorUncheck(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for uncheck.");
+  }
+
+  const isChecked =
+    (target instanceof HTMLInputElement && (target.type === "checkbox" || target.type === "radio"))
+      ? target.checked
+      : target.getAttribute("aria-checked") === "true";
+
+  if (isChecked) {
+    await executeClickCommand({ targetElement: target });
+  }
+
+  return {
+    page: buildPageRecord(),
+    checked: false,
+    wasAlreadyUnchecked: !isChecked,
+    element: describeElementForCommand(target),
+  };
+}
+
+// --- P3: count/all ---
+
+async function executeLocatorCount(command) {
+  const matches = resolveAllLocatorElements(command.locator, { allowHidden: true });
+  return {
+    page: buildPageRecord(),
+    count: matches.length,
+  };
+}
+
+async function executeLocatorAll(command) {
+  const matches = resolveAllLocatorElements(command.locator, { allowHidden: true });
+  return {
+    page: buildPageRecord(),
+    elements: matches.map((el) => describeElementForCommand(el)),
+    count: matches.length,
+  };
+}
+
+// --- P3: locator.filter ---
+
+async function executeLocatorFilter(command) {
+  const matches = resolveAllLocatorElements(command.locator, { allowHidden: false });
+  const filtered = applyLocatorFilter(matches, command.filter);
+  return {
+    page: buildPageRecord(),
+    elements: filtered.map((el) => describeElementForCommand(el)),
+    count: filtered.length,
+  };
+}
+
+// --- P3: isEnabled / isChecked / isDisabled / isEditable ---
+
+async function executeLocatorIsEnabled(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    return { page: buildPageRecord(), enabled: false };
+  }
+
+  const disabled =
+    target.hasAttribute("disabled") ||
+    target.getAttribute("aria-disabled") === "true";
+
+  return {
+    page: buildPageRecord(),
+    enabled: !disabled,
+  };
+}
+
+async function executeLocatorIsChecked(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    return { page: buildPageRecord(), checked: false };
+  }
+
+  const checked =
+    (target instanceof HTMLInputElement && (target.type === "checkbox" || target.type === "radio"))
+      ? target.checked
+      : target.getAttribute("aria-checked") === "true";
+
+  return {
+    page: buildPageRecord(),
+    checked,
+  };
+}
+
+async function executeLocatorIsDisabled(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    return { page: buildPageRecord(), disabled: true };
+  }
+
+  const disabled =
+    target.hasAttribute("disabled") ||
+    target.getAttribute("aria-disabled") === "true";
+
+  return {
+    page: buildPageRecord(),
+    disabled,
+  };
+}
+
+async function executeLocatorIsEditable(command) {
+  const target = resolveLocatorElement(command.locator, { allowHidden: true });
+  if (!(target instanceof Element)) {
+    return { page: buildPageRecord(), editable: false };
+  }
+
+  const isInput = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+  const isContentEditable = target instanceof HTMLElement && target.isContentEditable;
+  const disabled = target.hasAttribute("disabled");
+  const readOnly = target.hasAttribute("readonly");
+
+  return {
+    page: buildPageRecord(),
+    editable: (isInput || isContentEditable) && !disabled && !readOnly,
+  };
+}
+
+// --- P3: page.on('dialog') ---
+
+const dialogInterceptState = {
+  installed: false,
+  autoAction: "accept",
+  promptText: "",
+  originalAlert: null,
+  originalConfirm: null,
+  originalPrompt: null,
+  capturedDialogs: [],
+};
+
+function installDialogIntercept(options) {
+  const autoAction = options?.autoAction === "dismiss" ? "dismiss" : "accept";
+  const promptText = typeof options?.promptText === "string" ? options.promptText : "";
+
+  if (dialogInterceptState.installed) {
+    dialogInterceptState.autoAction = autoAction;
+    dialogInterceptState.promptText = promptText;
+    return;
+  }
+
+  dialogInterceptState.originalAlert = window.alert;
+  dialogInterceptState.originalConfirm = window.confirm;
+  dialogInterceptState.originalPrompt = window.prompt;
+  dialogInterceptState.autoAction = autoAction;
+  dialogInterceptState.promptText = promptText;
+  dialogInterceptState.capturedDialogs = [];
+
+  window.alert = function (message) {
+    dialogInterceptState.capturedDialogs.push({
+      type: "alert",
+      message: String(message ?? ""),
+      action: dialogInterceptState.autoAction,
+      timestamp: Date.now(),
+    });
+    // alert always returns undefined, auto-dismissed
+  };
+
+  window.confirm = function (message) {
+    const action = dialogInterceptState.autoAction;
+    dialogInterceptState.capturedDialogs.push({
+      type: "confirm",
+      message: String(message ?? ""),
+      action,
+      timestamp: Date.now(),
+    });
+    return action === "accept";
+  };
+
+  window.prompt = function (message, defaultValue) {
+    const action = dialogInterceptState.autoAction;
+    dialogInterceptState.capturedDialogs.push({
+      type: "prompt",
+      message: String(message ?? ""),
+      defaultValue: defaultValue ?? "",
+      action,
+      promptText: dialogInterceptState.promptText,
+      timestamp: Date.now(),
+    });
+    return action === "accept" ? dialogInterceptState.promptText : null;
+  };
+
+  dialogInterceptState.installed = true;
+}
+
+function uninstallDialogIntercept() {
+  if (!dialogInterceptState.installed) return;
+
+  window.alert = dialogInterceptState.originalAlert;
+  window.confirm = dialogInterceptState.originalConfirm;
+  window.prompt = dialogInterceptState.originalPrompt;
+  dialogInterceptState.originalAlert = null;
+  dialogInterceptState.originalConfirm = null;
+  dialogInterceptState.originalPrompt = null;
+  dialogInterceptState.installed = false;
+}
+
+async function executePageOnDialog(command) {
+  const action = command?.autoAction ?? "accept";
+  const promptText = command?.promptText ?? "";
+  const enabled = command?.enabled !== false;
+
+  if (enabled) {
+    installDialogIntercept({ autoAction: action, promptText });
+  } else {
+    uninstallDialogIntercept();
+  }
+
+  return {
+    page: buildPageRecord(),
+    dialogIntercept: {
+      enabled: dialogInterceptState.installed,
+      autoAction: dialogInterceptState.autoAction,
+      capturedCount: dialogInterceptState.capturedDialogs.length,
+    },
+  };
+}
+
+async function executePageOffDialog() {
+  const captured = [...dialogInterceptState.capturedDialogs];
+  uninstallDialogIntercept();
+  dialogInterceptState.capturedDialogs = [];
+
+  return {
+    page: buildPageRecord(),
+    dialogIntercept: { enabled: false },
+    capturedDialogs: captured,
+  };
+}
+
 // --- Network interception (content-script level) ---
 
 const networkInterceptState = {
@@ -1476,6 +1849,28 @@ async function executeAutomationCommand(command) {
       return executePageUnroute(command);
     case "page.hoverAndClick":
       return executeHoverAndClick(command);
+    case "locator.check":
+      return executeLocatorCheck(command);
+    case "locator.uncheck":
+      return executeLocatorUncheck(command);
+    case "locator.count":
+      return executeLocatorCount(command);
+    case "locator.all":
+      return executeLocatorAll(command);
+    case "locator.filter":
+      return executeLocatorFilter(command);
+    case "locator.isEnabled":
+      return executeLocatorIsEnabled(command);
+    case "locator.isChecked":
+      return executeLocatorIsChecked(command);
+    case "locator.isDisabled":
+      return executeLocatorIsDisabled(command);
+    case "locator.isEditable":
+      return executeLocatorIsEditable(command);
+    case "page.onDialog":
+      return executePageOnDialog(command);
+    case "page.offDialog":
+      return executePageOffDialog();
     default:
       throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }

@@ -325,6 +325,79 @@ export function createLocator(client, state, descriptor) {
       updatePageState(state, result);
       return result;
     },
+    async check(options = {}) {
+      const result = await client.send(
+        "locator.check",
+        {
+          locator: descriptor,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async uncheck(options = {}) {
+      const result = await client.send(
+        "locator.uncheck",
+        {
+          locator: descriptor,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async count() {
+      const result = await client.send("locator.count", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.count ?? 0;
+    },
+    async all() {
+      const result = await client.send("locator.all", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.elements ?? [];
+    },
+    filter(filterOptions = {}) {
+      const filterDescriptor = cloneLocatorDescriptor(descriptor, {
+        filter: {
+          hasText: typeof filterOptions.hasText === "string" ? filterOptions.hasText : undefined,
+          has: filterOptions.has?._descriptor ?? filterOptions.has ?? undefined,
+        },
+      });
+      return createLocator(client, state, filterDescriptor);
+    },
+    async isEnabled() {
+      const result = await client.send("locator.isEnabled", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.enabled === true;
+    },
+    async isChecked() {
+      const result = await client.send("locator.isChecked", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.checked === true;
+    },
+    async isDisabled() {
+      const result = await client.send("locator.isDisabled", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.disabled === true;
+    },
+    async isEditable() {
+      const result = await client.send("locator.isEditable", {
+        locator: descriptor,
+      });
+      updatePageState(state, result);
+      return result?.editable === true;
+    },
   };
 
   locatorTarget._descriptor = descriptor;
@@ -989,6 +1062,36 @@ export function createPage(client, state) {
       );
       updatePageState(state, result);
       return result;
+    },
+    on(event, handler) {
+      if (event === "dialog") {
+        const options = {};
+        if (typeof handler === "function") {
+          // Extract options from handler callback pattern
+          // Support: page.on('dialog', dialog => dialog.accept()) or dialog.dismiss()
+          const dialogApi = {
+            _action: "accept",
+            _promptText: "",
+            accept(promptText) { this._action = "accept"; this._promptText = promptText ?? ""; },
+            dismiss() { this._action = "dismiss"; },
+          };
+          try { handler(dialogApi); } catch {}
+          options.autoAction = dialogApi._action;
+          options.promptText = dialogApi._promptText;
+        }
+        return client.send("page.onDialog", {
+          autoAction: options.autoAction ?? "accept",
+          promptText: options.promptText ?? "",
+          enabled: true,
+        });
+      }
+      throw new Error(`page.on('${event}') is not supported. Only 'dialog' is available.`);
+    },
+    off(event) {
+      if (event === "dialog") {
+        return client.send("page.offDialog", {});
+      }
+      throw new Error(`page.off('${event}') is not supported. Only 'dialog' is available.`);
     },
     keyboard,
     mouse,
