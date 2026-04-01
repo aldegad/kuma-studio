@@ -38,13 +38,28 @@ export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeC
 export const DEFAULT_OFFICE_CHARACTERS: OfficeCharacter[] = buildDefaultOfficeCharacters();
 
 export const DEFAULT_OFFICE_FURNITURE: OfficeFurniture[] = [
-  { id: "desk-1", type: "desk", position: { x: 100, y: 200 }, imageUrl: "" },
-  { id: "desk-2", type: "desk", position: { x: 300, y: 200 }, imageUrl: "" },
-  { id: "desk-3", type: "desk", position: { x: 500, y: 200 }, imageUrl: "" },
-  { id: "desk-4", type: "desk", position: { x: 700, y: 200 }, imageUrl: "" },
-  { id: "whiteboard-1", type: "whiteboard", position: { x: 400, y: 90 }, imageUrl: "" },
+  // Dev team desks
+  { id: "desk-dev-1", type: "desk", position: { x: 120, y: 220 }, imageUrl: "" },
+  { id: "desk-dev-2", type: "desk", position: { x: 260, y: 220 }, imageUrl: "" },
+  { id: "desk-dev-3", type: "desk", position: { x: 120, y: 360 }, imageUrl: "" },
+  { id: "desk-dev-4", type: "desk", position: { x: 260, y: 360 }, imageUrl: "" },
+  // Analytics team desks
+  { id: "desk-ana-1", type: "desk", position: { x: 660, y: 220 }, imageUrl: "" },
+  { id: "desk-ana-2", type: "desk", position: { x: 800, y: 220 }, imageUrl: "" },
+  // Strategy team desks
+  { id: "desk-str-1", type: "desk", position: { x: 660, y: 440 }, imageUrl: "" },
+  { id: "desk-str-2", type: "desk", position: { x: 800, y: 440 }, imageUrl: "" },
+  // Whiteboard
+  { id: "whiteboard-1", type: "whiteboard", position: { x: 460, y: 90 }, imageUrl: "" },
+  // Plants
   { id: "plant-1", type: "plant", position: { x: 50, y: 60 }, imageUrl: "" },
-  { id: "plant-2", type: "plant", position: { x: 850, y: 60 }, imageUrl: "" },
+  { id: "plant-2", type: "plant", position: { x: 870, y: 60 }, imageUrl: "" },
+  { id: "plant-3", type: "plant", position: { x: 50, y: 500 }, imageUrl: "" },
+  { id: "plant-4", type: "plant", position: { x: 870, y: 560 }, imageUrl: "" },
+  // Coffee
+  { id: "coffee-1", type: "coffee", position: { x: 450, y: 560 }, imageUrl: "" },
+  // Chairs (near desks)
+  { id: "chair-1", type: "chair", position: { x: 190, y: 490 }, imageUrl: "" },
 ];
 
 export const DEFAULT_OFFICE_SCENE: OfficeScene = {
