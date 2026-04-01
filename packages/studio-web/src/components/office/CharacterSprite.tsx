@@ -38,7 +38,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
       ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}${character.spriteSheet}`
       : character.spriteSheet;
     return (
-      <div className={`h-16 w-16 ${animation}`}>
+      <div className={`h-20 w-20 ${animation}`}>
         <img
           src={spriteSrc}
           alt={character.name}
@@ -54,7 +54,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
       ? `${import.meta.env.BASE_URL.replace(/\/$/, "")}${character.image}`
       : character.image;
     return (
-      <div className={`h-16 w-16 ${animation}`}>
+      <div className={`h-20 w-20 ${animation}`}>
         <img
           src={imageSrc}
           alt={character.name}
@@ -64,7 +64,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
             img.style.display = "none";
             const parent = img.parentElement;
             if (parent) {
-              parent.className = `flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-2xl shadow-md ${animation}`;
+              parent.className = `flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl shadow-md ${animation}`;
               parent.setAttribute("role", "img");
               parent.setAttribute("aria-label", `${character.name} (${character.animal}) - ${character.state}`);
               parent.textContent = getAnimalFallback(character.animal);
@@ -77,14 +77,14 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
 
   return (
     <div
-      className={`flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-2xl shadow-md ${animation}`}
+      className={`flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl shadow-md ${animation}`}
       role="img"
       aria-label={`${character.name} (${character.animal}) - ${character.state}`}
     >
       <img
         src={`https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/${getEmojiCodePoint(emoji)}.svg`}
         alt={character.animal}
-        className="h-7 w-7"
+        className="h-9 w-9"
         onError={(e) => {
           (e.target as HTMLImageElement).style.display = "none";
           (e.target as HTMLImageElement).parentElement!.textContent = getAnimalFallback(character.animal);

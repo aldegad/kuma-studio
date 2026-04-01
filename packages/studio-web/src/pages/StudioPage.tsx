@@ -19,6 +19,7 @@ import { OfficeBackground } from "../components/office/OfficeBackground";
 import { Character } from "../components/office/Character";
 import { Furniture } from "../components/office/Furniture";
 import { Whiteboard } from "../components/office/Whiteboard";
+import { SkillsPanel } from "../components/dashboard/SkillsPanel";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -268,8 +269,8 @@ export function StudioPage() {
               setDragState({
                 kind: "character",
                 id: character.id,
-                offsetX: event.clientX - event.currentTarget.getBoundingClientRect().left - 24,
-                offsetY: event.clientY - event.currentTarget.getBoundingClientRect().top - 24,
+                offsetX: event.clientX - event.currentTarget.getBoundingClientRect().left - event.currentTarget.offsetWidth / 2,
+                offsetY: event.clientY - event.currentTarget.getBoundingClientRect().top - event.currentTarget.offsetHeight / 2,
               });
             }}
           />
@@ -364,6 +365,11 @@ export function StudioPage() {
           )}
         </div>
       </div>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Skills Panel — bottom-right floating panel                          */}
+      {/* ------------------------------------------------------------------ */}
+      <SkillsPanel />
 
       {/* ------------------------------------------------------------------ */}
       {/* Stats HUD — bottom-left floating badges                             */}

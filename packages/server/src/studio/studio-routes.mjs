@@ -4,6 +4,8 @@
  */
 
 import { readFileSync, existsSync, statSync } from "node:fs";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { resolve, join, extname } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 
@@ -21,6 +23,63 @@ const MIME_TYPES = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 };
+
+async function readStudioSkills() {
+  try {
+    const skillsDir = join(homedir(), ".claude", "skills");
+    const entries = await readdir(skillsDir, { withFileTypes: true });
+    const skills = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+      // Verify symlink target is a directory
+      if (entry.isSymbolicLink()) {
+        try {
+          const s = await stat(join(skillsDir, entry.name));
+          if (!s.isDirectory()) continue;
+        } catch { continue; }
+      }
+
+      try {
+        const skillDir = join(skillsDir, entry.name);
+        const files = await readdir(skillDir);
+        const skillFile = files.find((file) => file.toLowerCase() === "skill.md");
+
+        if (!skillFile) continue;
+
+        const content = await readFile(join(skillDir, skillFile), "utf8");
+        const [firstLine = ""] = content.split(/\r?\n/u);
+
+        skills.push({
+          name: entry.name,
+          description: firstLine.replace(/^#\s*/u, "").trim(),
+          file: skillFile,
+          content,
+        });
+      } catch {
+        continue;
+      }
+    }
+
+    return skills;
+  } catch {
+    return [];
+  }
+}
+
+async function readStudioPlugins() {
+  try {
+    const settingsPath = join(homedir(), ".claude", "settings.json");
+    const content = await readFile(settingsPath, "utf8");
+    const settings = JSON.parse(content);
+    const plugins = settings.enabledPlugins;
+    if (Array.isArray(plugins)) return plugins;
+    if (plugins && typeof plugins === "object") return Object.keys(plugins).filter((k) => plugins[k]);
+    return [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * @param {object} options
@@ -40,6 +99,16 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore }) 
 
     if (url.pathname === "/studio/daily-report" && req.method === "GET") {
       sendJson(res, 200, statsStore.getDailyReport());
+      return true;
+    }
+
+    if (url.pathname === "/studio/skills" && req.method === "GET") {
+      sendJson(res, 200, { skills: await readStudioSkills() });
+      return true;
+    }
+
+    if (url.pathname === "/studio/plugins" && req.method === "GET") {
+      sendJson(res, 200, { plugins: await readStudioPlugins() });
       return true;
     }
 

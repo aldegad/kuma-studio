@@ -32,8 +32,10 @@ export function Character({ character, isDragging = false, onDragStart }: Charac
   const teamMember = KUMA_TEAM.find((m) => m.id === character.id);
   const displayName = teamMember?.nameKo ?? character.name;
   const displayRole = teamMember?.roleKo ?? character.role;
+  const displayEmoji = teamMember?.emoji ?? "";
   const model = teamMember?.model;
   const shortModel = modelShortName(model);
+  const skills = teamMember?.skills ?? [];
 
   return (
     <div
@@ -47,25 +49,50 @@ export function Character({ character, isDragging = false, onDragStart }: Charac
         transform: "translate(-50%, -50%)",
       }}
     >
-      <CharacterSprite character={character} />
+      {/* Card container */}
+      <div className="flex w-30 flex-col items-center rounded-xl border border-white/50 bg-white/80 p-2 shadow-md backdrop-blur-sm">
+        {/* Avatar */}
+        <CharacterSprite character={character} />
 
-      {/* Name tag */}
-      <div className="mt-1 rounded-full bg-white/90 px-2 py-0.5 text-center shadow-sm backdrop-blur-sm">
-        <p className="text-[10px] font-bold text-stone-800">{displayName}</p>
-        <p className="text-[8px] text-stone-500">{displayRole}</p>
+        {/* State indicator */}
+        <div className="mt-1 flex items-center gap-1">
+          <div
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ backgroundColor: stateColor }}
+            title={stateLabel}
+          />
+          <span className="text-[8px] text-stone-400">{stateLabel}</span>
+        </div>
+
+        {/* Name + emoji */}
+        <p className="mt-1 text-xs font-bold text-stone-800">
+          {displayEmoji} {displayName}
+        </p>
+
+        {/* Role */}
+        <p className="text-[10px] text-stone-500">{displayRole}</p>
+
+        {/* Model badge */}
         {shortModel && (
-          <span className={`mt-0.5 inline-block rounded-full px-1.5 py-px text-[7px] font-semibold leading-tight ${modelBadgeClass(model)}`}>
+          <span className={`mt-1 inline-block rounded-full px-1.5 py-px text-[7px] font-semibold leading-tight ${modelBadgeClass(model)}`}>
             {shortModel}
           </span>
         )}
-      </div>
 
-      {/* State indicator */}
-      <div
-        className="mt-0.5 h-1.5 w-1.5 rounded-full"
-        style={{ backgroundColor: stateColor }}
-        title={stateLabel}
-      />
+        {/* Skills */}
+        {skills.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap justify-center gap-0.5">
+            {skills.map((skill) => (
+              <span
+                key={skill}
+                className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[8px] text-amber-800"
+              >
+                {skill}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
