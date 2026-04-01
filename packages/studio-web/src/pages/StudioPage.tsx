@@ -498,6 +498,7 @@ export function StudioPage() {
           <span className={`text-lg font-black tracking-tight ${isNight ? "text-amber-200" : "text-amber-900"}`}>쿠마 스튜디오</span>
           <span className={`text-xs font-medium hidden sm:inline ${isNight ? "text-indigo-300" : "text-stone-400"}`}>가상 사무실</span>
           <span className="rounded-full bg-amber-100 text-amber-700 text-[10px] font-semibold px-2 py-0.5">{scene.characters.length}명</span>
+          <button onClick={() => setShowHelp(true)} className={`rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold ${isNight ? "bg-indigo-800 text-indigo-300 hover:bg-indigo-700" : "bg-stone-100 text-stone-400 hover:bg-stone-200"}`} title="단축키 도움말 (?)">?</button>
         </div>
 
         {/* Connection badge */}
