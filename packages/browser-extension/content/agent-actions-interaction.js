@@ -220,6 +220,351 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
   }
 
+  function dispatchSelectEvents(target) {
+    target.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    target.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+  }
+
+  function normalizeSelectOptionRequests(values) {
+    const requests = Array.isArray(values) ? values : [values];
+    if (requests.length === 0) {
+      throw new Error("selectOption requires at least one value.");
+    }
+
+    return requests.map((request) => {
+      if (typeof request === "string") {
+        return { kind: "value", value: request };
+      }
+
+      if (request && typeof request === "object") {
+        if (typeof request.label === "string") {
+          return { kind: "label", value: coreNormalizeText(request.label) };
+        }
+
+        if (Number.isInteger(request.index) && request.index >= 0) {
+          return { kind: "index", value: request.index };
+        }
+      }
+
+      throw new Error("selectOption requires a string, { label }, { index }, or an array of those values.");
+    });
+  }
+
+  function describeSelectOptionRequest(request) {
+    if (request.kind === "label") {
+      return `{ label: "${request.value}" }`;
+    }
+
+    if (request.kind === "index") {
+      return `{ index: ${request.value} }`;
+    }
+
+    return `"${request.value}"`;
+  }
+
+  function readSelectOptionLabel(option) {
+    if (!(option instanceof HTMLOptionElement)) {
+      return "";
+    }
+
+    return coreNormalizeText(option.textContent || option.label || "");
+  }
+
+  function findNativeSelectOption(select, request) {
+    const options = Array.from(select.options);
+    if (request.kind === "index") {
+      return options[request.value] ?? null;
+    }
+
+    if (request.kind === "label") {
+      return options.find((option) => readSelectOptionLabel(option) === request.value) ?? null;
+    }
+
+    return options.find((option) => option.value === request.value) ?? null;
+  }
+
+  function applyNativeSelectOption(select, values) {
+    const requests = normalizeSelectOptionRequests(values);
+    const matchedOptions = [];
+    const seenOptions = new Set();
+
+    for (const request of requests) {
+      const matchedOption = findNativeSelectOption(select, request);
+      if (!(matchedOption instanceof HTMLOptionElement)) {
+        throw new Error(`Failed to find a matching native select option for ${describeSelectOptionRequest(request)}.`);
+      }
+
+      if (!seenOptions.has(matchedOption)) {
+        seenOptions.add(matchedOption);
+        matchedOptions.push(matchedOption);
+      }
+    }
+
+    const selectedOptions = select.multiple ? matchedOptions : matchedOptions.slice(0, 1);
+    const selectedSet = new Set(selectedOptions);
+    for (const option of Array.from(select.options)) {
+      option.selected = selectedSet.has(option);
+    }
+
+    if (!select.multiple) {
+      select.selectedIndex = selectedOptions.length > 0 ? Array.from(select.options).indexOf(selectedOptions[0]) : -1;
+    }
+
+    dispatchSelectEvents(select);
+
+    return {
+      requestedValues: requests.map((request) =>
+        request.kind === "index" ? request.value : request.value,
+      ),
+      selectedValues: Array.from(select.selectedOptions).map((option) => option.value),
+      selectedLabels: Array.from(select.selectedOptions).map((option) => readSelectOptionLabel(option)),
+    };
+  }
+
+  function getElementRole(target) {
+    if (!(target instanceof Element)) {
+      return "";
+    }
+
+    return String(target.getAttribute("role") || "").trim().toLowerCase();
+  }
+
+  function hasListboxOptions(target) {
+    return target instanceof Element && target.querySelector("[role='option']") instanceof Element;
+  }
+
+  function isVisibleListbox(target) {
+    return target instanceof Element && getElementRole(target) === "listbox" && hasListboxOptions(target) && coreIsVisibleElement(target);
+  }
+
+  function getOwnedElementIds(target) {
+    if (!(target instanceof Element)) {
+      return [];
+    }
+
+    return [target.getAttribute("aria-controls"), target.getAttribute("aria-owns")]
+      .flatMap((value) => String(value || "").split(/\s+/))
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  function resolveControlledListbox(target) {
+    const ownerDocument = target?.ownerDocument || document;
+    for (const elementId of getOwnedElementIds(target)) {
+      const candidate = ownerDocument.getElementById(elementId);
+      if (candidate instanceof Element && getElementRole(candidate) === "listbox" && hasListboxOptions(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  function scoreListboxCandidate(target, candidate) {
+    if (!(target instanceof Element) || !(candidate instanceof Element)) {
+      return Number.NEGATIVE_INFINITY;
+    }
+
+    let score = 0;
+    if (coreIsVisibleElement(candidate)) {
+      score += 10_000;
+    }
+    if (target.contains(candidate) || candidate.contains(target)) {
+      score += 500;
+    }
+    if (target.parentElement?.contains(candidate)) {
+      score += 250;
+    }
+
+    const targetRect = target.getBoundingClientRect?.();
+    const candidateRect = candidate.getBoundingClientRect?.();
+    if (targetRect && candidateRect) {
+      const deltaX = candidateRect.left - targetRect.left;
+      const deltaY = candidateRect.top - targetRect.top;
+      score -= Math.hypot(deltaX, deltaY);
+    }
+
+    return score;
+  }
+
+  function resolveComboboxListbox(target) {
+    const controlledListbox = resolveControlledListbox(target);
+    if (controlledListbox instanceof Element) {
+      return controlledListbox;
+    }
+
+    const ownerDocument = target?.ownerDocument || document;
+    const candidates = Array.from(ownerDocument.querySelectorAll("[role='listbox']"))
+      .filter((candidate) => candidate instanceof Element && hasListboxOptions(candidate))
+      .sort((left, right) => scoreListboxCandidate(target, right) - scoreListboxCandidate(target, left));
+
+    return candidates[0] ?? null;
+  }
+
+  function resolveCustomSelectTarget(target) {
+    if (!(target instanceof Element)) {
+      return null;
+    }
+
+    if (getElementRole(target) === "listbox" || getElementRole(target) === "combobox") {
+      return target;
+    }
+
+    const closestListbox = target.closest?.("[role='listbox']");
+    if (closestListbox instanceof Element) {
+      return closestListbox;
+    }
+
+    const closestCombobox = target.closest?.("[role='combobox']");
+    if (closestCombobox instanceof Element) {
+      return closestCombobox;
+    }
+
+    const descendantVisibleListbox = Array.from(target.querySelectorAll?.("[role='listbox']") || []).find((candidate) =>
+      candidate instanceof Element && isVisibleListbox(candidate),
+    );
+    if (descendantVisibleListbox instanceof Element) {
+      return descendantVisibleListbox;
+    }
+
+    const descendantCombobox = target.querySelector?.("[role='combobox']");
+    if (descendantCombobox instanceof Element) {
+      return descendantCombobox;
+    }
+
+    const descendantListbox = target.querySelector?.("[role='listbox']");
+    if (descendantListbox instanceof Element) {
+      return descendantListbox;
+    }
+
+    return null;
+  }
+
+  function clickElement(target) {
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    fireAndForgetGesture(() => getGestureOverlay()?.playClickGesture?.({ x: centerX, y: centerY }));
+
+    if (target instanceof HTMLElement) {
+      target.click();
+      if (document.contains(target)) {
+        target.focus?.({ preventScroll: true });
+      }
+      return;
+    }
+
+    dispatchClickSequence(target, centerX, centerY);
+  }
+
+  async function openCustomCombobox(target, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    let clicked = false;
+
+    while (Date.now() <= deadline) {
+      const listbox = resolveComboboxListbox(target);
+      if (isVisibleListbox(listbox)) {
+        return listbox;
+      }
+
+      if (!clicked || target.getAttribute("aria-expanded") !== "true") {
+        await focusElement(target);
+        clickElement(target);
+        clicked = true;
+      }
+
+      await waitForDelay(34);
+    }
+
+    throw new Error("Failed to find an open listbox for the custom combobox target.");
+  }
+
+  function readCustomOptionLabel(option) {
+    if (!(option instanceof Element)) {
+      return "";
+    }
+
+    return coreNormalizeText(option.getAttribute("aria-label") || option.textContent || "");
+  }
+
+  function readCustomOptionValue(option) {
+    if (!(option instanceof Element)) {
+      return "";
+    }
+
+    return String(
+      option.getAttribute("value") ||
+        option.getAttribute("data-value") ||
+        option.getAttribute("aria-value-text") ||
+        "",
+    );
+  }
+
+  function resolveCustomListboxOptions(listbox) {
+    if (!(listbox instanceof Element)) {
+      return [];
+    }
+
+    return Array.from(listbox.querySelectorAll("[role='option']"))
+      .filter((option) => option instanceof Element && coreIsVisibleElement(option));
+  }
+
+  function findCustomListboxOption(options, request) {
+    if (request.kind === "index") {
+      return options[request.value] ?? null;
+    }
+
+    if (request.kind === "label") {
+      return options.find((option) => readCustomOptionLabel(option) === request.value) ?? null;
+    }
+
+    return (
+      options.find((option) => readCustomOptionValue(option) === request.value) ??
+      options.find((option) => readCustomOptionLabel(option) === coreNormalizeText(request.value)) ??
+      null
+    );
+  }
+
+  async function applyCustomSelectOption(target, values, timeoutMs) {
+    const requests = normalizeSelectOptionRequests(values);
+    const customTarget = resolveCustomSelectTarget(target);
+    if (!(customTarget instanceof Element)) {
+      throw new Error("Failed to find a role-based custom dropdown target.");
+    }
+
+    const isDirectListbox = getElementRole(customTarget) === "listbox";
+    const selectedOptions = [];
+
+    for (const request of requests) {
+      const listbox = isDirectListbox ? customTarget : await openCustomCombobox(customTarget, timeoutMs);
+      const options = resolveCustomListboxOptions(listbox);
+      const option = findCustomListboxOption(options, request);
+      if (!(option instanceof Element)) {
+        throw new Error(`Failed to find a matching custom dropdown option for ${describeSelectOptionRequest(request)}.`);
+      }
+
+      await focusElement(option);
+      clickElement(option);
+      await waitForDelay(34);
+      selectedOptions.push({
+        label: readCustomOptionLabel(option),
+        value: readCustomOptionValue(option) || null,
+        ariaSelected: option.getAttribute("aria-selected"),
+      });
+    }
+
+    return {
+      requestedValues: requests.map((request) =>
+        request.kind === "index" ? request.value : request.value,
+      ),
+      selectedOptions,
+    };
+  }
+
   function normalizeLineBreaks(value) {
     return String(value ?? "").replace(/\r\n?/g, "\n");
   }
@@ -770,6 +1115,35 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
       filledElement: coreDescribeElementForCommand(target),
       label: typeof command?.label === "string" ? coreNormalizeText(command.label) || null : null,
       value,
+    };
+  }
+
+  async function executeSelectOptionCommand(command) {
+    const target =
+      command?.targetElement instanceof Element
+        ? command.targetElement
+        : coreResolveFillTarget(command) ?? coreResolveCommandTarget(command);
+    if (!(target instanceof Element)) {
+      throw new Error("Failed to find a select or dropdown target.");
+    }
+
+    await focusElement(target);
+
+    const timeoutMs =
+      typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs)
+        ? Math.max(0, Math.min(60_000, Math.round(command.timeoutMs)))
+        : 15_000;
+
+    const selection =
+      target instanceof HTMLSelectElement
+        ? applyNativeSelectOption(target, command?.values)
+        : await applyCustomSelectOption(target, command?.values, timeoutMs);
+
+    await waitForPostActionDelay(command, 16);
+    return {
+      page: buildPageRecord(),
+      targetElement: coreDescribeElementForCommand(target),
+      ...selection,
     };
   }
 
@@ -1557,6 +1931,7 @@ var KumaPickerExtensionAgentActionInteraction = (() => {
     executeClickCommand,
     executeClickPointCommand,
     executeFillCommand,
+    executeSelectOptionCommand,
     executeInsertTextCommand,
     executeKeyCommand,
     executeKeyDownCommand,
