@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { useWsStore } from "../../stores/use-ws-store";
+import { TeamTree } from "../shared/TeamTree";
 
 const navItems = [
   { to: "/", label: "스튜디오", icon: "studio" },
@@ -47,7 +48,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="space-y-1 p-3">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
@@ -66,6 +67,11 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+
+      <div className="flex-1 overflow-y-auto border-t border-stone-200 p-3">
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-stone-400">팀 트리</p>
+        <TeamTree />
+      </div>
 
       <div className="border-t border-stone-200 p-4">
         <div className="flex items-center gap-2">
