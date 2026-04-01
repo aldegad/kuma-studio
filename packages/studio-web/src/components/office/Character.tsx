@@ -61,8 +61,16 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
         </div>
       )}
 
-      {/* Card container */}
-      <div className="flex w-30 flex-col items-center rounded-xl border border-white/50 bg-white/80 p-2 shadow-md backdrop-blur-sm hover:shadow-lg hover:bg-white/90 transition-shadow duration-200">
+      {/* Card container — glow based on state */}
+      <div className={`flex w-30 flex-col items-center rounded-xl border p-2 shadow-md backdrop-blur-sm hover:shadow-lg transition-shadow duration-200 ${
+        character.state === "working" || character.state === "thinking"
+          ? "border-blue-300 bg-blue-50/80 shadow-blue-200/50 ring-2 ring-blue-300/40"
+          : character.state === "error"
+          ? "border-red-300 bg-red-50/80 shadow-red-200/50 ring-2 ring-red-300/40"
+          : character.state === "completed"
+          ? "border-green-300 bg-green-50/80 shadow-green-200/50"
+          : "border-white/50 bg-white/80 hover:bg-white/90"
+      }`}>
         {/* Avatar */}
         <CharacterSprite character={character} />
 
