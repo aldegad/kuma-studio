@@ -602,6 +602,10 @@ export function createServer({ host, port, root }) {
         websocket.on("message", (rawMessage) => {
           try {
             const message = readSocketJson(rawMessage);
+            if (message?.type === "ping") {
+              sendSocketJson(websocket, { type: "pong" });
+              return;
+            }
             if (message?.type === "kuma-studio:layout-update") {
               broadcastOfficeLayout(message.layout, "studio-layout-drag");
             }
