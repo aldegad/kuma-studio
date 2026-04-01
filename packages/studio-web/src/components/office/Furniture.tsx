@@ -14,6 +14,8 @@ const FURNITURE_IMAGES: Record<string, string> = {
   plant: "/assets/furniture/plant.png",
   coffee: "/assets/furniture/coffee.png",
   chair: "/assets/furniture/chair.png",
+  bookshelf: "/assets/furniture/bookshelf.png",
+  sofa: "/assets/furniture/sofa.png",
 };
 
 const FURNITURE_LABELS: Record<string, string> = {
@@ -22,6 +24,8 @@ const FURNITURE_LABELS: Record<string, string> = {
   plant: "화분",
   coffee: "커피 스테이션",
   chair: "의자",
+  bookshelf: "책장",
+  sofa: "휴게 소파",
 };
 
 export function Furniture({ furniture, isDragging = false, onDragStart }: FurnitureProps) {
