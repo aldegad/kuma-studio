@@ -7,7 +7,11 @@ interface WhiteboardProps {
 
 export function Whiteboard({ position }: WhiteboardProps) {
   const jobs = useDashboardStore((s) => s.jobs);
+  const stats = useDashboardStore((s) => s.stats);
+  const dailyReport = useDashboardStore((s) => s.dailyReport);
   const recentJobs = jobs.slice(0, 3);
+
+  const today = new Date().toLocaleDateString("ko-KR", { month: "short", day: "numeric", weekday: "short" });
 
   return (
     <div
@@ -15,17 +19,28 @@ export function Whiteboard({ position }: WhiteboardProps) {
       style={{
         left: position.x,
         top: position.y,
-        width: 200,
+        width: 220,
         minHeight: 120,
         transform: "translate(-50%, 0)",
       }}
     >
-      <div className="mb-2 text-center text-xs font-bold uppercase tracking-wide text-stone-600">
-        작업 보드
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-bold uppercase tracking-wide text-stone-600">작업 보드</span>
+        <span className="text-[9px] text-stone-400">{today}</span>
       </div>
-      {recentJobs.length === 0 ? (
-        <p className="text-center text-[10px] text-stone-400">진행 중인 작업 없음</p>
-      ) : (
+
+      {/* Stats summary row */}
+      {(stats.totalJobs > 0 || stats.completedJobs > 0) && (
+        <div className="mb-2 flex gap-2 text-[9px]">
+          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-600 font-medium">진행 {stats.inProgressJobs}</span>
+          <span className="rounded bg-green-50 px-1.5 py-0.5 text-green-600 font-medium">완료 {stats.completedJobs}</span>
+          {stats.errorJobs > 0 && (
+            <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-600 font-medium">오류 {stats.errorJobs}</span>
+          )}
+        </div>
+      )}
+
+      {recentJobs.length > 0 ? (
         <div className="space-y-1.5">
           {recentJobs.map((job) => (
             <div
@@ -41,6 +56,16 @@ export function Whiteboard({ position }: WhiteboardProps) {
             </div>
           ))}
         </div>
+      ) : dailyReport ? (
+        <div className="space-y-1 text-[10px] text-stone-500">
+          <p>전체 {dailyReport.totalTasks}건 / 완료 {dailyReport.completedTasks}건</p>
+          <p>달성률 {Math.round(dailyReport.completionRate * 100)}%</p>
+          {dailyReport.mvpAgent && (
+            <p className="text-amber-600 font-medium">MVP: {dailyReport.mvpAgent.id}</p>
+          )}
+        </div>
+      ) : (
+        <p className="text-center text-[10px] text-stone-400 py-2">오늘의 작업을 시작해보세요</p>
       )}
     </div>
   );
