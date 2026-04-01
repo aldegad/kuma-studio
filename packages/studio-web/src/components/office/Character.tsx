@@ -63,13 +63,15 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
 
       {/* Card container — glow based on state */}
       <div
-        className={`character-card flex w-30 flex-col items-center rounded-xl border p-2 shadow-md backdrop-blur-sm ${
+        className={`character-card relative flex w-30 flex-col items-center rounded-xl border p-2 shadow-md backdrop-blur-sm ${
           character.state === "working" || character.state === "thinking"
-            ? "border-blue-300 bg-blue-50/80 shadow-blue-200/50 ring-2 ring-blue-300/40 animate-state-glow"
+            ? "border-blue-300 bg-blue-50/80 shadow-blue-200/50 ring-2 ring-blue-300/40 animate-state-glow animate-sparkle"
             : character.state === "error"
-            ? "border-red-300 bg-red-50/80 shadow-red-200/50 ring-2 ring-red-300/40 animate-state-glow"
+            ? "border-red-300 bg-red-50/80 shadow-red-200/50 ring-2 ring-red-300/40 animate-state-glow animate-error-shake"
             : character.state === "completed"
             ? "border-green-300 bg-green-50/80 shadow-green-200/50 animate-completion-pop"
+            : character.state === "idle"
+            ? "border-white/50 bg-white/80 animate-zzz"
             : "border-white/50 bg-white/80"
         }`}
         style={{
@@ -92,6 +94,11 @@ export function Character({ character, isDragging = false, speechBubble, onDragS
           />
           <span className="text-[8px] text-stone-400">{stateLabel}</span>
         </div>
+
+        {/* Working progress bar */}
+        {(character.state === "working" || character.state === "thinking") && (
+          <div className="working-progress-bar mt-1 w-full" />
+        )}
 
         {/* Name + emoji */}
         <p className="mt-1 text-xs font-bold text-stone-800">

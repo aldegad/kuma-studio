@@ -136,3 +136,79 @@ body {
 .tooltip-enter {
   animation: tooltip-reveal 0.15s ease-out;
 }
+
+/* Idle zzz floating bubbles */
+@keyframes zzz-float {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.5); }
+  20% { opacity: 0.6; }
+  100% { opacity: 0; transform: translate(12px, -20px) scale(1); }
+}
+
+.animate-zzz::after {
+  content: "z";
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  font-size: 10px;
+  font-weight: bold;
+  color: rgba(120, 113, 108, 0.4);
+  animation: zzz-float 3s ease-out infinite;
+  pointer-events: none;
+}
+
+/* Working sparkle */
+@keyframes sparkle {
+  0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(180deg); }
+}
+
+.animate-sparkle::before,
+.animate-sparkle::after {
+  content: "✦";
+  position: absolute;
+  font-size: 8px;
+  pointer-events: none;
+  animation: sparkle 1.5s ease-in-out infinite;
+}
+
+.animate-sparkle::before {
+  top: -6px;
+  right: -4px;
+  color: rgba(96, 165, 250, 0.7);
+  animation-delay: 0s;
+}
+
+.animate-sparkle::after {
+  bottom: 2px;
+  left: -4px;
+  color: rgba(147, 197, 253, 0.6);
+  animation-delay: 0.7s;
+}
+
+/* Working progress bar */
+@keyframes progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.working-progress-bar {
+  overflow: hidden;
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.working-progress-bar::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 50%;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.6), transparent);
+  animation: progress-slide 1.5s ease-in-out infinite;
+}
+
+/* Error shake with red tint */
+.animate-error-shake {
+  animation: shake 0.5s ease-in-out infinite;
+}
