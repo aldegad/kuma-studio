@@ -266,6 +266,9 @@ function openDaemonSocket(daemonUrl) {
           case "job-card.updated":
             await relayJobCardUpdate(message);
             return;
+          case "extension.reload":
+            chrome.runtime.reload();
+            return;
           default:
             return;
         }

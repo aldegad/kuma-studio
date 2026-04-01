@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import os from "node:os";
 import { resolve } from "node:path";
 import process from "node:process";
@@ -15,4 +16,23 @@ export function resolveKumaPickerStateDir() {
 
   const sharedHome = resolve(os.homedir(), ".kuma-picker");
   return sharedHome;
+}
+
+export function computeProjectHash(projectRoot) {
+  return createHash("sha256").update(resolve(projectRoot)).digest("hex").slice(0, 12);
+}
+
+export function resolveProjectStateDir(projectRoot) {
+  if (!projectRoot) {
+    return resolveKumaPickerStateDir();
+  }
+
+  const stateHome = resolveKumaPickerStateDir();
+  const hash = computeProjectHash(projectRoot);
+  return resolve(stateHome, "projects", hash);
+}
+
+export function resolveProjectMetaPath(projectRoot) {
+  const dir = resolveProjectStateDir(projectRoot);
+  return resolve(dir, "project.json");
 }

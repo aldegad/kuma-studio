@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import http from "node:http";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -72,6 +73,20 @@ export function createServer({ host, port, root }) {
     broker.publishScene(scene, source);
     broadcastOfficeLayout(scene.meta?.officeLayout, source);
   });
+
+  // Watch browser-extension directory for dev auto-reload
+  const extensionDir = resolve(__dirname, "../../browser-extension");
+  let extensionReloadDebounce = null;
+  let extensionWatcher = null;
+  try {
+    extensionWatcher = fs.watch(extensionDir, { recursive: true }, () => {
+      clearTimeout(extensionReloadDebounce);
+      extensionReloadDebounce = setTimeout(() => broadcastExtensionReload(), 500);
+    });
+  } catch {
+    // Extension directory may not exist in production deployments.
+  }
+
   const socketServer = new WebSocketServer({ noServer: true });
   const socketStates = new Map();
   let nextSocketId = 1;
@@ -157,6 +172,15 @@ export function createServer({ host, port, root }) {
       if (card.tokensUsed > 0 && card.author) {
         tokenTracker.record(card.author, card.model ?? "unknown", card.tokensUsed);
       }
+    }
+  }
+
+  function broadcastExtensionReload() {
+    for (const state of socketStates.values()) {
+      if (state.role !== "browser") {
+        continue;
+      }
+      sendSocketJson(state.socket, { type: "extension.reload" });
     }
   }
 
@@ -589,6 +613,10 @@ export function createServer({ host, port, root }) {
 
   server.on("close", () => {
     stopWatching();
+    if (extensionWatcher) {
+      extensionWatcher.close();
+    }
+    clearTimeout(extensionReloadDebounce);
     clearInterval(pingInterval);
     clearInterval(inFlightCommandCleanupInterval);
     socketServer.close();

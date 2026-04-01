@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import { sanitizeSessionId } from "./dev-selection-normalize.mjs";
-import { resolveKumaPickerStateDir } from "./state-home.mjs";
+import { resolveProjectStateDir } from "./state-home.mjs";
 
 const MAX_JOB_CARDS = 5;
 const ALLOWED_STATUSES = new Set(["noted", "in_progress", "completed"]);
@@ -226,7 +226,7 @@ export function buildJobCardFromSelection(selection, overrides = {}) {
 export class JobCardStore {
   constructor(root) {
     this.root = resolve(root);
-    this.stateDir = resolveKumaPickerStateDir();
+    this.stateDir = resolveProjectStateDir(this.root);
     this.feedPath = resolve(this.stateDir, "job-cards.json");
   }
 

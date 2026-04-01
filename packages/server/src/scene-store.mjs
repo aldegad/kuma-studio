@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, watchFile, unwatchFile, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, watchFile, unwatchFile, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import {
   createEmptyOfficeLayout,
@@ -7,12 +7,12 @@ import {
   ensureOfficeLayoutShape,
   ensureSceneShape,
 } from "./scene-schema.mjs";
-import { resolveKumaPickerStateDir } from "./state-home.mjs";
+import { resolveProjectMetaPath, resolveProjectStateDir } from "./state-home.mjs";
 
 export class SceneStore {
   constructor(root, options = {}) {
     this.root = resolve(root);
-    this.scenePath = resolve(resolveKumaPickerStateDir(), "scene.json");
+    this.scenePath = resolve(resolveProjectStateDir(this.root), "scene.json");
     this.onChange = options.onChange ?? null;
   }
 
@@ -27,10 +27,21 @@ export class SceneStore {
         ...emptyScene,
         meta: {
           ...emptyScene.meta,
+          projectId: this.root,
           updatedAt: currentTimestamp(),
         },
       });
       writeFileSync(this.scenePath, `${JSON.stringify(initialScene, null, 2)}\n`, "utf8");
+    }
+
+    // Persist project metadata for list-projects discovery
+    const metaPath = resolveProjectMetaPath(this.root);
+    if (!existsSync(metaPath)) {
+      writeFileSync(
+        metaPath,
+        JSON.stringify({ projectRoot: this.root, createdAt: currentTimestamp() }, null, 2) + "\n",
+        "utf8",
+      );
     }
   }
 

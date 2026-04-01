@@ -8,12 +8,12 @@ import {
   sanitizeAssetFileName,
   sanitizeSessionId,
 } from "./dev-selection-normalize.mjs";
-import { resolveKumaPickerStateDir } from "./state-home.mjs";
+import { resolveProjectStateDir } from "./state-home.mjs";
 
 export class DevSelectionStore {
   constructor(root) {
     this.root = resolve(root);
-    this.stateDir = resolveKumaPickerStateDir();
+    this.stateDir = resolveProjectStateDir(this.root);
     this.selectionPath = resolve(this.stateDir, "dev-selection.json");
     this.selectionDir = resolve(this.stateDir, "dev-selections");
     this.collectionPath = resolve(this.stateDir, "dev-selections.json");
