@@ -3,6 +3,7 @@ import type { OfficeCharacter } from "../../types/office";
 import { KUMA_TEAM } from "../../types/agent";
 import { CharacterSprite } from "./CharacterSprite";
 import { CharacterTooltip } from "./CharacterTooltip";
+import { useRandomEmote } from "../../hooks/use-random-emote";
 import { STATE_COLORS, STATE_LABELS_KO } from "../../lib/constants";
 
 interface CharacterProps {
@@ -33,6 +34,7 @@ function modelShortName(model: string | undefined): string | null {
 
 export function Character({ character, isDragging = false, isSelected = false, speechBubble, onClick, onDragStart, onDoubleClick }: CharacterProps) {
   const [hovered, setHovered] = useState(false);
+  const randomEmote = useRandomEmote(character.id, character.state === "idle");
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
   const stateLabel = STATE_LABELS_KO[character.state] ?? character.state;
   const teamMember = KUMA_TEAM.find((m) => m.id === character.id);
@@ -60,6 +62,15 @@ export function Character({ character, isDragging = false, isSelected = false, s
         animation: isDragging ? "none" : `float-idle ${2.5 + (character.id.charCodeAt(0) % 5) * 0.3}s ease-in-out infinite`,
       }}
     >
+      {/* Random emote bubble for idle characters */}
+      {randomEmote && !speechBubble && (
+        <div className="mb-1 animate-fade-in pointer-events-none">
+          <span className="text-lg drop-shadow-md" style={{ animation: "zzz-float 2.5s ease-out forwards" }}>
+            {randomEmote}
+          </span>
+        </div>
+      )}
+
       {/* Hover tooltip */}
       {hovered && !isDragging && <CharacterTooltip character={character} />}
 

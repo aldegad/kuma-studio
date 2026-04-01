@@ -811,6 +811,31 @@ export function StudioPage() {
         );
       })()}
 
+      {/* Zoom controls — bottom-left above minimap */}
+      <div className="absolute bottom-[17rem] left-4 z-30 flex flex-col gap-1">
+        <button
+          onClick={() => setZoom((z) => clamp(z * 1.3, ZOOM_MIN, ZOOM_MAX))}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shadow-md transition-colors ${
+            isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-600 hover:bg-white"
+          } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
+          title="줌 인"
+        >+</button>
+        <button
+          onClick={() => setZoom((z) => clamp(z / 1.3, ZOOM_MIN, ZOOM_MAX))}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shadow-md transition-colors ${
+            isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-600 hover:bg-white"
+          } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
+          title="줌 아웃"
+        >−</button>
+        <button
+          onClick={fitToScreen}
+          className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shadow-md transition-colors ${
+            isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-600 hover:bg-white"
+          } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
+          title="전체 보기 (F)"
+        >⊞</button>
+      </div>
+
       {/* ------------------------------------------------------------------ */}
       {/* Stats HUD — bottom-left floating badges                             */}
       {/* ------------------------------------------------------------------ */}
