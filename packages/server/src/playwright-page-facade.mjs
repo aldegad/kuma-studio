@@ -196,6 +196,17 @@ export function createLocator(client, state, descriptor) {
       updatePageState(state, result);
       return result?.rect ?? null;
     },
+    async scrollIntoViewIfNeeded(options = {}) {
+      const result = await client.send(
+        "locator.scrollIntoViewIfNeeded",
+        {
+          locator: descriptor,
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
     async waitFor(options = {}) {
       const result = await client.send(
         "locator.waitFor",
@@ -865,6 +876,40 @@ export function createPage(client, state) {
       }
       return createLocator(client, state, createLocatorDescriptor("selector", { selector: selector.trim() }));
     },
+    async focus(selector) {
+      if (typeof selector !== "string" || !selector.trim()) {
+        throw new Error("page.focus requires a non-empty selector.");
+      }
+      const result = await client.send("locator.focus", {
+        locator: createLocatorDescriptor("selector", { selector: selector.trim() }),
+      });
+      updatePageState(state, result);
+      return result;
+    },
+    async blur(selector) {
+      if (typeof selector !== "string" || !selector.trim()) {
+        throw new Error("page.blur requires a non-empty selector.");
+      }
+      const result = await client.send("locator.blur", {
+        locator: createLocatorDescriptor("selector", { selector: selector.trim() }),
+      });
+      updatePageState(state, result);
+      return result;
+    },
+    async scrollIntoViewIfNeeded(selector, options = {}) {
+      if (typeof selector !== "string" || !selector.trim()) {
+        throw new Error("page.scrollIntoViewIfNeeded requires a non-empty selector.");
+      }
+      const result = await client.send(
+        "locator.scrollIntoViewIfNeeded",
+        {
+          locator: createLocatorDescriptor("selector", { selector: selector.trim() }),
+        },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
     getByText(text, options = {}) {
       if (typeof text !== "string" || !text.trim()) {
         throw new Error("page.getByText requires a non-empty text value.");
@@ -973,6 +1018,25 @@ export function createPage(client, state) {
         {
           state: loadState,
         },
+        { timeoutMs: options.timeout },
+      );
+      updatePageState(state, result);
+      return result;
+    },
+    async waitForURL(urlOrPattern, options = {}) {
+      let value;
+      if (typeof urlOrPattern === "string") {
+        value = urlOrPattern;
+      } else if (urlOrPattern instanceof RegExp) {
+        value = { type: "regex", source: urlOrPattern.source, flags: urlOrPattern.flags };
+      } else if (typeof urlOrPattern === "object" && urlOrPattern !== null) {
+        value = urlOrPattern;
+      } else {
+        throw new Error("page.waitForURL requires a string, RegExp, or pattern object.");
+      }
+      const result = await client.send(
+        "page.waitForURL",
+        { value },
         { timeoutMs: options.timeout },
       );
       updatePageState(state, result);

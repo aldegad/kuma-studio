@@ -779,6 +779,35 @@ async function executeLocatorMeasure(command) {
   };
 }
 
+async function executeLocatorScrollIntoViewIfNeeded(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for scrollIntoViewIfNeeded.");
+  }
+
+  const rect = target.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const isInViewport =
+    rect.top >= 0 &&
+    rect.left >= 0 &&
+    rect.bottom <= viewportHeight &&
+    rect.right <= viewportWidth;
+
+  if (!isInViewport) {
+    target.scrollIntoView({
+      block: "nearest",
+      inline: "nearest",
+    });
+  }
+
+  return {
+    page: buildPageRecord(),
+    element: describeElementForCommand(target),
+    scrolled: !isInViewport,
+  };
+}
+
 async function executeKeyboardPress(command) {
   let key = command.key;
   let shiftKey = command.shiftKey === true;
@@ -1070,6 +1099,47 @@ async function executePageWaitForLoadState(command) {
   }
 
   return { page: buildPageRecord(), loadState: state };
+}
+
+function matchUrlPattern(href, pattern) {
+  if (!pattern) return true;
+  if (typeof pattern === "string") return href === pattern;
+  if (pattern.type === "regex") {
+    const re = new RegExp(pattern.source, pattern.flags || "");
+    return re.test(href);
+  }
+  if (typeof pattern.glob === "string") {
+    const escaped = pattern.glob
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*\*/g, "@@GLOBSTAR@@")
+      .replace(/\*/g, "[^/]*")
+      .replace(/@@GLOBSTAR@@/g, ".*")
+      .replace(/\?/g, ".");
+    return new RegExp("^" + escaped + "$").test(href);
+  }
+  return href === String(pattern);
+}
+
+async function executePageWaitForURL(command) {
+  const pattern = command?.value;
+  const timeoutMs =
+    typeof command?.timeoutMs === "number" && Number.isFinite(command.timeoutMs) ? command.timeoutMs : 30_000;
+  const pollMs = 100;
+
+  if (matchUrlPattern(window.location.href, pattern)) {
+    return { page: buildPageRecord(), url: window.location.href, matched: true };
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    if (matchUrlPattern(window.location.href, pattern)) {
+      return { page: buildPageRecord(), url: window.location.href, matched: true };
+    }
+  }
+
+  const display = typeof pattern === "string" ? pattern : pattern?.glob || pattern?.source || JSON.stringify(pattern);
+  throw new Error(`Timed out waiting for URL matching "${display}" (current: ${window.location.href}).`);
 }
 
 // --- Shared fetch middleware chain ---
@@ -1451,6 +1521,36 @@ async function executeLocatorUncheck(command) {
   };
 }
 
+// --- P1: focus/blur ---
+
+async function executeLocatorFocus(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for focus.");
+  }
+
+  target.focus();
+
+  return {
+    page: buildPageRecord(),
+    element: describeElementForCommand(target),
+  };
+}
+
+async function executeLocatorBlur(command) {
+  const target = resolveLocatorElement(command.locator);
+  if (!(target instanceof Element)) {
+    throw new Error("Failed to resolve the locator target for blur.");
+  }
+
+  target.blur();
+
+  return {
+    page: buildPageRecord(),
+    element: describeElementForCommand(target),
+  };
+}
+
 // --- P3: count/all ---
 
 async function executeLocatorCount(command) {
@@ -1797,6 +1897,8 @@ async function executeAutomationCommand(command) {
       return executeLocatorWaitFor(command);
     case "locator.measure":
       return executeLocatorMeasure(command);
+    case "locator.scrollIntoViewIfNeeded":
+      return executeLocatorScrollIntoViewIfNeeded(command);
     case "keyboard.press":
       return executeKeyboardPress(command);
     case "keyboard.down":
@@ -1833,6 +1935,8 @@ async function executeAutomationCommand(command) {
       return executePageGoForward();
     case "page.waitForLoadState":
       return executePageWaitForLoadState(command);
+    case "page.waitForURL":
+      return executePageWaitForURL(command);
     case "page.frameLocator":
       return executeFrameLocatorAction(command);
     case "page.frame":
@@ -1853,6 +1957,10 @@ async function executeAutomationCommand(command) {
       return executeLocatorCheck(command);
     case "locator.uncheck":
       return executeLocatorUncheck(command);
+    case "locator.focus":
+      return executeLocatorFocus(command);
+    case "locator.blur":
+      return executeLocatorBlur(command);
     case "locator.count":
       return executeLocatorCount(command);
     case "locator.all":
