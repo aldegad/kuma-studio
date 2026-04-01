@@ -25,6 +25,7 @@ import { StatsStore } from "./studio/stats-store.mjs";
 import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-state.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
 import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
+import { loadTeamMetadata } from "./team-metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -297,6 +298,11 @@ export function createServer({ host, port, root }) {
 
     if (request.method === "OPTIONS") {
       sendNoContent(response);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/team-metadata") {
+      sendJson(response, 200, loadTeamMetadata(root));
       return;
     }
 

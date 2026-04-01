@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { OfficeLayoutSnapshot, OfficeScene } from "../types/office";
-import type { AgentState } from "../types/agent";
-import { DEFAULT_OFFICE_SCENE } from "../lib/office-scene";
+import type { Agent, AgentState } from "../types/agent";
+import { buildDefaultOfficeCharacters, DEFAULT_OFFICE_SCENE } from "../lib/office-scene";
 
 interface OfficeState {
   scene: OfficeScene;
@@ -10,6 +10,7 @@ interface OfficeState {
   updateCharacterState: (characterId: string, state: AgentState) => void;
   updateCharacterPosition: (characterId: string, position: { x: number; y: number }) => void;
   updateFurniturePosition: (furnitureId: string, position: { x: number; y: number }) => void;
+  syncCharactersFromTeam: (agents: Agent[]) => void;
 }
 
 export const useOfficeStore = create<OfficeState>((set) => ({
@@ -79,4 +80,19 @@ export const useOfficeStore = create<OfficeState>((set) => ({
         ),
       },
     })),
+
+  syncCharactersFromTeam: (agents) =>
+    set((prev) => {
+      const existingCharacters = new Map(prev.scene.characters.map((c) => [c.id, c]));
+      return {
+        scene: {
+          ...prev.scene,
+          characters: buildDefaultOfficeCharacters(agents).map((character) => {
+            const existing = existingCharacters.get(character.id);
+            if (!existing) return character;
+            return { ...character, position: existing.position, spriteSheet: existing.spriteSheet, state: existing.state };
+          }),
+        },
+      };
+    }),
 }));

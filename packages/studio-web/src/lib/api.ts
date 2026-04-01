@@ -1,4 +1,5 @@
 import type { OfficeLayoutSnapshot } from "../types/office";
+import type { TeamMetadataResponse } from "../types/agent";
 import type { DailyReport, DashboardStats } from "../types/stats";
 
 const BASE_URL = `http://${window.location.hostname}:4312`;
@@ -43,6 +44,14 @@ export async function fetchOfficeLayout(): Promise<OfficeLayoutSnapshot> {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch office layout: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchTeamMetadata(): Promise<TeamMetadataResponse> {
+  const res = await fetch(`${BASE_URL}/api/team-metadata`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch team metadata: ${res.statusText}`);
   return res.json();
 }
 

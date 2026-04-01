@@ -1,11 +1,16 @@
 import { KUMA_TEAM } from "../types/agent";
+import type { Agent } from "../types/agent";
 import type { OfficeCharacter, OfficeFurniture, OfficeLayoutSnapshot, OfficeScene } from "../types/office";
 
-export const DEFAULT_OFFICE_CHARACTERS: OfficeCharacter[] = KUMA_TEAM.map((agent, index) => ({
-  ...agent,
-  position: { x: 80 + (index % 4) * 200, y: 120 + Math.floor(index / 4) * 160 },
-  spriteSheet: "",
-}));
+export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeCharacter[] {
+  return team.map((agent, index) => ({
+    ...agent,
+    position: { x: 80 + (index % 4) * 200, y: 120 + Math.floor(index / 4) * 160 },
+    spriteSheet: "",
+  }));
+}
+
+export const DEFAULT_OFFICE_CHARACTERS: OfficeCharacter[] = buildDefaultOfficeCharacters();
 
 export const DEFAULT_OFFICE_FURNITURE: OfficeFurniture[] = [
   { id: "desk-1", type: "desk", position: { x: 100, y: 200 }, imageUrl: "" },
