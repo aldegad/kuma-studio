@@ -7,7 +7,7 @@ export function OfficeBackground({ background: _background, isNight = false }: O
   return (
     <div className="absolute inset-0">
       <img
-        src={isNight ? "/assets/furniture/office-bg-night.png" : "/assets/furniture/office-bg.png"}
+        src={isNight ? `${import.meta.env.BASE_URL}assets/furniture/office-bg-night.png` : `${import.meta.env.BASE_URL}assets/furniture/office-bg.png`}
         alt="office background"
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         draggable={false}

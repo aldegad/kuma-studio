@@ -8,16 +8,18 @@ interface FurnitureProps {
   onDragStart?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
+const BASE = import.meta.env.BASE_URL;
+
 const FURNITURE_IMAGES: Record<string, string> = {
-  desk: "/assets/furniture/desk.png",
-  whiteboard: "/assets/furniture/whiteboard.png",
-  plant: "/assets/furniture/plant.png",
-  coffee: "/assets/furniture/coffee.png",
-  chair: "/assets/furniture/chair.png",
-  bookshelf: "/assets/furniture/bookshelf.png",
-  sofa: "/assets/furniture/sofa.png",
-  printer: "/assets/furniture/printer.png",
-  watercooler: "/assets/furniture/watercooler.png",
+  desk: `${BASE}assets/furniture/desk.png`,
+  whiteboard: `${BASE}assets/furniture/whiteboard.png`,
+  plant: `${BASE}assets/furniture/plant.png`,
+  coffee: `${BASE}assets/furniture/coffee.png`,
+  chair: `${BASE}assets/furniture/chair.png`,
+  bookshelf: `${BASE}assets/furniture/bookshelf.png`,
+  sofa: `${BASE}assets/furniture/sofa.png`,
+  printer: `${BASE}assets/furniture/printer.png`,
+  watercooler: `${BASE}assets/furniture/watercooler.png`,
 };
 
 const FURNITURE_LABELS: Record<string, string> = {
