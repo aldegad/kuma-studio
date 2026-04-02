@@ -12,6 +12,7 @@ import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mj
 import { DevSelectionStore } from "./dev-selection-store.mjs";
 import { normalizeViewport } from "./scene-schema.mjs";
 import { SceneStore } from "./scene-store.mjs";
+import { resolveAgentIdByDescriptor } from "./team-metadata.mjs";
 import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
 
 const DEFAULT_DAEMON_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
@@ -163,44 +164,18 @@ function readStdin() {
   });
 }
 
-function normalizeMatcherText(value) {
-  return String(value ?? "").toLowerCase();
-}
-
-function includesAny(haystack, needles) {
-  return needles.some((needle) => haystack.includes(needle));
-}
-
 function resolveAgentIdFromDescriptor(payload) {
-  const description = normalizeMatcherText(payload?.description);
-  const subagentType = normalizeMatcherText(payload?.subagent_type);
-  const model = normalizeMatcherText(payload?.model);
+  const agentId = resolveAgentIdByDescriptor({
+    description: payload?.description,
+    subagentType: payload?.subagent_type,
+    model: payload?.model,
+  });
 
-  if (subagentType === "codex:codex-rescue") {
-    if (includesAny(description, ["review", "critic", "qa", "quality", "리뷰", "검토", "품질", "비평"])) {
-      return "saemi";
-    }
-
-    if (includesAny(description, ["analysis", "analyze", "inspect", "explore", "trace", "investigate", "코드 분석", "분석", "구조", "의존성", "탐색", "조사"])) {
-      return "darami";
-    }
-
-    return "tookdaki";
+  if (!agentId) {
+    throw new Error("Could not map the stdin payload to a team member.");
   }
 
-  if (model.includes("sonnet")) {
-    if (includesAny(description, ["research", "search", "web", "market", "docs", "documentation", "리서치", "검색", "웹", "시장", "문서", "조사"])) {
-      return "buri";
-    }
-
-    return "bamdori";
-  }
-
-  if (model.includes("opus")) {
-    return "koon";
-  }
-
-  throw new Error("Could not map the stdin payload to a team member.");
+  return agentId;
 }
 
 function commandServe(options) {

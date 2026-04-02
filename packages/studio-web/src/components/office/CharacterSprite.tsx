@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import teamData from "../../../../shared/team.json";
 import type { OfficeCharacter } from "../../types/office";
 
 interface CharacterSpriteProps {
@@ -13,21 +14,76 @@ function useBlinkDelay(id: string): string {
   }, [id]);
 }
 
-/** Emoji-based fallback sprites until real assets are generated */
-const animalEmoji: Record<string, string> = {
-  bear: "bear",
-  fox: "fox_face",
-  chipmunk: "chipmunk",
-  eagle: "eagle",
-  wolf: "wolf",
-  beaver: "beaver",
-  parrot: "parrot",
-  hedgehog: "hedgehog",
-  deer: "deer",
-  rabbit: "rabbit",
-  cat: "cat",
-  hamster: "hamster",
+type TeamMemberSpriteData = {
+  animal?: {
+    en?: string;
+  };
+  emoji?: string;
 };
+
+type AnimalSpriteData = {
+  emoji: string;
+  codePoint: string;
+  fallback: string;
+};
+
+const LEGACY_ANIMAL_ALIASES: Record<string, string> = {
+  chipmunk: "squirrel",
+  parrot: "eagle",
+  cat: "raccoon",
+};
+
+const PREFERRED_ANIMAL_ORDER = [
+  "bear",
+  "fox",
+  "chipmunk",
+  "eagle",
+  "wolf",
+  "beaver",
+  "parrot",
+  "hedgehog",
+  "deer",
+  "rabbit",
+  "cat",
+  "hamster",
+  "raccoon",
+  "squirrel",
+  "owl",
+  "bee",
+];
+
+const memberAnimalData = (teamData.members as TeamMemberSpriteData[]).reduce<Record<string, Pick<AnimalSpriteData, "emoji" | "codePoint">>>((acc, member) => {
+  const animal = member.animal?.en;
+  const emoji = member.emoji;
+
+  if (!animal || !emoji) {
+    return acc;
+  }
+
+  acc[animal] = {
+    emoji,
+    codePoint: toEmojiCodePoint(emoji),
+  };
+
+  return acc;
+}, {});
+
+const resolvedAnimalData = buildResolvedAnimalData(memberAnimalData, PREFERRED_ANIMAL_ORDER, LEGACY_ANIMAL_ALIASES);
+
+/** Emoji-based fallback sprites until real assets are generated */
+const animalEmoji: Record<string, string> = Object.fromEntries(
+  Object.entries(resolvedAnimalData).map(([animal, data]) => [animal, data.emoji]),
+);
+
+const emojiCodePointMap: Record<string, string> = Object.entries(resolvedAnimalData).reduce<Record<string, string>>((acc, [animal, data]) => {
+  acc[animal] = data.codePoint;
+  acc[data.emoji] = data.codePoint;
+  return acc;
+}, {});
+
+const animalFallbackMap: Record<string, string> = Object.fromEntries(
+  Object.entries(resolvedAnimalData).map(([animal, data]) => [animal, data.fallback]),
+);
 
 const stateAnimation: Record<string, string> = {
   idle: "",
@@ -107,37 +163,77 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
 }
 
 function getEmojiCodePoint(name: string): string {
-  const emojiMap: Record<string, string> = {
-    bear: "1f43b",
-    fox_face: "1f98a",
-    chipmunk: "1f43f",
-    eagle: "1f985",
-    wolf: "1f43a",
-    beaver: "1f9ab",
-    parrot: "1f99c",
-    hedgehog: "1f994",
-    deer: "1f98c",
-    rabbit: "1f430",
-    cat: "1f431",
-    hamster: "1f439",
-  };
-  return emojiMap[name] ?? "1f43b";
+  return emojiCodePointMap[name] ?? "1f43b";
 }
 
 function getAnimalFallback(animal: string): string {
-  const fallback: Record<string, string> = {
-    bear: "B",
-    fox: "F",
-    chipmunk: "C",
-    eagle: "E",
-    wolf: "W",
-    beaver: "Bv",
-    parrot: "P",
-    hedgehog: "H",
-    deer: "D",
-    rabbit: "R",
-    cat: "Ca",
-    hamster: "Ha",
-  };
-  return fallback[animal] ?? animal[0]?.toUpperCase() ?? "?";
+  return animalFallbackMap[animal] ?? animal[0]?.toUpperCase() ?? "?";
+}
+
+function buildResolvedAnimalData(
+  animals: Record<string, Pick<AnimalSpriteData, "emoji" | "codePoint">>,
+  preferredOrder: string[],
+  aliases: Record<string, string>,
+): Record<string, AnimalSpriteData> {
+  const orderedAnimals = [
+    ...preferredOrder,
+    ...Object.keys(animals).filter((animal) => !preferredOrder.includes(animal)),
+  ];
+  const resolved: Record<string, AnimalSpriteData> = {};
+  const animalsByInitial: Record<string, string[]> = {};
+
+  for (const animal of orderedAnimals) {
+    const sourceAnimal = aliases[animal] ?? animal;
+    const source = animals[sourceAnimal];
+
+    if (!source) {
+      continue;
+    }
+
+    const initial = animal[0]?.toLowerCase();
+
+    if (!initial) {
+      continue;
+    }
+
+    const previousAnimals = animalsByInitial[initial] ?? [];
+
+    resolved[animal] = {
+      emoji: source.emoji,
+      codePoint: source.codePoint,
+      fallback: buildAnimalFallback(animal, previousAnimals),
+    };
+
+    previousAnimals.push(animal);
+    animalsByInitial[initial] = previousAnimals;
+  }
+
+  return resolved;
+}
+
+function buildAnimalFallback(animal: string, previousAnimals: string[]): string {
+  const initial = animal[0]?.toUpperCase();
+
+  if (!initial) {
+    return "?";
+  }
+
+  if (previousAnimals.length === 0) {
+    return initial;
+  }
+
+  const usedLetters = new Set(
+    previousAnimals.flatMap((name) => Array.from(name.slice(1).toLowerCase().replace(/[^a-z]/g, ""))),
+  );
+  const nextLetter = Array.from(animal.slice(1).toLowerCase().replace(/[^a-z]/g, "")).find((letter) => !usedLetters.has(letter))
+    ?? animal[1]?.toLowerCase();
+
+  return nextLetter ? `${initial}${nextLetter}` : initial;
+}
+
+function toEmojiCodePoint(emoji: string): string {
+  return Array.from(emoji.replace(/[\uFE0E\uFE0F]/g, ""))
+    .map((char) => char.codePointAt(0)?.toString(16))
+    .filter((codePoint): codePoint is string => Boolean(codePoint))
+    .join("-");
 }

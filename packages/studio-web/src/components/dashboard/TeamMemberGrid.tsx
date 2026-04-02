@@ -1,6 +1,7 @@
-import { KUMA_TEAM } from "../../types/agent";
+import type { Agent } from "../../types/agent";
 import { useOfficeStore } from "../../stores/use-office-store";
 import { STATE_COLORS, STATE_LABELS_KO, TEAM_COLORS, TEAM_LABELS_KO } from "../../lib/constants";
+import teamData from "../../../../shared/team.json";
 
 function shortModelLabel(model?: string): { label: string; color: string } {
   if (!model) return { label: "", color: "#78716c" };
@@ -12,18 +13,15 @@ function shortModelLabel(model?: string): { label: string; color: string } {
 }
 
 const animalEmojiCode: Record<string, string> = {
-  bear: "1f43b",
-  fox: "1f98a",
-  chipmunk: "1f43f",
-  eagle: "1f985",
-  wolf: "1f43a",
-  beaver: "1f9ab",
-  parrot: "1f99c",
-  hedgehog: "1f994",
-  deer: "1f98c",
-  rabbit: "1f430",
-  cat: "1f431",
-  hamster: "1f439",
+  ...Object.fromEntries(
+    teamData.members.map((member) => [
+      member.animal.en,
+      Array.from(member.emoji.replace(/\uFE0F/g, ""))
+        .map((char) => char.codePointAt(0)?.toString(16))
+        .filter((code): code is string => Boolean(code))
+        .join("-"),
+    ]),
+  ),
 };
 
 const stateAnimationClass: Record<string, string> = {
@@ -34,18 +32,42 @@ const stateAnimationClass: Record<string, string> = {
   error: "animate-shake",
 };
 
-const teamOrder = ["management", "analytics", "dev", "strategy"] as const;
+const teamById = new Map(teamData.teams.map((team) => [team.id, team] as const));
+const teamMembers: Agent[] = teamData.members.map((member) => ({
+  id: member.id,
+  name: member.name.en,
+  nameKo: member.name.ko,
+  animal: member.animal.en,
+  animalKo: member.animal.ko,
+  role: member.role.en,
+  roleKo: member.role.ko,
+  team: member.team,
+  teamKo: teamById.get(member.team)?.name.ko ?? member.team,
+  state: "idle",
+  nodeType: member.nodeType as Agent["nodeType"],
+  parentId: member.parentId ?? undefined,
+  model: member.model,
+  emoji: member.emoji,
+  image: member.image,
+  skills: member.skills as Agent["skills"],
+}));
 
 export function TeamMemberGrid() {
   const characters = useOfficeStore((s) => s.scene.characters);
 
-  const characterMap = new Map(characters.map((c) => [c.id, c]));
+  const characterMap = characters.reduce((map, character) => {
+    map.set(character.id, character);
+    if (character.id === "rumi") {
+      map.set("lumi", character);
+    }
+    return map;
+  }, new Map<string, (typeof characters)[number]>());
 
-  const grouped = teamOrder.map((team) => ({
-    team,
-    label: TEAM_LABELS_KO[team] ?? team,
-    color: TEAM_COLORS[team] ?? "#78716c",
-    members: KUMA_TEAM.filter((a) => a.team === team),
+  const grouped = teamData.teams.map((team) => ({
+    team: team.id,
+    label: team.name.ko ?? TEAM_LABELS_KO[team.id] ?? team.id,
+    color: TEAM_COLORS[team.id] ?? "#78716c",
+    members: teamMembers.filter((a) => a.team === team.id),
   }));
 
   return (

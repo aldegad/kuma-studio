@@ -27,7 +27,7 @@ import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-stat
 import { getGitActivity, startGitActivityPolling, stopGitActivityPolling } from "./studio/git-activity-store.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
 import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
-import { loadTeamMetadata } from "./team-metadata.mjs";
+import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -52,22 +52,8 @@ export function createServer({ host, port, root }) {
   const agentStateManager = new AgentStateManager();
   const tokenTracker = new TokenTracker();
 
-  // Register agent hierarchy — session → team → worker
-  const AGENT_HIERARCHY = [
-    { id: "kuma", nodeType: "session", parentId: null, team: "management" },
-    { id: "howl", nodeType: "team", parentId: "kuma", team: "dev" },
-    { id: "tookdaki", nodeType: "worker", parentId: "howl", team: "dev" },
-    { id: "saemi", nodeType: "worker", parentId: "howl", team: "dev" },
-    { id: "koon", nodeType: "worker", parentId: "howl", team: "dev" },
-    { id: "bamdori", nodeType: "worker", parentId: "howl", team: "dev" },
-    { id: "rumi", nodeType: "team", parentId: "kuma", team: "analytics" },
-    { id: "darami", nodeType: "worker", parentId: "rumi", team: "analytics" },
-    { id: "buri", nodeType: "worker", parentId: "rumi", team: "analytics" },
-    { id: "noeuri", nodeType: "team", parentId: "kuma", team: "strategy" },
-    { id: "kongkongi", nodeType: "worker", parentId: "noeuri", team: "strategy" },
-    { id: "moongchi", nodeType: "worker", parentId: "noeuri", team: "strategy" },
-    { id: "jjooni", nodeType: "worker", parentId: "noeuri", team: "strategy" },
-  ];
+  // Register agent hierarchy from team.json — session → team → worker
+  const AGENT_HIERARCHY = getAgentHierarchy();
   for (const agent of AGENT_HIERARCHY) {
     agentStateManager.registerAgent(agent.id, agent);
   }
