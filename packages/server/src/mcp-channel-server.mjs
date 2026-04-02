@@ -16,12 +16,13 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { DEFAULT_PORT } from "./constants.mjs";
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const DAEMON_URL = process.env.KUMA_DAEMON_URL ?? "http://127.0.0.1:4312";
+const DAEMON_URL = process.env.KUMA_DAEMON_URL ?? `http://127.0.0.1:${DEFAULT_PORT}`;
 const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 20;
 

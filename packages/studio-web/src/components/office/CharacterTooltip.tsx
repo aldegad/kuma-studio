@@ -34,6 +34,12 @@ export function CharacterTooltip({ character }: CharacterTooltipProps) {
           <span className="text-[10px]">{stateLabel}</span>
         </div>
 
+        {character.task && (character.state === "working" || character.state === "thinking") && (
+          <div className="mb-2 rounded-md bg-blue-500/10 px-2 py-1 text-[9px] text-blue-200">
+            작업 중: {character.task}
+          </div>
+        )}
+
         {/* Team */}
         <div className="text-[9px] text-stone-400 mb-1">
           <span className="text-stone-500">팀:</span> {member.teamKo}

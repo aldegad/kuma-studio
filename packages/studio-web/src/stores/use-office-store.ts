@@ -7,7 +7,7 @@ interface OfficeState {
   scene: OfficeScene;
   setScene: (scene: OfficeScene) => void;
   applyLayout: (layout: OfficeLayoutSnapshot) => void;
-  updateCharacterState: (characterId: string, state: AgentState) => void;
+  updateCharacterState: (characterId: string, state: AgentState, task?: string | null) => void;
   updateCharacterPosition: (characterId: string, position: { x: number; y: number }) => void;
   updateFurniturePosition: (furnitureId: string, position: { x: number; y: number }) => void;
   syncCharactersFromTeam: (agents: Agent[]) => void;
@@ -51,12 +51,23 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       };
     }),
 
-  updateCharacterState: (characterId, state) =>
+  updateCharacterState: (characterId, state, task = undefined) =>
     set((prev) => ({
       scene: {
         ...prev.scene,
         characters: prev.scene.characters.map((c) =>
-          c.id === characterId ? { ...c, state } : c,
+          c.id === characterId
+            ? {
+                ...c,
+                state,
+                task:
+                  task !== undefined
+                    ? task
+                    : state === "idle"
+                      ? null
+                      : c.task ?? null,
+              }
+            : c,
         ),
       },
     })),
@@ -90,7 +101,13 @@ export const useOfficeStore = create<OfficeState>((set) => ({
           characters: buildDefaultOfficeCharacters(agents).map((character) => {
             const existing = existingCharacters.get(character.id);
             if (!existing) return character;
-            return { ...character, position: existing.position, spriteSheet: existing.spriteSheet, state: existing.state };
+            return {
+              ...character,
+              position: existing.position,
+              spriteSheet: existing.spriteSheet,
+              state: existing.state,
+              task: existing.task ?? null,
+            };
           }),
         },
       };

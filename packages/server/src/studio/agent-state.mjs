@@ -32,13 +32,13 @@ export function mapJobStatusToAgentState(jobStatus) {
 /** @typedef {"session" | "team" | "worker"} NodeType */
 
 export class AgentStateManager {
-  /** @type {Map<string, string>} agentId -> current state */
+  /** @type {Map<string, { status: string, task: string | null }>} agentId -> current state */
   #states = new Map();
 
   /** @type {Map<string, {nodeType: string, parentId: string|null, team: string|null}>} */
   #registry = new Map();
 
-  /** @type {((agentId: string, state: string) => void)[]} */
+  /** @type {((agentId: string, snapshot: { status: string, task: string | null }) => void)[]} */
   #listeners = [];
 
   /**
@@ -100,17 +100,28 @@ export class AgentStateManager {
   /**
    * Get the aggregated tree state for a node and its descendants.
    * @param {string} agentId
-   * @returns {{ id: string, state: string, nodeType: string, children: object[] }}
+   * @returns {{ id: string, state: string, task: string | null, nodeType: string, children: object[] }}
    */
   getTreeState(agentId) {
     const meta = this.#registry.get(agentId);
     const children = this.getChildren(agentId);
+    const snapshot = this.getSnapshot(agentId);
     return {
       id: agentId,
-      state: this.getState(agentId),
+      state: snapshot.status,
+      task: snapshot.task,
       nodeType: meta?.nodeType ?? "worker",
       children: children.map((childId) => this.getTreeState(childId)),
     };
+  }
+
+  /**
+   * Get the current state snapshot for an agent.
+   * @param {string} agentId
+   * @returns {{ status: string, task: string | null }}
+   */
+  getSnapshot(agentId) {
+    return this.#states.get(agentId) ?? { status: "idle", task: null };
   }
 
   /**
@@ -119,12 +130,21 @@ export class AgentStateManager {
    * @returns {string}
    */
   getState(agentId) {
-    return this.#states.get(agentId) ?? "idle";
+    return this.getSnapshot(agentId).status;
+  }
+
+  /**
+   * Get the current task of an agent.
+   * @param {string} agentId
+   * @returns {string | null}
+   */
+  getTask(agentId) {
+    return this.getSnapshot(agentId).task;
   }
 
   /**
    * Get all agent states.
-   * @returns {Record<string, string>}
+   * @returns {Record<string, { status: string, task: string | null }>}
    */
   getAllStates() {
     return Object.fromEntries(this.#states);
@@ -134,29 +154,42 @@ export class AgentStateManager {
    * Set the state of an agent, validating the transition.
    * @param {string} agentId
    * @param {string} newState
+   * @param {string | null | undefined} task
    * @returns {boolean} whether the transition was accepted
    */
-  setState(agentId, newState) {
+  setState(agentId, newState, task = undefined) {
     if (!VALID_STATES.includes(newState)) return false;
 
-    const current = this.getState(agentId);
-    const allowed = STATE_TRANSITIONS[current];
+    const current = this.getSnapshot(agentId);
+    const allowed = STATE_TRANSITIONS[current.status];
 
-    if (allowed && !allowed.includes(newState) && current !== newState) {
+    if (allowed && !allowed.includes(newState) && current.status !== newState) {
       // Force transition anyway but log warning
       process.stderr.write(
-        `[agent-state] Warning: ${agentId} transition ${current} -> ${newState} is not in allowed transitions\n`,
+        `[agent-state] Warning: ${agentId} transition ${current.status} -> ${newState} is not in allowed transitions\n`,
       );
     }
 
-    this.#states.set(agentId, newState);
-    this.#notifyListeners(agentId, newState);
+    const nextTask =
+      typeof task === "string"
+        ? task.trim() || null
+        : task === null || newState === "idle"
+          ? null
+          : current.task ?? null;
+
+    if (current.status === newState && current.task === nextTask) {
+      return true;
+    }
+
+    const snapshot = { status: newState, task: nextTask };
+    this.#states.set(agentId, snapshot);
+    this.#notifyListeners(agentId, snapshot);
     return true;
   }
 
   /**
    * Register a listener for state changes.
-   * @param {(agentId: string, state: string) => void} listener
+   * @param {(agentId: string, snapshot: { status: string, task: string | null }) => void} listener
    * @returns {() => void} unsubscribe function
    */
   onStateChange(listener) {
@@ -166,10 +199,10 @@ export class AgentStateManager {
     };
   }
 
-  #notifyListeners(agentId, state) {
+  #notifyListeners(agentId, snapshot) {
     for (const listener of this.#listeners) {
       try {
-        listener(agentId, state);
+        listener(agentId, snapshot);
       } catch (err) {
         process.stderr.write(`[agent-state] Listener error: ${err}\n`);
       }

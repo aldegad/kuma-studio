@@ -3,12 +3,13 @@
  * and provides REST API endpoints for stats and office layout state.
  */
 
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolve, join, extname } from "node:path";
+import { resolve, join, extname, relative, isAbsolute } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
+import { readPlans } from "./plan-store.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -24,6 +25,17 @@ const MIME_TYPES = {
   ".woff": "font/woff",
   ".woff2": "font/woff2",
 };
+
+function isPathWithinRoot(rootPath, rootRealPath, candidatePath) {
+  const relativePath = relative(rootPath, candidatePath);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    return false;
+  }
+
+  const realCandidatePath = realpathSync(candidatePath);
+  const realRelativePath = relative(rootRealPath, realCandidatePath);
+  return !(realRelativePath.startsWith("..") || isAbsolute(realRelativePath));
+}
 
 async function readStudioSkills() {
   try {
@@ -90,6 +102,9 @@ async function readStudioPlugins() {
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
 export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager }) {
+  const staticRoot = resolve(staticDir);
+  const staticRootReal = existsSync(staticRoot) ? realpathSync(staticRoot) : staticRoot;
+
   return async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
@@ -122,6 +137,18 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       return true;
     }
 
+    if (url.pathname === "/studio/plans" && req.method === "GET") {
+      try {
+        sendJson(res, 200, await readPlans());
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read plans.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
     if (url.pathname === "/studio/git-log" && req.method === "GET") {
       try {
         const raw = execSync("git log --oneline -10 --no-color", { cwd: resolve(join(staticDir, "..", "..")), encoding: "utf-8", timeout: 3000 });
@@ -137,12 +164,75 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
     }
 
     if (url.pathname === "/studio/office-layout" && req.method === "GET") {
-      sendJson(res, 200, sceneStore.readOfficeLayout());
+      try {
+        sendJson(res, 200, sceneStore.readOfficeLayout());
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read office layout.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
       return true;
     }
 
     if (url.pathname === "/studio/office-layout" && req.method === "PUT") {
-      sendJson(res, 200, sceneStore.writeOfficeLayout(await readJsonBody(req)));
+      try {
+        sendJson(res, 200, sceneStore.writeOfficeLayout(await readJsonBody(req)));
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid office layout payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/agent-state" && req.method === "POST") {
+      if (!agentStateManager) {
+        sendJson(res, 503, { error: "Agent state manager is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid agent state payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      const agentId = typeof body?.agentId === "string" ? body.agentId.trim() : "";
+      const status = typeof body?.status === "string" ? body.status.trim() : "";
+      const task =
+        typeof body?.task === "string"
+          ? body.task
+          : body?.task == null
+            ? null
+            : String(body.task);
+
+      if (!agentId) {
+        sendJson(res, 400, { error: "Missing agentId." });
+        return true;
+      }
+
+      if (!status) {
+        sendJson(res, 400, { error: "Missing status." });
+        return true;
+      }
+
+      if (!agentStateManager.setState(agentId, status, task)) {
+        sendJson(res, 400, { error: `Invalid agent status: ${status}` });
+        return true;
+      }
+
+      sendJson(res, 200, {
+        agentId,
+        status: agentStateManager.getState(agentId),
+        task: agentStateManager.getTask(agentId),
+      });
       return true;
     }
 
@@ -150,28 +240,49 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       let filePath = url.pathname.replace(/^\/studio\/?/, "");
       if (!filePath || filePath === "") filePath = "index.html";
 
-      const fullPath = resolve(join(staticDir, filePath));
+      const fullPath = resolve(join(staticRoot, filePath));
+      const relativePath = relative(staticRoot, fullPath);
 
-      if (!fullPath.startsWith(staticDir)) {
+      if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
         res.writeHead(403);
         res.end("Forbidden");
         return true;
       }
 
-      if (existsSync(fullPath) && statSync(fullPath).isFile()) {
-        const ext = extname(fullPath);
-        const mime = MIME_TYPES[ext] ?? "application/octet-stream";
-        const content = readFileSync(fullPath);
-        res.writeHead(200, { "Content-Type": mime });
-        res.end(content);
-        return true;
-      }
+      try {
+        if (existsSync(fullPath) && statSync(fullPath).isFile()) {
+          if (!isPathWithinRoot(staticRoot, staticRootReal, fullPath)) {
+            res.writeHead(403);
+            res.end("Forbidden");
+            return true;
+          }
 
-      const indexPath = resolve(join(staticDir, "index.html"));
-      if (existsSync(indexPath)) {
-        const content = readFileSync(indexPath);
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(content);
+          const ext = extname(fullPath);
+          const mime = MIME_TYPES[ext] ?? "application/octet-stream";
+          const content = readFileSync(fullPath);
+          res.writeHead(200, { "Content-Type": mime });
+          res.end(content);
+          return true;
+        }
+
+        const indexPath = resolve(join(staticRoot, "index.html"));
+        if (existsSync(indexPath) && statSync(indexPath).isFile()) {
+          if (!isPathWithinRoot(staticRoot, staticRootReal, indexPath)) {
+            res.writeHead(403);
+            res.end("Forbidden");
+            return true;
+          }
+
+          const content = readFileSync(indexPath);
+          res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+          res.end(content);
+          return true;
+        }
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read studio asset.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
         return true;
       }
 

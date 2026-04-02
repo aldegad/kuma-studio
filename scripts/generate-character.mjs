@@ -11,11 +11,13 @@
  */
 
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, "../packages/studio-web/src/assets/characters");
+const OPENAI_ENV_PATH = join(homedir(), ".claude", ".env.openai");
 
 const KUMA_TEAM = [
   { id: "kuma", name: "Kuma", animal: "bear", role: "Leader" },
@@ -73,7 +75,7 @@ async function main() {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     process.stderr.write("Error: OPENAI_API_KEY environment variable is required.\n");
-    process.stderr.write("Run: source ~/.claude/.env.openai\n");
+    process.stderr.write(`Run: source ${OPENAI_ENV_PATH}\n`);
     process.exitCode = 1;
     return;
   }

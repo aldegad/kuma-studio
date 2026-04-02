@@ -85,8 +85,10 @@ export function Character({ character, isDragging = false, isSelected = false, s
       {/* Card container — glow based on state */}
       <div
         className={`character-card relative flex w-30 flex-col items-center rounded-xl border p-2 shadow-md backdrop-blur-sm ${
-          character.state === "working" || character.state === "thinking"
-            ? "border-blue-300 bg-blue-50/80 shadow-blue-200/50 ring-2 ring-blue-300/40 animate-state-glow animate-sparkle"
+          character.state === "working"
+            ? "border-blue-400 bg-blue-50/85 shadow-blue-300/60 ring-2 ring-blue-400/50 animate-state-glow animate-sparkle"
+            : character.state === "thinking"
+            ? "border-amber-300 bg-amber-50/80 shadow-amber-200/50 ring-2 ring-amber-300/40 animate-state-glow animate-sparkle"
             : character.state === "error"
             ? "border-red-300 bg-red-50/80 shadow-red-200/50 ring-2 ring-red-300/40 animate-state-glow animate-error-shake"
             : character.state === "completed"
@@ -97,8 +99,10 @@ export function Character({ character, isDragging = false, isSelected = false, s
         } ${isSelected ? "ring-2 ring-amber-400 ring-offset-1" : ""
         }`}
         style={{
-          "--glow-color": character.state === "working" || character.state === "thinking"
+          "--glow-color": character.state === "working"
             ? "rgba(96, 165, 250, 0.4)"
+            : character.state === "thinking"
+            ? "rgba(245, 158, 11, 0.35)"
             : character.state === "error"
             ? "rgba(248, 113, 113, 0.4)"
             : undefined,
@@ -120,6 +124,12 @@ export function Character({ character, isDragging = false, isSelected = false, s
         {/* Working progress bar */}
         {(character.state === "working" || character.state === "thinking") && (
           <div className="working-progress-bar mt-1 w-full" />
+        )}
+
+        {character.state === "working" && character.task && (
+          <p className="mt-1 w-full rounded-md bg-blue-100/80 px-1.5 py-1 text-center text-[8px] font-medium leading-tight text-blue-700">
+            작업 중: {character.task}
+          </p>
         )}
 
         {/* Name + emoji */}

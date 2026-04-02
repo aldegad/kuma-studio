@@ -24,6 +24,7 @@ import {
 import { StudioWsEvents } from "./studio/studio-ws-events.mjs";
 import { StatsStore } from "./studio/stats-store.mjs";
 import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-state.mjs";
+import { getGitActivity, startGitActivityPolling, stopGitActivityPolling } from "./studio/git-activity-store.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
 import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
 import { loadTeamMetadata } from "./team-metadata.mjs";
@@ -33,6 +34,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export function createServer({ host, port, root }) {
   const broker = new SceneEventBroker();
   const studioWsEvents = new StudioWsEvents();
+  const studioSocketClients = new Set();
   let lastOfficeLayoutSignature = "";
   const store = new SceneStore(root, {
     onChange(scene, source) {
@@ -71,8 +73,8 @@ export function createServer({ host, port, root }) {
   }
 
   // Wire up agent state changes to studio WS broadcast
-  agentStateManager.onStateChange((agentId, state) => {
-    studioWsEvents.broadcastAgentStateChange(agentId, state);
+  agentStateManager.onStateChange((agentId, snapshot) => {
+    studioWsEvents.broadcastAgentStateChange(agentId, snapshot);
   });
 
   // Wire up token tracker to studio WS broadcast
@@ -83,6 +85,9 @@ export function createServer({ host, port, root }) {
   // Studio web static files path
   const studioStaticDir = resolve(__dirname, "../../studio-web/dist");
   const handleStudioRoute = createStudioRouteHandler({ staticDir: studioStaticDir, statsStore, sceneStore: store, agentStateManager });
+  startGitActivityPolling((activity) => {
+    broadcastStudioEvent("git-activity-update", { activity });
+  });
 
   store.ensure();
   const initialScene = store.read();
@@ -185,7 +190,7 @@ export function createServer({ host, port, root }) {
       // Update agent state based on job status
       if (card.author) {
         const agentState = mapJobStatusToAgentState(card.status);
-        agentStateManager.setState(card.author, agentState);
+        agentStateManager.setState(card.author, agentState, card.message ?? card.resultMessage ?? null);
       }
 
       // Track token usage if present
@@ -201,6 +206,25 @@ export function createServer({ host, port, root }) {
         continue;
       }
       sendSocketJson(state.socket, { type: "extension.reload" });
+    }
+  }
+
+  function broadcastStudioEvent(kind, payload = {}) {
+    const message = {
+      type: "kuma-studio:event",
+      event: { kind, ...payload },
+    };
+
+    for (const client of studioSocketClients) {
+      if (client.readyState !== 1 /* OPEN */) {
+        continue;
+      }
+
+      try {
+        sendSocketJson(client, message);
+      } catch {
+        studioSocketClients.delete(client);
+      }
     }
   }
 
@@ -358,6 +382,11 @@ export function createServer({ host, port, root }) {
 
     if (request.method === "GET" && url.pathname === "/health") {
       sendJson(response, 200, { ok: true, browserTransport: "websocket", studio: true });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/studio/git-activity") {
+      sendJson(response, 200, getGitActivity());
       return;
     }
 
@@ -598,6 +627,9 @@ export function createServer({ host, port, root }) {
     // Studio WebSocket endpoint for dashboard/office clients
     if (url.pathname === "/studio/ws") {
       socketServer.handleUpgrade(request, socket, head, (websocket) => {
+        studioSocketClients.add(websocket);
+        websocket.on("close", () => studioSocketClients.delete(websocket));
+        websocket.on("error", () => studioSocketClients.delete(websocket));
         studioWsEvents.addClient(websocket);
         websocket.on("message", (rawMessage) => {
           try {
@@ -643,6 +675,7 @@ export function createServer({ host, port, root }) {
     clearTimeout(extensionReloadDebounce);
     clearInterval(pingInterval);
     clearInterval(inFlightCommandCleanupInterval);
+    stopGitActivityPolling();
     socketServer.close();
     statsStore.close();
   });

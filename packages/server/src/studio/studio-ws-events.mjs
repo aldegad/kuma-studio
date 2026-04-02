@@ -43,12 +43,12 @@ export class StudioWsEvents {
   /**
    * Broadcast an agent state change event.
    * @param {string} agentId
-   * @param {string} state
+   * @param {{ status: string, task: string | null }} snapshot
    */
-  broadcastAgentStateChange(agentId, state) {
+  broadcastAgentStateChange(agentId, snapshot) {
     this.#broadcast({
       type: "kuma-studio:event",
-      event: { kind: "agent-state-change", agentId, state },
+      event: { kind: "agent-state-change", agentId, state: snapshot.status, task: snapshot.task },
     });
   }
 

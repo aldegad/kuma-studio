@@ -61,6 +61,14 @@ export function CharacterDetailPanel({ character, isNight, onClose }: Props) {
           )}
         </div>
 
+        {character.task && (character.state === "working" || character.state === "thinking") && (
+          <div className={`rounded-lg px-3 py-2 text-[10px] leading-relaxed ${
+            isNight ? "bg-blue-500/10 text-blue-200" : "bg-blue-50 text-blue-700"
+          }`}>
+            작업 중: {character.task}
+          </div>
+        )}
+
         {/* Info grid */}
         <div className="grid grid-cols-2 gap-2">
           <InfoItem label="팀" value={member.teamKo} isNight={isNight} />

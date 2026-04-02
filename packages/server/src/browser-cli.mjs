@@ -28,7 +28,8 @@ function decodeScreenshotBase64(result) {
     };
   }
 
-  const dataUrl = typeof screenshot?.dataUrl === "string" ? screenshot.dataUrl : null;
+  const dataUrl =
+    typeof screenshot === "string" ? screenshot : typeof screenshot?.dataUrl === "string" ? screenshot.dataUrl : null;
   const matched = /^data:([^;]+);base64,(.+)$/u.exec(dataUrl ?? "");
   if (!matched) {
     throw new Error("Screenshot result did not include base64 image data.");
@@ -57,11 +58,15 @@ export async function commandBrowserScreenshot(options) {
   });
 
   try {
-    const result = await client.sendCommand({
-      type: "screenshot",
-      timeoutMs,
-      ...targets,
-    });
+    const result = await client.send(
+      "page.screenshot",
+      {
+        ...targets,
+      },
+      {
+        timeoutMs,
+      },
+    );
     const screenshot = decodeScreenshotBase64(result);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, Buffer.from(screenshot.base64, "base64"));

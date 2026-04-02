@@ -5,9 +5,9 @@
  *
  * Installs:
  *   1. npm dependencies
- *   2. Skill files → ~/.claude/skills/{kuma,dev-team,analytics-team,strategy-team}/skill.md
- *   3. State directory → ~/.kuma-picker/
- *   4. Team metadata → ~/.kuma-picker/team.json
+ *   2. Skill files → user Claude skills directory
+ *   3. State directory → user Kuma Picker directory
+ *   4. Team metadata → user Kuma Picker team metadata
  *   5. Studio-web production build
  *
  * Usage:
@@ -17,13 +17,17 @@
 import { access } from "node:fs/promises";
 import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_PORT } from "../packages/server/src/constants.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const HOME = homedir();
+const CLAUDE_DIR = join(HOME, ".claude");
+const CLAUDE_SKILLS_DIR = join(CLAUDE_DIR, "skills");
+const STATE_DIR = join(HOME, ".kuma-picker");
 
 const SKILLS = ["kuma", "dev-team", "analytics-team", "strategy-team"];
 const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
@@ -98,15 +102,12 @@ async function copyFileIfChanged(src, dest) {
 
 async function installSkills() {
   header("Installing skills");
-  const claudeDir = resolve(HOME, ".claude");
-  const claudeSkillsDir = resolve(claudeDir, "skills");
-
-  await ensureDirWithSummary(claudeDir);
-  await ensureDirWithSummary(claudeSkillsDir);
+  await ensureDirWithSummary(CLAUDE_DIR);
+  await ensureDirWithSummary(CLAUDE_SKILLS_DIR);
 
   for (const skill of SKILLS) {
     const srcFile = resolve(ROOT, ".claude", "skills", skill, "skill.md");
-    const destDir = resolve(claudeSkillsDir, skill);
+    const destDir = resolve(CLAUDE_SKILLS_DIR, skill);
     const destFile = resolve(destDir, "skill.md");
 
     if (!(await pathExists(srcFile))) {
@@ -181,10 +182,9 @@ async function writeDefaultTeamMetadata(dest) {
 
 async function setupStateDir() {
   header("Setting up state directory");
-  const stateDir = resolve(HOME, ".kuma-picker");
-  const teamMetaPath = resolve(stateDir, "team.json");
+  const teamMetaPath = resolve(STATE_DIR, "team.json");
 
-  await ensureDirWithSummary(stateDir);
+  await ensureDirWithSummary(STATE_DIR);
 
   const repoTeamMetadata = await findRepoTeamMetadata();
   if (repoTeamMetadata) {
@@ -249,7 +249,7 @@ function buildStudio(flags) {
 
 async function registerSettings() {
   header("Registering settings");
-  const settingsPath = resolve(HOME, ".claude", "settings.json");
+  const settingsPath = join(CLAUDE_DIR, "settings.json");
   let settings = {};
 
   if (await pathExists(settingsPath)) {
@@ -310,7 +310,7 @@ async function main() {
   process.stdout.write(`
   Quick start:
     cd ${ROOT}
-    npm run kuma-studio:serve     # Start daemon (port 4312)
+    npm run kuma-studio:serve     # Start daemon (port ${DEFAULT_PORT})
     npm run kuma-studio:dashboard # Open studio in browser
 
   Skills installed:

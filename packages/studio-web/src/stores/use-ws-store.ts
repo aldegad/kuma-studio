@@ -14,7 +14,8 @@ interface WsState {
   setStatus: (status: ConnectionStatus) => void;
 }
 
-const DEFAULT_WS_URL = `ws://${window.location.hostname}:4312/studio/ws`;
+const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
+const DEFAULT_WS_URL = `ws://${window.location.hostname}:${KUMA_PORT}/studio/ws`;
 const HEARTBEAT_INTERVAL = 25_000; // 25s ping
 const HEARTBEAT_TIMEOUT = 35_000; // 35s without pong → stale
 const MAX_BACKOFF = 30_000; // cap at 30s

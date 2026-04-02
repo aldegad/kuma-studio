@@ -9,15 +9,16 @@ interface StudioEvent {
   type: "kuma-studio:event";
   event:
     | { kind: "job-card-update"; card: import("../types/job-card").JobCard }
-    | { kind: "agent-state-change"; agentId: string; state: import("../types/agent").AgentState }
+    | { kind: "agent-state-change"; agentId: string; state: import("../types/agent").AgentState; task?: string | null }
     | { kind: "token-usage"; agentId: string; tokens: number; model: string }
     | { kind: "stats-snapshot"; stats: import("../types/stats").DashboardStats }
+    | { kind: "git-activity-update"; activity: import("../types/stats").GitActivitySnapshot }
     | { kind: "office-layout-update"; layout: import("../types/office").OfficeLayoutSnapshot };
 }
 
 export function useWebSocket() {
   const { connect, ws, status } = useWsStore();
-  const { upsertJob, setJobs, setStats, addTokenUsage } = useDashboardStore();
+  const { upsertJob, setJobs, setStats, addTokenUsage, setGitActivity } = useDashboardStore();
   const { updateCharacterState, applyLayout } = useOfficeStore();
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export function useWebSocket() {
             upsertJob(evt.card);
             break;
           case "agent-state-change":
-            updateCharacterState(evt.agentId, evt.state);
+            updateCharacterState(evt.agentId, evt.state, evt.task);
             break;
           case "token-usage":
             addTokenUsage({
@@ -70,6 +71,9 @@ export function useWebSocket() {
           case "stats-snapshot":
             setStats(evt.stats);
             break;
+          case "git-activity-update":
+            setGitActivity(evt.activity);
+            break;
           case "office-layout-update":
             applyLayout(evt.layout);
             break;
@@ -81,7 +85,7 @@ export function useWebSocket() {
 
     ws.addEventListener("message", handleMessage);
     return () => ws.removeEventListener("message", handleMessage);
-  }, [ws, upsertJob, setStats, addTokenUsage, updateCharacterState, applyLayout]);
+  }, [ws, upsertJob, setStats, addTokenUsage, setGitActivity, updateCharacterState, applyLayout]);
 
   return { status };
 }

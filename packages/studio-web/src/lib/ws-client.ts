@@ -1,6 +1,8 @@
 /** WebSocket client utilities for kuma-studio server communication */
 
-export function createStudioWsUrl(host = window.location.hostname, port = 4312): string {
+const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
+
+export function createStudioWsUrl(host = window.location.hostname, port = KUMA_PORT): string {
   return `ws://${host}:${port}`;
 }
 

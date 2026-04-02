@@ -129,6 +129,14 @@ function sanitizeFileList(candidate) {
   return files.length > 0 ? files : null;
 }
 
+function isImplicitActiveTabCommand(type, action = null) {
+  if (type === "navigate" || type === "screenshot") {
+    return true;
+  }
+
+  return type === "playwright" && action === "page.screenshot";
+}
+
 export function sanitizeCommandPayload(candidate) {
   if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
     throw new Error("Browser command payload must be an object.");
@@ -147,13 +155,13 @@ export function sanitizeCommandPayload(candidate) {
     Number.isInteger(targetTabId) ||
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
     (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
+  const action = type === "playwright" ? sanitizeString(candidate.action, 128) : null;
 
-  if (!hasTarget && type !== "navigate" && type !== "screenshot") {
+  if (!hasTarget && !isImplicitActiveTabCommand(type, action)) {
     throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
   }
 
   if (type === "playwright") {
-    const action = sanitizeString(candidate.action, 128);
     if (!action) {
       throw new Error("Playwright automation commands require an action.");
     }
@@ -487,7 +495,7 @@ export function doesCommandMatchClaimant(command, claimant = {}) {
     return false;
   }
 
-  if (command.type === "screenshot" || command.type === "record-start") {
+  if (isImplicitActiveTabCommand(command.type, command.action) || command.type === "record-start") {
     return claimantVisible && claimantFocused;
   }
 

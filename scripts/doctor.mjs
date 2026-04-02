@@ -7,13 +7,18 @@
  */
 
 import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_PORT } from "../packages/server/src/constants.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const HOME = homedir();
+const CLAUDE_DIR = join(HOME, ".claude");
+const STATE_DIR = join(HOME, ".kuma-picker");
+const OPENAI_ENV_PATH = join(CLAUDE_DIR, ".env.openai");
+const HEALTHCHECK_URL = `http://127.0.0.1:${DEFAULT_PORT}/health`;
 
 function check(label, condition) {
   const status = condition ? "OK" : "FAIL";
@@ -50,14 +55,14 @@ async function main() {
   // Check skills
   const skills = ["kuma", "dev-team", "analytics-team", "strategy-team"];
   for (const skill of skills) {
-    const ok = existsSync(resolve(HOME, ".claude", "skills", skill, "skill.md"));
+    const ok = existsSync(join(CLAUDE_DIR, "skills", skill, "skill.md"));
     allOk = check(`Skill: ${skill}`, ok) && allOk;
     if (!ok) process.stdout.write("    Run: node scripts/install.mjs\n");
   }
 
   // Check state directory and team metadata
-  allOk = check("State dir (~/.kuma-picker/)", existsSync(resolve(HOME, ".kuma-picker"))) && allOk;
-  const hasTeamMeta = existsSync(resolve(HOME, ".kuma-picker", "team.json"));
+  allOk = check(`State dir (${STATE_DIR})`, existsSync(STATE_DIR)) && allOk;
+  const hasTeamMeta = existsSync(join(STATE_DIR, "team.json"));
   allOk = check("Team metadata", hasTeamMeta) && allOk;
   if (!hasTeamMeta) process.stdout.write("    Run: node scripts/install.mjs\n");
 
@@ -65,12 +70,12 @@ async function main() {
   const hasApiKey = !!process.env.OPENAI_API_KEY;
   check("OPENAI_API_KEY set (optional)", hasApiKey);
   if (!hasApiKey) {
-    process.stdout.write("    For image generation: source ~/.claude/.env.openai\n");
+    process.stdout.write(`    For image generation: source ${OPENAI_ENV_PATH}\n`);
   }
 
   // Try to reach the daemon
   try {
-    const res = await fetch("http://127.0.0.1:4312/health", { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(HEALTHCHECK_URL, { signal: AbortSignal.timeout(2000) });
     const data = await res.json();
     check("Daemon server reachable", data.ok === true);
   } catch {

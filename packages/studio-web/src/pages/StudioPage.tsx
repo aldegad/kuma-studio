@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchDailyReport, fetchJobCards, fetchOfficeLayout, fetchStats } from "../lib/api";
+import { fetchDailyReport, fetchJobCards, fetchOfficeLayout, fetchStats, saveOfficeLayout } from "../lib/api";
 import { useWebSocket } from "../hooks/use-websocket";
 import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
@@ -10,7 +10,6 @@ import {
   usePipelineStore,
 } from "../stores/use-pipeline-store";
 import { useWsStore } from "../stores/use-ws-store";
-import { saveOfficeLayout } from "../lib/api";
 import { FURNITURE_SIZES, TEAM_ZONES, TEAM_POSITIONS, HIERARCHY_LINES, sceneToLayout } from "../lib/office-scene";
 import { KUMA_TEAM, type AgentState } from "../types/agent";
 import type { JobCard } from "../types/job-card";
@@ -20,11 +19,12 @@ import { Character } from "../components/office/Character";
 import { Furniture } from "../components/office/Furniture";
 import { Whiteboard } from "../components/office/Whiteboard";
 import { SkillsPanel } from "../components/dashboard/SkillsPanel";
+import { DailyReportWidget } from "../components/dashboard/DailyReportWidget";
 import { ToastContainer, pushToast } from "../components/shared/Toast";
 import { ActivityFeed } from "../components/shared/ActivityFeed";
 import { AmbientParticles } from "../components/office/AmbientParticles";
-import { DailyReportBadge } from "../components/dashboard/DailyReportBadge";
 import { GitLogPanel } from "../components/dashboard/GitLogPanel";
+import { PlanPanel } from "../components/dashboard/PlanPanel";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
@@ -37,7 +37,7 @@ interface StudioEvent {
   type: "kuma-studio:event";
   event:
     | { kind: "job-card-update"; card: JobCard }
-    | { kind: "agent-state-change"; agentId: string; state: AgentState };
+    | { kind: "agent-state-change"; agentId: string; state: AgentState; task?: string | null };
 }
 
 type DragState =
@@ -84,9 +84,24 @@ const CANVAS_HEIGHT = 1500;
 const ZOOM_DEFAULT = 0.7;
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 2.0;
+const GIT_ACTIVITY_REFRESH_MS = 5 * 60 * 1000;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function readStoredNumber(key: string, fallback: number, min?: number, max?: number) {
+  const raw = localStorage.getItem(key);
+  if (raw == null) return fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+
+  if (min != null || max != null) {
+    return clamp(parsed, min ?? parsed, max ?? parsed);
+  }
+
+  return parsed;
 }
 
 function clampPosition(
@@ -124,6 +139,7 @@ export function StudioPage() {
   const stats = useDashboardStore((state) => state.stats);
   const setStats = useDashboardStore((state) => state.setStats);
   const setDailyReport = useDashboardStore((state) => state.setDailyReport);
+  const fetchGitActivity = useDashboardStore((state) => state.fetchGitActivity);
   const jobs = useDashboardStore((state) => state.jobs);
 
   // Office store
@@ -144,16 +160,13 @@ export function StudioPage() {
 
   // Zoom & pan state (restore from localStorage)
   const [zoom, setZoom] = useState(() => {
-    const saved = localStorage.getItem("kuma-studio-zoom");
-    return saved ? Number(saved) : ZOOM_DEFAULT;
+    return readStoredNumber("kuma-studio-zoom", ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX);
   });
   const [panX, setPanX] = useState(() => {
-    const saved = localStorage.getItem("kuma-studio-panX");
-    return saved ? Number(saved) : 0;
+    return readStoredNumber("kuma-studio-panX", 0);
   });
   const [panY, setPanY] = useState(() => {
-    const saved = localStorage.getItem("kuma-studio-panY");
-    return saved ? Number(saved) : 0;
+    return readStoredNumber("kuma-studio-panY", 0);
   });
 
   // Persist zoom/pan to localStorage
@@ -215,6 +228,23 @@ export function StudioPage() {
     const timer = setInterval(poll, 30_000); // refresh every 30s
     return () => { cancelled = true; clearInterval(timer); };
   }, [setDailyReport, setStats]);
+
+  useEffect(() => {
+    const refreshGitActivity = async () => {
+      try {
+        await fetchGitActivity();
+      } catch {
+        // Live updates over websocket will still refresh activity.
+      }
+    };
+
+    void refreshGitActivity();
+    const timer = setInterval(() => {
+      void refreshGitActivity();
+    }, GIT_ACTIVITY_REFRESH_MS);
+
+    return () => clearInterval(timer);
+  }, [fetchGitActivity]);
 
   useEffect(() => {
     let cancelled = false;
@@ -631,7 +661,15 @@ export function StudioPage() {
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${isNight ? "bg-indigo-800 text-indigo-300" : "bg-sky-100 text-sky-700"}`}>
             {isNight ? "🌙" : hour < 12 ? "☀️" : "🌤️"} {String(hour).padStart(2, "0")}:{String(new Date().getMinutes()).padStart(2, "0")}
           </span>
-          <button onClick={() => setShowHelp(true)} className={`rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold ${isNight ? "bg-indigo-800 text-indigo-300 hover:bg-indigo-700" : "bg-stone-100 text-stone-400 hover:bg-stone-200"}`} title="단축키 도움말 (?)">?</button>
+          <button
+            type="button"
+            onClick={() => setShowHelp(true)}
+            className={`rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold ${isNight ? "bg-indigo-800 text-indigo-300 hover:bg-indigo-700" : "bg-stone-100 text-stone-400 hover:bg-stone-200"}`}
+            title="단축키 도움말 (?)"
+            aria-label="단축키 도움말 열기"
+          >
+            ?
+          </button>
         </div>
 
         {/* Connection badge */}
@@ -652,9 +690,10 @@ export function StudioPage() {
       {/* Toast notifications */}
       <ToastContainer />
 
-      {/* Left panels — daily report + git log */}
+      {/* Left panels — daily report + plans + git log */}
       <div className="absolute top-14 left-4 z-30 w-56 space-y-2">
-        <DailyReportBadge isNight={isNight} />
+        <DailyReportWidget compact isNight={isNight} />
+        <PlanPanel isNight={isNight} />
         <GitLogPanel isNight={isNight} />
       </div>
 
@@ -742,11 +781,11 @@ export function StudioPage() {
       {/* Zoom controls — bottom-right                                        */}
       {/* ------------------------------------------------------------------ */}
       <div className="absolute bottom-4 right-4 z-40 flex items-center gap-1 bg-white/75 backdrop-blur-md rounded-full border border-white/50 shadow-lg px-2 py-1">
-        <button onClick={() => setZoom(z => clamp(z * 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold">+</button>
+        <button type="button" onClick={() => setZoom(z => clamp(z * 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold" aria-label="줌 인">+</button>
         <span className="text-[10px] text-stone-500 font-medium min-w-[32px] text-center">{Math.round(zoom * 100)}%</span>
-        <button onClick={() => setZoom(z => clamp(z / 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold">{"\u2212"}</button>
-        <button onClick={() => { setZoom(ZOOM_DEFAULT); setPanX(0); setPanY(0); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="초기화">{"\u21BA"}</button>
-        <button onClick={fitToScreen} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="전체 보기">{"\u2B1C"}</button>
+        <button type="button" onClick={() => setZoom(z => clamp(z / 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-600 text-sm font-bold" aria-label="줌 아웃">{"\u2212"}</button>
+        <button type="button" onClick={() => { setZoom(ZOOM_DEFAULT); setPanX(0); setPanY(0); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="초기화" aria-label="줌과 위치 초기화">{"\u21BA"}</button>
+        <button type="button" onClick={fitToScreen} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="전체 보기" aria-label="전체 보기">{"\u2B1C"}</button>
       </div>
 
       {/* ------------------------------------------------------------------ */}
@@ -768,8 +807,10 @@ export function StudioPage() {
         const vpX = -panX / zoom * scaleX;
         const vpY = -panY / zoom * scaleY;
         return (
-          <div
+          <button
+            type="button"
             className="absolute bottom-44 left-4 z-30 rounded-xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg p-1.5 cursor-pointer"
+            aria-label="미니맵에서 위치 이동"
             onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const clickX = (e.clientX - rect.left - 6) / scaleX;
@@ -819,32 +860,38 @@ export function StudioPage() {
                 );
               })}
             </div>
-          </div>
+          </button>
         );
       })()}
 
       {/* Zoom controls — bottom-left above minimap */}
       <div className="absolute bottom-[17rem] left-4 z-30 flex flex-col gap-1">
         <button
+          type="button"
           onClick={() => setZoom((z) => clamp(z * 1.3, ZOOM_MIN, ZOOM_MAX))}
           className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shadow-md transition-colors ${
             isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-600 hover:bg-white"
           } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
           title="줌 인"
+          aria-label="줌 인"
         >+</button>
         <button
+          type="button"
           onClick={() => setZoom((z) => clamp(z / 1.3, ZOOM_MIN, ZOOM_MAX))}
           className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shadow-md transition-colors ${
             isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-600 hover:bg-white"
           } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
           title="줌 아웃"
+          aria-label="줌 아웃"
         >−</button>
         <button
+          type="button"
           onClick={fitToScreen}
           className={`w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shadow-md transition-colors ${
             isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-600 hover:bg-white"
           } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
           title="전체 보기 (F)"
+          aria-label="전체 보기"
         >⊞</button>
       </div>
 
@@ -885,8 +932,14 @@ export function StudioPage() {
       {/* Help overlay */}
       {showHelp && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowHelp(false)}>
-          <div className="rounded-2xl bg-white/95 backdrop-blur-md shadow-2xl p-6 max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-sm font-bold text-stone-800 mb-3">키보드 단축키</h2>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="studio-help-dialog-title"
+            className="rounded-2xl bg-white/95 backdrop-blur-md shadow-2xl p-6 max-w-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="studio-help-dialog-title" className="text-sm font-bold text-stone-800 mb-3">키보드 단축키</h2>
             <div className="space-y-1.5 text-xs text-stone-600">
               {[
                 ["Ctrl + =", "줌 인"],

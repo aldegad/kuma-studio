@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import { commandBrowserScreenshot, commandGetBrowserSession } from "./browser-cli.mjs";
 import { commandRun } from "./playwright-runner.mjs";
 import { parseFlags, readNumber, readOptionalString, requireString } from "./cli-options.mjs";
+import { DEFAULT_PORT } from "./constants.mjs";
 export { createServer } from "./server.mjs";
 import { createServer } from "./server.mjs";
 import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mjs";
@@ -13,28 +14,29 @@ import { normalizeViewport } from "./scene-schema.mjs";
 import { SceneStore } from "./scene-store.mjs";
 import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
 
-const DEFAULT_DAEMON_URL = "http://127.0.0.1:4312";
+const DEFAULT_DAEMON_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
 function printUsage() {
   process.stdout.write(`kuma-studio
 
 Usage:
-  kuma-studio serve [--host 127.0.0.1] [--port 4312] [--root .]
+  kuma-studio serve [--host 127.0.0.1] [--port ${DEFAULT_PORT}] [--root .]
   kuma-studio get-scene [--root .]
   kuma-studio get-selection [--session-id session-01] [--recent 5 | --all] [--root .]
-  kuma-studio get-job-card [--session-id session-01] [--daemon-url http://127.0.0.1:4312]
+  kuma-studio get-job-card [--session-id session-01] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio get-extension-status [--root .]
-  kuma-studio get-browser-session [--daemon-url http://127.0.0.1:4312]
-  kuma-studio browser-screenshot [--file /tmp/kuma-studio-screenshot.png] [--tab-id 123] [--url-contains "example.com"] [--daemon-url http://127.0.0.1:4312]
-  kuma-studio run [script.js] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
-  kuma-studio set-job-status --status in_progress --message "Write a short progress note" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
+  kuma-studio get-browser-session [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-screenshot [--file /tmp/kuma-studio-screenshot.png] [--tab-id 123] [--url-contains "example.com"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio run [script.js] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio set-job-status --status in_progress --message "Write a short progress note" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url ${DEFAULT_DAEMON_URL}] [--root .]
+  kuma-studio set-agent-status --status working|idle --from-stdin [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio put-scene --file ./scene.json [--root .]
   kuma-studio add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   kuma-studio move-node --id node-01 --x 120 --y 80 [--root .]
   kuma-studio remove-node --id node-01 [--root .]
   kuma-studio project-info [--root .]            # show current project hash and state dir
   kuma-studio list-projects                      # list all known project state directories
-  kuma-studio dashboard                          # open http://localhost:4312/studio
+  kuma-studio dashboard                          # open http://localhost:${DEFAULT_PORT}/studio
 `);
 }
 
@@ -130,9 +132,80 @@ async function writeJobCardToDaemon(daemonUrl, payload) {
   return response.json();
 }
 
+async function writeAgentStateToDaemon(daemonUrl, payload) {
+  const response = await fetch(`${daemonUrl}/studio/agent-state`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Failed to update the agent state via ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+
+    process.stdin.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    });
+    process.stdin.on("end", () => {
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+    process.stdin.on("error", reject);
+  });
+}
+
+function normalizeMatcherText(value) {
+  return String(value ?? "").toLowerCase();
+}
+
+function includesAny(haystack, needles) {
+  return needles.some((needle) => haystack.includes(needle));
+}
+
+function resolveAgentIdFromDescriptor(payload) {
+  const description = normalizeMatcherText(payload?.description);
+  const subagentType = normalizeMatcherText(payload?.subagent_type);
+  const model = normalizeMatcherText(payload?.model);
+
+  if (subagentType === "codex:codex-rescue") {
+    if (includesAny(description, ["review", "critic", "qa", "quality", "리뷰", "검토", "품질", "비평"])) {
+      return "saemi";
+    }
+
+    if (includesAny(description, ["analysis", "analyze", "inspect", "explore", "trace", "investigate", "코드 분석", "분석", "구조", "의존성", "탐색", "조사"])) {
+      return "darami";
+    }
+
+    return "tookdaki";
+  }
+
+  if (model.includes("sonnet")) {
+    if (includesAny(description, ["research", "search", "web", "market", "docs", "documentation", "리서치", "검색", "웹", "시장", "문서", "조사"])) {
+      return "buri";
+    }
+
+    return "bamdori";
+  }
+
+  if (model.includes("opus")) {
+    return "koon";
+  }
+
+  throw new Error("Could not map the stdin payload to a team member.");
+}
+
 function commandServe(options) {
   const host = typeof options.host === "string" ? options.host : "127.0.0.1";
-  const port = readNumber(options, "port", 4312);
+  const port = readNumber(options, "port", DEFAULT_PORT);
   const root = typeof options.root === "string" ? options.root : ".";
   const { server, store } = createServer({ host, port, root });
 
@@ -236,6 +309,36 @@ async function commandSetJobStatus(options) {
   };
 
   process.stdout.write(`${JSON.stringify(await writeJobCardToDaemon(daemonUrl, payload), null, 2)}\n`);
+}
+
+async function commandSetAgentStatus(options) {
+  const daemonUrl = readDaemonUrlOption(options);
+  const status = requireString(options, "status");
+
+  if (!["working", "idle"].includes(status)) {
+    throw new Error("--status must be either working or idle.");
+  }
+
+  if (options["from-stdin"] !== true) {
+    throw new Error("set-agent-status currently requires --from-stdin.");
+  }
+
+  const raw = String(await readStdin()).trim();
+  if (!raw) {
+    throw new Error("Expected JSON on stdin.");
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    throw new Error("stdin must be valid JSON.");
+  }
+
+  const agentId = resolveAgentIdFromDescriptor(payload);
+  const task = status === "working" ? readOptionalString(payload, "description") : null;
+  const response = await writeAgentStateToDaemon(daemonUrl, { agentId, status, task });
+  process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
 }
 
 function commandPutScene(options) {
@@ -386,6 +489,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "set-job-status":
       await commandSetJobStatus(options);
+      return;
+    case "set-agent-status":
+      await commandSetAgentStatus(options);
       return;
     case "put-scene":
       commandPutScene(options);

@@ -1,6 +1,6 @@
 # Playwright Parity Analysis -- Kuma Picker
 
-> Analyst: Rumi (analytics-team) | Created: 2026-04-01 | Updated: 2026-04-02
+> Analyst: Rumi (analytics-team) | Created: 2026-04-01 | Updated: 2026-04-02 (parity complete)
 
 ## 1. Playwright Page API -- Major Categories
 
@@ -63,18 +63,18 @@
 
 ## 3. Gap Analysis
 
-### Priority P0 -- High-frequency, straightforward to add
+### Priority P0 -- High-frequency ✅ ALL DONE
 
-| Missing Feature | Playwright Usage | Implementation Approach |
+| Feature | Status | Notes |
 |---|---|---|
-| `page.goBack()` / `page.goForward()` | History navigation | New WS action `page.goBack`/`page.goForward` -> `history.back()`/`history.forward()` in content script |
-| `locator.hover()` | Hover to trigger tooltips/menus | New WS action `locator.hover` -> dispatch `mouseenter`/`mouseover` events |
-| `locator.dblclick()` | Double-click | New WS action `locator.dblclick` -> dispatch `dblclick` event |
-| `keyboard.type(text)` | Type text character-by-character | New WS action `keyboard.type` -> sequential `KeyboardEvent` dispatch |
-| `locator.getAttribute(name)` | Read attribute | New WS action `locator.getAttribute` -> `element.getAttribute()` |
-| `locator.innerText()` / `innerHTML()` | Read rendered text/HTML | New WS actions -> `element.innerText` / `element.innerHTML` |
-| `mouse.wheel(dx, dy)` | Scroll | New WS action `mouse.wheel` -> `window.scrollBy` or `WheelEvent` |
-| `getByPlaceholder` / `getByTestId` | Additional locator strategies | Add `placeholder` and `testid` descriptor kinds in facade |
+| `page.goBack()` / `page.goForward()` | ✅ Done | facade + runtime handler implemented |
+| `locator.hover()` | ✅ Done | facade + runtime handler implemented |
+| `locator.dblclick()` | ✅ Done | facade + runtime handler implemented |
+| `keyboard.type(text)` | ✅ Done | facade + runtime handler implemented |
+| `locator.getAttribute(name)` | ✅ Done | facade + runtime handler implemented |
+| `locator.innerText()` / `innerHTML()` | ✅ Done | facade + runtime handler implemented |
+| `mouse.wheel(dx, dy)` | ✅ Done | facade + runtime handler implemented |
+| `getByPlaceholder` / `getByTestId` | ✅ Done | facade + runtime handler implemented |
 
 ### Priority P1 -- Important for real automation
 
@@ -99,10 +99,10 @@
 | `page.setContent(html)` | ✅ Done | `4debcf9` |
 | `frameLocator` / Frames | ✅ Done | (pre-existing) — `page.frameLocator`, `page.frame` |
 | `locator.setInputFiles()` | ✅ Done | (pre-existing) |
-| `page.waitForResponse/Request` | ❌ Remaining | Extension `webRequest` listener -> WS event relay |
-| `page.pdf()` | ❌ Not feasible | Chrome printing API is limited in extension context |
-| `page.setViewportSize()` | ❌ Remaining | `chrome.debugger` API or `window.resizeTo` (limited) |
-| `page.exposeFunction()` | ❌ Remaining | `page.evaluate` to define `window.__fn` works as alternative |
+| `page.waitForResponse/Request` | ✅ Done | facade `:1056`/`:1070` + runtime `:2237`/`:2239` |
+| `page.setViewportSize()` | ✅ Done | facade `:1011` + runtime `:2235` |
+| `page.pdf()` | ⏭️ Skipped | Not feasible — Chrome printing API is limited in extension context |
+| `page.exposeFunction()` | ⏭️ Deferred | `page.evaluate` to define `window.__fn` works as alternative |
 
 ## 4. Architecture Direction
 
@@ -127,4 +127,4 @@ CLI (run script) -> AutomationClient (WS) -> Daemon Server -> Extension Content 
 - No cross-origin frame access without explicit permissions
 - Event timing is approximate (no protocol-level synchronization)
 
-**Recommendation**: Implement P0 items first (6 methods, ~1 day of work). They cover 80%+ of real automation scripts. P1 follows for form-heavy workflows. P2 network interception can be deferred or handled via `page.evaluate` workarounds.
+**Status (2026-04-02)**: All P0, P1, P2 items are implemented. 60 facade actions match 60 runtime handlers 1:1. Only `page.pdf()` (not feasible) and `page.exposeFunction()` (deferred, workaround exists) remain. Playwright parity is effectively complete.

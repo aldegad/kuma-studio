@@ -16,6 +16,27 @@ export interface TokenUsageEntry {
   recordedAt: string;
 }
 
+export interface GitActivityCommit {
+  hash: string;
+  message: string;
+  author: string;
+  timestamp: string;
+}
+
+export interface GitActivityRepo {
+  name: string;
+  path: string;
+  branch: string | null;
+  commits: GitActivityCommit[];
+}
+
+export interface GitActivitySnapshot {
+  lastUpdated: string;
+  workspace: string;
+  repos: GitActivityRepo[];
+  totalCommitsToday: number;
+}
+
 export interface DailyReport {
   date: string;
   totalTasks: number;

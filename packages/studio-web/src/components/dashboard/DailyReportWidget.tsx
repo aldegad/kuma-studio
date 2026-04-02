@@ -1,11 +1,69 @@
 import { KUMA_TEAM } from "../../types/agent";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 
-export function DailyReportWidget() {
+interface DailyReportWidgetProps {
+  compact?: boolean;
+  isNight?: boolean;
+}
+
+export function DailyReportWidget({ compact = false, isNight = false }: DailyReportWidgetProps) {
   const dailyReport = useDashboardStore((state) => state.dailyReport);
-  const mvpAgent = dailyReport?.mvpAgent
-    ? KUMA_TEAM.find((agent) => agent.id === dailyReport.mvpAgent?.id) ?? null
+  const gitActivity = useDashboardStore((state) => state.gitActivity);
+  const commitCount = gitActivity.totalCommitsToday;
+  const tokenConsumption = dailyReport?.tokenConsumption ?? 0;
+  const mvpAgentId = dailyReport?.mvpAgent?.id ?? null;
+  const reportDate = dailyReport?.date
+    ?? new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+  const mvpReport = dailyReport?.mvpAgent ?? null;
+  const mvpAgent = mvpAgentId
+    ? KUMA_TEAM.find((agent) => agent.id === mvpAgentId) ?? null
     : null;
+  const mvpLabel = mvpAgent?.nameKo ?? mvpReport?.id ?? null;
+  const mvpEmoji = mvpAgent?.emoji ?? "\uD83C\uDFC5";
+
+  if (compact) {
+    return (
+      <div className={`rounded-2xl border p-3 shadow-lg backdrop-blur-md ${
+        isNight ? "border-indigo-800/40 bg-indigo-950/70" : "border-white/50 bg-white/75"
+      }`}>
+        <p className={`mb-2 text-[10px] font-bold uppercase tracking-wider ${isNight ? "text-indigo-400" : "text-stone-500"}`}>
+          일일 리포트
+        </p>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className={`text-[10px] ${isNight ? "text-indigo-300" : "text-stone-500"}`}>오늘 커밋</span>
+            <span className={`text-xs font-bold ${isNight ? "text-white" : "text-stone-800"}`}>
+              {commitCount}건
+            </span>
+          </div>
+
+          {tokenConsumption > 0 && (
+            <div className="flex items-center justify-between">
+              <span className={`text-[10px] ${isNight ? "text-indigo-300" : "text-stone-500"}`}>토큰</span>
+              <span className={`text-xs font-mono ${isNight ? "text-white" : "text-stone-700"}`}>
+                {tokenConsumption.toLocaleString()}
+              </span>
+            </div>
+          )}
+
+          {mvpReport && (
+            <div className={`mt-1 border-t pt-1.5 ${isNight ? "border-indigo-800" : "border-stone-100"}`}>
+              <span className={`text-[9px] ${isNight ? "text-indigo-400" : "text-stone-400"}`}>MVP</span>
+              <div className="mt-0.5 flex items-center gap-1">
+                <span className="text-sm" aria-hidden="true">{mvpEmoji}</span>
+                <span className={`text-[10px] font-semibold ${isNight ? "text-amber-200" : "text-amber-700"}`}>
+                  {mvpLabel}
+                </span>
+                <span className={`ml-auto text-[8px] ${isNight ? "text-indigo-400" : "text-stone-400"}`}>
+                  {mvpReport.completedTasks}건
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-stone-200 bg-white shadow-sm">
@@ -13,41 +71,32 @@ export function DailyReportWidget() {
         <h3 className="text-sm font-semibold text-stone-900">일일 리포트</h3>
       </div>
       <div className="p-5">
-        {dailyReport ? (
-          <div className="space-y-5">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{dailyReport.date}</p>
-              <p className="mt-1 text-3xl font-bold text-stone-900">{dailyReport.totalTasks.toLocaleString()}</p>
-              <p className="text-sm text-stone-500">오늘 추적된 작업 수</p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <Metric label="완료율" value={`${dailyReport.completionRate.toFixed(1)}%`} tone="text-green-600" />
-              <Metric label="완료 작업" value={dailyReport.completedTasks.toLocaleString()} tone="text-stone-900" />
-              <Metric label="토큰 소모량" value={dailyReport.tokenConsumption.toLocaleString()} tone="text-amber-700" />
-            </div>
-
-            <div className="rounded-lg bg-amber-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-amber-700">오늘의 MVP</p>
-              {dailyReport.mvpAgent ? (
-                <>
-                  <p className="mt-2 text-lg font-semibold text-amber-950">
-                    {mvpAgent?.nameKo ?? dailyReport.mvpAgent.id}
-                  </p>
-                  <p className="text-sm text-amber-800">
-                    {dailyReport.mvpAgent.completedTasks.toLocaleString()}개 작업 완료, {dailyReport.mvpAgent.totalTokens.toLocaleString()} 토큰 사용
-                  </p>
-                </>
-              ) : (
-                <p className="mt-2 text-sm text-amber-800">아직 오늘의 MVP가 결정되지 않았습니다.</p>
-              )}
-            </div>
+        <div className="space-y-5">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{reportDate}</p>
           </div>
-        ) : (
-          <div className="py-10 text-center text-sm text-stone-400">
-            서버에서 오늘의 작업을 집계하면 일일 리포트가 여기에 표시됩니다.
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Metric label="오늘 커밋" value={`${commitCount.toLocaleString()}건`} tone="text-sky-700" />
+            <Metric label="토큰 소모량" value={tokenConsumption.toLocaleString()} tone="text-amber-700" />
           </div>
-        )}
+
+          <div className="rounded-lg bg-amber-50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-amber-700">오늘의 MVP</p>
+            {dailyReport?.mvpAgent ? (
+              <>
+                <p className="mt-2 text-lg font-semibold text-amber-950">
+                  {mvpAgent?.nameKo ?? dailyReport.mvpAgent.id}
+                </p>
+                <p className="text-sm text-amber-800">
+                  {dailyReport.mvpAgent.completedTasks.toLocaleString()}개 작업 완료, {dailyReport.mvpAgent.totalTokens.toLocaleString()} 토큰 사용
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-amber-800">아직 오늘의 MVP가 결정되지 않았습니다.</p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

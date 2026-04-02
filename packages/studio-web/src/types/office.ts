@@ -12,6 +12,7 @@ export interface OfficeCharacter {
   role: string;
   team: string;
   state: AgentState;
+  task?: string | null;
   position: OfficePosition;
   spriteSheet: string;
   image?: string;
