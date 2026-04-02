@@ -5,6 +5,7 @@ export type NodeType = "session" | "team" | "worker";
 export type TeamSkillId = "kuma" | "dev-team" | "analytics-team" | "strategy-team";
 export type InstalledSkillId =
   | "codex-autoresearch"
+  | "frontend-design"
   | "gateproof-full-security-check"
   | "imagegen"
   | "kuma-picker";
@@ -56,28 +57,8 @@ type SharedTeamMember = (typeof teamData.members)[number];
 
 const TEAM_NAME_BY_ID = new Map(teamData.teams.map((team) => [team.id, team.name] as const));
 
-const AGENT_SKILL_IDS = new Set<AgentSkillId>([
-  "kuma",
-  "dev-team",
-  "analytics-team",
-  "strategy-team",
-  "codex-autoresearch",
-  "gateproof-full-security-check",
-  "imagegen",
-  "kuma-picker",
-  "codex:rescue",
-  "nano-banana",
-  "security-threat-intel",
-  "codex-autoresearch:fix",
-  "codex-autoresearch:debug",
-  "codex-autoresearch:security",
-  "codex-autoresearch:ship",
-  "codex-autoresearch:learn",
-  "codex-autoresearch:plan",
-  "codex-autoresearch:reason",
-  "codex-autoresearch:scenario",
-  "codex-autoresearch:predict",
-]);
+// team.json is the single source of truth — skills array contains only valid IDs
+const AGENT_SKILL_IDS = new Set<string>(teamData.members.flatMap((m) => m.skills));
 
 function toNodeType(nodeType: SharedTeamMember["nodeType"]): NodeType {
   if (nodeType === "session" || nodeType === "team" || nodeType === "worker") {
