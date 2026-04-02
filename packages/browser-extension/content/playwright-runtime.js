@@ -1798,6 +1798,42 @@ async function executePageSetContent(command) {
   };
 }
 
+async function executePageGoto(command) {
+  const url = command?.url;
+  if (typeof url !== "string") {
+    throw new Error("page.goto requires a 'url' string parameter.");
+  }
+  window.location.href = url;
+  return { page: buildPageRecord() };
+}
+
+async function executePageReload() {
+  window.location.reload();
+  return { page: buildPageRecord() };
+}
+
+async function executePageScreenshot() {
+  // Content scripts cannot use chrome.tabs.captureVisibleTab directly.
+  // Send a message to the background/service worker to capture the tab.
+  return new Promise((resolve, reject) => {
+    if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.sendMessage) {
+      chrome.runtime.sendMessage({ type: "captureVisibleTab" }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (response && response.dataUrl) {
+          resolve({ screenshot: response.dataUrl, page: buildPageRecord() });
+        } else {
+          reject(new Error("Failed to capture screenshot"));
+        }
+      });
+    } else {
+      reject(new Error("chrome.runtime.sendMessage not available in this context"));
+    }
+  });
+}
+
 async function executePageOffDialog() {
   const captured = [...dialogInterceptState.capturedDialogs];
   uninstallDialogIntercept();
@@ -2248,6 +2284,12 @@ async function executeAutomationCommand(command) {
       return executePageContent();
     case "page.setContent":
       return executePageSetContent(command);
+    case "page.goto":
+      return executePageGoto(command);
+    case "page.reload":
+      return executePageReload();
+    case "page.screenshot":
+      return executePageScreenshot();
     default:
       throw new Error(`Unsupported Kuma Playwright action: ${String(command.action)}`);
   }

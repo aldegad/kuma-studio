@@ -201,6 +201,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           sendResponse({ ok: true });
           return;
+        case "captureVisibleTab": {
+          const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "png" });
+          sendResponse({ dataUrl });
+          return;
+        }
         default:
           sendResponse({
             ok: false,
