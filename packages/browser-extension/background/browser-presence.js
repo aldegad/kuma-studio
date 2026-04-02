@@ -1,5 +1,5 @@
 const knownBrowserTabs = new Map();
-const BROWSER_COMMAND_CAPABILITIES = ["run"];
+const BROWSER_COMMAND_CAPABILITIES = ["run", "screenshot"];
 const KNOWN_TAB_MAX_AGE_MS = 300_000; // 5 minutes
 
 function removeKnownBrowserTab(tabId) {

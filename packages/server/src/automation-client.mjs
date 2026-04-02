@@ -141,6 +141,17 @@ export class AutomationClient {
   }
 
   async send(action, payload = {}, { timeoutMs } = {}) {
+    return this.sendCommand(
+      {
+        type: "playwright",
+        action,
+        ...payload,
+      },
+      { timeoutMs },
+    );
+  }
+
+  async sendCommand(command, { timeoutMs } = {}) {
     await this.connect();
 
     const requestId = `automation-${randomUUID()}`;
@@ -168,11 +179,12 @@ export class AutomationClient {
           type: "command.request",
           requestId,
           command: {
-            type: "playwright",
-            action,
-            ...payload,
             ...this.#targets,
-            timeoutMs: effectiveTimeoutMs,
+            ...(command && typeof command === "object" ? command : {}),
+            timeoutMs:
+              Number.isFinite(command?.timeoutMs) && command.timeoutMs > 0
+                ? Math.round(command.timeoutMs)
+                : effectiveTimeoutMs,
           },
         }),
       );

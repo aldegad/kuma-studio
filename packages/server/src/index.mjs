@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { commandGetBrowserSession } from "./browser-cli.mjs";
+import { commandBrowserScreenshot, commandGetBrowserSession } from "./browser-cli.mjs";
 import { commandRun } from "./playwright-runner.mjs";
 import { parseFlags, readNumber, readOptionalString, requireString } from "./cli-options.mjs";
 export { createServer } from "./server.mjs";
@@ -25,6 +25,7 @@ Usage:
   kuma-studio get-job-card [--session-id session-01] [--daemon-url http://127.0.0.1:4312]
   kuma-studio get-extension-status [--root .]
   kuma-studio get-browser-session [--daemon-url http://127.0.0.1:4312]
+  kuma-studio browser-screenshot [--file /tmp/kuma-studio-screenshot.png] [--tab-id 123] [--url-contains "example.com"] [--daemon-url http://127.0.0.1:4312]
   kuma-studio run [script.js] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url http://127.0.0.1:4312]
   kuma-studio set-job-status --status in_progress --message "Write a short progress note" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url http://127.0.0.1:4312] [--root .]
   kuma-studio put-scene --file ./scene.json [--root .]
@@ -376,6 +377,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "get-browser-session":
       await commandGetBrowserSession(options);
+      return;
+    case "browser-screenshot":
+      await commandBrowserScreenshot(options);
       return;
     case "run":
       await commandRun(options, fileArg);

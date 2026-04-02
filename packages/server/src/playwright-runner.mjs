@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import util from "node:util";
 
 import { AutomationClient, getDaemonUrlFromOptions, requireTarget } from "./automation-client.mjs";
 import { readNumber } from "./cli-options.mjs";
-import { createPage, createPageState } from "./playwright-page-facade.mjs";
-import { AsyncFunction, createScriptConsole } from "./playwright-runner-support.mjs";
 
 async function readScriptSource(fileArg) {
   if (typeof fileArg === "string" && fileArg.trim()) {
@@ -36,87 +35,54 @@ function validateScriptSource(scriptSource) {
   return scriptSource;
 }
 
-function detectScriptPattern(source) {
-  if (/\bmodule\s*\.\s*exports\b/.test(source)) {
-    return "commonjs";
+function formatRunLogLine(entry) {
+  if (typeof entry?.message === "string" && entry.message) {
+    return entry.message;
   }
 
-  if (
-    /\bexport\s+default\b/.test(source) ||
-    /\bexport\s+(?:async\s+)?function\b/.test(source) ||
-    /\bexport\s*\{/.test(source)
-  ) {
-    return "esm";
+  const values = Array.isArray(entry?.values) ? entry.values : [];
+  if (values.length === 0) {
+    return "";
   }
 
-  return "top-level";
-}
-
-function stripEsmExports(source) {
-  return source
-    .replace(/\bexport\s+default\s+/g, "__default_export__ = ")
-    .replace(/\bexport\s+(?=async\s+function|function|const|let|var|class)/g, "")
-    .replace(/\bexport\s*\{[^}]*\}\s*;?/g, "");
+  return values
+    .map((value) =>
+      typeof value === "string"
+        ? value
+        : util.inspect(value, {
+            colors: false,
+            depth: 6,
+            compact: 3,
+            breakLength: Infinity,
+          }),
+    )
+    .join(" ");
 }
 
 export async function commandRunSource(options, scriptSource) {
   const resolvedSource = validateScriptSource(scriptSource);
   const targets = requireTarget(options);
-  const state = createPageState();
   const client = new AutomationClient({
     daemonUrl: getDaemonUrlFromOptions(options),
     targets,
     defaultTimeoutMs: readNumber(options, "timeout-ms", 15_000),
   });
-  const page = createPage(client, state);
-  const scriptConsole = createScriptConsole();
-  const scriptPattern = detectScriptPattern(resolvedSource);
 
   try {
-    if (scriptPattern === "commonjs") {
-      const moduleObj = { exports: {} };
-      const executor = new AsyncFunction(
-        "page",
-        "console",
-        "module",
-        "exports",
-        `"use strict";
-${resolvedSource}
-const __exported = module.exports;
-const __run = typeof __exported === "function" ? __exported : __exported?.run;
-if (typeof __run === "function") {
-  await __run({ page });
-}
-`,
-      );
-      await executor(page, scriptConsole, moduleObj, moduleObj.exports);
-      return;
-    }
+    const result = await client.send("script.run", {
+      source: resolvedSource,
+    });
 
-    if (scriptPattern === "esm") {
-      const strippedSource = stripEsmExports(resolvedSource);
-      const executor = new AsyncFunction(
-        "page",
-        "console",
-        `"use strict";
-let __default_export__;
-${strippedSource}
-const __run = typeof run === "function" ? run : __default_export__;
-if (typeof __run === "function") {
-  await __run({ page });
-}
-`,
-      );
-      await executor(page, scriptConsole);
-      return;
-    }
+    const logs = Array.isArray(result?.logs) ? result.logs : [];
+    for (const entry of logs) {
+      const line = formatRunLogLine(entry);
+      if (!line) {
+        continue;
+      }
 
-    const executor = new AsyncFunction(
-      "page",
-      "console",
-      `"use strict"; return (async () => {\n${resolvedSource}\n})();`,
-    );
-    await executor(page, scriptConsole);
+      const sink = entry?.level === "warn" || entry?.level === "error" ? process.stderr : process.stdout;
+      sink.write(`${line}\n`);
+    }
   } finally {
     await client.close();
   }

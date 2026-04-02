@@ -148,7 +148,7 @@ export function sanitizeCommandPayload(candidate) {
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
     (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
 
-  if (!hasTarget && type !== "navigate") {
+  if (!hasTarget && type !== "navigate" && type !== "screenshot") {
     throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
   }
 
@@ -208,7 +208,7 @@ export function sanitizeCommandPayload(candidate) {
       value: cloneValue(candidate.value ?? null),
       arg: cloneValue(candidate.arg ?? null),
       kind: sanitizeString(candidate.kind, 64),
-      source: typeof candidate.source === "string" ? candidate.source.slice(0, 16_000) : null,
+      source: typeof candidate.source === "string" ? candidate.source.slice(0, 256_000) : null,
     };
   }
 
@@ -247,7 +247,7 @@ export function sanitizeCommandPayload(candidate) {
   const waypoints = sanitizeWaypoints(candidate.waypoints);
   const files = sanitizeFileList(candidate.files);
   const sequenceSteps = Array.isArray(candidate.steps) ? cloneValue(candidate.steps) : null;
-  if (!hasTarget && type !== "navigate") {
+  if (!hasTarget && type !== "navigate" && type !== "screenshot") {
     throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
   }
   if (type === "navigate" && !navigationUrl) {
