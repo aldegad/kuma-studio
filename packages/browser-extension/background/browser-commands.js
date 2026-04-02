@@ -1015,19 +1015,44 @@ return null;
     };
   }
 
-  const executor = new AsyncFunction(
-    "page",
-    "console",
-    "chrome",
-    "globalThis",
-    `"use strict"; return (async () => {\n${source}\n})();`,
-  );
-  value = await executor(page, scriptConsole, chrome, globalThis);
-  return {
-    page: buildPageRecordFromTab(await chrome.tabs.get(tab.id)),
-    value,
-    logs,
-  };
+  // Try CDP Runtime.evaluate first — bypasses CSP restrictions (like Playwright).
+  try {
+    const cdpResult = await executeDebuggerEvaluateCommand(tab, {
+      source: `(async () => {\n${source}\n})()`,
+      kind: "expression",
+    });
+    if (cdpResult?.exception) {
+      throw new Error(cdpResult.exception.text || "CDP evaluation error");
+    }
+    return {
+      page: cdpResult.page ?? buildPageRecordFromTab(await chrome.tabs.get(tab.id)),
+      value: cdpResult.value ?? null,
+      logs,
+      evaluateBackend: "debugger",
+    };
+  } catch (cdpError) {
+    // Fall back to AsyncFunction in service worker (works when CSP allows eval,
+    // needed for scripts that reference page/console/chrome objects).
+    try {
+      const executor = new AsyncFunction(
+        "page",
+        "console",
+        "chrome",
+        "globalThis",
+        `"use strict"; return (async () => {\n${source}\n})();`,
+      );
+      value = await executor(page, scriptConsole, chrome, globalThis);
+      return {
+        page: buildPageRecordFromTab(await chrome.tabs.get(tab.id)),
+        value,
+        logs,
+      };
+    } catch (fallbackError) {
+      // Re-throw the original CDP error with fallback context if both paths fail
+      const msg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(`CDP failed: ${cdpError.message}; fallback also failed: ${msg}`);
+    }
+  }
 }
 
 async function executePageEvaluateCommand(tab, command) {

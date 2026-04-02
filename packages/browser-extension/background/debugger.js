@@ -293,12 +293,17 @@ async function executeDebuggerEvaluateCommand(tab, command = {}) {
 
     await chrome.debugger.sendCommand(debuggee, "Runtime.enable");
 
-    const evaluation = await chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
+    const evaluatePromise = chrome.debugger.sendCommand(debuggee, "Runtime.evaluate", {
       expression,
       awaitPromise: true,
       returnByValue: true,
       userGesture: true,
     });
+    const timeoutMs = command.timeoutMs ?? 15_000;
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`CDP Runtime.evaluate timed out after ${timeoutMs}ms`)), timeoutMs),
+    );
+    const evaluation = await Promise.race([evaluatePromise, timeoutPromise]);
 
     let currentTab = null;
     try {
