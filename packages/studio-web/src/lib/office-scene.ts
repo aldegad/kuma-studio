@@ -38,36 +38,32 @@ export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeC
 export const DEFAULT_OFFICE_CHARACTERS: OfficeCharacter[] = buildDefaultOfficeCharacters();
 
 export const DEFAULT_OFFICE_FURNITURE: OfficeFurniture[] = [
-  // Dev team desks
-  { id: "desk-dev-1", type: "desk", position: { x: 120, y: 220 }, imageUrl: "" },
-  { id: "desk-dev-2", type: "desk", position: { x: 260, y: 220 }, imageUrl: "" },
-  { id: "desk-dev-3", type: "desk", position: { x: 120, y: 360 }, imageUrl: "" },
-  { id: "desk-dev-4", type: "desk", position: { x: 260, y: 360 }, imageUrl: "" },
-  // Analytics team desks
-  { id: "desk-ana-1", type: "desk", position: { x: 660, y: 220 }, imageUrl: "" },
-  { id: "desk-ana-2", type: "desk", position: { x: 800, y: 220 }, imageUrl: "" },
-  // Strategy team desks
-  { id: "desk-str-1", type: "desk", position: { x: 660, y: 440 }, imageUrl: "" },
-  { id: "desk-str-2", type: "desk", position: { x: 800, y: 440 }, imageUrl: "" },
-  // Whiteboard
-  { id: "whiteboard-1", type: "whiteboard", position: { x: 460, y: 90 }, imageUrl: "" },
-  // Plants
-  { id: "plant-1", type: "plant", position: { x: 50, y: 60 }, imageUrl: "" },
-  { id: "plant-2", type: "plant", position: { x: 870, y: 60 }, imageUrl: "" },
-  { id: "plant-3", type: "plant", position: { x: 50, y: 500 }, imageUrl: "" },
-  { id: "plant-4", type: "plant", position: { x: 870, y: 560 }, imageUrl: "" },
-  // Coffee
-  { id: "coffee-1", type: "coffee", position: { x: 450, y: 560 }, imageUrl: "" },
-  // Chairs (near desks)
-  { id: "chair-1", type: "chair", position: { x: 190, y: 490 }, imageUrl: "" },
-  // Bookshelf
-  { id: "bookshelf-1", type: "bookshelf", position: { x: 460, y: 480 }, imageUrl: "" },
-  // Lounge sofa
-  { id: "sofa-1", type: "sofa", position: { x: 460, y: 350 }, imageUrl: "" },
-  // Printer
-  { id: "printer-1", type: "printer", position: { x: 350, y: 520 }, imageUrl: "" },
-  // Water cooler
-  { id: "watercooler-1", type: "watercooler", position: { x: 550, y: 520 }, imageUrl: "" },
+  // Dev team desks (left zone)
+  { id: "desk-dev-1", type: "desk", position: { x: 140, y: 200 }, imageUrl: "" },
+  { id: "desk-dev-2", type: "desk", position: { x: 260, y: 200 }, imageUrl: "" },
+  { id: "desk-dev-3", type: "desk", position: { x: 140, y: 320 }, imageUrl: "" },
+  { id: "desk-dev-4", type: "desk", position: { x: 260, y: 320 }, imageUrl: "" },
+  // Analytics team desks (right-top zone)
+  { id: "desk-ana-1", type: "desk", position: { x: 680, y: 200 }, imageUrl: "" },
+  { id: "desk-ana-2", type: "desk", position: { x: 790, y: 200 }, imageUrl: "" },
+  // Strategy team desks (right-bottom zone)
+  { id: "desk-str-1", type: "desk", position: { x: 680, y: 430 }, imageUrl: "" },
+  { id: "desk-str-2", type: "desk", position: { x: 790, y: 430 }, imageUrl: "" },
+  // Whiteboard (top center)
+  { id: "whiteboard-1", type: "whiteboard", position: { x: 450, y: 80 }, imageUrl: "" },
+  // Corner plants
+  { id: "plant-1", type: "plant", position: { x: 40, y: 50 }, imageUrl: "" },
+  { id: "plant-2", type: "plant", position: { x: 860, y: 50 }, imageUrl: "" },
+  { id: "plant-3", type: "plant", position: { x: 40, y: 560 }, imageUrl: "" },
+  { id: "plant-4", type: "plant", position: { x: 860, y: 560 }, imageUrl: "" },
+  // Common area (center)
+  { id: "sofa-1", type: "sofa", position: { x: 450, y: 340 }, imageUrl: "" },
+  { id: "coffee-1", type: "coffee", position: { x: 450, y: 420 }, imageUrl: "" },
+  // Utility area (bottom center)
+  { id: "printer-1", type: "printer", position: { x: 360, y: 530 }, imageUrl: "" },
+  { id: "watercooler-1", type: "watercooler", position: { x: 540, y: 530 }, imageUrl: "" },
+  // Bookshelf (side wall)
+  { id: "bookshelf-1", type: "bookshelf", position: { x: 40, y: 300 }, imageUrl: "" },
 ];
 
 export const DEFAULT_OFFICE_SCENE: OfficeScene = {
@@ -82,15 +78,15 @@ export const OFFICE_CANVAS_SIZE = {
 } as const;
 
 export const FURNITURE_SIZES: Record<string, { w: number; h: number }> = {
-  desk: { w: 80, h: 56 },
-  chair: { w: 40, h: 40 },
-  whiteboard: { w: 88, h: 72 },
-  plant: { w: 36, h: 44 },
-  coffee: { w: 72, h: 52 },
-  bookshelf: { w: 64, h: 72 },
-  sofa: { w: 80, h: 56 },
-  printer: { w: 48, h: 48 },
-  watercooler: { w: 32, h: 44 },
+  desk: { w: 56, h: 40 },
+  chair: { w: 28, h: 28 },
+  whiteboard: { w: 56, h: 48 },
+  plant: { w: 24, h: 30 },
+  coffee: { w: 48, h: 36 },
+  bookshelf: { w: 44, h: 50 },
+  sofa: { w: 56, h: 40 },
+  printer: { w: 36, h: 36 },
+  watercooler: { w: 24, h: 32 },
 };
 
 /** Team zone bounding rectangles for visual grouping in the office */

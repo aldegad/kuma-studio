@@ -11,7 +11,7 @@ export function OfficeBackground({ background: _background, isNight = false }: O
         alt="office background"
         className="absolute inset-0 w-full h-full object-cover pointer-events-none"
         draggable={false}
-        style={{ imageRendering: "pixelated" }}
+        style={{ imageRendering: "auto" }}
       />
       <div className={`absolute inset-0 pointer-events-none ${
         isNight ? "bg-gradient-to-b from-indigo-950/20 via-transparent to-indigo-950/10" : "bg-gradient-to-b from-transparent via-transparent to-amber-900/5"
