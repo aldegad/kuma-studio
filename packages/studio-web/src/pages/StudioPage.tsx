@@ -19,12 +19,14 @@ import { Character } from "../components/office/Character";
 import { Furniture } from "../components/office/Furniture";
 import { Whiteboard } from "../components/office/Whiteboard";
 import { SkillsPanel } from "../components/dashboard/SkillsPanel";
+import { ReferencePanel } from "../components/dashboard/ReferencePanel";
 import { DailyReportWidget } from "../components/dashboard/DailyReportWidget";
 import { ToastContainer, pushToast } from "../components/shared/Toast";
 import { ActivityFeed } from "../components/shared/ActivityFeed";
 import { AmbientParticles } from "../components/office/AmbientParticles";
 import { GitLogPanel } from "../components/dashboard/GitLogPanel";
 import { PlanPanel } from "../components/dashboard/PlanPanel";
+import { MemoPanel } from "../components/dashboard/MemoPanel";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
@@ -695,6 +697,7 @@ export function StudioPage() {
         <DailyReportWidget compact isNight={isNight} />
         <PlanPanel isNight={isNight} />
         <GitLogPanel isNight={isNight} />
+        <MemoPanel isNight={isNight} />
       </div>
 
       {/* Settings panel */}
@@ -792,6 +795,7 @@ export function StudioPage() {
       {/* Skills Panel — bottom-right floating panel                          */}
       {/* ------------------------------------------------------------------ */}
       <SkillsPanel />
+      <ReferencePanel />
 
       {/* ------------------------------------------------------------------ */}
       {/* Minimap — bottom-left                                               */}
