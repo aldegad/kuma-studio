@@ -8,6 +8,8 @@ interface DailyReportWidgetProps {
 
 export function DailyReportWidget({ compact = false, isNight = false }: DailyReportWidgetProps) {
   const dailyReport = useDashboardStore((state) => state.dailyReport);
+  const gitActivity = useDashboardStore((state) => state.gitActivity);
+  const commitCount = gitActivity.totalCommitsToday;
   const tokenConsumption = dailyReport?.tokenConsumption ?? 0;
   const mvpAgentId = dailyReport?.mvpAgent?.id ?? null;
   const reportDate = dailyReport?.date
@@ -28,6 +30,13 @@ export function DailyReportWidget({ compact = false, isNight = false }: DailyRep
           일일 리포트
         </p>
         <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className={`text-[10px] ${isNight ? "text-indigo-300" : "text-stone-500"}`}>오늘 커밋</span>
+            <span className={`text-xs font-bold ${isNight ? "text-white" : "text-stone-800"}`}>
+              {commitCount}건
+            </span>
+          </div>
+
           {tokenConsumption > 0 && (
             <div className="flex items-center justify-between">
               <span className={`text-[10px] ${isNight ? "text-indigo-300" : "text-stone-500"}`}>토큰</span>
@@ -42,7 +51,7 @@ export function DailyReportWidget({ compact = false, isNight = false }: DailyRep
               <span className={`text-[9px] ${isNight ? "text-indigo-400" : "text-stone-400"}`}>MVP</span>
               <div className="mt-0.5 flex items-center gap-1">
                 <span className="text-sm" aria-hidden="true">{mvpEmoji}</span>
-                <span className={`text-[10px] font-semibold ${isNight ? "text-stone-200" : "text-stone-700"}`}>
+                <span className={`text-[10px] font-semibold ${isNight ? "text-amber-200" : "text-amber-700"}`}>
                   {mvpLabel}
                 </span>
                 <span className={`ml-auto text-[8px] ${isNight ? "text-indigo-400" : "text-stone-400"}`}>
@@ -50,12 +59,6 @@ export function DailyReportWidget({ compact = false, isNight = false }: DailyRep
                 </span>
               </div>
             </div>
-          )}
-
-          {tokenConsumption === 0 && !mvpReport && (
-            <p className={`text-[10px] ${isNight ? "text-indigo-400/70" : "text-stone-400"}`}>
-              오늘 기록된 활동이 없습니다.
-            </p>
           )}
         </div>
       </div>
@@ -73,23 +76,24 @@ export function DailyReportWidget({ compact = false, isNight = false }: DailyRep
             <p className="text-xs font-medium uppercase tracking-wide text-stone-400">{reportDate}</p>
           </div>
 
-          <div>
-            <Metric label="토큰 소모량" value={tokenConsumption.toLocaleString()} tone="text-stone-700" />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Metric label="오늘 커밋" value={`${commitCount.toLocaleString()}건`} tone="text-sky-700" />
+            <Metric label="토큰 소모량" value={tokenConsumption.toLocaleString()} tone="text-amber-700" />
           </div>
 
-          <div className="rounded-lg bg-stone-100 p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-stone-600">오늘의 MVP</p>
+          <div className="rounded-lg bg-amber-50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-amber-700">오늘의 MVP</p>
             {dailyReport?.mvpAgent ? (
               <>
-                <p className="mt-2 text-lg font-semibold text-stone-800">
+                <p className="mt-2 text-lg font-semibold text-amber-950">
                   {mvpAgent?.nameKo ?? dailyReport.mvpAgent.id}
                 </p>
-                <p className="text-sm text-stone-600">
+                <p className="text-sm text-amber-800">
                   {dailyReport.mvpAgent.completedTasks.toLocaleString()}개 작업 완료, {dailyReport.mvpAgent.totalTokens.toLocaleString()} 토큰 사용
                 </p>
               </>
             ) : (
-              <p className="mt-2 text-sm text-stone-500">아직 오늘의 MVP가 결정되지 않았습니다.</p>
+              <p className="mt-2 text-sm text-amber-800">아직 오늘의 MVP가 결정되지 않았습니다.</p>
             )}
           </div>
         </div>

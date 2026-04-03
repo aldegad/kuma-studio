@@ -10,7 +10,6 @@ import { homedir } from "node:os";
 import { resolve, join, extname, relative, isAbsolute } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { readPlans } from "./plan-store.mjs";
-import { listClaudePlans, deleteClaudePlan } from "./claude-plans-store.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -146,29 +145,6 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
           error: "Failed to read plans.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
-      }
-      return true;
-    }
-
-    if (url.pathname === "/studio/claude-plans" && req.method === "GET") {
-      try {
-        sendJson(res, 200, { plans: await listClaudePlans() });
-      } catch (error) {
-        sendJson(res, 500, {
-          error: "Failed to read Claude plans.",
-          details: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-      return true;
-    }
-
-    if (url.pathname.startsWith("/studio/claude-plans/") && req.method === "DELETE") {
-      const filename = decodeURIComponent(url.pathname.split("/studio/claude-plans/")[1]);
-      const result = await deleteClaudePlan(filename);
-      if (result.success) {
-        sendJson(res, 200, { success: true });
-      } else {
-        sendJson(res, result.status || 500, { error: result.error });
       }
       return true;
     }

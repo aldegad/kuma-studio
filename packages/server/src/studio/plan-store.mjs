@@ -128,17 +128,15 @@ export async function readPlans() {
     return { plans: [], totalItems: 0, checkedItems: 0, overallCompletionRate: 0 };
   }
 
-  const files = await readdir(plansDir, { recursive: true });
-  const mdFiles = files
-    .filter((f) => f.endsWith(".md") && basename(f) !== "index.md")
-    .sort();
+  const files = await readdir(plansDir);
+  const mdFiles = files.filter((f) => f.endsWith(".md")).sort();
 
   const plans = [];
   let totalItems = 0;
   let checkedItems = 0;
 
   for (const file of mdFiles) {
-    const planId = file.replace(/\.md$/u, "");
+    const planId = basename(file, ".md");
 
     try {
       const content = await readFile(join(plansDir, file), "utf8");

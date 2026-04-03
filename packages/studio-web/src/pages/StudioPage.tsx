@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchDailyReport, fetchJobCards, fetchOfficeLayout, fetchStats, saveOfficeLayout } from "../lib/api";
 import { useWebSocket } from "../hooks/use-websocket";
 import { useDashboardStore } from "../stores/use-dashboard-store";
@@ -26,9 +26,7 @@ import { ActivityFeed } from "../components/shared/ActivityFeed";
 import { AmbientParticles } from "../components/office/AmbientParticles";
 import { GitLogPanel } from "../components/dashboard/GitLogPanel";
 import { PlanPanel } from "../components/dashboard/PlanPanel";
-import { ClaudePlansCachePanel } from "../components/dashboard/ClaudePlansCachePanel";
 import { MemoPanel } from "../components/dashboard/MemoPanel";
-import { DraggableDashboard, type DashboardPanelItem } from "../components/dashboard/DraggableDashboard";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
@@ -505,56 +503,6 @@ export function StudioPage() {
     : "linear-gradient(135deg, #1e1b4b 0%, #312e81 30%, #1e1b4b 100%)"; // night
   const isNight = hour >= 20 || hour < 6;
 
-  const activityCount = useActivityStore((state) => state.events.length);
-
-  const dashboardPanels = useMemo<DashboardPanelItem[]>(
-    () => [
-      {
-        id: "daily-report",
-        title: "일일 리포트",
-        content: <DailyReportWidget compact isNight={isNight} />,
-      },
-      {
-        id: "plan-panel",
-        title: "계획 진행률",
-        content: <PlanPanel isNight={isNight} />,
-      },
-      {
-        id: "claude-plans-cache",
-        title: "Claude Plans Cache",
-        content: <ClaudePlansCachePanel isNight={isNight} />,
-      },
-      {
-        id: "git-log",
-        title: "커밋 로그",
-        content: <GitLogPanel isNight={isNight} />,
-      },
-      {
-        id: "memo",
-        title: "메모",
-        content: <MemoPanel isNight={isNight} />,
-      },
-      {
-        id: "activity-feed",
-        title: "활동 로그",
-        content: <ActivityFeed />,
-        hidden: activityCount === 0,
-      },
-      {
-        id: "skills",
-        title: "스킬",
-        content: <SkillsPanel />,
-      },
-      {
-        id: "reference",
-        title: "참고문서",
-        content: <ReferencePanel />,
-        className: "xl:col-span-2",
-      },
-    ],
-    [activityCount, isNight],
-  );
-
   return (
     <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: ambientBg, transition: "background 60s ease" }}>
 
@@ -744,8 +692,13 @@ export function StudioPage() {
       {/* Toast notifications */}
       <ToastContainer />
 
-      {/* Sortable dashboard panels */}
-      <DraggableDashboard panels={dashboardPanels} />
+      {/* Left panels — daily report + plans + git log */}
+      <div className="absolute top-14 left-4 z-30 w-56 space-y-2">
+        <DailyReportWidget compact isNight={isNight} />
+        <PlanPanel isNight={isNight} />
+        <GitLogPanel isNight={isNight} />
+        <MemoPanel isNight={isNight} />
+      </div>
 
       {/* Settings panel */}
       <SettingsPanel
@@ -762,6 +715,8 @@ export function StudioPage() {
         return char ? <CharacterDetailPanel character={char} isNight={isNight} onClose={() => setSelectedCharId(null)} /> : null;
       })()}
 
+      {/* Activity feed — bottom-right */}
+      <ActivityFeed />
 
       {/* ------------------------------------------------------------------ */}
       {/* Pipeline HUD — top-right floating panel                             */}
@@ -836,6 +791,11 @@ export function StudioPage() {
         <button type="button" onClick={fitToScreen} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="전체 보기" aria-label="전체 보기">{"\u2B1C"}</button>
       </div>
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Skills Panel — bottom-right floating panel                          */}
+      {/* ------------------------------------------------------------------ */}
+      <SkillsPanel />
+      <ReferencePanel />
 
       {/* ------------------------------------------------------------------ */}
       {/* Minimap — bottom-left                                               */}
