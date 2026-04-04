@@ -1,7 +1,9 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { AutomationClient, fetchJson, getDaemonUrlFromOptions, readTargetOptions } from "./automation-client.mjs";
+import { runWithBrowserAutoRecovery } from "./browser-auto-recovery.mjs";
 import { readNumber, readOptionalString } from "./cli-options.mjs";
 
 const DEFAULT_BROWSER_SCREENSHOT_PATH = "/tmp/kuma-studio-screenshot.png";
@@ -58,17 +60,23 @@ export async function commandBrowserScreenshot(options) {
   });
 
   try {
-    const result = await client.send(
-      "page.screenshot",
-      {
-        ...targets,
-      },
-      {
-        timeoutMs,
-      },
-    );
+    const result = await runWithBrowserAutoRecovery({
+      daemonUrl,
+      targets,
+      allowImageReadbackRetry: true,
+      execute: () =>
+        client.send(
+          "page.screenshot",
+          {
+            ...targets,
+          },
+          {
+            timeoutMs,
+          },
+        ),
+    });
     const screenshot = decodeScreenshotBase64(result);
-    await mkdir(path.dirname(filePath), { recursive: true });
+    mkdirSync(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, Buffer.from(screenshot.base64, "base64"));
     process.stdout.write(
       `${JSON.stringify(

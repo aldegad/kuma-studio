@@ -7,7 +7,7 @@ import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolve, join, extname, relative, isAbsolute } from "node:path";
+import { resolve, join, extname, basename, relative, isAbsolute } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { readPlans } from "./plan-store.mjs";
 import { listClaudePlans, deleteClaudePlan } from "./claude-plans-store.mjs";
@@ -93,6 +93,74 @@ async function readStudioPlugins() {
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// File-system explorer helpers
+// ---------------------------------------------------------------------------
+
+const SKIP_DIRS = new Set(["node_modules", ".git", "dist", ".venv", "__pycache__", ".next", ".turbo", "build", "coverage", ".cache"]);
+const fsWorkspaceRoot = resolve(process.env.KUMA_STUDIO_WORKSPACE || join(homedir(), "Documents", "workspace"));
+const fsAllowedRoots = [
+  fsWorkspaceRoot,
+  resolve(join(homedir(), ".claude")),
+  resolve(join(homedir(), ".codex")),
+];
+
+function isAllowedPath(candidatePath) {
+  const resolved = resolve(candidatePath);
+  return fsAllowedRoots.some((root) => resolved.startsWith(root));
+}
+
+async function buildFsTree(dirPath, maxDepth, currentDepth) {
+  const name = basename(dirPath);
+  const hidden = name.startsWith(".");
+  const node = { name, path: dirPath, type: "dir", hidden };
+
+  if (SKIP_DIRS.has(name) && currentDepth > 0) {
+    node.expandable = false;
+    return node;
+  }
+
+  if (currentDepth >= maxDepth) {
+    node.children = [];
+    return node;
+  }
+
+  try {
+    const entries = await readdir(dirPath, { withFileTypes: true });
+    const children = [];
+
+    for (const entry of entries) {
+      const childPath = join(dirPath, entry.name);
+      const childHidden = entry.name.startsWith(".");
+
+      if (entry.isDirectory()) {
+        children.push(await buildFsTree(childPath, maxDepth, currentDepth + 1));
+      } else if (entry.isFile()) {
+        const s = await stat(childPath).catch(() => null);
+        children.push({
+          name: entry.name,
+          path: childPath,
+          type: "file",
+          hidden: childHidden,
+          size: s ? s.size : undefined,
+        });
+      }
+    }
+
+    // Sort: dirs first, then files, alphabetical within each group
+    children.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    node.children = children;
+  } catch {
+    node.children = [];
+  }
+
+  return node;
 }
 
 /**
@@ -262,6 +330,89 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
         status: agentStateManager.getState(agentId),
         task: agentStateManager.getTask(agentId),
       });
+      return true;
+    }
+
+    // ------------------------------------------------------------------
+    // File-system endpoints for IDE explorer
+    // ------------------------------------------------------------------
+
+    if (url.pathname === "/studio/fs/tree" && req.method === "GET") {
+      const root = url.searchParams.get("root") || fsWorkspaceRoot;
+      const depth = Math.min(Math.max(parseInt(url.searchParams.get("depth") || "2", 10) || 2, 1), 5);
+
+      const resolvedRoot = resolve(root);
+      if (!isAllowedPath(resolvedRoot)) {
+        sendJson(res, 403, { error: "Path outside allowed directories." });
+        return true;
+      }
+
+      try {
+        const tree = await buildFsTree(resolvedRoot, depth, 0);
+        sendJson(res, 200, tree);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read directory tree.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/fs/read" && req.method === "GET") {
+      const filePath = url.searchParams.get("path");
+      if (!filePath) {
+        sendJson(res, 400, { error: "Missing path parameter." });
+        return true;
+      }
+
+      const resolved = resolve(filePath);
+      if (!isAllowedPath(resolved)) {
+        sendJson(res, 403, { error: "Path outside allowed directories." });
+        return true;
+      }
+
+      try {
+        const s = await stat(resolved);
+        if (!s.isFile()) {
+          sendJson(res, 400, { error: "Not a file." });
+          return true;
+        }
+
+        const ext = extname(resolved).toLowerCase();
+        const imageExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
+        const imageMimeMap = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp" };
+
+        if (imageExts.has(ext)) {
+          const buf = await readFile(resolved);
+          sendJson(res, 200, { content: buf.toString("base64"), mimeType: imageMimeMap[ext] || "application/octet-stream" });
+          return true;
+        }
+
+        // Check if binary by reading first 8KB
+        const buf = await readFile(resolved);
+        const sample = buf.subarray(0, 8192);
+        if (sample.includes(0)) {
+          sendJson(res, 200, { binary: true, size: s.size });
+          return true;
+        }
+
+        const langMap = {
+          ".ts": "typescript", ".tsx": "typescript", ".js": "javascript", ".jsx": "javascript",
+          ".mjs": "javascript", ".cjs": "javascript", ".json": "json", ".md": "markdown",
+          ".html": "html", ".css": "css", ".scss": "scss", ".py": "python", ".sh": "bash",
+          ".yml": "yaml", ".yaml": "yaml", ".toml": "toml", ".xml": "xml", ".sql": "sql",
+          ".rs": "rust", ".go": "go", ".java": "java", ".rb": "ruby", ".php": "php",
+          ".c": "c", ".cpp": "cpp", ".h": "c", ".hpp": "cpp", ".swift": "swift",
+        };
+
+        sendJson(res, 200, { content: buf.toString("utf8"), language: langMap[ext] || "plaintext" });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read file.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
       return true;
     }
 

@@ -548,7 +548,9 @@ export function createServer({ host, port, root }) {
       }
 
       if (request.method === "POST" && url.pathname === "/extension-status") {
-        extensionStatusStore.write(await readJsonBody(request));
+        const payload = await readJsonBody(request);
+        extensionStatusStore.write(payload);
+        browserSessionStore.recordExtensionHeartbeat(payload);
         sendJson(response, 200, extensionStatusStore.readSummary());
         return;
       }

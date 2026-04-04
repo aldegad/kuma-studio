@@ -9,7 +9,9 @@ import {
   nowIso,
   sanitizeCommandEnvelope,
   sanitizeCommandResultPayload,
+  sanitizeCapabilities,
   sanitizeHelloPayload,
+  sanitizePage,
   sanitizePresencePayload,
   sanitizeString,
   toTimestamp,
@@ -43,7 +45,8 @@ export class BrowserSessionStore {
       controller?.send(
         createSocketEnvelope("command.error", {
           requestId,
-          error: "The target browser connection disconnected before the command completed and did not reconnect in time.",
+          error:
+            "The target browser connection disconnected before the command completed and did not reconnect in time. Try page.goto() instead of page.reload() for stale connections.",
         }),
       );
       this.inFlightCommands.delete(requestId);
@@ -171,6 +174,56 @@ export class BrowserSessionStore {
     };
   }
 
+  recordExtensionHeartbeat(payload) {
+    this.pruneExpiredInFlightCommands();
+    const extensionId = sanitizeString(payload?.extensionId, 128);
+    const extensionName = sanitizeString(payload?.extensionName, 128) ?? "Kuma Picker Bridge";
+    const extensionVersion = sanitizeString(payload?.extensionVersion, 64) ?? "0.0.0";
+    const browserName = sanitizeString(payload?.browserName, 64) ?? "chrome";
+    const lastSeenAt = sanitizeString(payload?.lastSeenAt, 64) ?? nowIso();
+    const source = sanitizeString(payload?.source, 128) ?? "extension:heartbeat";
+    const page = sanitizePage(payload?.page);
+    const capabilities = sanitizeCapabilities(payload?.capabilities ?? ["run", "screenshot"]);
+
+    this.metadata = {
+      extensionId,
+      extensionName,
+      extensionVersion,
+      browserName,
+      updatedAt: lastSeenAt,
+    };
+
+    if (!page) {
+      return this.readSummary();
+    }
+
+    for (const [sessionKey, session] of [...this.sessions.entries()]) {
+      if (session?.connectionId == null && session?.extensionId === extensionId) {
+        this.sessions.delete(sessionKey);
+      }
+    }
+
+    const sessionKey = `page:${page.url ?? extensionId ?? "extension-heartbeat"}`;
+    this.sessions.set(sessionKey, {
+      connectionId: null,
+      extensionId,
+      extensionName,
+      extensionVersion,
+      browserName,
+      updatedAt: lastSeenAt,
+      source,
+      lastSeenAt,
+      tabId: null,
+      page,
+      capabilities,
+      visible: false,
+      focused: false,
+      browserUserAgent: null,
+    });
+
+    return this.readSummary();
+  }
+
   dispatchControllerCommand(connectionId, payload) {
     this.pruneExpiredInFlightCommands();
     const controller = this.controllerConnections.get(connectionId);
@@ -191,7 +244,7 @@ export class BrowserSessionStore {
       }
 
       throw new Error(
-        "No active browser connection is available. Refresh the target page once so the extension can send a fresh presence heartbeat.",
+        "No active browser connection is available. Refresh the target page once so the extension can send a fresh presence heartbeat. Try page.goto() instead of page.reload() for stale connections.",
       );
     }
 

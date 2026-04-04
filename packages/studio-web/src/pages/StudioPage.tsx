@@ -32,6 +32,9 @@ import { DraggableDashboard, type DashboardPanelItem } from "../components/dashb
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
+import { FileExplorer } from "../components/ide/FileExplorer";
+import { CodeViewer } from "../components/ide/CodeViewer";
+import { ImageViewer } from "../components/ide/ImageViewer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -188,6 +191,33 @@ export function StudioPage() {
   const [selectedCharId, setSelectedCharId] = useState<string | null>(null);
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [particlesEnabled, setParticlesEnabled] = useState(true);
+
+  // IDE File Explorer
+  const [explorerOpen, setExplorerOpen] = useState(false);
+  const [viewerFile, setViewerFile] = useState<{
+    type: "code"; content: string; language: string; path: string;
+  } | {
+    type: "image"; content: string; mimeType: string; path: string;
+  } | {
+    type: "binary"; size: number; path: string;
+  } | null>(null);
+
+  const handleFileSelect = useCallback(async (path: string) => {
+    try {
+      const kumaPort = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
+      const baseUrl = `http://${window.location.hostname}:${kumaPort}`;
+      const r = await fetch(`${baseUrl}/studio/fs/read?path=${encodeURIComponent(path)}`);
+      const data = await r.json();
+      if (data.error) return;
+      if (data.binary) {
+        setViewerFile({ type: "binary", size: data.size, path });
+      } else if (data.mimeType) {
+        setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path });
+      } else {
+        setViewerFile({ type: "code", content: data.content, language: data.language || "plaintext", path });
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   // Fit-to-screen: compute zoom & pan to show all characters
   const fitToScreen = useCallback(() => {
@@ -502,37 +532,44 @@ export function StudioPage() {
     {
       id: "daily-report",
       title: "일일 리포트",
+      className: "w-80",
       content: <DailyReportWidget compact isNight={isNight} />,
     },
     {
       id: "plan-panel",
       title: "계획 진행률",
+      className: "w-72",
       content: <PlanPanel isNight={isNight} />,
     },
     {
       id: "claude-plans-cache",
       title: "Claude Plans Cache",
+      className: "w-72",
       content: <ClaudePlansCachePanel isNight={isNight} />,
     },
     {
       id: "git-log",
       title: "커밋 로그",
+      className: "w-72",
       content: <GitLogPanel isNight={isNight} />,
     },
     {
       id: "memo",
       title: "메모",
+      className: "w-80",
       content: <MemoPanel isNight={isNight} />,
     },
     {
       id: "activity-feed",
       title: "활동 로그",
+      className: "w-72",
       content: <ActivityFeed />,
       hidden: activityCount === 0,
     },
     {
       id: "skills",
       title: "스킬",
+      className: "w-80",
       content: <SkillsPanel />,
     },
     {
@@ -748,7 +785,7 @@ export function StudioPage() {
     {
       id: "whiteboard",
       title: "작업 보드",
-      className: "w-[220px]",
+      className: "w-64",
       defaultPosition: { x: 290, y: 30 },
       content: <Whiteboard />,
     },
@@ -921,6 +958,19 @@ export function StudioPage() {
           >
             ?
           </button>
+          <button
+            type="button"
+            onClick={() => setExplorerOpen((v) => !v)}
+            className={`rounded-full h-5 flex items-center justify-center text-[10px] font-bold px-2 ${
+              explorerOpen
+                ? isNight ? "bg-amber-700 text-amber-200" : "bg-amber-100 text-amber-700"
+                : isNight ? "bg-indigo-800 text-indigo-300 hover:bg-indigo-700" : "bg-stone-100 text-stone-400 hover:bg-stone-200"
+            }`}
+            title="파일 탐색기 토글"
+            aria-label="파일 탐색기 열기/닫기"
+          >
+            {explorerOpen ? "✕ 파일" : "📂 파일"}
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -946,6 +996,35 @@ export function StudioPage() {
           </div>
         </div>
       </div>
+
+      {/* IDE File Explorer — left fixed panel */}
+      {explorerOpen && (
+        <div className="absolute left-0 top-10 bottom-0 z-40">
+          <FileExplorer
+            onFileSelect={handleFileSelect}
+            selectedPath={viewerFile?.path ?? null}
+            onCollapse={() => setExplorerOpen(false)}
+          />
+        </div>
+      )}
+
+      {/* File viewer overlay */}
+      {viewerFile?.type === "code" && (
+        <CodeViewer
+          content={viewerFile.content}
+          language={viewerFile.language}
+          filePath={viewerFile.path}
+          onClose={() => setViewerFile(null)}
+        />
+      )}
+      {viewerFile?.type === "image" && (
+        <ImageViewer
+          content={viewerFile.content}
+          mimeType={viewerFile.mimeType}
+          filePath={viewerFile.path}
+          onClose={() => setViewerFile(null)}
+        />
+      )}
 
       {/* Toast notifications */}
       <ToastContainer />

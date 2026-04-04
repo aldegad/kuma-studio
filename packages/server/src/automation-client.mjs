@@ -52,6 +52,9 @@ function withRecoveryHint(message) {
   }
 
   if (normalized.includes("No active browser connection is available")) {
+    if (normalized.includes("Try page.goto() instead of page.reload() for stale connections")) {
+      return normalized;
+    }
     return `${normalized} Refresh the target page once so the extension can send a fresh presence heartbeat.`;
   }
 

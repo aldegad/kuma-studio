@@ -3,6 +3,7 @@ import path from "node:path";
 import util from "node:util";
 
 import { AutomationClient, getDaemonUrlFromOptions, requireTarget } from "./automation-client.mjs";
+import { runWithBrowserAutoRecovery } from "./browser-auto-recovery.mjs";
 import { readNumber } from "./cli-options.mjs";
 
 async function readScriptSource(fileArg) {
@@ -61,16 +62,22 @@ function formatRunLogLine(entry) {
 
 export async function commandRunSource(options, scriptSource) {
   const resolvedSource = validateScriptSource(scriptSource);
+  const daemonUrl = getDaemonUrlFromOptions(options);
   const targets = requireTarget(options);
   const client = new AutomationClient({
-    daemonUrl: getDaemonUrlFromOptions(options),
+    daemonUrl,
     targets,
     defaultTimeoutMs: readNumber(options, "timeout-ms", 15_000),
   });
 
   try {
-    const result = await client.send("script.run", {
-      source: resolvedSource,
+    const result = await runWithBrowserAutoRecovery({
+      daemonUrl,
+      targets,
+      execute: () =>
+        client.send("script.run", {
+          source: resolvedSource,
+        }),
     });
 
     const logs = Array.isArray(result?.logs) ? result.logs : [];

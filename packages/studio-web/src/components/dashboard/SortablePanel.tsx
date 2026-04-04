@@ -32,7 +32,7 @@ export function FloatingPanel({
       aria-label={title}
       onMouseDown={onMouseDown}
       onClickCapture={onClickCapture}
-      className={`pointer-events-auto absolute left-0 top-0 w-[min(24rem,calc(100vw-2rem))] max-w-[calc(100vw-2rem)] cursor-grab pt-2 active:cursor-grabbing ${className}`}
+      className={`pointer-events-auto absolute left-0 top-0 max-w-[calc(100vw-2rem)] cursor-grab pt-2 active:cursor-grabbing ${className}`}
       style={{
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
         zIndex,
