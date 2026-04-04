@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchDailyReport, fetchJobCards, fetchOfficeLayout, fetchStats, saveOfficeLayout } from "../lib/api";
 import { useWebSocket } from "../hooks/use-websocket";
 import { useDashboardStore } from "../stores/use-dashboard-store";
@@ -484,16 +484,6 @@ export function StudioPage() {
   );
 
   // -------------------------------------------------------------------------
-  // Whiteboard position
-  // -------------------------------------------------------------------------
-
-  const whiteboardFurniture = scene.furniture.find((item) => item.type === "whiteboard");
-  const whiteboardPosition = whiteboardFurniture
-    ? { x: whiteboardFurniture.position.x, y: Math.max(whiteboardFurniture.position.y - 26, 16) }
-    : { x: 400, y: 30 };
-
-
-  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
@@ -508,53 +498,261 @@ export function StudioPage() {
 
   const activityCount = useActivityStore((state) => state.events.length);
 
-  const dashboardPanels = useMemo<DashboardPanelItem[]>(
-    () => [
-      {
-        id: "daily-report",
-        title: "일일 리포트",
-        content: <DailyReportWidget compact isNight={isNight} />,
-      },
-      {
-        id: "plan-panel",
-        title: "계획 진행률",
-        content: <PlanPanel isNight={isNight} />,
-      },
-      {
-        id: "claude-plans-cache",
-        title: "Claude Plans Cache",
-        content: <ClaudePlansCachePanel isNight={isNight} />,
-      },
-      {
-        id: "git-log",
-        title: "커밋 로그",
-        content: <GitLogPanel isNight={isNight} />,
-      },
-      {
-        id: "memo",
-        title: "메모",
-        content: <MemoPanel isNight={isNight} />,
-      },
-      {
-        id: "activity-feed",
-        title: "활동 로그",
-        content: <ActivityFeed />,
-        hidden: activityCount === 0,
-      },
-      {
-        id: "skills",
-        title: "스킬",
-        content: <SkillsPanel />,
-      },
-      {
-        id: "reference",
-        title: "참고문서",
-        content: <ReferencePanel />,
-        className: "xl:col-span-2",
-      },
-    ],
-    [activityCount, isNight],
-  );
+  const dashboardPanels: DashboardPanelItem[] = [
+    {
+      id: "daily-report",
+      title: "일일 리포트",
+      content: <DailyReportWidget compact isNight={isNight} />,
+    },
+    {
+      id: "plan-panel",
+      title: "계획 진행률",
+      content: <PlanPanel isNight={isNight} />,
+    },
+    {
+      id: "claude-plans-cache",
+      title: "Claude Plans Cache",
+      content: <ClaudePlansCachePanel isNight={isNight} />,
+    },
+    {
+      id: "git-log",
+      title: "커밋 로그",
+      content: <GitLogPanel isNight={isNight} />,
+    },
+    {
+      id: "memo",
+      title: "메모",
+      content: <MemoPanel isNight={isNight} />,
+    },
+    {
+      id: "activity-feed",
+      title: "활동 로그",
+      content: <ActivityFeed />,
+      hidden: activityCount === 0,
+    },
+    {
+      id: "skills",
+      title: "스킬",
+      content: <SkillsPanel />,
+    },
+    {
+      id: "reference",
+      title: "참고문서",
+      content: <ReferencePanel />,
+      className: "w-[min(34rem,calc(100vw-2rem))]",
+    },
+    {
+      id: "pipeline",
+      title: "파이프라인",
+      className: "w-72",
+      defaultPosition: ({ width }) => ({
+        x: Math.max(width - 304, 16),
+        y: 56,
+      }),
+      content: (
+        <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setPipelineCollapsed((c) => !c)}
+            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/40 transition-colors"
+          >
+            <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">파이프라인</span>
+            <span className="text-stone-400 text-xs">{pipelineCollapsed ? "▼" : "▲"}</span>
+          </button>
+
+          {!pipelineCollapsed && (
+            <div className="px-3 pb-3 pt-1 space-y-2">
+              <div className="flex items-center gap-1">
+                {PIPELINE_STAGE_ORDER.map((stageId, idx) => {
+                  const meta = stageMeta[stageId];
+                  const activeCount = stages[stageId].filter((agent) => agent.status !== "idle").length;
+                  return (
+                    <div key={stageId} className="flex items-center gap-1 flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 rounded-lg bg-white/80 border border-stone-200/60 px-2 py-1.5 text-center">
+                        <p className={`text-[10px] font-bold ${meta.color} truncate`}>{meta.title}</p>
+                        <span className={`inline-block mt-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${meta.badge}`}>
+                          {activeCount}
+                        </span>
+                      </div>
+                      {idx < PIPELINE_STAGE_ORDER.length - 1 && (
+                        <span className="text-stone-300 text-[10px] flex-shrink-0">→</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {PIPELINE_STAGE_ORDER.flatMap((stageId) =>
+                stages[stageId]
+                  .filter((agent) => agent.status !== "idle")
+                  .map((agent) => (
+                    <div key={`${stageId}-${agent.id}`} className="flex items-center gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 border border-stone-100">
+                      <span className="text-sm">{agent.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-semibold text-stone-800 truncate">{agent.name}</p>
+                        <p className="text-[9px] text-stone-400 truncate">{agent.currentTask}</p>
+                      </div>
+                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${statusDot[agent.status]}`} />
+                    </div>
+                  ))
+              )}
+
+              {PIPELINE_STAGE_ORDER.every((stageId) => stages[stageId].every((agent) => agent.status === "idle")) && (
+                <p className="text-center text-[10px] text-stone-400 py-1">활성 작업 없음</p>
+              )}
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "job-status",
+      title: "작업 현황",
+      className: "w-[min(20rem,calc(100vw-2rem))]",
+      defaultPosition: ({ height }) => ({
+        x: 16,
+        y: Math.max(height - 230, 120),
+      }),
+      content: (
+        <div className="space-y-2">
+          <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg px-4 py-3">
+            <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-2">작업 현황</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              <StatBadge label="전체" value={stats.totalJobs} color="text-stone-700" />
+              <StatBadge label="진행" value={stats.inProgressJobs} color="text-blue-600" dot="bg-blue-400" />
+              <StatBadge label="완료" value={stats.completedJobs} color="text-green-700" dot="bg-green-400" />
+              <StatBadge label="오류" value={stats.errorJobs} color="text-red-600" dot="bg-red-400" />
+            </div>
+          </div>
+
+          {jobs.length > 0 && (
+            <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg px-4 py-2">
+              <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">최근 작업</p>
+              <div className="space-y-1 max-h-28 overflow-y-auto">
+                {jobs.slice(0, 5).map((job) => (
+                  <div key={job.id} className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
+                      job.status === "completed" ? "bg-green-400"
+                      : job.status === "error" ? "bg-red-400"
+                      : job.status === "in_progress" ? "bg-blue-400"
+                      : "bg-stone-300"
+                    }`} />
+                    <p className="text-[9px] text-stone-600 truncate max-w-[160px]">{job.message || job.id}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: "minimap",
+      title: "미니맵",
+      className: "w-[152px]",
+      defaultPosition: ({ height }) => ({
+        x: 16,
+        y: Math.max(height - 308, 72),
+      }),
+      content: (() => {
+        const minimapWidth = 140;
+        const minimapHeight = minimapWidth * (CANVAS_HEIGHT / CANVAS_WIDTH);
+        const scaleX = minimapWidth / CANVAS_WIDTH;
+        const scaleY = minimapHeight / CANVAS_HEIGHT;
+        const container = containerRef.current;
+        const viewportWidth = container ? container.clientWidth / zoom * scaleX : 40;
+        const viewportHeight = container ? container.clientHeight / zoom * scaleY : 30;
+        const viewportX = -panX / zoom * scaleX;
+        const viewportY = -panY / zoom * scaleY;
+
+        return (
+          <div
+            role="button"
+            tabIndex={0}
+            className="rounded-xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg p-1.5 cursor-pointer outline-none"
+            aria-label="미니맵에서 위치 이동"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              const clickX = (event.clientX - rect.left - 6) / scaleX;
+              const clickY = (event.clientY - rect.top - 6) / scaleY;
+              const containerElement = containerRef.current;
+              if (!containerElement) return;
+              setPanX(containerElement.clientWidth / 2 - clickX * zoom);
+              setPanY(containerElement.clientHeight / 2 - clickY * zoom);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") {
+                return;
+              }
+
+              event.preventDefault();
+              fitToScreen();
+            }}
+          >
+            <div className="relative overflow-hidden rounded-lg" style={{ width: minimapWidth, height: minimapHeight, background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
+              <svg className="absolute inset-0 pointer-events-none" width={minimapWidth} height={minimapHeight}>
+                {HIERARCHY_LINES.map(({ from, to, color }) => {
+                  const fromPosition = TEAM_POSITIONS[from];
+                  const toPosition = TEAM_POSITIONS[to];
+                  if (!fromPosition || !toPosition) return null;
+
+                  return (
+                    <line
+                      key={`mini-${from}-${to}`}
+                      x1={fromPosition.x * scaleX}
+                      y1={fromPosition.y * scaleY}
+                      x2={toPosition.x * scaleX}
+                      y2={toPosition.y * scaleY}
+                      stroke={color}
+                      strokeWidth={1}
+                      opacity={0.5}
+                    />
+                  );
+                })}
+              </svg>
+
+              <div
+                className="absolute border border-blue-400/60 bg-blue-200/15 rounded-sm"
+                style={{
+                  left: clamp(viewportX, 0, minimapWidth),
+                  top: clamp(viewportY, 0, minimapHeight),
+                  width: Math.min(viewportWidth, minimapWidth),
+                  height: Math.min(viewportHeight, minimapHeight),
+                }}
+              />
+
+              {scene.characters.map((character) => {
+                const member = KUMA_TEAM.find((agent) => agent.id === character.id);
+                const team = member?.team;
+                const dotColor = team === "dev" ? "#3b82f6" : team === "analytics" ? "#f97316" : team === "strategy" ? "#22c55e" : "#78716c";
+                const isActive = character.state === "working" || character.state === "thinking";
+
+                return (
+                  <div key={character.id} className="absolute" style={{ left: character.position.x * scaleX - 4, top: character.position.y * scaleY - 4 }}>
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full ${isActive ? "animate-pulse" : ""}`}
+                      style={{ backgroundColor: dotColor, opacity: isActive ? 1 : 0.7, boxShadow: isActive ? `0 0 4px ${dotColor}` : "none" }}
+                      title={`${member?.emoji ?? ""} ${character.name} — ${character.state}`}
+                    />
+                    <span className="absolute left-3 top-[-2px] text-[5px] font-medium text-stone-600 whitespace-nowrap pointer-events-none">
+                      {member?.emoji ?? ""}{member?.nameKo?.[0] ?? character.name[0]}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })(),
+    },
+    {
+      id: "whiteboard",
+      title: "작업 보드",
+      className: "w-[220px]",
+      defaultPosition: { x: 290, y: 30 },
+      content: <Whiteboard />,
+    },
+  ];
 
   return (
     <div className="h-screen w-screen overflow-hidden relative select-none" style={{ background: ambientBg, transition: "background 60s ease" }}>
@@ -699,8 +897,6 @@ export function StudioPage() {
               }}
             />
           ))}
-
-          <Whiteboard position={whiteboardPosition} />
         </div>
       </div>
 
@@ -727,105 +923,41 @@ export function StudioPage() {
           </button>
         </div>
 
-        {/* Connection badge */}
-        <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-          status === "connected"
-            ? "bg-green-100 text-green-700"
-            : status === "connecting"
-            ? "bg-amber-100 text-amber-700"
-            : "bg-red-100 text-red-700"
-        }`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${
-            status === "connected" ? "bg-green-500" : status === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500"
-          }`} />
-          {status === "connected" ? "연결됨" : status === "connecting" ? "연결 중..." : "연결 끊김"}
+        <div className="flex items-center gap-2">
+          <SettingsPanel
+            className="shrink-0"
+            isNight={isNight}
+            animationsEnabled={animationsEnabled}
+            onToggleAnimations={() => setAnimationsEnabled((v) => !v)}
+            particlesEnabled={particlesEnabled}
+            onToggleParticles={() => setParticlesEnabled((v) => !v)}
+          />
+          <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+            status === "connected"
+              ? "bg-green-100 text-green-700"
+              : status === "connecting"
+              ? "bg-amber-100 text-amber-700"
+              : "bg-red-100 text-red-700"
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              status === "connected" ? "bg-green-500" : status === "connecting" ? "bg-amber-500 animate-pulse" : "bg-red-500"
+            }`} />
+            {status === "connected" ? "연결됨" : status === "connecting" ? "연결 중..." : "연결 끊김"}
+          </div>
         </div>
       </div>
 
       {/* Toast notifications */}
       <ToastContainer />
 
-      {/* Sortable dashboard panels */}
+      {/* Floating dashboard panels */}
       <DraggableDashboard panels={dashboardPanels} />
-
-      {/* Settings panel */}
-      <SettingsPanel
-        isNight={isNight}
-        animationsEnabled={animationsEnabled}
-        onToggleAnimations={() => setAnimationsEnabled((v) => !v)}
-        particlesEnabled={particlesEnabled}
-        onToggleParticles={() => setParticlesEnabled((v) => !v)}
-      />
 
       {/* Character detail panel */}
       {selectedCharId && (() => {
         const char = scene.characters.find((c) => c.id === selectedCharId);
         return char ? <CharacterDetailPanel character={char} isNight={isNight} onClose={() => setSelectedCharId(null)} /> : null;
       })()}
-
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Pipeline HUD — top-right floating panel                             */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="absolute top-14 right-4 z-30 w-72">
-        <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg overflow-hidden">
-          {/* Header */}
-          <button
-            type="button"
-            onClick={() => setPipelineCollapsed((c) => !c)}
-            className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/40 transition-colors"
-          >
-            <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">파이프라인</span>
-            <span className="text-stone-400 text-xs">{pipelineCollapsed ? "▼" : "▲"}</span>
-          </button>
-
-          {!pipelineCollapsed && (
-            <div className="px-3 pb-3 pt-1 space-y-2">
-              {/* Stage flow */}
-              <div className="flex items-center gap-1">
-                {PIPELINE_STAGE_ORDER.map((stageId, idx) => {
-                  const meta = stageMeta[stageId];
-                  const activeCount = stages[stageId].filter((a) => a.status !== "idle").length;
-                  return (
-                    <div key={stageId} className="flex items-center gap-1 flex-1 min-w-0">
-                      <div className="flex-1 min-w-0 rounded-lg bg-white/80 border border-stone-200/60 px-2 py-1.5 text-center">
-                        <p className={`text-[10px] font-bold ${meta.color} truncate`}>{meta.title}</p>
-                        <span className={`inline-block mt-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${meta.badge}`}>
-                          {activeCount}
-                        </span>
-                      </div>
-                      {idx < PIPELINE_STAGE_ORDER.length - 1 && (
-                        <span className="text-stone-300 text-[10px] flex-shrink-0">→</span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Agent rows for active agents only */}
-              {PIPELINE_STAGE_ORDER.flatMap((stageId) =>
-                stages[stageId]
-                  .filter((a) => a.status !== "idle")
-                  .map((agent) => (
-                    <div key={`${stageId}-${agent.id}`} className="flex items-center gap-2 rounded-lg bg-white/70 px-2.5 py-1.5 border border-stone-100">
-                      <span className="text-sm">{agent.emoji}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-semibold text-stone-800 truncate">{agent.name}</p>
-                        <p className="text-[9px] text-stone-400 truncate">{agent.currentTask}</p>
-                      </div>
-                      <span className={`h-2 w-2 rounded-full flex-shrink-0 ${statusDot[agent.status]}`} />
-                    </div>
-                  ))
-              )}
-
-              {PIPELINE_STAGE_ORDER.every((id) => stages[id].every((a) => a.status === "idle")) && (
-                <p className="text-center text-[10px] text-stone-400 py-1">활성 작업 없음</p>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* ------------------------------------------------------------------ */}
       {/* Zoom controls — bottom-right                                        */}
       {/* ------------------------------------------------------------------ */}
@@ -836,79 +968,6 @@ export function StudioPage() {
         <button type="button" onClick={() => { setZoom(ZOOM_DEFAULT); setPanX(0); setPanY(0); }} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="초기화" aria-label="줌과 위치 초기화">{"\u21BA"}</button>
         <button type="button" onClick={fitToScreen} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-stone-100 text-stone-500 text-xs" title="전체 보기" aria-label="전체 보기">{"\u2B1C"}</button>
       </div>
-
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Minimap — bottom-left                                               */}
-      {/* ------------------------------------------------------------------ */}
-      {(() => {
-        const MINIMAP_W = 140;
-        const MINIMAP_H = MINIMAP_W * (CANVAS_HEIGHT / CANVAS_WIDTH);
-        const scaleX = MINIMAP_W / CANVAS_WIDTH;
-        const scaleY = MINIMAP_H / CANVAS_HEIGHT;
-        const container = containerRef.current;
-        const vpW = container ? container.clientWidth / zoom * scaleX : 40;
-        const vpH = container ? container.clientHeight / zoom * scaleY : 30;
-        const vpX = -panX / zoom * scaleX;
-        const vpY = -panY / zoom * scaleY;
-        return (
-          <button
-            type="button"
-            className="absolute bottom-44 left-4 z-30 rounded-xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg p-1.5 cursor-pointer"
-            aria-label="미니맵에서 위치 이동"
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const clickX = (e.clientX - rect.left - 6) / scaleX;
-              const clickY = (e.clientY - rect.top - 6) / scaleY;
-              const ctr = containerRef.current;
-              if (!ctr) return;
-              setPanX(ctr.clientWidth / 2 - clickX * zoom);
-              setPanY(ctr.clientHeight / 2 - clickY * zoom);
-            }}
-          >
-            <div className="relative overflow-hidden rounded-lg" style={{ width: MINIMAP_W, height: MINIMAP_H, background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)" }}>
-              {/* Minimap hierarchy lines */}
-              <svg className="absolute inset-0 pointer-events-none" width={MINIMAP_W} height={MINIMAP_H}>
-                {HIERARCHY_LINES.map(({ from, to, color }) => {
-                  const fp = TEAM_POSITIONS[from];
-                  const tp = TEAM_POSITIONS[to];
-                  if (!fp || !tp) return null;
-                  return (
-                    <line
-                      key={`mini-${from}-${to}`}
-                      x1={fp.x * scaleX} y1={fp.y * scaleY}
-                      x2={tp.x * scaleX} y2={tp.y * scaleY}
-                      stroke={color} strokeWidth={1} opacity={0.5}
-                    />
-                  );
-                })}
-              </svg>
-              {/* Viewport rectangle */}
-              <div className="absolute border border-blue-400/60 bg-blue-200/15 rounded-sm" style={{ left: clamp(vpX, 0, MINIMAP_W), top: clamp(vpY, 0, MINIMAP_H), width: Math.min(vpW, MINIMAP_W), height: Math.min(vpH, MINIMAP_H) }} />
-              {/* Character dots — team colored with labels */}
-              {scene.characters.map((c) => {
-                const member = KUMA_TEAM.find((m) => m.id === c.id);
-                const team = member?.team;
-                const dotColor = team === "dev" ? "#3b82f6" : team === "analytics" ? "#f97316" : team === "strategy" ? "#22c55e" : "#78716c";
-                const isActive = c.state === "working" || c.state === "thinking";
-                return (
-                  <div key={c.id} className="absolute" style={{ left: c.position.x * scaleX - 4, top: c.position.y * scaleY - 4 }}>
-                    <div
-                      className={`w-2.5 h-2.5 rounded-full ${isActive ? "animate-pulse" : ""}`}
-                      style={{ backgroundColor: dotColor, opacity: isActive ? 1 : 0.7, boxShadow: isActive ? `0 0 4px ${dotColor}` : "none" }}
-                      title={`${member?.emoji ?? ""} ${c.name} — ${c.state}`}
-                    />
-                    <span className="absolute left-3 top-[-2px] text-[5px] font-medium text-stone-600 whitespace-nowrap pointer-events-none">
-                      {member?.emoji ?? ""}{member?.nameKo?.[0] ?? c.name[0]}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </button>
-        );
-      })()}
-
       {/* Zoom controls — bottom-left above minimap */}
       <div className="absolute bottom-[17rem] left-4 z-30 flex flex-col gap-1">
         <button
@@ -938,40 +997,6 @@ export function StudioPage() {
           title="전체 보기 (F)"
           aria-label="전체 보기"
         >⊞</button>
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Stats HUD — bottom-left floating badges                             */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="absolute bottom-4 left-4 z-30 flex flex-col gap-2">
-        <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg px-4 py-3">
-          <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-2">작업 현황</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-            <StatBadge label="전체" value={stats.totalJobs} color="text-stone-700" />
-            <StatBadge label="진행" value={stats.inProgressJobs} color="text-blue-600" dot="bg-blue-400" />
-            <StatBadge label="완료" value={stats.completedJobs} color="text-green-700" dot="bg-green-400" />
-            <StatBadge label="오류" value={stats.errorJobs} color="text-red-600" dot="bg-red-400" />
-          </div>
-        </div>
-
-        {jobs.length > 0 && (
-          <div className="rounded-2xl bg-white/75 backdrop-blur-md border border-white/50 shadow-lg px-4 py-2">
-            <p className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1.5">최근 작업</p>
-            <div className="space-y-1 max-h-28 overflow-y-auto">
-              {jobs.slice(0, 5).map((job) => (
-                <div key={job.id} className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
-                    job.status === "completed" ? "bg-green-400"
-                    : job.status === "error" ? "bg-red-400"
-                    : job.status === "in_progress" ? "bg-blue-400"
-                    : "bg-stone-300"
-                  }`} />
-                  <p className="text-[9px] text-stone-600 truncate max-w-[160px]">{job.message || job.id}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Help overlay */}

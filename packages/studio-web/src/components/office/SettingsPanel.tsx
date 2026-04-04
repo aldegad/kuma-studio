@@ -6,6 +6,7 @@ interface SettingsPanelProps {
   onToggleAnimations: () => void;
   particlesEnabled: boolean;
   onToggleParticles: () => void;
+  className?: string;
 }
 
 export function SettingsPanel({
@@ -14,11 +15,12 @@ export function SettingsPanel({
   onToggleAnimations,
   particlesEnabled,
   onToggleParticles,
+  className = "",
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="absolute top-14 right-[19rem] z-30">
+    <div className={`relative z-30 ${className}`}>
       <button
         onClick={() => setOpen(!open)}
         className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-md transition-colors ${

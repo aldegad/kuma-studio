@@ -2,7 +2,7 @@ import { useDashboardStore } from "../../stores/use-dashboard-store";
 import { StatusBadge } from "../shared/StatusBadge";
 
 interface WhiteboardProps {
-  position: { x: number; y: number };
+  position?: { x: number; y: number };
 }
 
 export function Whiteboard({ position }: WhiteboardProps) {
@@ -14,14 +14,21 @@ export function Whiteboard({ position }: WhiteboardProps) {
 
   return (
     <div
-      className="pointer-events-none absolute rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"
-      style={{
-        left: position.x,
-        top: position.y,
-        width: 220,
-        minHeight: 120,
-        transform: "translate(-50%, 0)",
-      }}
+      className={position
+        ? "pointer-events-none absolute rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"
+        : "rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"}
+      style={position
+        ? {
+            left: position.x,
+            top: position.y,
+            width: 220,
+            minHeight: 120,
+            transform: "translate(-50%, 0)",
+          }
+        : {
+            width: 220,
+            minHeight: 120,
+          }}
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="text-xs font-bold uppercase tracking-wide text-stone-600">작업 보드</span>

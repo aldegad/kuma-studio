@@ -175,7 +175,7 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
 
     if (url.pathname === "/studio/git-log" && req.method === "GET") {
       try {
-        const raw = execSync("git log --oneline -10 --no-color", { cwd: resolve(join(staticDir, "..", "..")), encoding: "utf-8", timeout: 3000 });
+        const raw = execSync("git log --oneline -10 --no-color", { cwd: resolve(join(staticDir, "..", "..", "..")), encoding: "utf-8", timeout: 3000 });
         const commits = raw.trim().split("\n").map((line) => {
           const [hash, ...rest] = line.split(" ");
           return { hash, message: rest.join(" ") };
