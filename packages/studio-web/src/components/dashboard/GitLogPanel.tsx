@@ -27,7 +27,7 @@ export function GitLogPanel({ isNight }: { isNight: boolean }) {
         className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-stone-50/30 transition-colors"
       >
         <span className={`text-[10px] font-bold uppercase tracking-wider ${isNight ? "text-indigo-400" : "text-stone-500"}`}>
-          오늘 커밋 {gitActivity.totalCommitsToday}건
+          커밋 로그 ({gitActivity.totalCommitsToday}건)
         </span>
         <span className={`text-[10px] ${isNight ? "text-indigo-500" : "text-stone-400"}`}>
           {collapsed ? "▼" : "▲"}

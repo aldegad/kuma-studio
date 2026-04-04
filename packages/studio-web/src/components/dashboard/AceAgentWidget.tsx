@@ -20,12 +20,12 @@ export function AceAgentWidget() {
       </div>
       <div className="p-5">
         {aceAgent && aceTeamMember ? (
-          <div className="mb-4 flex items-center gap-3 rounded-lg bg-amber-50 p-4">
+          <div className="mb-4 flex items-center gap-3 rounded-lg bg-stone-100 p-4">
             <AgentAvatar name={aceTeamMember.nameKo} size="lg" />
             <div>
-              <p className="text-sm font-bold text-amber-900">{aceTeamMember.nameKo}</p>
-              <p className="text-xs text-amber-700">{aceTeamMember.roleKo}</p>
-              <p className="text-xs text-amber-600">
+              <p className="text-sm font-bold text-stone-800">{aceTeamMember.nameKo}</p>
+              <p className="text-xs text-stone-600">{aceTeamMember.roleKo}</p>
+              <p className="text-xs text-stone-500">
                 점수: {aceAgent.score.toFixed(1)}
               </p>
             </div>

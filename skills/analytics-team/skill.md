@@ -88,10 +88,20 @@ grep -q 'onMessage' src/server/websocket.ts
 
 ## 호출 방법
 
-```
-# 다람이 (Codex) — 코드 분석, 백그라운드 병렬
-Agent(subagent_type: "codex:codex-rescue", prompt: "코드 분석 내용", run_in_background: true)
+**다람이 (Codex) → tmux pane 스폰**
+```bash
+# 다람이 스폰 (Codex, gpt-5.4 fast high)
+PANE_ID=$(bash ~/.kuma/tmux/kuma-tmux-spawn.sh "다람이1" "codex" "$WORK_DIR")
+tmux send-keys -t $PANE_ID "코드 분석 프롬프트" Enter
 
-# 부리 (Sonnet) — 외부 리서치, 백그라운드 병렬
-Agent(model: "sonnet", prompt: "리서치 내용", run_in_background: true)
+# 결과 읽기
+tmux capture-pane -t $PANE_ID -p
 ```
+
+**부리 (Sonnet) → Agent tool**
+```
+# 부리 리서치 (Sonnet, 반드시 description에 이름 포함)
+Agent(model: "sonnet", description: "부리: [리서치 요약]", prompt: "You are 🦉 부리 (researcher). 리서치 프로토콜 준수.\n\n[리서치 내용]", run_in_background: true)
+```
+
+**tmux 스폰은 루미(PM subagent) 또는 쭈니(CoS)가 실행한다.** 쿠마 메인쓰레드에서 직접 Bash 금지.

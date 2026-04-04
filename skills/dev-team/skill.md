@@ -81,23 +81,34 @@ grep -q 'jsonwebtoken' src/auth/token.ts
 
 ## 호출 방법
 
+**Codex 워커 (뚝딱이, 새미) → tmux pane 스폰**
+```bash
+# 뚝딱이 스폰 (Codex, gpt-5.4 fast high)
+PANE_ID=$(bash ~/.kuma/tmux/kuma-tmux-spawn.sh "뚝딱이1" "codex" "$WORK_DIR")
+tmux send-keys -t $PANE_ID "작업 프롬프트" Enter
+
+# 새미 스폰 (Codex, 리뷰용)
+PANE_ID=$(bash ~/.kuma/tmux/kuma-tmux-spawn.sh "새미1" "codex" "$WORK_DIR")
+tmux send-keys -t $PANE_ID "리뷰 프롬프트" Enter
+
+# 결과 읽기
+tmux capture-pane -t $PANE_ID -p
 ```
-# 뚝딱이 (Codex) — 백그라운드 병렬
-Agent(subagent_type: "codex:codex-rescue", prompt: "작업 내용", run_in_background: true)
 
-# 쿤 퍼블리싱 (Opus) — 백그라운드
-Agent(model: "opus", prompt: "디자인/퍼블리싱 내용", run_in_background: true)
-
-# 새미 리뷰 (Codex) — 백그라운드
-Agent(subagent_type: "codex:codex-rescue", prompt: "리뷰 내용", run_in_background: true)
-
-# 밤돌이 검증/배포 (Sonnet) — 백그라운드
-Agent(model: "sonnet", prompt: "검증/배포 내용", run_in_background: true)
+**Claude 워커 → Agent tool (반드시 description에 팀원 이름 포함)**
 ```
+# 쿤 퍼블리싱 (Opus)
+Agent(model: "opus", description: "쿤: [작업요약]", prompt: "You are 🦝 쿤 (frontend designer).\n\n[작업 내용]", run_in_background: true)
+
+# 밤돌이 검증/배포 (Sonnet)
+Agent(model: "sonnet", description: "밤돌이: [작업요약]", prompt: "You are 🦔 밤돌이 (build/deploy).\n\n[검증/배포 내용]", run_in_background: true)
+```
+
+**tmux 스폰은 하울(PM subagent) 또는 쭈니(CoS)가 실행한다.** 쿠마 메인쓰레드에서 직접 Bash 금지.
 
 ## 쿠마(메인 쓰레드)가 직접 하는 것
 - 사용자 응답 (Discord reply 등)
 - 에이전트 결과 전달
 - 권한 필요 작업 (Write, Edit — 서브에이전트가 못 하는 것)
-- 빌드/배포 (Codex 샌드박스 권한 문제로 메인쓰레드 직접 실행)
 - 병렬 에이전트 조율
+- **Bash 실행 금지** — 모든 Bash는 쭈니(CoS) 또는 하울(PM) subagent에게 위임

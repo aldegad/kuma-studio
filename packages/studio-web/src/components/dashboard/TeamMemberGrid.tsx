@@ -105,19 +105,19 @@ export function TeamMemberGrid() {
                     key={agent.id}
                     className={`group relative flex flex-col items-center rounded-xl border px-3 py-4 transition-all hover:shadow-sm ${
                       isWorking
-                        ? "border-blue-300 bg-blue-50/70 shadow-sm shadow-blue-100 hover:border-blue-400 hover:bg-blue-50"
-                        : "border-stone-100 bg-stone-50/50 hover:border-amber-200 hover:bg-amber-50/50"
+                        ? "border-stone-400 bg-stone-100/70 shadow-sm shadow-stone-200 hover:border-stone-500 hover:bg-stone-100"
+                        : "border-stone-100 bg-stone-50/50 hover:border-stone-300 hover:bg-stone-100/50"
                     }`}
                   >
                     {/* Avatar */}
                     <div className={`relative mb-2 ${animation}`}>
                       <div
                         className={`flex h-14 w-14 items-center justify-center rounded-full shadow-md transition-transform group-hover:scale-110 ${
-                          isWorking ? "ring-4 ring-blue-300/35" : ""
+                          isWorking ? "ring-4 ring-stone-400/35" : ""
                         }`}
                         style={{
-                          backgroundColor: isWorking ? "#DBEAFE" : `${color}18`,
-                          border: `2px solid ${isWorking ? "#60A5FA" : `${color}40`}`,
+                          backgroundColor: isWorking ? "#E7E5E4" : `${color}18`,
+                          border: `2px solid ${isWorking ? "#A8A29E" : `${color}40`}`,
                         }}
                       >
                         <img
@@ -170,7 +170,7 @@ export function TeamMemberGrid() {
                     </div>
 
                     {isWorking && task && (
-                      <p className="mt-2 w-full rounded-lg bg-blue-100 px-2 py-1 text-center text-[10px] font-medium leading-tight text-blue-700">
+                      <p className="mt-2 w-full rounded-lg bg-stone-200 px-2 py-1 text-center text-[10px] font-medium leading-tight text-stone-700">
                         작업 중: {task}
                       </p>
                     )}

@@ -105,8 +105,8 @@ export function SkillsPanel() {
                       }
                       className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
                         expandedSkill === skill.name
-                          ? "bg-amber-50/80 border-amber-200/60"
-                          : "bg-white/70 border-stone-100 hover:bg-amber-50/40 hover:border-amber-200/40"
+                          ? "bg-stone-100/80 border-stone-300/60"
+                          : "bg-white/70 border-stone-100 hover:bg-stone-50/60 hover:border-stone-300/40"
                       }`}
                     >
                       <div className="flex items-center justify-between">
@@ -129,7 +129,7 @@ export function SkillsPanel() {
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setFullScreenSkill(skill); }}
-                            className="text-[9px] text-blue-500 hover:text-blue-700 font-medium"
+                            className="text-[9px] text-stone-500 hover:text-stone-700 font-medium"
                           >
                             전체 보기
                           </button>
@@ -154,7 +154,7 @@ export function SkillsPanel() {
                   {plugins.map((plugin) => (
                     <span
                       key={plugin}
-                      className="bg-indigo-100 text-indigo-700 text-[10px] font-medium px-2 py-0.5 rounded-full"
+                      className="bg-stone-200 text-stone-600 text-[10px] font-medium px-2 py-0.5 rounded-full"
                     >
                       {plugin}
                     </span>

@@ -53,7 +53,7 @@
       "nodeType": "team",
       "parentId": "kuma",
       "role": { "ko": "PM. 작업 분해, 디스패치, 결과 취합", "en": "Operator. Task decomposition, dispatch, aggregation" },
-      "skills": ["dev-team", "codex:rescue"],
+      "skills": ["dev-team"],
       "capabilities": ["품앗이 오케스트레이션", "Bash 게이트 검증"],
       "parallel": false,
       "image": "/characters/howl.jpg"
@@ -68,7 +68,7 @@
       "nodeType": "worker",
       "parentId": "howl",
       "role": { "ko": "구현. 코드 구현, 버그 수정, 리팩토링", "en": "Developer. Implementation, bug fixes, refactoring" },
-      "skills": ["codex:rescue", "codex-autoresearch:fix", "codex-autoresearch:debug"],
+      "skills": ["codex-autoresearch:fix", "codex-autoresearch:debug"],
       "capabilities": ["코드 구현", "버그 수정", "리팩토링"],
       "parallel": true,
       "image": "/characters/ttukddak.jpg"
@@ -83,7 +83,7 @@
       "nodeType": "worker",
       "parentId": "howl",
       "role": { "ko": "비평가/리뷰어", "en": "Critic / Reviewer" },
-      "skills": ["codex:rescue", "security-threat-intel", "gateproof-full-security-check", "codex-autoresearch:security"],
+      "skills": ["security-threat-intel", "gateproof-full-security-check", "codex-autoresearch:security"],
       "capabilities": ["보안 리뷰", "코드 품질", "탐지 로직 검증"],
       "parallel": true,
       "image": "/characters/saemi.jpg"
@@ -143,7 +143,7 @@
       "nodeType": "worker",
       "parentId": "lumi",
       "role": { "ko": "코드 분석. 코드베이스 탐색, 구조 분석, 의존성 조사", "en": "Code Analyst. Codebase exploration, structure analysis, dependency investigation" },
-      "skills": ["codex:rescue", "codex-autoresearch:learn"],
+      "skills": ["codex-autoresearch:learn"],
       "capabilities": ["코드 분석", "구조 파악", "의존성 추적"],
       "parallel": true,
       "image": "/characters/darami.jpg"
@@ -213,14 +213,14 @@
       "name": { "ko": "쭈니", "en": "Jjooni" },
       "animal": { "ko": "꿀벌", "en": "bee" },
       "emoji": "🐝",
-      "model": "claude-opus-4-6",
-      "team": "strategy",
+      "model": "o4-mini",
+      "team": "management",
       "nodeType": "worker",
-      "parentId": "noeuri",
-      "role": { "ko": "비즈니스", "en": "Business" },
+      "parentId": "kuma",
+      "role": { "ko": "CoS. Bash 실행 전담, tmux 워커 관리", "en": "CoS. Bash execution, tmux worker management" },
       "skills": ["codex-autoresearch:predict", "codex-autoresearch:reason"],
-      "capabilities": [],
-      "parallel": true,
+      "capabilities": ["Bash 실행", "tmux pane 관리"],
+      "parallel": false,
       "image": "/characters/jjooni.jpg"
     }
   ]

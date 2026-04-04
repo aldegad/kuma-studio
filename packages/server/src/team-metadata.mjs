@@ -159,18 +159,19 @@ export function resolveAgentIdByDescriptor({ description, subagentType, model })
     return null;
   };
 
-  if (sub === "codex:codex-rescue") {
-    // Review/critic → find member with review/critic skills in dev team
+  if (sub === "codex:codex-rescue" || sub === "codex") {
+    // Legacy codex:codex-rescue references — map to team members by description
+    // Review/critic → 새미
     if (includesAny(desc, ["review", "critic", "qa", "quality", "리뷰", "검토", "품질", "비평"])) {
       return findMemberBySkillKeywords("dev", ["리뷰", "보안", "품질", "비평"]) ?? "saemi";
     }
 
-    // Code analysis → find member with analysis skills in analytics team
+    // Code analysis → 다람이
     if (includesAny(desc, ["analysis", "analyze", "inspect", "explore", "trace", "investigate", "코드 분석", "분석", "구조", "의존성", "탐색", "조사"])) {
       return findMemberBySkillKeywords("analytics", ["분석", "구조", "의존성"]) ?? "darami";
     }
 
-    // Default codex worker → find member with implementation skills in dev team
+    // Default codex worker → 뚝딱이
     return findMemberBySkillKeywords("dev", ["구현", "버그", "리팩토링"]) ?? "tookdaki";
   }
 

@@ -492,6 +492,7 @@ export function StudioPage() {
     ? { x: whiteboardFurniture.position.x, y: Math.max(whiteboardFurniture.position.y - 26, 16) }
     : { x: 400, y: 30 };
 
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------

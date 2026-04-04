@@ -23,7 +23,7 @@ export function MemoPanel({ isNight }: { isNight?: boolean }) {
   const [text, setText] = useState("");
   const [imageUrls, setImageUrls] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!title.trim()) return;
 
@@ -44,16 +44,16 @@ export function MemoPanel({ isNight }: { isNight?: boolean }) {
   return (
     <section
       aria-labelledby="memo-panel-title"
-      className={`rounded-xl border shadow-sm overflow-hidden ${
+      className={`overflow-hidden rounded-2xl border shadow-lg backdrop-blur-md ${
         night
-          ? "bg-indigo-950/80 border-indigo-800/50 text-indigo-100"
-          : "bg-stone-50 border-stone-200 text-stone-800"
+          ? "border-indigo-800/40 bg-indigo-950/70 text-indigo-100"
+          : "border-white/50 bg-white/75 text-stone-800"
       }`}
     >
-      {/* ── header ── */}
       <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:opacity-80 transition-opacity"
+        type="button"
+        onClick={() => setCollapsed((value) => !value)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-stone-50/30"
       >
         <span
           id="memo-panel-title"
@@ -63,9 +63,7 @@ export function MemoPanel({ isNight }: { isNight?: boolean }) {
         >
           📋 메모 ({memos.length})
         </span>
-        <span
-          className={`text-[10px] ${night ? "text-indigo-500" : "text-stone-400"}`}
-        >
+        <span className={`text-[10px] ${night ? "text-indigo-500" : "text-stone-400"}`}>
           {collapsed ? "▼" : "▲"}
         </span>
       </button>

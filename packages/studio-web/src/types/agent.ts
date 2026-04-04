@@ -9,7 +9,7 @@ export type InstalledSkillId =
   | "gateproof-full-security-check"
   | "imagegen"
   | "kuma-picker";
-export type CapabilitySkillId = "codex:rescue" | "nano-banana" | "security-threat-intel";
+export type CapabilitySkillId = "nano-banana" | "security-threat-intel";
 export type AgentSkillId =
   | TeamSkillId
   | InstalledSkillId

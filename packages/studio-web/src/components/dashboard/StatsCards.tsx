@@ -25,7 +25,7 @@ export function StatsCards() {
   return (
     <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
       <StatCard label="전체 작업" value={stats.totalJobs} color="text-stone-900" icon="&#x1F4CB;" />
-      <StatCard label="진행 중" value={stats.inProgressJobs} color="text-blue-600" icon="&#x1F528;" />
+      <StatCard label="진행 중" value={stats.inProgressJobs} color="text-stone-600" icon="&#x1F528;" />
       <StatCard label="완료" value={stats.completedJobs} color="text-green-600" icon="&#x2705;" />
       <StatCard label="오류" value={stats.errorJobs} color="text-red-600" icon="&#x26A0;" />
     </div>

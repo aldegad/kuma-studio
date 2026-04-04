@@ -35,7 +35,7 @@ export function TokenUsageChart() {
                   </div>
                   <div className="h-2 rounded-full bg-stone-100">
                     <div
-                      className="h-2 rounded-full bg-amber-500 transition-all"
+                      className="h-2 rounded-full bg-stone-500 transition-all"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
