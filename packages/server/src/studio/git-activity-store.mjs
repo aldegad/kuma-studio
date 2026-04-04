@@ -72,6 +72,7 @@ function readBranch(repoPath) {
       cwd: repoPath,
       encoding: "utf-8",
       timeout: 5000,
+      stdio: ["pipe", "pipe", "pipe"],
     }).trim();
   } catch {
     return null;
@@ -87,6 +88,7 @@ function readCommits(repoPath) {
         cwd: repoPath,
         encoding: "utf-8",
         timeout: 5000,
+        stdio: ["pipe", "pipe", "pipe"],
       },
     );
 

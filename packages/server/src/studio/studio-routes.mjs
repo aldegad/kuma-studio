@@ -109,6 +109,11 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
   return async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
+    if (url.pathname === "/studio/health" && req.method === "GET") {
+      sendJson(res, 200, { ok: true, uptime: process.uptime() });
+      return true;
+    }
+
     if (url.pathname === "/studio/stats" && req.method === "GET") {
       sendJson(res, 200, statsStore.getStats());
       return true;

@@ -6,7 +6,7 @@ const DASHBOARD_POSITIONS_KEY = "kuma-studio-panel-positions";
 const DEFAULT_PANEL_X = 16;
 const DEFAULT_PANEL_Y = 56;
 const DEFAULT_PANEL_VERTICAL_STEP = 148;
-const DRAG_THRESHOLD_PX = 4;
+const DRAG_THRESHOLD_PX = 5;
 
 export interface PanelPosition {
   x: number;
@@ -324,6 +324,11 @@ export function DraggableDashboard({
       if (event.button !== 0 || shouldIgnoreDragStart(event.target as HTMLElement | null)) {
         return;
       }
+
+      // Prevent native button press / text-selection from stealing the pointer.
+      // This does NOT suppress the subsequent click event, so header buttons
+      // (collapse/expand) still work for simple clicks.
+      event.preventDefault();
 
       if (dragSessionRef.current) {
         stopDragging(false);
