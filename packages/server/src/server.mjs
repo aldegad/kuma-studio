@@ -26,6 +26,7 @@ import { StatsStore } from "./studio/stats-store.mjs";
 import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-state.mjs";
 import { getGitActivity, startGitActivityPolling, stopGitActivityPolling } from "./studio/git-activity-store.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
+import { TeamStatusStore } from "./studio/team-status-store.mjs";
 import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
@@ -51,6 +52,7 @@ export function createServer({ host, port, root }) {
   const statsStore = new StatsStore(resolve(root, ".kuma-studio", "stats.db"));
   const agentStateManager = new AgentStateManager();
   const tokenTracker = new TokenTracker();
+  const teamStatusStore = new TeamStatusStore();
 
   // Register agent hierarchy from team.json — session → team → worker
   const AGENT_HIERARCHY = getAgentHierarchy();
@@ -68,9 +70,20 @@ export function createServer({ host, port, root }) {
     studioWsEvents.broadcastTokenUsage(entry.agentId, entry.tokens, entry.model);
   });
 
+  teamStatusStore.onChange((snapshot) => {
+    studioWsEvents.broadcastTeamStatusUpdate(snapshot);
+  });
+  teamStatusStore.start();
+
   // Studio web static files path
   const studioStaticDir = resolve(__dirname, "../../studio-web/dist");
-  const handleStudioRoute = createStudioRouteHandler({ staticDir: studioStaticDir, statsStore, sceneStore: store, agentStateManager });
+  const handleStudioRoute = createStudioRouteHandler({
+    staticDir: studioStaticDir,
+    statsStore,
+    sceneStore: store,
+    agentStateManager,
+    teamStatusStore,
+  });
   startGitActivityPolling((activity) => {
     broadcastStudioEvent("git-activity-update", { activity });
   });
@@ -641,6 +654,13 @@ export function createServer({ host, port, root }) {
           type: "kuma-studio:event",
           event: { kind: "office-layout-update", layout: store.readOfficeLayout() },
         });
+        sendSocketJson(websocket, {
+          type: "kuma-studio:event",
+          event: {
+            kind: "kuma-studio:team-status-update",
+            teamStatus: teamStatusStore.getSnapshot(),
+          },
+        });
       });
       return;
     }
@@ -666,6 +686,7 @@ export function createServer({ host, port, root }) {
     stopGitActivityPolling();
     socketServer.close();
     statsStore.close();
+    teamStatusStore.close();
   });
 
   return { server, store };

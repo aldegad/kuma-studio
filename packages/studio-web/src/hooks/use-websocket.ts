@@ -3,6 +3,7 @@ import { fetchJobCards } from "../lib/api";
 import { useWsStore } from "../stores/use-ws-store";
 import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
+import { useTeamStatusStore, type TeamMemberStatus } from "../stores/use-team-status-store";
 import type { JobCard } from "../types/job-card";
 
 interface StudioEvent {
@@ -16,10 +17,18 @@ interface StudioEvent {
     | { kind: "office-layout-update"; layout: import("../types/office").OfficeLayoutSnapshot };
 }
 
+interface TeamStatusUpdateEvent {
+  type: "kuma-studio:team-status-update";
+  snapshot?: { projects: import("../stores/use-team-status-store").ProjectTeamStatus[] };
+  member?: TeamMemberStatus;
+  members?: TeamMemberStatus[];
+}
+
 export function useWebSocket() {
   const { connect, ws, status } = useWsStore();
   const { upsertJob, setJobs, setStats, addTokenUsage, setGitActivity } = useDashboardStore();
   const { updateCharacterState, applyLayout } = useOfficeStore();
+  const { setProjects, updateMemberStatus, batchUpdateMembers } = useTeamStatusStore();
 
   useEffect(() => {
     connect();
@@ -83,9 +92,32 @@ export function useWebSocket() {
       }
     };
 
+    const handleTeamStatusMessage = (event: MessageEvent) => {
+      try {
+        const data: TeamStatusUpdateEvent = JSON.parse(event.data as string);
+        if (data.type !== "kuma-studio:team-status-update") return;
+
+        if (data.snapshot?.projects) {
+          setProjects(data.snapshot.projects);
+        }
+        if (data.member) {
+          updateMemberStatus(data.member);
+        }
+        if (data.members) {
+          batchUpdateMembers(data.members);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
     ws.addEventListener("message", handleMessage);
-    return () => ws.removeEventListener("message", handleMessage);
-  }, [ws, upsertJob, setStats, addTokenUsage, setGitActivity, updateCharacterState, applyLayout]);
+    ws.addEventListener("message", handleTeamStatusMessage);
+    return () => {
+      ws.removeEventListener("message", handleMessage);
+      ws.removeEventListener("message", handleTeamStatusMessage);
+    };
+  }, [ws, upsertJob, setStats, addTokenUsage, setGitActivity, updateCharacterState, applyLayout, setProjects, updateMemberStatus, batchUpdateMembers]);
 
   return { status };
 }

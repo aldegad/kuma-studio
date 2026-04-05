@@ -16,6 +16,7 @@ interface FileTreeNodeProps {
   selectedPath: string | null;
   onFileSelect: (path: string) => void;
   onLoadChildren: (path: string) => Promise<FsNode>;
+  onDelete?: (path: string, name: string) => Promise<void>;
 }
 
 // --- SVG-style icon colors by extension ---
@@ -98,10 +99,23 @@ function FileIcon({ color }: { color: string }) {
   );
 }
 
-export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren }: FileTreeNodeProps) {
+// --- Trash icon ---
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" className="text-stone-400 group-hover/del:text-red-500 transition-colors" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5" />
+      <path d="M4.5 4.5l.5 8.5a1 1 0 001 1h4a1 1 0 001-1l.5-8.5" />
+      <path d="M6.5 7v4M9.5 7v4" />
+    </svg>
+  );
+}
+
+export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren, onDelete }: FileTreeNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FsNode[] | null>(node.children ?? null);
   const [loading, setLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const isDir = node.type === "dir";
   const isSkipped = isDir && node.expandable === false;
@@ -136,49 +150,121 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
     }
   }, [isDir, node.path, onFileSelect]);
 
+  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDelete(true);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(node.path, node.name);
+    } catch {
+      // parent handles error
+    }
+    setDeleting(false);
+    setConfirmDelete(false);
+  }, [onDelete, node.path, node.name]);
+
+  const handleCancelDelete = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmDelete(false);
+  }, []);
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={isDir ? handleToggle : handleFileClick}
-        className={[
-          "group flex w-full items-center gap-1 py-[3px] text-left text-[12px] leading-[18px] transition-colors duration-100",
-          node.hidden ? "opacity-50" : "",
-          isSkipped ? "text-gray-400" : "",
-          isSelected
-            ? "bg-amber-50 border-l-2 border-amber-400"
-            : "border-l-2 border-transparent hover:bg-stone-100",
-        ].join(" ")}
-        style={{ paddingLeft: `${depth * 14 + (isSelected ? 6 : 8)}px` }}
-        data-panel-no-drag="true"
-      >
-        {isDir ? (
-          <>
-            <ChevronIcon expanded={expanded} muted={isSkipped} />
-            <FolderIcon open={expanded} skipped={isSkipped} />
-          </>
-        ) : (
-          <>
-            <span className="w-4 shrink-0" />
-            <FileIcon color={fileMeta?.color || "text-stone-400"} />
-          </>
-        )}
-        <span className={`truncate ${isDir ? "font-medium text-stone-700" : "text-stone-600"}`}>
-          {node.name}
-        </span>
-        {!isDir && fileMeta && (
-          <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-0 group-hover:opacity-60 transition-opacity`}>
-            {fileMeta.label}
+      <div className="relative group">
+        <button
+          type="button"
+          onClick={isDir ? handleToggle : handleFileClick}
+          className={[
+            "flex w-full items-center gap-1 py-[3px] text-left text-[12px] leading-[18px] transition-colors duration-100",
+            node.hidden ? "opacity-50" : "",
+            isSkipped ? "text-gray-400" : "",
+            isSelected
+              ? "bg-amber-50 border-l-2 border-amber-400"
+              : "border-l-2 border-transparent hover:bg-stone-100",
+          ].join(" ")}
+          style={{ paddingLeft: `${depth * 14 + (isSelected ? 6 : 8)}px` }}
+          data-panel-no-drag="true"
+        >
+          {isDir ? (
+            <>
+              <ChevronIcon expanded={expanded} muted={isSkipped} />
+              <FolderIcon open={expanded} skipped={isSkipped} />
+            </>
+          ) : (
+            <>
+              <span className="w-4 shrink-0" />
+              <FileIcon color={fileMeta?.color || "text-stone-400"} />
+            </>
+          )}
+          <span className={`truncate ${isDir ? "font-medium text-stone-700" : "text-stone-600"}`}>
+            {node.name}
           </span>
+          {!isDir && fileMeta && !confirmDelete && (
+            <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-0 group-hover:opacity-60 transition-opacity`}>
+              {fileMeta.label}
+            </span>
+          )}
+          {loading && (
+            <span className="ml-auto mr-2 shrink-0">
+              <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin text-stone-400">
+                <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
+              </svg>
+            </span>
+          )}
+        </button>
+
+        {/* Delete button — hover only, files only */}
+        {onDelete && !isDir && !confirmDelete && !loading && (
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            className="group/del absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50"
+            title={`${node.name} 삭제`}
+            data-panel-no-drag="true"
+          >
+            <TrashIcon />
+          </button>
         )}
-        {loading && (
-          <span className="ml-auto mr-2 shrink-0">
-            <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin text-stone-400">
-              <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
-            </svg>
-          </span>
+
+        {/* Inline delete confirmation */}
+        {confirmDelete && (
+          <div
+            className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1.5 pl-2 bg-gradient-to-l from-red-50 via-red-50/95 to-red-50/0"
+            style={{ animation: "fadeIn 100ms ease-out" }}
+          >
+            {deleting ? (
+              <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin text-red-400">
+                <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <>
+                <span className="text-[10px] text-red-600 font-medium whitespace-nowrap">삭제?</span>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                  data-panel-no-drag="true"
+                >
+                  확인
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelDelete}
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium text-stone-500 bg-white border border-stone-200 hover:bg-stone-50 transition-colors"
+                  data-panel-no-drag="true"
+                >
+                  취소
+                </button>
+              </>
+            )}
+          </div>
         )}
-      </button>
+      </div>
 
       {isDir && expanded && children && (
         <div>
@@ -190,6 +276,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
               selectedPath={selectedPath}
               onFileSelect={onFileSelect}
               onLoadChildren={onLoadChildren}
+              onDelete={onDelete}
             />
           ))}
           {children.length === 0 && (
@@ -202,6 +289,8 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           )}
         </div>
       )}
+
+      <style>{`@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }`}</style>
     </div>
   );
 }

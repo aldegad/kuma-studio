@@ -6,6 +6,7 @@ import type {
   GitActivitySnapshot,
 } from "../types/stats";
 import type { Plan, PlanItem, PlanSection, PlanWarning, PlansSnapshot } from "../types/plan";
+import type { TeamStatusSnapshot } from "../stores/use-team-status-store";
 
 const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
 const BASE_URL = `http://${window.location.hostname}:${KUMA_PORT}`;
@@ -257,4 +258,26 @@ export async function saveOfficeLayout(layout: OfficeLayoutSnapshot): Promise<Of
   });
   if (!res.ok) throw new Error(`Failed to save office layout: ${res.statusText}`);
   return res.json();
+}
+
+export async function fetchTeamStatus(): Promise<TeamStatusSnapshot> {
+  const res = await fetch(`${BASE_URL}/studio/team-status`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch team status: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (
+    !isRecord(payload) ||
+    !Array.isArray(payload.projects) ||
+    !payload.projects.every(
+      (p: unknown) =>
+        isRecord(p) &&
+        typeof p.projectId === "string" &&
+        typeof p.projectName === "string" &&
+        Array.isArray(p.members),
+    )
+  ) {
+    throw new Error("Failed to fetch team status: invalid response payload");
+  }
+  return payload as unknown as TeamStatusSnapshot;
 }

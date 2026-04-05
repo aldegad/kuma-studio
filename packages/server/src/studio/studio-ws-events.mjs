@@ -88,6 +88,17 @@ export class StudioWsEvents {
   }
 
   /**
+   * Broadcast a team status snapshot update.
+   * @param {{ projects: Record<string, { members: Array<{ name: string, emoji: string, role: string, surface: string, status: string, lastOutput: string }> }> }} teamStatus
+   */
+  broadcastTeamStatusUpdate(teamStatus) {
+    this.#broadcast({
+      type: "kuma-studio:event",
+      event: { kind: "kuma-studio:team-status-update", teamStatus },
+    });
+  }
+
+  /**
    * Get the number of connected studio clients.
    * @returns {number}
    */

@@ -33,8 +33,6 @@ import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel"
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
 import { FileExplorer } from "../components/ide/FileExplorer";
-import { CodeViewer } from "../components/ide/CodeViewer";
-import { ImageViewer } from "../components/ide/ImageViewer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -194,30 +192,6 @@ export function StudioPage() {
 
   // IDE File Explorer
   const [explorerOpen, setExplorerOpen] = useState(false);
-  const [viewerFile, setViewerFile] = useState<{
-    type: "code"; content: string; language: string; path: string;
-  } | {
-    type: "image"; content: string; mimeType: string; path: string;
-  } | {
-    type: "binary"; size: number; path: string;
-  } | null>(null);
-
-  const handleFileSelect = useCallback(async (path: string) => {
-    try {
-      const kumaPort = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
-      const baseUrl = `http://${window.location.hostname}:${kumaPort}`;
-      const r = await fetch(`${baseUrl}/studio/fs/read?path=${encodeURIComponent(path)}`);
-      const data = await r.json();
-      if (data.error) return;
-      if (data.binary) {
-        setViewerFile({ type: "binary", size: data.size, path });
-      } else if (data.mimeType) {
-        setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path });
-      } else {
-        setViewerFile({ type: "code", content: data.content, language: data.language || "plaintext", path });
-      }
-    } catch { /* ignore */ }
-  }, []);
 
   // Fit-to-screen: compute zoom & pan to show all characters
   const fitToScreen = useCallback(() => {
@@ -997,33 +971,13 @@ export function StudioPage() {
         </div>
       </div>
 
-      {/* IDE File Explorer — left fixed panel */}
+      {/* IDE File Explorer — split-pane: file tree + inline viewer */}
       {explorerOpen && (
-        <div className="absolute left-0 top-10 bottom-0 z-40">
+        <div className="absolute left-0 top-10 bottom-0 z-40" style={{ width: "clamp(500px, 55vw, 900px)" }}>
           <FileExplorer
-            onFileSelect={handleFileSelect}
-            selectedPath={viewerFile?.path ?? null}
             onCollapse={() => setExplorerOpen(false)}
           />
         </div>
-      )}
-
-      {/* File viewer overlay */}
-      {viewerFile?.type === "code" && (
-        <CodeViewer
-          content={viewerFile.content}
-          language={viewerFile.language}
-          filePath={viewerFile.path}
-          onClose={() => setViewerFile(null)}
-        />
-      )}
-      {viewerFile?.type === "image" && (
-        <ImageViewer
-          content={viewerFile.content}
-          mimeType={viewerFile.mimeType}
-          filePath={viewerFile.path}
-          onClose={() => setViewerFile(null)}
-        />
       )}
 
       {/* Toast notifications */}

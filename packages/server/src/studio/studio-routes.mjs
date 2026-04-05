@@ -4,7 +4,7 @@
  */
 
 import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, unlink } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, join, extname, basename, relative, isAbsolute } from "node:path";
@@ -168,9 +168,10 @@ async function buildFsTree(dirPath, maxDepth, currentDepth) {
  * @param {string} options.staticDir
  * @param {import("./stats-store.mjs").StatsStore} options.statsStore
  * @param {import("../scene-store.mjs").SceneStore} options.sceneStore
+ * @param {import("./team-status-store.mjs").TeamStatusStore} [options.teamStatusStore]
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
-export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager }) {
+export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager, teamStatusStore }) {
   const staticRoot = resolve(staticDir);
   const staticRootReal = existsSync(staticRoot) ? realpathSync(staticRoot) : staticRoot;
 
@@ -193,6 +194,11 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       } else {
         sendJson(res, 200, { id: "kuma", state: "idle", nodeType: "session", children: [] });
       }
+      return true;
+    }
+
+    if (url.pathname === "/studio/team-status" && req.method === "GET") {
+      sendJson(res, 200, teamStatusStore?.getSnapshot() ?? { projects: {} });
       return true;
     }
 
@@ -410,6 +416,37 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       } catch (error) {
         sendJson(res, 500, {
           error: "Failed to read file.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/fs/delete" && req.method === "DELETE") {
+      const body = await readJsonBody(req);
+      const filePath = body?.path;
+      if (!filePath) {
+        sendJson(res, 400, { error: "Missing path parameter." });
+        return true;
+      }
+
+      const resolved = resolve(filePath);
+      if (!isAllowedPath(resolved)) {
+        sendJson(res, 403, { error: "Path outside allowed directories." });
+        return true;
+      }
+
+      try {
+        const s = await stat(resolved);
+        if (!s.isFile()) {
+          sendJson(res, 400, { error: "Not a file. Only file deletion is supported." });
+          return true;
+        }
+        await unlink(resolved);
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to delete file.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }
