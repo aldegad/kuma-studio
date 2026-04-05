@@ -29,6 +29,7 @@ import { PlanPanel } from "../components/dashboard/PlanPanel";
 import { ClaudePlansCachePanel } from "../components/dashboard/ClaudePlansCachePanel";
 import { MemoPanel } from "../components/dashboard/MemoPanel";
 import { DraggableDashboard, type DashboardPanelItem } from "../components/dashboard/DraggableDashboard";
+import { TeamMemberGrid } from "../components/dashboard/TeamMemberGrid";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
@@ -503,6 +504,16 @@ export function StudioPage() {
   const activityCount = useActivityStore((state) => state.events.length);
 
   const dashboardPanels: DashboardPanelItem[] = [
+    {
+      id: "team-status",
+      title: "팀 현황",
+      className: "w-[min(48rem,calc(100vw-2rem))]",
+      defaultPosition: ({ width }) => ({
+        x: Math.max(Math.round((width - 768) / 2), 16),
+        y: 56,
+      }),
+      content: <TeamMemberGrid />,
+    },
     {
       id: "daily-report",
       title: "일일 리포트",

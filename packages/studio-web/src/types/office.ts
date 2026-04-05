@@ -1,4 +1,4 @@
-import type { AgentState } from "./agent";
+import type { AgentState } from "./agent.js";
 
 export interface OfficePosition {
   x: number;

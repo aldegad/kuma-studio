@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import teamData from "../../../shared/team.json";
-import type { Agent, AgentState } from "../types/agent";
-import { KUMA_TEAM } from "../types/agent";
+import type { Agent, AgentState } from "../types/agent.js";
+import { KUMA_TEAM } from "../types/agent.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -52,7 +52,7 @@ interface TeamStatusState {
 const DEFAULT_PROJECT: ProjectTeamStatus = {
   projectId: "kuma-studio",
   projectName: "Kuma Studio",
-  members: KUMA_TEAM.map((agent) => ({
+  members: KUMA_TEAM.map((agent: Agent) => ({
     id: agent.id,
     state: "idle" as AgentState,
     lastOutputLines: [],
@@ -124,7 +124,7 @@ export function getTeamGroups(
     ? projects.find((p) => p.projectId === activeProjectId)?.members
     : projects.flatMap((p) => p.members);
 
-  const activeMemberIds = new Set(projectMembers?.map((m) => m.id) ?? KUMA_TEAM.map((a) => a.id));
+  const activeMemberIds = new Set(projectMembers?.map((m: TeamMemberStatus) => m.id) ?? KUMA_TEAM.map((a: Agent) => a.id));
 
   // Group agents by team
   const groups: TeamGroup[] = teamData.teams
@@ -132,10 +132,10 @@ export function getTeamGroups(
     .map((team) => ({
       teamId: team.id,
       label: team.name.ko,
-      emoji: team.pm ? KUMA_TEAM.find((a) => a.id === team.pm)?.emoji ?? "" : "",
+      emoji: team.pm ? KUMA_TEAM.find((a: Agent) => a.id === team.pm)?.emoji ?? "" : "",
       members: KUMA_TEAM
-        .filter((a) => a.team === team.id && activeMemberIds.has(a.id))
-        .map((agent) => ({
+        .filter((a: Agent) => a.team === team.id && activeMemberIds.has(a.id))
+        .map((agent: Agent) => ({
           ...agent,
           status: memberStatus.get(agent.id) ?? {
             id: agent.id,
@@ -150,8 +150,8 @@ export function getTeamGroups(
 
   // Prepend management if any management members are active
   const mgmtMembers = KUMA_TEAM
-    .filter((a) => a.team === "management" && activeMemberIds.has(a.id))
-    .map((agent) => ({
+    .filter((a: Agent) => a.team === "management" && activeMemberIds.has(a.id))
+    .map((agent: Agent) => ({
       ...agent,
       status: memberStatus.get(agent.id) ?? {
         id: agent.id,

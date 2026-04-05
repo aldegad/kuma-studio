@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { OfficeLayoutSnapshot, OfficeScene } from "../types/office";
-import type { Agent, AgentState } from "../types/agent";
-import { buildDefaultOfficeCharacters, DEFAULT_OFFICE_SCENE } from "../lib/office-scene";
+import type { OfficeCharacter, OfficeFurniture, OfficeLayoutSnapshot, OfficeScene } from "../types/office.js";
+import type { Agent, AgentState } from "../types/agent.js";
+import { buildDefaultOfficeCharacters, DEFAULT_OFFICE_SCENE } from "../lib/office-scene.js";
 
 interface OfficeState {
   scene: OfficeScene;
@@ -20,21 +20,21 @@ export const useOfficeStore = create<OfficeState>((set) => ({
 
   applyLayout: (layout) =>
     set((prev) => {
-      const characterPositions = new Map(layout.characters.map((character) => [character.id, character.position]));
-      const furnitureById = new Map(layout.furniture.map((furniture) => [furniture.id, furniture]));
-      const knownFurnitureIds = new Set(prev.scene.furniture.map((furniture) => furniture.id));
-      const appendedFurniture = layout.furniture.filter((furniture) => !knownFurnitureIds.has(furniture.id));
+      const characterPositions = new Map(layout.characters.map((character: Pick<OfficeCharacter, "id" | "position">) => [character.id, character.position] as const));
+      const furnitureById = new Map(layout.furniture.map((furniture: OfficeFurniture) => [furniture.id, furniture] as const));
+      const knownFurnitureIds = new Set(prev.scene.furniture.map((furniture: OfficeFurniture) => furniture.id));
+      const appendedFurniture = layout.furniture.filter((furniture: OfficeFurniture) => !knownFurnitureIds.has(furniture.id));
 
       return {
         scene: {
           ...prev.scene,
           background: layout.background,
-          characters: prev.scene.characters.map((character) => {
+          characters: prev.scene.characters.map((character: OfficeCharacter) => {
             const position = characterPositions.get(character.id);
             return position ? { ...character, position } : character;
           }),
           furniture: [
-            ...prev.scene.furniture.map((furniture) => {
+            ...prev.scene.furniture.map((furniture: OfficeFurniture) => {
               const nextFurniture = furnitureById.get(furniture.id);
               return nextFurniture
                 ? {
@@ -55,7 +55,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     set((prev) => ({
       scene: {
         ...prev.scene,
-        characters: prev.scene.characters.map((c) =>
+        characters: prev.scene.characters.map((c: OfficeCharacter) =>
           c.id === characterId
             ? {
                 ...c,
@@ -76,7 +76,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     set((prev) => ({
       scene: {
         ...prev.scene,
-        characters: prev.scene.characters.map((character) =>
+        characters: prev.scene.characters.map((character: OfficeCharacter) =>
           character.id === characterId ? { ...character, position } : character,
         ),
       },
@@ -86,7 +86,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     set((prev) => ({
       scene: {
         ...prev.scene,
-        furniture: prev.scene.furniture.map((furniture) =>
+        furniture: prev.scene.furniture.map((furniture: OfficeFurniture) =>
           furniture.id === furnitureId ? { ...furniture, position } : furniture,
         ),
       },
@@ -94,11 +94,11 @@ export const useOfficeStore = create<OfficeState>((set) => ({
 
   syncCharactersFromTeam: (agents) =>
     set((prev) => {
-      const existingCharacters = new Map(prev.scene.characters.map((c) => [c.id, c]));
+      const existingCharacters = new Map(prev.scene.characters.map((c: OfficeCharacter) => [c.id, c] as const));
       return {
         scene: {
           ...prev.scene,
-          characters: buildDefaultOfficeCharacters(agents).map((character) => {
+          characters: buildDefaultOfficeCharacters(agents).map((character: OfficeCharacter) => {
             const existing = existingCharacters.get(character.id);
             if (!existing) return character;
             return {

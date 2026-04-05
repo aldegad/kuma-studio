@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { AgentState } from "../types/agent";
-import type { JobCard } from "../types/job-card";
+import type { AgentState } from "../types/agent.js";
+import type { JobCard } from "../types/job-card.js";
 
 export const PIPELINE_STAGE_ORDER = ["decompose", "parallel", "gate", "review"] as const;
 
