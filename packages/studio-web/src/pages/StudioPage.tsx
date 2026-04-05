@@ -29,7 +29,6 @@ import { PlanPanel } from "../components/dashboard/PlanPanel";
 import { ClaudePlansCachePanel } from "../components/dashboard/ClaudePlansCachePanel";
 import { MemoPanel } from "../components/dashboard/MemoPanel";
 import { DraggableDashboard, type DashboardPanelItem } from "../components/dashboard/DraggableDashboard";
-import { TeamMemberGrid } from "../components/dashboard/TeamMemberGrid";
 import { CharacterDetailPanel } from "../components/office/CharacterDetailPanel";
 import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
@@ -505,16 +504,6 @@ export function StudioPage() {
 
   const dashboardPanels: DashboardPanelItem[] = [
     {
-      id: "team-status",
-      title: "팀 현황",
-      className: "w-[min(48rem,calc(100vw-2rem))]",
-      defaultPosition: ({ width }) => ({
-        x: Math.max(Math.round((width - 768) / 2), 16),
-        y: 56,
-      }),
-      content: <TeamMemberGrid />,
-    },
-    {
       id: "daily-report",
       title: "일일 리포트",
       className: "w-80",
@@ -984,7 +973,7 @@ export function StudioPage() {
 
       {/* IDE File Explorer — split-pane: file tree + inline viewer */}
       {explorerOpen && (
-        <div className="absolute left-0 top-10 bottom-0 z-40" style={{ width: "clamp(500px, 55vw, 900px)" }}>
+        <div className="absolute left-0 top-10 bottom-0 z-40" style={{ maxWidth: "min(900px, 60vw)" }}>
           <FileExplorer
             onCollapse={() => setExplorerOpen(false)}
           />

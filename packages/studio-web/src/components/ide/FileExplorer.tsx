@@ -173,11 +173,16 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   const hasViewer = viewerFile !== null;
 
   return (
-    <div className="flex h-full" style={{ minWidth: hasViewer ? 700 : undefined }}>
+    <div className="flex h-full">
       {/* ── Left: File tree panel ── */}
       <div
-        className="relative flex h-full flex-col border-r border-stone-200/80 bg-stone-50 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)]"
-        style={{ width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX }}
+        className={[
+          "relative flex h-full flex-col bg-stone-50",
+          hasViewer
+            ? "border-r border-stone-200/80 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)]"
+            : "shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)]",
+        ].join(" ")}
+        style={hasViewer ? { width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX } : { width: "100%" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-200/80 bg-gradient-to-b from-stone-100 to-stone-50 px-3 py-2">
@@ -309,85 +314,73 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
           </div>
         )}
 
-        {/* Divider resize handle */}
-        <div
-          className="absolute right-0 top-0 bottom-0 w-[3px] cursor-col-resize transition-colors hover:bg-amber-400/50 active:bg-amber-500/60 z-10"
-          onMouseDown={handleResizeStart}
-        />
-      </div>
-
-      {/* ── Right: File viewer panel ── */}
-      <div className="flex-1 flex flex-col min-w-0 bg-white">
-        {fileLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-            <div className="flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 shadow-sm border border-stone-100">
-              <svg width="14" height="14" viewBox="0 0 12 12" className="animate-spin text-amber-500">
-                <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
-              </svg>
-              <span className="text-[11px] text-stone-500">Loading...</span>
-            </div>
-          </div>
-        )}
-
-        {!viewerFile && !fileLoading && (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-stone-300">
-              <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-stone-200">
-                <path d="M14 6h14l10 10v26a2 2 0 01-2 2H14a2 2 0 01-2-2V8a2 2 0 012-2z" />
-                <path d="M28 6v10h10" />
-                <path d="M18 26h12M18 32h8" />
-              </svg>
-              <div className="text-center">
-                <p className="text-[12px] font-medium text-stone-400">파일을 선택하세요</p>
-                <p className="text-[10px] text-stone-300 mt-0.5">왼쪽 트리에서 파일을 클릭하면 여기에 표시됩니다</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {viewerFile?.type === "code" && (
-          <CodeViewer
-            inline
-            content={viewerFile.content}
-            language={viewerFile.language}
-            filePath={viewerFile.path}
-            onClose={() => setViewerFile(null)}
+        {/* Divider resize handle — only when viewer is open */}
+        {hasViewer && (
+          <div
+            className="absolute right-0 top-0 bottom-0 w-[3px] cursor-col-resize transition-colors hover:bg-amber-400/50 active:bg-amber-500/60 z-10"
+            onMouseDown={handleResizeStart}
           />
         )}
-
-        {viewerFile?.type === "image" && (
-          <ImageViewer
-            inline
-            content={viewerFile.content}
-            mimeType={viewerFile.mimeType}
-            filePath={viewerFile.path}
-            onClose={() => setViewerFile(null)}
-          />
-        )}
-
-        {viewerFile?.type === "binary" && (
-          <div className="flex flex-1 items-center justify-center">
-            <div className="flex flex-col items-center gap-3 text-stone-400">
-              <svg width="40" height="40" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-stone-300">
-                <rect x="8" y="8" width="32" height="32" rx="4" />
-                <path d="M16 20h4v8h-4zM20 24h4v4h-4zM28 20h4v8h-4zM24 20h4v4h-4z" fill="currentColor" opacity="0.3" />
-              </svg>
-              <div className="text-center">
-                <p className="text-[12px] font-medium">바이너리 파일</p>
-                <p className="text-[10px] text-stone-300 mt-0.5">{viewerFile.path.split("/").pop()}</p>
-                <p className="text-[10px] text-stone-300">{(viewerFile.size / 1024).toFixed(1)} KB</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setViewerFile(null)}
-                className="mt-1 rounded px-3 py-1 text-[10px] font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
-              >
-                닫기
-              </button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* ── Right: File viewer panel — only rendered when a file is selected ── */}
+      {hasViewer && (
+        <div className="relative flex-1 flex flex-col min-w-0 bg-white">
+          {fileLoading && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <div className="flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 shadow-sm border border-stone-100">
+                <svg width="14" height="14" viewBox="0 0 12 12" className="animate-spin text-amber-500">
+                  <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
+                </svg>
+                <span className="text-[11px] text-stone-500">Loading...</span>
+              </div>
+            </div>
+          )}
+
+          {viewerFile?.type === "code" && (
+            <CodeViewer
+              inline
+              content={viewerFile.content}
+              language={viewerFile.language}
+              filePath={viewerFile.path}
+              onClose={() => setViewerFile(null)}
+            />
+          )}
+
+          {viewerFile?.type === "image" && (
+            <ImageViewer
+              inline
+              content={viewerFile.content}
+              mimeType={viewerFile.mimeType}
+              filePath={viewerFile.path}
+              onClose={() => setViewerFile(null)}
+            />
+          )}
+
+          {viewerFile?.type === "binary" && (
+            <div className="flex flex-1 items-center justify-center">
+              <div className="flex flex-col items-center gap-3 text-stone-400">
+                <svg width="40" height="40" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-stone-300">
+                  <rect x="8" y="8" width="32" height="32" rx="4" />
+                  <path d="M16 20h4v8h-4zM20 24h4v4h-4zM28 20h4v8h-4zM24 20h4v4h-4z" fill="currentColor" opacity="0.3" />
+                </svg>
+                <div className="text-center">
+                  <p className="text-[12px] font-medium">바이너리 파일</p>
+                  <p className="text-[10px] text-stone-300 mt-0.5">{viewerFile.path.split("/").pop()}</p>
+                  <p className="text-[10px] text-stone-300">{(viewerFile.size / 1024).toFixed(1)} KB</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewerFile(null)}
+                  className="mt-1 rounded px-3 py-1 text-[10px] font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
