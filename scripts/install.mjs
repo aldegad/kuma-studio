@@ -6,16 +6,17 @@
  * Installs:
  *   1. npm dependencies
  *   2. Skill files → user Claude skills directory
- *   3. State directory → user Kuma Picker directory
- *   4. Team metadata → user Kuma Picker team metadata
- *   5. Studio-web production build
+ *   3. cmux scripts → user Kuma cmux directory
+ *   4. State directory → user Kuma Picker directory
+ *   5. Team metadata → user Kuma Picker team metadata
+ *   6. Studio-web production build
  *
  * Usage:
  *   node scripts/install.mjs [--skip-build] [--skip-deps]
  */
 
 import { access } from "node:fs/promises";
-import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -27,6 +28,8 @@ const ROOT = resolve(__dirname, "..");
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
 const CLAUDE_SKILLS_DIR = join(CLAUDE_DIR, "skills");
+const KUMA_DIR = join(HOME, ".kuma");
+const KUMA_CMUX_DIR = join(KUMA_DIR, "cmux");
 const STATE_DIR = join(HOME, ".kuma-picker");
 
 const SKILLS = ["kuma", "dev-team", "analytics-team", "strategy-team"];
@@ -247,6 +250,30 @@ function buildStudio(flags) {
   }
 }
 
+async function installCmux() {
+  header("Installing cmux scripts");
+  const srcDir = resolve(ROOT, "cmux");
+  await ensureDirWithSummary(KUMA_DIR);
+  await ensureDirWithSummary(KUMA_CMUX_DIR);
+
+  const entries = await readdir(srcDir);
+  const scripts = entries.filter((f) => f.endsWith(".sh"));
+
+  for (const script of scripts) {
+    const src = resolve(srcDir, script);
+    const dest = resolve(KUMA_CMUX_DIR, script);
+    const result = await copyFileIfChanged(src, dest);
+    if (result === "skipped") {
+      log(`${script} already up to date`);
+      addSummary("skipped", `Skipped existing ${script}`);
+    } else {
+      await chmod(dest, 0o755);
+      log(`${result} ${script} → ${summarizePath(dest)}`);
+      addSummary(result, `${result} ${summarizePath(src)} → ${summarizePath(dest)}`);
+    }
+  }
+}
+
 async function registerSettings() {
   header("Registering settings");
   const settingsPath = join(CLAUDE_DIR, "settings.json");
@@ -302,6 +329,7 @@ async function main() {
 
   installDeps(flags);
   await installSkills();
+  await installCmux();
   await setupStateDir();
   await registerSettings();
   buildStudio(flags);
