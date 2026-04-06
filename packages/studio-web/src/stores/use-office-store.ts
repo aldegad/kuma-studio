@@ -66,10 +66,27 @@ function positionsEqual(
   return left?.x === right?.x && left?.y === right?.y;
 }
 
+/** Patch sofaPositions with stored furniture positions from localStorage. */
+function patchSofaPositions(layout: ProjectLayout): ProjectLayout {
+  const stored = readStoredPositions("kuma-office-furniture-positions");
+  let patched = false;
+  const sofaPositions = { ...layout.sofaPositions };
+  for (const [id, pos] of Object.entries(stored)) {
+    if (id.startsWith("sofa-")) {
+      const teamId = id.slice(5);
+      if (teamId in sofaPositions) {
+        sofaPositions[teamId] = pos;
+        patched = true;
+      }
+    }
+  }
+  return patched ? { ...layout, sofaPositions } : layout;
+}
+
 export const useOfficeStore = create<OfficeState>((set) => ({
   scene: applyStoredPositions(DEFAULT_OFFICE_SCENE),
   draggedIds: readStoredCharacterIds(),
-  activeLayout: DEFAULT_PROJECT_LAYOUT,
+  activeLayout: patchSofaPositions(DEFAULT_PROJECT_LAYOUT),
 
   setScene: (scene) => set({ scene }),
 
@@ -170,14 +187,28 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     })),
 
   updateFurniturePosition: (furnitureId, position) =>
-    set((prev) => ({
-      scene: {
-        ...prev.scene,
-        furniture: prev.scene.furniture.map((f: OfficeFurniture) =>
-          f.id === furnitureId ? { ...f, position } : f,
-        ),
-      },
-    })),
+    set((prev) => {
+      // Keep activeLayout.sofaPositions in sync when a sofa is dragged
+      let activeLayout = prev.activeLayout;
+      if (furnitureId.startsWith("sofa-")) {
+        const teamId = furnitureId.slice(5);
+        if (teamId in activeLayout.sofaPositions) {
+          activeLayout = {
+            ...activeLayout,
+            sofaPositions: { ...activeLayout.sofaPositions, [teamId]: position },
+          };
+        }
+      }
+      return {
+        activeLayout,
+        scene: {
+          ...prev.scene,
+          furniture: prev.scene.furniture.map((f: OfficeFurniture) =>
+            f.id === furnitureId ? { ...f, position } : f,
+          ),
+        },
+      };
+    }),
 
   markDragged: (characterId) =>
     set((prev) => {
@@ -215,13 +246,15 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       const storedCharPositions = readStoredPositions("kuma-office-character-positions");
       const storedFurniturePositions = readStoredPositions("kuma-office-furniture-positions");
 
+      const patchedLayout = patchSofaPositions(layout);
+
       // Reposition characters: keep persisted manual positions only while the member is still marked as dragged.
       const characters = prev.scene.characters.map((c: OfficeCharacter) => {
         const stored = prev.draggedIds.has(c.id) ? storedCharPositions[c.id] : null;
         if (stored) return { ...c, position: stored };
         const newPos = getAutoPosition(
           c.id, c.state, c.team,
-          layout.deskPositions, layout.sofaPositions,
+          patchedLayout.deskPositions, patchedLayout.sofaPositions,
         );
         return newPos ? { ...c, position: newPos } : c;
       });
@@ -233,7 +266,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       });
 
       return {
-        activeLayout: layout,
+        activeLayout: patchedLayout,
         draggedIds: new Set(prev.draggedIds),
         scene: {
           ...prev.scene,
