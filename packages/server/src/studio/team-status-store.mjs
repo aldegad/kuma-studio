@@ -5,7 +5,7 @@ import { getMembersById } from "../team-metadata.mjs";
 
 const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
-const DEFAULT_SURFACE_POLL_MS = 10_000;
+const DEFAULT_SURFACE_POLL_MS = 5_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
 const PROMPT_LINE_PATTERN = /^(❯|>)\s*$|^›/u;
 const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
