@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Plan, PlanStatus } from "../../types/plan";
+import { MarkdownBody } from "./MarkdownBody";
 
 interface PlanDetailModalProps {
   plan: Plan;
@@ -51,11 +52,18 @@ function sectionIcon(index: number) {
   return icons[index % icons.length];
 }
 
+type ViewTab = "checklist" | "document";
+
 export function PlanDetailModal({
   plan,
   onClose,
   isOpen,
 }: PlanDetailModalProps) {
+  const hasBody = (plan.body ?? "").trim().length > 0;
+  const hasSections = plan.sections.length > 0;
+  const showTabs = hasBody && hasSections;
+  const [activeTab, setActiveTab] = useState<ViewTab>(hasBody ? "document" : "checklist");
+
   useEffect(() => {
     if (!isOpen) {
       return undefined;
@@ -168,132 +176,181 @@ export function PlanDetailModal({
           </div>
         </div>
 
-        {/* Scrollable sections */}
-        <div className="max-h-[75vh] space-y-4 overflow-y-auto px-6 py-5">
-          {plan.sections.length === 0 ? (
-            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}>
-              표시할 섹션이 없습니다.
-            </div>
-          ) : (
-            plan.sections.map((section, sectionIndex) => {
-              const checkedItems = section.items.filter(
-                (item) => item.checked,
-              ).length;
-              const totalItems = section.items.length;
-              const sectionRate =
-                totalItems > 0 ? (checkedItems / totalItems) * 100 : 0;
-              const sectionComplete = sectionRate >= 100;
+        {/* Tab toggle */}
+        {showTabs && (
+          <div
+            className="flex gap-0 px-6"
+            style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveTab("document")}
+              className="relative px-4 py-2.5 text-[11px] font-bold tracking-wide transition-colors"
+              style={{
+                color: activeTab === "document" ? "var(--t-primary)" : "var(--t-faint)",
+              }}
+            >
+              문서
+              {activeTab === "document" && (
+                <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-green-600" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("checklist")}
+              className="relative px-4 py-2.5 text-[11px] font-bold tracking-wide transition-colors"
+              style={{
+                color: activeTab === "checklist" ? "var(--t-primary)" : "var(--t-faint)",
+              }}
+            >
+              체크리스트
+              <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--t-faint)" }}>
+                {plan.checkedItems}/{plan.totalItems}
+              </span>
+              {activeTab === "checklist" && (
+                <span className="absolute inset-x-1 bottom-0 h-[2px] rounded-full bg-green-600" />
+              )}
+            </button>
+          </div>
+        )}
 
-              return (
-                <section
-                  key={`${plan.id}-${section.title || "untitled"}-${sectionIndex}`}
-                  className="group/section rounded-xl border shadow-sm transition-all duration-200"
-                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
-                >
-                  {/* Section header */}
-                  <div className="flex items-center justify-between gap-3 rounded-t-xl px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}>
-                    <div className="flex items-center gap-2.5">
+        {/* Scrollable content */}
+        <div className="max-h-[75vh] overflow-y-auto px-6 py-5">
+          {/* Document view */}
+          {(activeTab === "document" || !showTabs) && hasBody && (
+            <MarkdownBody content={plan.body} />
+          )}
+
+          {/* Checklist view */}
+          {(activeTab === "checklist" || !showTabs) && hasSections && (
+            <div className={`space-y-4 ${showTabs && activeTab === "document" ? "hidden" : ""}`}>
+              {plan.sections.map((section, sectionIndex) => {
+                const checkedItems = section.items.filter(
+                  (item) => item.checked,
+                ).length;
+                const totalItems = section.items.length;
+                const sectionRate =
+                  totalItems > 0 ? (checkedItems / totalItems) * 100 : 0;
+                const sectionComplete = sectionRate >= 100;
+
+                return (
+                  <section
+                    key={`${plan.id}-${section.title || "untitled"}-${sectionIndex}`}
+                    className="group/section rounded-xl border shadow-sm transition-all duration-200"
+                    style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+                  >
+                    {/* Section header */}
+                    <div className="flex items-center justify-between gap-3 rounded-t-xl px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}>
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`flex h-7 w-7 items-center justify-center rounded-lg shadow-sm transition-colors ${
+                            sectionComplete
+                              ? "border border-green-200/60 bg-green-50 text-green-700"
+                              : ""
+                          }`}
+                          style={sectionComplete ? undefined : { borderWidth: 1, borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-secondary)" }}
+                        >
+                          {sectionIcon(sectionIndex)}
+                        </span>
+                        <div>
+                          <h3 className="text-[13px] font-bold" style={{ color: "var(--t-primary)" }}>
+                            {section.title || "기타"}
+                          </h3>
+                          <p className="text-[10px]" style={{ color: "var(--t-faint)" }}>
+                            체크리스트 진행 상황
+                          </p>
+                        </div>
+                      </div>
                       <span
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg shadow-sm transition-colors ${
+                        className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] font-bold shadow-sm ${
                           sectionComplete
-                            ? "border border-green-200/60 bg-green-50 text-green-700"
+                            ? "border border-green-200/60 bg-green-50/80 text-green-700"
                             : ""
                         }`}
                         style={sectionComplete ? undefined : { borderWidth: 1, borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-secondary)" }}
                       >
-                        {sectionIcon(sectionIndex)}
+                        {checkedItems}/{totalItems}
                       </span>
-                      <div>
-                        <h3 className="text-[13px] font-bold" style={{ color: "var(--t-primary)" }}>
-                          {section.title || "기타"}
-                        </h3>
-                        <p className="text-[10px]" style={{ color: "var(--t-faint)" }}>
-                          체크리스트 진행 상황
-                        </p>
+                    </div>
+
+                    {/* Section progress bar */}
+                    <div className="px-4 pt-3">
+                      <div className="relative h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--card-bg)" }}>
+                        <div
+                          className={`absolute inset-y-0 left-0 rounded-full ${progressColor(sectionRate)} transition-all duration-500 ease-out`}
+                          style={{ width: `${sectionRate}%` }}
+                        />
                       </div>
                     </div>
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] font-bold shadow-sm ${
-                        sectionComplete
-                          ? "border border-green-200/60 bg-green-50/80 text-green-700"
-                          : ""
-                      }`}
-                      style={sectionComplete ? undefined : { borderWidth: 1, borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-secondary)" }}
-                    >
-                      {checkedItems}/{totalItems}
-                    </span>
-                  </div>
 
-                  {/* Section progress bar */}
-                  <div className="px-4 pt-3">
-                    <div className="relative h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--card-bg)" }}>
-                      <div
-                        className={`absolute inset-y-0 left-0 rounded-full ${progressColor(sectionRate)} transition-all duration-500 ease-out`}
-                        style={{ width: `${sectionRate}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Checklist items */}
-                  <ul className="space-y-1.5 px-4 pb-4 pt-3">
-                    {section.items.map((item, itemIndex) => (
-                      <li
-                        key={`${plan.id}-${sectionIndex}-${item.text}-${itemIndex}`}
-                        className={`group/item rounded-lg border px-3 py-2.5 transition-all duration-200 ${
-                          item.checked
-                            ? "border-emerald-200/50 bg-emerald-50/40 hover:border-emerald-200/70 hover:bg-emerald-50/60"
-                            : ""
-                        }`}
-                        style={item.checked ? undefined : { borderColor: "var(--card-border)", background: "var(--card-bg)" }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <span
-                            aria-hidden="true"
-                            className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
-                              item.checked
-                                ? "border-emerald-400/80 bg-emerald-500 text-white shadow-sm shadow-emerald-200/50"
-                                : "text-transparent"
-                            }`}
-                            style={item.checked ? undefined : { borderColor: "var(--card-border)", background: "var(--input-bg)" }}
-                          >
-                            <svg
-                              viewBox="0 0 16 16"
-                              className="h-3 w-3"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                    {/* Checklist items */}
+                    <ul className="space-y-1.5 px-4 pb-4 pt-3">
+                      {section.items.map((item, itemIndex) => (
+                        <li
+                          key={`${plan.id}-${sectionIndex}-${item.text}-${itemIndex}`}
+                          className={`group/item rounded-lg border px-3 py-2.5 transition-all duration-200 ${
+                            item.checked
+                              ? "border-emerald-200/50 bg-emerald-50/40 hover:border-emerald-200/70 hover:bg-emerald-50/60"
+                              : ""
+                          }`}
+                          style={item.checked ? undefined : { borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span
+                              aria-hidden="true"
+                              className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
+                                item.checked
+                                  ? "border-emerald-400/80 bg-emerald-500 text-white shadow-sm shadow-emerald-200/50"
+                                  : "text-transparent"
+                              }`}
+                              style={item.checked ? undefined : { borderColor: "var(--card-border)", background: "var(--input-bg)" }}
                             >
-                              <path d="M3.5 8.5l3 3 6-7" />
-                            </svg>
-                          </span>
-
-                          <div className="min-w-0 flex-1 space-y-1.5">
-                            <p
-                              className="text-[13px] leading-relaxed transition-colors"
-                              style={{ color: item.checked ? "var(--t-secondary)" : "var(--t-primary)" }}
-                            >
-                              {item.text}
-                            </p>
-
-                            {item.commitHash && (
-                              <span
-                                className="inline-flex max-w-full rounded-md border px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors"
-                                style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}
-                                title={item.commitHash}
+                              <svg
+                                viewBox="0 0 16 16"
+                                className="h-3 w-3"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
                               >
-                                {item.commitHash}
-                              </span>
-                            )}
+                                <path d="M3.5 8.5l3 3 6-7" />
+                              </svg>
+                            </span>
+
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <p
+                                className="text-[13px] leading-relaxed transition-colors"
+                                style={{ color: item.checked ? "var(--t-secondary)" : "var(--t-primary)" }}
+                              >
+                                {item.text}
+                              </p>
+
+                              {item.commitHash && (
+                                <span
+                                  className="inline-flex max-w-full rounded-md border px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors"
+                                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}
+                                  title={item.commitHash}
+                                >
+                                  {item.commitHash}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              );
-            })
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Empty state — no body and no sections */}
+          {!hasBody && !hasSections && (
+            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}>
+              표시할 콘텐츠가 없습니다.
+            </div>
           )}
         </div>
       </div>

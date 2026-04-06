@@ -73,6 +73,7 @@ export function PlanPanel() {
   }, [selectedPlan, sortedPlans]);
 
   function openPlanDetail(plan: Plan) {
+    setIsOverviewOpen(false);
     setSelectedPlan(plan);
     setIsDetailOpen(true);
   }

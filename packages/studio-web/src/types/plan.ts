@@ -33,6 +33,7 @@ export interface Plan {
   title: string;
   status: PlanStatus;
   created: string | null;
+  body: string;
   sections: PlanSection[];
   totalItems: number;
   checkedItems: number;

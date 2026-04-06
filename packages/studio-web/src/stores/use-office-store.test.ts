@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getAutoPosition } from "../lib/office-scene";
 
 class LocalStorageMock {
   #store = new Map<string, string>();
@@ -46,6 +47,11 @@ describe("useOfficeStore", () => {
     installLocalStorage(new LocalStorageMock());
   });
 
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
   it("syncs deskPositions when a desk is dragged", async () => {
     const useOfficeStore = await loadStore();
     const draggedDeskPosition = { x: 333, y: 444 };
@@ -80,5 +86,50 @@ describe("useOfficeStore", () => {
     expect(
       useOfficeStore.getState().scene.characters.find((character) => character.id === "kuma")?.position,
     ).toEqual(storedDeskPosition);
+  });
+
+  it("keeps idle characters at their desk during the 10s grace period, then moves them to the sofa", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-06T16:35:00Z"));
+
+    const useOfficeStore = await loadStore();
+    const characterId = "tookdaki";
+
+    useOfficeStore.getState().updateCharacterState(characterId, "working");
+
+    const stateAfterWorking = useOfficeStore.getState();
+    const deskPosition = stateAfterWorking.activeLayout.deskPositions[characterId];
+    expect(
+      stateAfterWorking.scene.characters.find((character) => character.id === characterId)?.position,
+    ).toEqual(deskPosition);
+
+    vi.advanceTimersByTime(5_000);
+    useOfficeStore.getState().updateCharacterState(characterId, "idle");
+
+    const stateDuringGrace = useOfficeStore.getState();
+    const idlePosition = getAutoPosition(
+      characterId,
+      "idle",
+      stateDuringGrace.scene.characters.find((character) => character.id === characterId)?.team ?? "dev",
+      stateDuringGrace.activeLayout.deskPositions,
+      stateDuringGrace.activeLayout.sofaPositions,
+    );
+
+    expect(
+      stateDuringGrace.scene.characters.find((character) => character.id === characterId),
+    ).toMatchObject({
+      state: "idle",
+      position: deskPosition,
+    });
+
+    vi.advanceTimersByTime(4_999);
+    expect(
+      useOfficeStore.getState().scene.characters.find((character) => character.id === characterId)?.position,
+    ).toEqual(deskPosition);
+
+    vi.advanceTimersByTime(1);
+    expect(
+      useOfficeStore.getState().scene.characters.find((character) => character.id === characterId)?.position,
+    ).toEqual(idlePosition);
   });
 });

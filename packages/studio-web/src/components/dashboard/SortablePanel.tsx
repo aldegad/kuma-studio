@@ -55,7 +55,7 @@ export function FloatingPanel({
             <span className="w-1 h-1 rounded-full bg-current opacity-20" />
           </span>
         </div>
-        <div className="[&>*]:!static [&>*]:!inset-auto [&>*]:!left-auto [&>*]:!right-auto [&>*]:!top-auto [&>*]:!bottom-auto [&>*]:!z-auto [&>*]:!rounded-none [&>*]:!border-0 [&>*]:!shadow-none">
+        <div className="[&>*]:!static [&>*]:!inset-auto [&>*]:!left-auto [&>*]:!right-auto [&>*]:!top-auto [&>*]:!bottom-auto [&>*]:!z-auto [&>*]:!w-full [&>*]:!max-w-full [&>*]:!rounded-none [&>*]:!border-0 [&>*]:!shadow-none">
           {children}
         </div>
       </div>
