@@ -114,7 +114,7 @@ export function useCanvasInteraction(containerRef: RefObject<HTMLDivElement | nu
       if (!wasPan) {
         const currentScene = useOfficeStore.getState().scene;
         void saveOfficeLayout(sceneToLayout(currentScene)).catch(() => {});
-        // Persist character positions to localStorage for reload survival
+        // Persist positions to localStorage for reload survival
         if (dragState.kind === "character") {
           try {
             const stored = JSON.parse(localStorage.getItem("kuma-office-character-positions") || "{}");
@@ -122,6 +122,15 @@ export function useCanvasInteraction(containerRef: RefObject<HTMLDivElement | nu
             if (char) {
               stored[dragState.id] = char.position;
               localStorage.setItem("kuma-office-character-positions", JSON.stringify(stored));
+            }
+          } catch { /* ignore */ }
+        } else if (dragState.kind === "furniture") {
+          try {
+            const stored = JSON.parse(localStorage.getItem("kuma-office-furniture-positions") || "{}");
+            const item = currentScene.furniture.find((f) => f.id === dragState.id);
+            if (item) {
+              stored[dragState.id] = item.position;
+              localStorage.setItem("kuma-office-furniture-positions", JSON.stringify(stored));
             }
           } catch { /* ignore */ }
         }
