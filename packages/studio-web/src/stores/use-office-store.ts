@@ -27,8 +27,26 @@ interface OfficeState {
   switchProject: (memberIds: string[] | null) => void;
 }
 
+/** Apply persisted character positions from localStorage */
+function applyStoredCharacterPositions(scene: OfficeScene): OfficeScene {
+  try {
+    const raw = localStorage.getItem("kuma-office-character-positions");
+    if (!raw) return scene;
+    const stored: Record<string, { x: number; y: number }> = JSON.parse(raw);
+    return {
+      ...scene,
+      characters: scene.characters.map((c) => {
+        const pos = stored[c.id];
+        return pos ? { ...c, position: pos } : c;
+      }),
+    };
+  } catch {
+    return scene;
+  }
+}
+
 export const useOfficeStore = create<OfficeState>((set) => ({
-  scene: DEFAULT_OFFICE_SCENE,
+  scene: applyStoredCharacterPositions(DEFAULT_OFFICE_SCENE),
   draggedIds: new Set<string>(),
   activeLayout: DEFAULT_PROJECT_LAYOUT,
 

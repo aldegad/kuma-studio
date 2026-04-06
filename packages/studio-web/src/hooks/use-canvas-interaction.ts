@@ -112,7 +112,19 @@ export function useCanvasInteraction(containerRef: RefObject<HTMLDivElement | nu
       const wasPan = dragState.kind === "pan";
       setDragState(null);
       if (!wasPan) {
-        void saveOfficeLayout(sceneToLayout(useOfficeStore.getState().scene)).catch(() => {});
+        const currentScene = useOfficeStore.getState().scene;
+        void saveOfficeLayout(sceneToLayout(currentScene)).catch(() => {});
+        // Persist character positions to localStorage for reload survival
+        if (dragState.kind === "character") {
+          try {
+            const stored = JSON.parse(localStorage.getItem("kuma-office-character-positions") || "{}");
+            const char = currentScene.characters.find((c) => c.id === dragState.id);
+            if (char) {
+              stored[dragState.id] = char.position;
+              localStorage.setItem("kuma-office-character-positions", JSON.stringify(stored));
+            }
+          } catch { /* ignore */ }
+        }
       }
     };
     window.addEventListener("mousemove", handleMouseMove);
