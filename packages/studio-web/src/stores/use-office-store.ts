@@ -27,26 +27,36 @@ interface OfficeState {
   switchProject: (memberIds: string[] | null) => void;
 }
 
-/** Apply persisted character positions from localStorage */
-function applyStoredCharacterPositions(scene: OfficeScene): OfficeScene {
+/** Read stored positions from localStorage (returns empty object on failure) */
+function readStoredPositions(key: string): Record<string, { x: number; y: number }> {
   try {
-    const raw = localStorage.getItem("kuma-office-character-positions");
-    if (!raw) return scene;
-    const stored: Record<string, { x: number; y: number }> = JSON.parse(raw);
-    return {
-      ...scene,
-      characters: scene.characters.map((c) => {
-        const pos = stored[c.id];
-        return pos ? { ...c, position: pos } : c;
-      }),
-    };
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    return JSON.parse(raw);
   } catch {
-    return scene;
+    return {};
   }
 }
 
+/** Apply persisted character & furniture positions from localStorage */
+function applyStoredPositions(scene: OfficeScene): OfficeScene {
+  const charPositions = readStoredPositions("kuma-office-character-positions");
+  const furniturePositions = readStoredPositions("kuma-office-furniture-positions");
+  return {
+    ...scene,
+    characters: scene.characters.map((c) => {
+      const pos = charPositions[c.id];
+      return pos ? { ...c, position: pos } : c;
+    }),
+    furniture: scene.furniture.map((f) => {
+      const pos = furniturePositions[f.id];
+      return pos ? { ...f, position: pos } : f;
+    }),
+  };
+}
+
 export const useOfficeStore = create<OfficeState>((set) => ({
-  scene: applyStoredCharacterPositions(DEFAULT_OFFICE_SCENE),
+  scene: applyStoredPositions(DEFAULT_OFFICE_SCENE),
   draggedIds: new Set<string>(),
   activeLayout: DEFAULT_PROJECT_LAYOUT,
 
@@ -166,15 +176,12 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       const layout = memberIds ? buildProjectLayout(memberIds) : DEFAULT_PROJECT_LAYOUT;
 
       // Load user-dragged positions from localStorage
-      let storedPositions: Record<string, { x: number; y: number }> = {};
-      try {
-        const raw = localStorage.getItem("kuma-office-character-positions");
-        if (raw) storedPositions = JSON.parse(raw);
-      } catch { /* ignore */ }
+      const storedCharPositions = readStoredPositions("kuma-office-character-positions");
+      const storedFurniturePositions = readStoredPositions("kuma-office-furniture-positions");
 
       // Reposition characters: prefer localStorage > auto-position > current
       const characters = prev.scene.characters.map((c: OfficeCharacter) => {
-        const stored = storedPositions[c.id];
+        const stored = storedCharPositions[c.id];
         if (stored) return { ...c, position: stored };
         const newPos = getAutoPosition(
           c.id, c.state, c.team,
@@ -183,13 +190,19 @@ export const useOfficeStore = create<OfficeState>((set) => ({
         return newPos ? { ...c, position: newPos } : c;
       });
 
+      // Reposition furniture: prefer localStorage > layout default
+      const furniture = layout.furniture.map((f: OfficeFurniture) => {
+        const stored = storedFurniturePositions[f.id];
+        return stored ? { ...f, position: stored } : f;
+      });
+
       return {
         activeLayout: layout,
-        draggedIds: new Set<string>(Object.keys(storedPositions)),
+        draggedIds: new Set<string>(Object.keys(storedCharPositions)),
         scene: {
           ...prev.scene,
           characters,
-          furniture: layout.furniture,
+          furniture,
         },
       };
     }),
