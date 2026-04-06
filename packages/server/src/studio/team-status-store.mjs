@@ -14,6 +14,8 @@ const COMPLETED_SURFACE_PATTERN =
   /^[✻✶✳✢·]\s*(?:baked|brewed|cooked|toasted|charred|churned|saut(?:e|é)ed)\s+for\b/iu;
 const WORKING_SURFACE_PATTERNS = [
   /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading\b).*(?:\.\.\.|…)?$/iu,
+  /^•\s*working\s*\(/iu,
+  /^•\s*thinking(?:\.\.\.|…)?$/iu,
   /\brunning(?:\.\.\.|…)/iu,
 ];
 const STATUS_BAR_LINE_PATTERNS = [
