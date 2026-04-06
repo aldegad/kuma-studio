@@ -208,7 +208,16 @@ export function DraggableDashboard({
     positionsRef.current = positions;
   }, [positions]);
 
+  // Reconcile positions when the set of visible panels changes.
+  // IMPORTANT: depend on visibleSignature (a stable string), NOT on
+  // visiblePanels / visibleIds (new array refs every render).  Using
+  // unstable refs caused the effect to fire during drag, overwriting
+  // the dragged position with stale localStorage values.
   useEffect(() => {
+    // Skip reconciliation while a drag is in progress — the live
+    // position lives in React state; localStorage is written on drop.
+    if (draggingId !== null) return;
+
     const nextPositions = reconcilePositions(readStoredPositions(storageKey), visiblePanels);
 
     setPositions((currentPositions) =>
@@ -216,7 +225,8 @@ export function DraggableDashboard({
         ? currentPositions
         : nextPositions,
     );
-  }, [storageKey, visiblePanels, visibleIds, visibleSignature]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, visibleSignature, draggingId]);
 
   useEffect(() => {
     setZIndices((currentZIndices) => {

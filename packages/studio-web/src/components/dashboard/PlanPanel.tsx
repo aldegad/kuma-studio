@@ -3,15 +3,12 @@ import { useDashboardStore } from "../../stores/use-dashboard-store";
 import type { Plan } from "../../types/plan";
 import { PlanDetailModal } from "./PlanDetailModal";
 
-interface PlanPanelProps {
-  isNight?: boolean;
-}
-
-export function PlanPanel({ isNight = false }: PlanPanelProps) {
+export function PlanPanel() {
   const plans = useDashboardStore((s) => s.plans);
   const plansLoading = useDashboardStore((s) => s.plansLoading);
   const plansError = useDashboardStore((s) => s.plansError);
   const fetchPlans = useDashboardStore((s) => s.fetchPlans);
+  const [collapsed, setCollapsed] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -68,26 +65,34 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
     <>
       <section
         aria-labelledby={panelHeadingId}
-        className={`rounded-2xl border p-3 shadow-lg backdrop-blur-md ${
-          isNight
-            ? "border-indigo-800/40 bg-indigo-950/70"
-            : "border-white/50 bg-white/75"
-        }`}
+        className="rounded-2xl border shadow-lg backdrop-blur-md overflow-hidden"
+        style={{ borderColor: "var(--panel-border)", background: "var(--panel-bg)" }}
       >
-        <h3
-          id={panelHeadingId}
-          className={`mb-2 text-[10px] font-bold uppercase tracking-wider ${
-            isNight ? "text-indigo-400" : "text-stone-500"
-          }`}
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors"
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
-          계획 진행률
-        </h3>
+          <span
+            id={panelHeadingId}
+            className="text-[10px] font-bold uppercase tracking-wider"
+            style={{ color: "var(--t-muted)" }}
+          >
+            계획 진행률 {total > 0 ? `(${checked}/${total})` : ""}
+          </span>
+          <span className="text-[10px]" style={{ color: "var(--t-faint)" }}>
+            {collapsed ? "▼" : "▲"}
+          </span>
+        </button>
 
+        {!collapsed && (
+        <div className="px-3 pb-3 space-y-1.5">
         {plansError && (
           <p
-            className={`mb-2 text-[10px] ${
-              isNight ? "text-rose-300/80" : "text-rose-500"
-            }`}
+            className="mb-2 text-[10px]"
+            style={{ color: "var(--toast-error-text)" }}
             role="status"
             aria-live="polite"
           >
@@ -97,9 +102,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
 
         {!plans && plansLoading ? (
           <p
-            className={`text-[10px] ${
-              isNight ? "text-indigo-300/60" : "text-stone-400"
-            }`}
+            className="text-[10px]"
+            style={{ color: "var(--t-faint)" }}
             role="status"
             aria-live="polite"
           >
@@ -107,9 +111,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
           </p>
         ) : !plans ? null : total === 0 ? (
           <p
-            className={`text-[10px] ${
-              isNight ? "text-indigo-300/60" : "text-stone-400"
-            }`}
+            className="text-[10px]"
+            style={{ color: "var(--t-faint)" }}
           >
             계획문서 없음
           </p>
@@ -117,25 +120,22 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span
-                className={`text-[10px] ${
-                  isNight ? "text-indigo-300" : "text-stone-500"
-                }`}
+                className="text-[10px]"
+                style={{ color: "var(--t-muted)" }}
               >
                 전체
               </span>
               <span
-                className={`text-xs font-bold ${
-                  isNight ? "text-white" : "text-stone-800"
-                }`}
+                className="text-xs font-bold"
+                style={{ color: "var(--t-primary)" }}
               >
                 {checked}/{total}
               </span>
             </div>
 
             <div
-              className={`h-1.5 overflow-hidden rounded-full ${
-                isNight ? "bg-indigo-900" : "bg-stone-100"
-              }`}
+              className="h-1.5 overflow-hidden rounded-full"
+              style={{ background: "var(--track-bg)" }}
               role="progressbar"
               aria-label="전체 계획 완료율"
               aria-valuemin={0}
@@ -150,9 +150,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
 
             <div className="flex items-center justify-between">
               <span
-                className={`text-[10px] ${
-                  isNight ? "text-indigo-300" : "text-stone-500"
-                }`}
+                className="text-[10px]"
+                style={{ color: "var(--t-muted)" }}
               >
                 완료율
               </span>
@@ -171,9 +170,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
 
             {visiblePlans.length > 0 && (
               <div
-                className={`mt-1 space-y-1 border-t pt-1.5 ${
-                  isNight ? "border-indigo-800" : "border-stone-100"
-                }`}
+                className="mt-1 space-y-1 border-t pt-1.5"
+                style={{ borderColor: "var(--border-subtle)" }}
               >
                 {visiblePlans.map((plan) => (
                   <div key={plan.id}>
@@ -186,16 +184,14 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
                         aria-controls={getPlanRegionId(plan.id)}
                       >
                         <span
-                          className={`max-w-[120px] truncate text-[10px] ${
-                            isNight ? "text-indigo-200" : "text-stone-600"
-                          }`}
+                          className="max-w-[120px] truncate text-[10px]"
+                          style={{ color: "var(--t-secondary)" }}
                         >
                           {expanded === plan.id ? "\u25be" : "\u25b8"} {plan.title}
                         </span>
                         <span
-                          className={`text-[10px] font-mono ${
-                            isNight ? "text-indigo-400" : "text-stone-400"
-                          }`}
+                          className="text-[10px] font-mono"
+                          style={{ color: "var(--t-muted)" }}
                         >
                           {plan.checkedItems}/{plan.totalItems}
                         </span>
@@ -204,11 +200,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
                       <button
                         type="button"
                         onClick={() => openPlanDetail(plan)}
-                        className={`shrink-0 rounded-md p-1 opacity-50 transition-opacity hover:opacity-100 ${
-                          isNight
-                            ? "text-indigo-300 hover:bg-indigo-900/80"
-                            : "text-stone-400 hover:bg-stone-100/70"
-                        }`}
+                        className="shrink-0 rounded-md p-1 opacity-50 transition-opacity hover:opacity-100"
+                        style={{ color: "var(--t-muted)" }}
                         aria-label={`${plan.title} 상세 보기`}
                       >
                         <svg
@@ -249,19 +242,15 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
                               className="flex items-center justify-between gap-1"
                             >
                               <span
-                                className={`max-w-[90px] truncate text-[9px] ${
-                                  isNight
-                                    ? "text-indigo-300/70"
-                                    : "text-stone-400"
-                                }`}
+                                className="max-w-[90px] truncate text-[9px]"
+                                style={{ color: "var(--t-faint)" }}
                               >
                                 {section.title || "기타"}
                               </span>
                               <div className="flex items-center gap-1">
                                 <div
-                                  className={`h-1 w-8 overflow-hidden rounded-full ${
-                                    isNight ? "bg-indigo-900" : "bg-stone-200"
-                                  }`}
+                                  className="h-1 w-8 overflow-hidden rounded-full"
+                                  style={{ background: "var(--track-bg)" }}
                                 >
                                   <div
                                     className="h-full rounded-full bg-stone-400"
@@ -271,9 +260,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
                                   />
                                 </div>
                                 <span
-                                  className={`text-[8px] font-mono ${
-                                    isNight ? "text-indigo-400" : "text-stone-400"
-                                  }`}
+                                  className="text-[8px] font-mono"
+                                  style={{ color: "var(--t-muted)" }}
                                 >
                                   {sc}/{st}
                                 </span>
@@ -288,6 +276,8 @@ export function PlanPanel({ isNight = false }: PlanPanelProps) {
               </div>
             )}
           </div>
+        )}
+        </div>
         )}
       </section>
 

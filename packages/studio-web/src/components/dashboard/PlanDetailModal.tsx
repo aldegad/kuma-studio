@@ -42,15 +42,10 @@ function progressColor(rate: number): string {
 /** Section icon SVGs based on index position */
 function sectionIcon(index: number) {
   const icons = [
-    // foundation / base layer
     <svg key="i" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 10l7-7 7 7" /><path d="M5 8v8h10V8" /></svg>,
-    // build / code
     <svg key="ii" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 7l-4 3 4 3" /><path d="M13 7l4 3-4 3" /><path d="M11 5l-2 10" /></svg>,
-    // test / check
     <svg key="iii" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10l4 4 8-8" /></svg>,
-    // ship / rocket
     <svg key="iv" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3c3 3 4 6 4 10H6c0-4 1-7 4-10z" /><path d="M8 17h4" /><path d="M10 13v4" /></svg>,
-    // iterate / loop
     <svg key="v" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 5l2 2-2 2" /><path d="M4 10a6 6 0 0110-3" /><path d="M6 15l-2-2 2-2" /><path d="M16 10a6 6 0 01-10 3" /></svg>,
   ];
   return icons[index % icons.length];
@@ -101,23 +96,23 @@ export function PlanDetailModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`plan-detail-title-${plan.id}`}
-        className="w-full max-w-3xl overflow-hidden rounded-2xl border border-stone-300/40 bg-stone-50/95 shadow-[0_25px_60px_-12px_rgba(0,0,0,0.15),0_0_0_1px_rgba(255,255,255,0.6)_inset] backdrop-blur-md transition-all duration-300"
+        className="w-full max-w-3xl overflow-hidden rounded-2xl border shadow-[0_25px_60px_-12px_rgba(0,0,0,0.15)] backdrop-blur-md transition-all duration-300"
         style={{
+          background: "var(--panel-bg-strong)",
+          borderColor: "var(--panel-border)",
           animation: "planModalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        {/* ----------------------------------------------------------------- */}
-        {/* Header                                                            */}
-        {/* ----------------------------------------------------------------- */}
-        <div className="border-b border-stone-200/40 bg-stone-100/60 px-6 py-5">
+        {/* Header */}
+        <div className="px-6 py-5" style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}>
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 space-y-4">
-              {/* Title + status badge */}
               <div className="flex flex-wrap items-center gap-2.5">
                 <h2
                   id={`plan-detail-title-${plan.id}`}
-                  className="text-lg font-bold tracking-tight text-stone-800"
+                  className="text-lg font-bold tracking-tight"
+                  style={{ color: "var(--t-primary)" }}
                 >
                   {plan.title}
                 </h2>
@@ -128,21 +123,20 @@ export function PlanDetailModal({
                 </span>
               </div>
 
-              {/* Overall progress bar */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-stone-400">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: "var(--t-faint)" }}>
                     전체 진행 상황
                   </span>
-                  <span className="font-mono text-xs font-bold text-stone-700">
+                  <span className="font-mono text-xs font-bold" style={{ color: "var(--t-secondary)" }}>
                     {plan.checkedItems}/{plan.totalItems}
-                    <span className="ml-1.5 text-stone-400">
+                    <span className="ml-1.5" style={{ color: "var(--t-faint)" }}>
                       {safeRate.toFixed(0)}%
                     </span>
                   </span>
                 </div>
 
-                <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-stone-200/60">
+                <div className="relative h-2.5 w-full overflow-hidden rounded-full" style={{ background: "var(--card-bg)" }}>
                   <div
                     className={`absolute inset-y-0 left-0 rounded-full ${progressColor(safeRate)} transition-all duration-700 ease-out`}
                     style={{ width: `${safeRate}%` }}
@@ -151,11 +145,11 @@ export function PlanDetailModal({
               </div>
             </div>
 
-            {/* Close button */}
             <button
               type="button"
               onClick={onClose}
-              className="group rounded-xl border border-stone-200/60 bg-white/60 p-2 text-stone-400 shadow-sm transition-all duration-200 hover:border-stone-300 hover:bg-white hover:text-stone-600 hover:shadow-md"
+              className="group rounded-xl border p-2 shadow-sm transition-all duration-200"
+              style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}
               aria-label="계획 상세 닫기"
             >
               <svg
@@ -174,12 +168,10 @@ export function PlanDetailModal({
           </div>
         </div>
 
-        {/* ----------------------------------------------------------------- */}
-        {/* Scrollable sections                                               */}
-        {/* ----------------------------------------------------------------- */}
+        {/* Scrollable sections */}
         <div className="max-h-[75vh] space-y-4 overflow-y-auto px-6 py-5">
           {plan.sections.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-stone-300/50 bg-white/40 px-4 py-8 text-center text-sm text-stone-400">
+            <div className="rounded-xl border border-dashed px-4 py-8 text-center text-sm" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}>
               표시할 섹션이 없습니다.
             </div>
           ) : (
@@ -195,25 +187,27 @@ export function PlanDetailModal({
               return (
                 <section
                   key={`${plan.id}-${section.title || "untitled"}-${sectionIndex}`}
-                  className="group/section rounded-xl border border-stone-200/50 bg-white/50 shadow-sm transition-all duration-200 hover:border-stone-200/80 hover:bg-white/70 hover:shadow-md"
+                  className="group/section rounded-xl border shadow-sm transition-all duration-200"
+                  style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
                 >
                   {/* Section header */}
-                  <div className="flex items-center justify-between gap-3 rounded-t-xl border-b border-stone-100/80 bg-stone-50/60 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3 rounded-t-xl px-4 py-3" style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}>
                     <div className="flex items-center gap-2.5">
                       <span
                         className={`flex h-7 w-7 items-center justify-center rounded-lg shadow-sm transition-colors ${
                           sectionComplete
                             ? "border border-green-200/60 bg-green-50 text-green-700"
-                            : "border border-stone-300/60 bg-stone-100/80 text-stone-600"
+                            : ""
                         }`}
+                        style={sectionComplete ? undefined : { borderWidth: 1, borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-secondary)" }}
                       >
                         {sectionIcon(sectionIndex)}
                       </span>
                       <div>
-                        <h3 className="text-[13px] font-bold text-stone-800">
+                        <h3 className="text-[13px] font-bold" style={{ color: "var(--t-primary)" }}>
                           {section.title || "기타"}
                         </h3>
-                        <p className="text-[10px] text-stone-400">
+                        <p className="text-[10px]" style={{ color: "var(--t-faint)" }}>
                           체크리스트 진행 상황
                         </p>
                       </div>
@@ -222,8 +216,9 @@ export function PlanDetailModal({
                       className={`rounded-full px-2.5 py-0.5 font-mono text-[11px] font-bold shadow-sm ${
                         sectionComplete
                           ? "border border-green-200/60 bg-green-50/80 text-green-700"
-                          : "border border-stone-300/60 bg-stone-100/80 text-stone-600"
+                          : ""
                       }`}
+                      style={sectionComplete ? undefined : { borderWidth: 1, borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-secondary)" }}
                     >
                       {checkedItems}/{totalItems}
                     </span>
@@ -231,7 +226,7 @@ export function PlanDetailModal({
 
                   {/* Section progress bar */}
                   <div className="px-4 pt-3">
-                    <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-stone-200/50">
+                    <div className="relative h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--card-bg)" }}>
                       <div
                         className={`absolute inset-y-0 left-0 rounded-full ${progressColor(sectionRate)} transition-all duration-500 ease-out`}
                         style={{ width: `${sectionRate}%` }}
@@ -247,18 +242,19 @@ export function PlanDetailModal({
                         className={`group/item rounded-lg border px-3 py-2.5 transition-all duration-200 ${
                           item.checked
                             ? "border-emerald-200/50 bg-emerald-50/40 hover:border-emerald-200/70 hover:bg-emerald-50/60"
-                            : "border-stone-200/50 bg-stone-50/30 hover:border-stone-200/70 hover:bg-stone-50/60"
+                            : ""
                         }`}
+                        style={item.checked ? undefined : { borderColor: "var(--card-border)", background: "var(--card-bg)" }}
                       >
                         <div className="flex items-start gap-3">
-                          {/* Custom checkbox */}
                           <span
                             aria-hidden="true"
                             className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border transition-all duration-200 ${
                               item.checked
                                 ? "border-emerald-400/80 bg-emerald-500 text-white shadow-sm shadow-emerald-200/50"
-                                : "border-stone-300/80 bg-white text-transparent group-hover/item:border-stone-400/80"
+                                : "text-transparent"
                             }`}
+                            style={item.checked ? undefined : { borderColor: "var(--card-border)", background: "var(--input-bg)" }}
                           >
                             <svg
                               viewBox="0 0 16 16"
@@ -275,18 +271,16 @@ export function PlanDetailModal({
 
                           <div className="min-w-0 flex-1 space-y-1.5">
                             <p
-                              className={`text-[13px] leading-relaxed transition-colors ${
-                                item.checked
-                                  ? "text-stone-600"
-                                  : "text-stone-700"
-                              }`}
+                              className="text-[13px] leading-relaxed transition-colors"
+                              style={{ color: item.checked ? "var(--t-secondary)" : "var(--t-primary)" }}
                             >
                               {item.text}
                             </p>
 
                             {item.commitHash && (
                               <span
-                                className="inline-flex max-w-full rounded-md border border-stone-200/60 bg-stone-50/80 px-1.5 py-0.5 font-mono text-[9px] tracking-wide text-stone-400 transition-colors group-hover/item:border-stone-300/60 group-hover/item:text-stone-500"
+                                className="inline-flex max-w-full rounded-md border px-1.5 py-0.5 font-mono text-[9px] tracking-wide transition-colors"
+                                style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}
                                 title={item.commitHash}
                               >
                                 {item.commitHash}
