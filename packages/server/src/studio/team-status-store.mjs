@@ -11,7 +11,7 @@ const PROMPT_LINE_PATTERN = /^(❯|>)\s*$|^›/u;
 const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
 const SURFACE_HINT_PATTERNS = [
   /^bypass permissions\b/iu,
-  /^brewed for\b/iu,
+  /^(?:brewed|baked) for\b/iu,
   /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
   /^esc to\b/iu,
   /^press up to edit\b/iu,
@@ -62,7 +62,7 @@ export function classifySurfaceStatus(output) {
   }
 
   const lines = getOutputLines(normalized);
-  const promptVisible = lines.slice(-2).some((line) => PROMPT_LINE_PATTERN.test(line));
+  const promptVisible = lines.some((line) => PROMPT_LINE_PATTERN.test(line));
 
   if (promptVisible) {
     return "idle";
@@ -313,7 +313,7 @@ async function defaultReadSurface(surface) {
   return new Promise((resolve) => {
     execFile(
       "cmux",
-      ["read-screen", "--surface", surface, "--lines", "8"],
+      ["read-screen", "--surface", surface, "--lines", "10"],
       {
         encoding: "utf8",
         timeout: SURFACE_READ_TIMEOUT_MS,
