@@ -151,30 +151,29 @@ export function StudioPage() {
   const activityCount = useActivityStore((s) => s.events.length);
 
   // "system" project members (e.g. jjooni) are always visible regardless of active tab
-  const systemMemberIds = new Set(
-    projects.find((p) => p.projectId === "system")?.members.map((m) => m.id) ?? [],
-  );
+  const systemMemberIds = projects.find((p) => p.projectId === "system")?.members.map((m) => m.id) ?? [];
+  const systemMemberIdSet = new Set(systemMemberIds);
+  const activeProjectMemberIds = activeProjectId
+    ? [
+        ...(projects.find((p) => p.projectId === activeProjectId)?.members.map((m) => m.id) ?? []),
+        ...systemMemberIds,
+      ]
+    : null;
+  const activeProjectMemberIdsKey = activeProjectMemberIds?.join("|") ?? "__all__";
 
   // Switch office layout when active project changes
   useEffect(() => {
-    if (activeProjectId) {
-      const project = projects.find((p) => p.projectId === activeProjectId);
-      const memberIds = [
-        ...(project?.members.map((m) => m.id) ?? []),
-        ...systemMemberIds,
-      ];
-      if (memberIds.length > 0) {
-        switchProject(memberIds);
-      }
+    if (activeProjectMemberIds && activeProjectMemberIds.length > 0) {
+      switchProject(activeProjectMemberIds);
     } else {
       switchProject(null);
     }
-  }, [activeProjectId, projects, switchProject]);
+  }, [activeProjectMemberIdsKey, switchProject]);
 
   // Filter characters by active project (system members always included)
   const visibleCharacters = activeProjectId
     ? scene.characters.filter((c) => {
-        if (systemMemberIds.has(c.id)) return true;
+        if (systemMemberIdSet.has(c.id)) return true;
         const projectMembers = projects.find((p) => p.projectId === activeProjectId)?.members;
         if (!projectMembers) return true;
         return projectMembers.some((m) => m.id === c.id);

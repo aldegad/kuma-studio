@@ -55,9 +55,20 @@ function applyStoredPositions(scene: OfficeScene): OfficeScene {
   };
 }
 
+function readStoredCharacterIds(): Set<string> {
+  return new Set(Object.keys(readStoredPositions("kuma-office-character-positions")));
+}
+
+function positionsEqual(
+  left: { x: number; y: number } | null | undefined,
+  right: { x: number; y: number } | null | undefined,
+): boolean {
+  return left?.x === right?.x && left?.y === right?.y;
+}
+
 export const useOfficeStore = create<OfficeState>((set) => ({
   scene: applyStoredPositions(DEFAULT_OFFICE_SCENE),
-  draggedIds: new Set<string>(),
+  draggedIds: readStoredCharacterIds(),
   activeLayout: DEFAULT_PROJECT_LAYOUT,
 
   setScene: (scene) => set({ scene }),
@@ -74,8 +85,18 @@ export const useOfficeStore = create<OfficeState>((set) => ({
           ...prev.scene,
           background: layout.background,
           characters: prev.scene.characters.map((character: OfficeCharacter) => {
-            const position = characterPositions.get(character.id);
-            return position ? { ...character, position } : character;
+            const layoutPosition = characterPositions.get(character.id);
+            const autoPosition = prev.draggedIds.has(character.id)
+              ? null
+              : getAutoPosition(
+                  character.id,
+                  character.state,
+                  character.team,
+                  prev.activeLayout.deskPositions,
+                  prev.activeLayout.sofaPositions,
+                );
+            const position = autoPosition ?? layoutPosition ?? character.position;
+            return positionsEqual(position, character.position) ? character : { ...character, position };
           }),
           furniture: [
             ...prev.scene.furniture.map((furniture: OfficeFurniture) => {
@@ -92,12 +113,27 @@ export const useOfficeStore = create<OfficeState>((set) => ({
 
   updateCharacterState: (characterId, state, task = undefined) =>
     set((prev) => {
-      // Find the character to get their team for auto-positioning
       const character = prev.scene.characters.find((c: OfficeCharacter) => c.id === characterId);
+      if (!character) {
+        return prev;
+      }
+
+      const nextTask = task !== undefined ? task : state === "idle" ? null : character.task ?? null;
       // Use project-specific desk/sofa positions for auto-positioning
-      const autoPos = character
-        ? getAutoPosition(characterId, state, character.team, prev.activeLayout.deskPositions, prev.activeLayout.sofaPositions)
-        : null;
+      const autoPos = getAutoPosition(
+        characterId,
+        state,
+        character.team,
+        prev.activeLayout.deskPositions,
+        prev.activeLayout.sofaPositions,
+      );
+      const shouldMove = autoPos != null && !positionsEqual(character.position, autoPos);
+      const stateChanged = character.state !== state || character.task !== nextTask;
+      const wasDragged = prev.draggedIds.has(characterId);
+
+      if (!stateChanged && !shouldMove && !wasDragged) {
+        return prev;
+      }
 
       return {
         // Clear dragged flag on state change — auto-position takes over
@@ -113,7 +149,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
               ? {
                   ...c,
                   state,
-                  task: task !== undefined ? task : state === "idle" ? null : c.task ?? null,
+                  task: nextTask,
                   // Auto-move to desk/sofa on state change
                   ...(autoPos ? { position: autoPos } : {}),
                 }
@@ -179,9 +215,9 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       const storedCharPositions = readStoredPositions("kuma-office-character-positions");
       const storedFurniturePositions = readStoredPositions("kuma-office-furniture-positions");
 
-      // Reposition characters: prefer localStorage > auto-position > current
+      // Reposition characters: keep persisted manual positions only while the member is still marked as dragged.
       const characters = prev.scene.characters.map((c: OfficeCharacter) => {
-        const stored = storedCharPositions[c.id];
+        const stored = prev.draggedIds.has(c.id) ? storedCharPositions[c.id] : null;
         if (stored) return { ...c, position: stored };
         const newPos = getAutoPosition(
           c.id, c.state, c.team,
@@ -198,7 +234,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
 
       return {
         activeLayout: layout,
-        draggedIds: new Set<string>(Object.keys(storedCharPositions)),
+        draggedIds: new Set(prev.draggedIds),
         scene: {
           ...prev.scene,
           characters,

@@ -46,6 +46,7 @@ export function Character({ character, isDragging = false, isSelected = false, s
   const effort = formatEffort(liveModelInfo?.effort);
   const effortClass = effortColorClass(liveModelInfo?.effort);
   const contextPct = liveModelInfo?.contextRemaining;
+  const shouldFloat = !isDragging && (character.state === "idle" || character.state === "completed");
 
   return (
     <div
@@ -61,7 +62,7 @@ export function Character({ character, isDragging = false, isSelected = false, s
         left: character.position.x,
         top: character.position.y,
         transform: "translate(-50%, -50%)",
-        animation: isDragging ? "none" : `float-idle ${2.5 + (character.id.charCodeAt(0) % 5) * 0.3}s ease-in-out infinite`,
+        animation: shouldFloat ? `float-idle ${2.5 + (character.id.charCodeAt(0) % 5) * 0.3}s ease-in-out infinite` : "none",
       }}
     >
       {/* Random emote bubble for idle characters */}
