@@ -16,8 +16,15 @@ const WORKING_SURFACE_PATTERNS = [
   /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading\b).*(?:\.\.\.|…)?$/iu,
   /\brunning(?:\.\.\.|…)/iu,
 ];
+const STATUS_BAR_LINE_PATTERNS = [
+  /⏵⏵\s*bypass permissions(?: on\b.*)?/iu,
+  /\bnow using extra usage\b/iu,
+  /\bextra credit\b/iu,
+];
 const SURFACE_HINT_PATTERNS = [
   /^bypass permissions\b/iu,
+  /^now using extra usage\b/iu,
+  /^extra credit\b/iu,
   /^(?:brewed|baked|cooked|toasted|charred|churned|saut(?:e|é)ed) for\b/iu,
   /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
   /^esc to\b/iu,
@@ -161,8 +168,16 @@ function isPromptLine(line) {
     return true;
   }
 
-  const withoutBoxDrawing = trimmed.replace(/[\u2500-\u257F]/gu, "").trim();
+  const withoutFooter = stripStatusBarText(trimmed);
+  const withoutBoxDrawing = withoutFooter.replace(/[\u2500-\u257F]/gu, "").trim();
   return PROMPT_LINE_PATTERN.test(withoutBoxDrawing);
+}
+
+function stripStatusBarText(line) {
+  return STATUS_BAR_LINE_PATTERNS.reduce(
+    (current, pattern) => current.replace(pattern, " "),
+    String(line ?? ""),
+  ).trim();
 }
 
 function getWorkingSurfaceSignalIndex(lines) {

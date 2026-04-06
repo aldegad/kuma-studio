@@ -36,6 +36,21 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus("✻ Thinking...\nReading file.ts"), "working");
   });
 
+  it("ignores Claude status bar lines while finding prompts", () => {
+    assert.strictEqual(
+      classifySurfaceStatus("───────────────────────────\n❯\n───────────────────────────\n  ⏵⏵ bypass permissions\n  Now using extra usage"),
+      "idle",
+    );
+    assert.strictEqual(
+      classifySurfaceStatus("✻ Concocting...\n  ⏵⏵ bypass permissions"),
+      "working",
+    );
+    assert.strictEqual(
+      classifySurfaceStatus("⏺ result text\n───────────────────────────\n❯\n───────────────────────────\n  ⏵⏵ bypass permissions on"),
+      "idle",
+    );
+  });
+
   it("classifies prompt and footer-only output as idle", () => {
     assert.strictEqual(
       classifySurfaceStatus("⏵⏵ bypass permissions on /tmp\nPress up to edit queued messages\n❯"),
