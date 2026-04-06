@@ -173,13 +173,27 @@ function isPseudoRegistryMember(name) {
 }
 
 function getRegistryProjectMembers(projectMembers) {
-  return Object.entries(projectMembers ?? {})
-    .filter(([, surface]) => typeof surface === "string" && surface.trim().length > 0)
-    .map(([label, surface]) => {
-      const { name, emoji } = parseRegistryLabel(label);
-      return { name, emoji, surface };
-    })
-    .filter(({ name }) => !isPseudoRegistryMember(name));
+  const dedupedMembers = new Map();
+
+  for (const [label, surface] of Object.entries(projectMembers ?? {})) {
+    if (typeof surface !== "string" || surface.trim().length === 0) {
+      continue;
+    }
+
+    const { name, emoji } = parseRegistryLabel(label);
+    if (isPseudoRegistryMember(name)) {
+      continue;
+    }
+
+    const previous = dedupedMembers.get(name);
+    dedupedMembers.set(name, {
+      name,
+      emoji: emoji || previous?.emoji || "",
+      surface,
+    });
+  }
+
+  return Array.from(dedupedMembers.values());
 }
 
 function getLastOutputLines(output) {

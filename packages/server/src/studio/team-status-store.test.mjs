@@ -87,6 +87,41 @@ describe("team-status-store", () => {
     });
   });
 
+  it("keeps the latest registry surface when the same member is registered twice", () => {
+    const snapshot = buildTeamStatusSnapshot(
+      {
+        "kuma-studio": {
+          "🦝 쿤": "surface:22",
+          쿤: "surface:24",
+        },
+      },
+      new Map([
+        ["surface:22", { status: "dead", lastOutput: "Error: surface:22 not found" }],
+        ["surface:24", { status: "working", lastOutput: "Reviewing dashboard sync" }],
+      ]),
+      new Map([
+        ["쿤", { emoji: "🦝", role: "분석" }],
+      ]),
+    );
+
+    assert.deepEqual(snapshot, {
+      projects: {
+        "kuma-studio": {
+          members: [
+            {
+              name: "쿤",
+              emoji: "🦝",
+              role: "분석",
+              surface: "surface:24",
+              status: "working",
+              lastOutput: "Reviewing dashboard sync",
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("maps surface dead status to studio error state", () => {
     assert.strictEqual(mapSurfaceStatusToStudioState("dead"), "error");
   });
