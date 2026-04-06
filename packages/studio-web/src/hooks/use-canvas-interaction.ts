@@ -19,7 +19,7 @@ export type DragState =
 // ---------------------------------------------------------------------------
 
 export const CANVAS_WIDTH = 2000;
-export const CANVAS_HEIGHT = 1500;
+export const CANVAS_HEIGHT = 1700;
 export const ZOOM_DEFAULT = 0.7;
 export const ZOOM_MIN = 0.3;
 export const ZOOM_MAX = 2.0;
