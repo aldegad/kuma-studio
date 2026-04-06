@@ -313,7 +313,7 @@ async function defaultReadSurface(surface) {
   return new Promise((resolve) => {
     execFile(
       "cmux",
-      ["read-screen", "--surface", surface, "--lines", "3"],
+      ["read-screen", "--surface", surface, "--lines", "8"],
       {
         encoding: "utf8",
         timeout: SURFACE_READ_TIMEOUT_MS,
