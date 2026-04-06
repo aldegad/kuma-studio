@@ -1,13 +1,142 @@
 @import "tailwindcss";
 
 :root {
-  --color-kuma-brown: #5C4033;
   --color-kuma-orange: #FF8C42;
-  --color-kuma-green: #4CAF50;
   --color-kuma-cream: #FFF8F0;
-  --color-kuma-wood: #8B6914;
+
+  /* ── Theme surface tokens ── */
+  --panel-bg: rgba(255, 255, 255, 0.75);
+  --panel-bg-strong: rgba(255, 255, 255, 0.90);
+  --panel-border: rgba(255, 255, 255, 0.50);
+  --panel-hover: rgba(255, 255, 255, 0.40);
+
+  /* Text hierarchy */
+  --t-primary: #292524;
+  --t-secondary: #57534e;
+  --t-muted: #78716c;
+  --t-faint: #a8a29e;
+
+  /* Cards / sub-elements */
+  --card-bg: rgba(255, 255, 255, 0.70);
+  --card-border: rgba(231, 229, 228, 0.50);
+  --card-bg-hover: rgba(250, 250, 249, 0.60);
+
+  /* Inputs */
+  --input-bg: #ffffff;
+  --input-border: #d6d3d1;
+
+  /* Badges */
+  --badge-bg: #f5f5f4;
+  --badge-text: #78716c;
+
+  /* Buttons — solid */
+  --btn-solid-bg: #44403c;
+  --btn-solid-text: #ffffff;
+  --btn-solid-hover: #57534e;
+
+  /* Buttons — ghost / secondary */
+  --btn-ghost-bg: #e7e5e4;
+  --btn-ghost-text: #57534e;
+  --btn-ghost-hover: #d6d3d1;
+
+  /* Danger */
+  --danger-text: #ef4444;
+  --danger-hover-bg: #fef2f2;
+
+  /* Progress track */
+  --track-bg: #f5f5f4;
+
+  /* Separators */
+  --border-subtle: rgba(231, 229, 228, 0.50);
+
+  /* Toast */
+  --toast-info-bg: rgba(239, 246, 255, 0.90);
+  --toast-info-border: rgba(191, 219, 254, 0.60);
+  --toast-info-text: #1d4ed8;
+  --toast-success-bg: rgba(240, 253, 244, 0.90);
+  --toast-success-border: rgba(187, 247, 208, 0.60);
+  --toast-success-text: #15803d;
+  --toast-error-bg: rgba(254, 242, 242, 0.90);
+  --toast-error-border: rgba(254, 202, 202, 0.60);
+  --toast-error-text: #b91c1c;
+
+  /* Minimap */
+  --minimap-bg: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+
+  /* Whiteboard */
+  --wb-bg: rgba(255, 255, 255, 0.90);
+  --wb-border: #d6d3d1;
+  --wb-card-bg: rgba(255, 251, 235, 0.50);
+  --wb-card-border: rgba(253, 230, 138, 0.60);
+
+  /* IDE */
+  --ide-bg: #fafaf9;
+  --ide-bg-alt: #ffffff;
+  --ide-header-from: #f5f5f4;
+  --ide-header-to: #fafaf9;
 
   font-family: "Pretendard Variable", "IBM Plex Sans", system-ui, sans-serif;
+}
+
+[data-theme="night"] {
+  --color-kuma-cream: #0f0d1a;
+
+  --panel-bg: rgba(25, 22, 55, 0.75);
+  --panel-bg-strong: rgba(25, 22, 55, 0.90);
+  --panel-border: rgba(100, 80, 180, 0.35);
+  --panel-hover: rgba(100, 80, 180, 0.20);
+
+  --t-primary: #e0e7ff;
+  --t-secondary: #c7d2fe;
+  --t-muted: #818cf8;
+  --t-faint: #6366f1;
+
+  --card-bg: rgba(30, 25, 60, 0.40);
+  --card-border: rgba(100, 80, 180, 0.25);
+  --card-bg-hover: rgba(49, 46, 129, 0.40);
+
+  --input-bg: rgba(30, 27, 75, 0.70);
+  --input-border: rgba(67, 56, 202, 0.40);
+
+  --badge-bg: rgba(49, 46, 129, 0.50);
+  --badge-text: #c7d2fe;
+
+  --btn-solid-bg: rgba(67, 56, 202, 0.50);
+  --btn-solid-text: #e0e7ff;
+  --btn-solid-hover: rgba(79, 70, 229, 0.60);
+
+  --btn-ghost-bg: rgba(30, 27, 75, 0.60);
+  --btn-ghost-text: #a5b4fc;
+  --btn-ghost-hover: rgba(49, 46, 129, 0.60);
+
+  --danger-text: #f87171;
+  --danger-hover-bg: rgba(127, 29, 29, 0.40);
+
+  --track-bg: rgba(49, 46, 129, 0.50);
+
+  --border-subtle: rgba(100, 80, 180, 0.25);
+
+  --toast-info-bg: rgba(30, 27, 75, 0.90);
+  --toast-info-border: rgba(99, 102, 241, 0.40);
+  --toast-info-text: #a5b4fc;
+  --toast-success-bg: rgba(20, 40, 30, 0.90);
+  --toast-success-border: rgba(52, 211, 153, 0.40);
+  --toast-success-text: #6ee7b7;
+  --toast-error-bg: rgba(50, 20, 20, 0.90);
+  --toast-error-border: rgba(248, 113, 113, 0.40);
+  --toast-error-text: #fca5a5;
+
+  --minimap-bg: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+
+  --wb-bg: rgba(25, 22, 55, 0.90);
+  --wb-border: rgba(100, 80, 180, 0.40);
+  --wb-card-bg: rgba(49, 46, 129, 0.30);
+  --wb-card-border: rgba(100, 80, 180, 0.40);
+
+  --ide-bg: #16132e;
+  --ide-bg-alt: #1a1640;
+  --ide-header-from: #1e1a3d;
+  --ide-header-to: #16132e;
 }
 
 body {
@@ -214,106 +343,84 @@ body {
 }
 
 /* -----------------------------------------------------------------------
-   Team Dashboard — card, tab, badge styles
+   Game panel window frame
    ----------------------------------------------------------------------- */
 
-/* Status dot pulse for working state */
-@keyframes dot-pulse {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 currentColor; }
-  50% { transform: scale(1.15); box-shadow: 0 0 6px 2px currentColor; }
+.game-panel-frame {
+  border: 2px solid rgba(139, 105, 20, 0.35);
+  background: rgba(255, 252, 240, 0.88);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    0 4px 20px rgba(60, 40, 10, 0.18),
+    inset 0 1px 0 rgba(255, 248, 220, 0.2);
 }
 
-.team-dot-pulse {
-  animation: dot-pulse 1.8s ease-in-out infinite;
-  color: rgba(34, 197, 94, 0.5);
+.game-panel-titlebar {
+  background: linear-gradient(180deg, #6b5030 0%, #4a3520 100%);
+  border-bottom: 1px solid rgba(139, 105, 20, 0.25);
 }
 
-.team-dot-pulse-sm {
-  animation: dot-pulse 1.8s ease-in-out infinite;
-  color: rgba(34, 197, 94, 0.4);
+.game-panel-title {
+  color: #f0dbb0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-.team-dot-error {
-  animation: dot-pulse 1.2s ease-in-out infinite;
-  color: rgba(239, 68, 68, 0.5);
+/* Night mode panel overrides */
+[data-theme="night"] .game-panel-frame {
+  border-color: rgba(100, 80, 180, 0.35);
+  background: rgba(25, 22, 55, 0.88);
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(100, 80, 200, 0.08),
+    0 0 20px rgba(100, 80, 180, 0.06);
 }
 
-/* Working card subtle glow */
-.team-card--working {
-  animation: state-glow 2.5s ease-in-out infinite;
-  --glow-color: rgba(34, 197, 94, 0.12);
+[data-theme="night"] .game-panel-titlebar {
+  background: linear-gradient(180deg, #3a3065 0%, #252050 100%);
+  border-bottom-color: rgba(100, 80, 180, 0.25);
 }
 
-.team-card--error {
-  animation: state-glow 1.5s ease-in-out infinite;
-  --glow-color: rgba(239, 68, 68, 0.1);
+[data-theme="night"] .game-panel-title {
+  color: #c0b0f0;
 }
 
-/* Working badge shimmer */
-@keyframes badge-shimmer {
-  0% { background-position: -100% 0; }
-  100% { background-position: 200% 0; }
+/* Game HUD top bar */
+.game-hud-bar {
+  background: linear-gradient(180deg, rgba(74, 53, 32, 0.92) 0%, rgba(58, 40, 24, 0.88) 100%);
+  border-bottom: 2px solid rgba(139, 105, 20, 0.3);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
 }
 
-.team-badge-working {
-  background-size: 200% 100%;
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(34, 197, 94, 0.08) 50%,
-    transparent 100%
-  );
-  animation: badge-shimmer 2s ease-in-out infinite;
+[data-theme="night"] .game-hud-bar {
+  background: linear-gradient(180deg, rgba(30, 25, 60, 0.95) 0%, rgba(20, 16, 45, 0.92) 100%);
+  border-bottom-color: rgba(100, 80, 180, 0.25);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), 0 0 20px rgba(80, 60, 160, 0.05);
 }
 
-/* Tab underline slide */
-.team-tab {
-  position: relative;
-}
-
-.team-tab--active::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 8px;
-  right: 8px;
-  height: 2px;
-  border-radius: 1px;
-  background-color: var(--color-kuma-orange);
-}
-
-/* Card hover micro-interaction */
-.team-member-card {
-  transition: transform 0.15s ease;
-}
-
-.team-member-card:hover {
-  transform: translateY(-2px);
-}
-
-/* Team section stagger animation on mount */
-@keyframes section-reveal {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.team-section {
-  animation: section-reveal 0.3s ease-out backwards;
-}
-
-.team-section:nth-child(1) { animation-delay: 0ms; }
-.team-section:nth-child(2) { animation-delay: 80ms; }
-.team-section:nth-child(3) { animation-delay: 160ms; }
-.team-section:nth-child(4) { animation-delay: 240ms; }
-
-/* Dashboard container */
-.team-dashboard {
+/* Game zoom controls */
+.game-zoom-bar {
+  background: rgba(74, 53, 32, 0.85);
+  border: 2px solid rgba(139, 105, 20, 0.3);
   backdrop-filter: blur(8px);
 }
 
-/* Team tab bar subtle bottom border */
-.team-tab-bar {
-  border-bottom: 1px solid rgba(214, 211, 209, 0.4);
+[data-theme="night"] .game-zoom-bar {
+  background: rgba(30, 25, 60, 0.85);
+  border-color: rgba(100, 80, 180, 0.3);
+}
+
+/* Character game card enhancements */
+.character-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  border-width: 2px !important;
+}
+
+.character-name-plate {
+  background: linear-gradient(180deg, rgba(74, 53, 32, 0.85) 0%, rgba(58, 40, 24, 0.92) 100%);
+}
+
+[data-theme="night"] .character-name-plate {
+  background: linear-gradient(180deg, rgba(40, 35, 70, 0.85) 0%, rgba(30, 25, 55, 0.92) 100%);
 }
 
 /* Ambient floating particles */
