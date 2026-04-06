@@ -209,7 +209,7 @@ export function StudioPage() {
       {particlesEnabled && <AmbientParticles isNight={isNight} />}
 
       {/* Office canvas */}
-      <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none" onMouseDown={(e) => { setSelectedCharId(null); handleCanvasMouseDown(e); }} style={{ cursor: dragState?.kind === "pan" ? "grabbing" : "grab" }}>
+      <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none" onMouseDown={(e) => { window.getSelection()?.removeAllRanges(); setSelectedCharId(null); handleCanvasMouseDown(e); }} style={{ cursor: dragState?.kind === "pan" ? "grabbing" : "grab" }}>
         <div style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: "0 0", transition: dragState ? "none" : "transform 0.2s ease-out" }}>
           <OfficeBackground background={scene.background} isNight={isNight} />
 
@@ -400,27 +400,20 @@ function StatBadge({ label, value, color, dot }: { label: string; value: number;
 }
 
 function Minimap({ scene }: { scene: ReturnType<typeof useOfficeStore.getState>["scene"] }) {
-  const minimapWidth = 140;
-  const minimapHeight = minimapWidth * (CANVAS_HEIGHT / CANVAS_WIDTH);
-  const scaleX = minimapWidth / CANVAS_WIDTH;
-  const scaleY = minimapHeight / CANVAS_HEIGHT;
-
   return (
-    <div className="rounded-xl backdrop-blur-md shadow-lg p-1.5" style={{ background: "var(--panel-bg)", borderWidth: 1, borderColor: "var(--panel-border)" }}>
-      <div className="relative overflow-hidden rounded-lg" style={{ width: minimapWidth, height: minimapHeight, background: "var(--minimap-bg)" }}>
-        {scene.characters.map((character) => {
-          const member = KUMA_TEAM.find((a) => a.id === character.id);
-          const team = member?.team;
-          const dotColor = team === "dev" ? "#3b82f6" : team === "analytics" ? "#f97316" : team === "strategy" ? "#22c55e" : "#78716c";
-          const isActive = character.state === "working" || character.state === "thinking";
-          return (
-            <div key={character.id} className="absolute" style={{ left: character.position.x * scaleX - 4, top: character.position.y * scaleY - 4 }}>
-              <div className={`w-2.5 h-2.5 rounded-full ${isActive ? "animate-pulse" : ""}`} style={{ backgroundColor: dotColor, opacity: isActive ? 1 : 0.7, boxShadow: isActive ? `0 0 4px ${dotColor}` : "none" }} title={`${member?.emoji ?? ""} ${character.name} — ${character.state}`} />
-              <span className="absolute left-3 top-[-2px] text-[5px] font-medium whitespace-nowrap pointer-events-none" style={{ color: "var(--t-secondary)" }}>{member?.emoji ?? ""}{member?.nameKo?.[0] ?? character.name[0]}</span>
-            </div>
-          );
-        })}
-      </div>
+    <div className="relative w-full overflow-hidden" style={{ aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`, background: "var(--minimap-bg)" }}>
+      {scene.characters.map((character) => {
+        const member = KUMA_TEAM.find((a) => a.id === character.id);
+        const team = member?.team;
+        const dotColor = team === "dev" ? "#3b82f6" : team === "analytics" ? "#f97316" : team === "strategy" ? "#22c55e" : "#78716c";
+        const isActive = character.state === "working" || character.state === "thinking";
+        return (
+          <div key={character.id} className="absolute" style={{ left: `${(character.position.x / CANVAS_WIDTH) * 100}%`, top: `${(character.position.y / CANVAS_HEIGHT) * 100}%`, transform: "translate(-4px, -4px)" }}>
+            <div className={`w-2.5 h-2.5 rounded-full ${isActive ? "animate-pulse" : ""}`} style={{ backgroundColor: dotColor, opacity: isActive ? 1 : 0.7, boxShadow: isActive ? `0 0 4px ${dotColor}` : "none" }} title={`${member?.emoji ?? ""} ${character.name} — ${character.state}`} />
+            <span className="absolute left-3 top-[-2px] text-[5px] font-medium whitespace-nowrap pointer-events-none" style={{ color: "var(--t-secondary)" }}>{member?.emoji ?? ""}{member?.nameKo?.[0] ?? character.name[0]}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }

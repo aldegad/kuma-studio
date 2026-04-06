@@ -50,10 +50,10 @@ export function Whiteboard({ position }: WhiteboardProps) {
     <div
       className={position
         ? "pointer-events-none absolute rounded-lg border-2 p-3 shadow-md"
-        : "rounded-lg border-2 p-3 shadow-md"}
+        : "p-3"}
       style={{
         background: "var(--wb-bg)",
-        borderColor: "var(--wb-border)",
+        borderColor: position ? "var(--wb-border)" : undefined,
         ...(position
           ? {
               left: position.x,
@@ -63,7 +63,6 @@ export function Whiteboard({ position }: WhiteboardProps) {
               transform: "translate(-50%, 0)",
             }
           : {
-              width: 230,
               minHeight: 120,
             }),
       }}

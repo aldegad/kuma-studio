@@ -10,10 +10,16 @@ import {
   type ProjectLayout,
 } from "../lib/office-scene.js";
 
+const IDLE_GRACE_PERIOD_MS = 10_000;
+const ACTIVE_AGENT_STATES = new Set<AgentState>(["working", "thinking"]);
+const idleGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 interface OfficeState {
   scene: OfficeScene;
   /** Set of character IDs that were manually dragged (suppresses auto-position until next state change) */
   draggedIds: Set<string>;
+  /** Most recent timestamp at which each character was seen actively working/thinking. */
+  lastWorkingAt: Record<string, number>;
   /** Active project layout (desk/sofa positions for auto-positioning) */
   activeLayout: ProjectLayout;
   setScene: (scene: OfficeScene) => void;
@@ -66,6 +72,14 @@ function positionsEqual(
   return left?.x === right?.x && left?.y === right?.y;
 }
 
+function clearIdleGraceTimer(characterId: string) {
+  const timer = idleGraceTimers.get(characterId);
+  if (timer) {
+    clearTimeout(timer);
+    idleGraceTimers.delete(characterId);
+  }
+}
+
 /** Patch desk/sofa auto-position anchors with stored furniture positions from localStorage. */
 function patchLayoutFurniturePositions(layout: ProjectLayout): ProjectLayout {
   const stored = readStoredPositions("kuma-office-furniture-positions");
@@ -93,9 +107,51 @@ function patchLayoutFurniturePositions(layout: ProjectLayout): ProjectLayout {
   return patched ? { ...layout, deskPositions, sofaPositions } : layout;
 }
 
+function scheduleIdleGraceReposition(characterId: string, delayMs: number) {
+  clearIdleGraceTimer(characterId);
+
+  if (delayMs <= 0) {
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    idleGraceTimers.delete(characterId);
+    useOfficeStore.setState((prev) => {
+      const character = prev.scene.characters.find((entry: OfficeCharacter) => entry.id === characterId);
+      if (!character || character.state !== "idle") {
+        return prev;
+      }
+
+      const idlePosition = getAutoPosition(
+        characterId,
+        "idle",
+        character.team,
+        prev.activeLayout.deskPositions,
+        prev.activeLayout.sofaPositions,
+      );
+
+      if (!idlePosition || positionsEqual(character.position, idlePosition)) {
+        return prev;
+      }
+
+      return {
+        scene: {
+          ...prev.scene,
+          characters: prev.scene.characters.map((entry: OfficeCharacter) =>
+            entry.id === characterId ? { ...entry, position: idlePosition } : entry,
+          ),
+        },
+      };
+    });
+  }, delayMs);
+
+  idleGraceTimers.set(characterId, timer);
+}
+
 export const useOfficeStore = create<OfficeState>((set) => ({
   scene: applyStoredPositions(DEFAULT_OFFICE_SCENE),
   draggedIds: readStoredCharacterIds(),
+  lastWorkingAt: {},
   activeLayout: patchLayoutFurniturePositions(DEFAULT_PROJECT_LAYOUT),
 
   setScene: (scene) => set({ scene }),
@@ -138,18 +194,33 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       };
     }),
 
-  updateCharacterState: (characterId, state, task = undefined) =>
+  updateCharacterState: (characterId, state, task = undefined) => {
+    let graceDelayMs = 0;
+    let shouldScheduleIdleGrace = false;
+    let shouldClearIdleGrace = false;
+
     set((prev) => {
       const character = prev.scene.characters.find((c: OfficeCharacter) => c.id === characterId);
       if (!character) {
+        shouldClearIdleGrace = true;
         return prev;
       }
 
+      const now = Date.now();
       const nextTask = task !== undefined ? task : state === "idle" ? null : character.task ?? null;
-      // Use project-specific desk/sofa positions for auto-positioning
+      const activeState = ACTIVE_AGENT_STATES.has(state);
+      const lastWorkingAt = activeState
+        ? { ...prev.lastWorkingAt, [characterId]: now }
+        : prev.lastWorkingAt;
+      const lastActiveAt = lastWorkingAt[characterId] ?? 0;
+      const withinIdleGrace =
+        state === "idle" &&
+        lastActiveAt > 0 &&
+        now - lastActiveAt < IDLE_GRACE_PERIOD_MS;
+      const autoState = withinIdleGrace ? "working" : state;
       const autoPos = getAutoPosition(
         characterId,
-        state,
+        autoState,
         character.team,
         prev.activeLayout.deskPositions,
         prev.activeLayout.sofaPositions,
@@ -158,11 +229,16 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       const stateChanged = character.state !== state || character.task !== nextTask;
       const wasDragged = prev.draggedIds.has(characterId);
 
-      if (!stateChanged && !shouldMove && !wasDragged) {
+      shouldClearIdleGrace = activeState || !withinIdleGrace;
+      shouldScheduleIdleGrace = withinIdleGrace;
+      graceDelayMs = Math.max(IDLE_GRACE_PERIOD_MS - (now - lastActiveAt), 0);
+
+      if (!stateChanged && !shouldMove && !wasDragged && lastWorkingAt === prev.lastWorkingAt) {
         return prev;
       }
 
       return {
+        lastWorkingAt,
         // Clear dragged flag on state change — auto-position takes over
         draggedIds: (() => {
           const next = new Set(prev.draggedIds);
@@ -177,14 +253,23 @@ export const useOfficeStore = create<OfficeState>((set) => ({
                   ...c,
                   state,
                   task: nextTask,
-                  // Auto-move to desk/sofa on state change
+                  // Auto-move to desk/sofa on state change, with idle grace keeping desk position briefly.
                   ...(autoPos ? { position: autoPos } : {}),
                 }
               : c,
           ),
         },
       };
-    }),
+    });
+
+    if (shouldClearIdleGrace) {
+      clearIdleGraceTimer(characterId);
+    }
+
+    if (shouldScheduleIdleGrace) {
+      scheduleIdleGraceReposition(characterId, graceDelayMs);
+    }
+  },
 
   updateCharacterPosition: (characterId, position) =>
     set((prev) => ({
