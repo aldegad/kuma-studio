@@ -4,13 +4,16 @@
  */
 
 import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
-import { readdir, readFile, stat, unlink } from "node:fs/promises";
+import { readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, join, extname, basename, relative, isAbsolute } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { readPlans } from "./plan-store.mjs";
 import { listClaudePlans, deleteClaudePlan } from "./claude-plans-store.mjs";
+import { filterTeamStatusSnapshot, toStudioTeamStatusSnapshot } from "./team-status-store.mjs";
+import { createContentRouteHandler } from "./content-routes.mjs";
+import { createExperimentRouteHandler } from "./experiment-routes.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -38,6 +41,55 @@ function isPathWithinRoot(rootPath, rootRealPath, candidatePath) {
   return !(realRelativePath.startsWith("..") || isAbsolute(realRelativePath));
 }
 
+function parseFrontmatter(content) {
+  const text = String(content ?? "");
+  if (!text.startsWith("---\n")) {
+    return null;
+  }
+
+  const endIndex = text.indexOf("\n---", 4);
+  if (endIndex === -1) {
+    return null;
+  }
+
+  const block = text.slice(4, endIndex).trim();
+  const fields = new Map();
+
+  for (const line of block.split(/\r?\n/u)) {
+    const match = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.+)$/u);
+    if (!match) {
+      continue;
+    }
+
+    const [, key, rawValue] = match;
+    fields.set(key, rawValue.trim().replace(/^['"]|['"]$/gu, ""));
+  }
+
+  return {
+    fields,
+    body: text.slice(endIndex + 4).trim(),
+  };
+}
+
+export function extractStudioSkillDescription(content) {
+  const frontmatter = parseFrontmatter(content);
+  const frontmatterDescription = frontmatter?.fields.get("description");
+  if (frontmatterDescription) {
+    return frontmatterDescription;
+  }
+
+  const body = frontmatter?.body ?? String(content ?? "");
+  const lines = body.split(/\r?\n/u);
+  const headingIndex = lines.findIndex((line) => /^#\s+/u.test(line.trim()));
+  const candidateLines = (headingIndex >= 0 ? lines.slice(headingIndex + 1) : lines)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^#+\s+/u.test(line));
+
+  const firstSentence = candidateLines[0]?.match(/^(.+?[.!?])(?:\s|$)/u)?.[1] ?? candidateLines[0] ?? "";
+  return firstSentence.trim();
+}
+
 async function readStudioSkills() {
   try {
     const skillsDir = join(homedir(), ".claude", "skills");
@@ -62,13 +114,13 @@ async function readStudioSkills() {
         if (!skillFile) continue;
 
         const content = await readFile(join(skillDir, skillFile), "utf8");
-        const [firstLine = ""] = content.split(/\r?\n/u);
 
         skills.push({
           name: entry.name,
-          description: firstLine.replace(/^#\s*/u, "").trim(),
+          description: extractStudioSkillDescription(content),
           file: skillFile,
           content,
+          path: join(skillDir, skillFile),
         });
       } catch {
         continue;
@@ -169,14 +221,28 @@ async function buildFsTree(dirPath, maxDepth, currentDepth) {
  * @param {import("./stats-store.mjs").StatsStore} options.statsStore
  * @param {import("../scene-store.mjs").SceneStore} options.sceneStore
  * @param {import("./team-status-store.mjs").TeamStatusStore} [options.teamStatusStore]
+ * @param {import("./content-store.mjs").ContentStore} [options.contentStore]
+ * @param {import("./experiment-store.mjs").ExperimentStore} [options.experimentStore]
+ * @param {ReturnType<import("./experiment-pipeline.mjs").createExperimentPipeline>} [options.experimentPipeline]
+ * @param {string} [options.workspaceRoot]
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
-export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager, teamStatusStore }) {
+export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager, teamStatusStore, contentStore, experimentStore, experimentPipeline, workspaceRoot }) {
   const staticRoot = resolve(staticDir);
   const staticRootReal = existsSync(staticRoot) ? realpathSync(staticRoot) : staticRoot;
+  const handleContentRoute = createContentRouteHandler({ contentStore, workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")) });
+  const handleExperimentRoute = createExperimentRouteHandler({ experimentStore, pipeline: experimentPipeline });
 
   return async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
+
+    if (await handleContentRoute(req, res, url)) {
+      return true;
+    }
+
+    if (await handleExperimentRoute(req, res, url)) {
+      return true;
+    }
 
     if (url.pathname === "/studio/health" && req.method === "GET") {
       sendJson(res, 200, { ok: true, uptime: process.uptime() });
@@ -198,7 +264,9 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
     }
 
     if (url.pathname === "/studio/team-status" && req.method === "GET") {
-      sendJson(res, 200, teamStatusStore?.getSnapshot() ?? { projects: {} });
+      const projectId = url.searchParams.get("project");
+      const snapshot = filterTeamStatusSnapshot(teamStatusStore?.getSnapshot() ?? { projects: {} }, projectId);
+      sendJson(res, 200, toStudioTeamStatusSnapshot(snapshot));
       return true;
     }
 
@@ -449,6 +517,43 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
           error: "Failed to delete file.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/fs/write" && req.method === "PUT") {
+      const body = await readJsonBody(req);
+      const filePath = body?.path;
+      const fileContent = body?.content;
+      if (!filePath || typeof fileContent !== "string") {
+        sendJson(res, 400, { error: "Missing path or content." });
+        return true;
+      }
+      const resolved = resolve(filePath);
+      if (!isAllowedPath(resolved)) {
+        sendJson(res, 403, { error: "Path outside allowed directories." });
+        return true;
+      }
+      try {
+        await writeFile(resolved, fileContent, "utf8");
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        sendJson(res, 500, { error: "Failed to write file.", details: error instanceof Error ? error.message : "Unknown error" });
+      }
+      return true;
+    }
+
+    if (url.pathname.startsWith("/studio/skills/") && req.method === "DELETE") {
+      const skillName = decodeURIComponent(url.pathname.split("/studio/skills/")[1]);
+      if (!skillName) { sendJson(res, 400, { error: "Missing skill name." }); return true; }
+      const skillDir = join(homedir(), ".claude", "skills", skillName);
+      try {
+        const s = await stat(skillDir);
+        if (!s.isDirectory()) { sendJson(res, 400, { error: "Not a skill directory." }); return true; }
+        await rm(skillDir, { recursive: true, force: true });
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        sendJson(res, 500, { error: "Failed to delete skill.", details: error instanceof Error ? error.message : "Unknown error" });
       }
       return true;
     }

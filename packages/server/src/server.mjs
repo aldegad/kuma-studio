@@ -26,8 +26,11 @@ import { StatsStore } from "./studio/stats-store.mjs";
 import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-state.mjs";
 import { getGitActivity, startGitActivityPolling, stopGitActivityPolling } from "./studio/git-activity-store.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
-import { TeamStatusStore } from "./studio/team-status-store.mjs";
+import { TeamStatusStore, toStudioTeamStatusSnapshot } from "./studio/team-status-store.mjs";
 import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
+import { ContentStore } from "./studio/content-store.mjs";
+import { ExperimentStore } from "./studio/experiment-store.mjs";
+import { createExperimentPipeline } from "./studio/experiment-pipeline.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -53,6 +56,9 @@ export function createServer({ host, port, root }) {
   const agentStateManager = new AgentStateManager();
   const tokenTracker = new TokenTracker();
   const teamStatusStore = new TeamStatusStore();
+  const contentStore = new ContentStore(root);
+  const experimentStore = new ExperimentStore(root);
+  const experimentPipeline = createExperimentPipeline(resolve(root));
 
   // Register agent hierarchy from team.json — session → team → worker
   const AGENT_HIERARCHY = getAgentHierarchy();
@@ -71,7 +77,7 @@ export function createServer({ host, port, root }) {
   });
 
   teamStatusStore.onChange((snapshot) => {
-    studioWsEvents.broadcastTeamStatusUpdate(snapshot);
+    studioWsEvents.broadcastTeamStatusUpdate(toStudioTeamStatusSnapshot(snapshot));
   });
   teamStatusStore.start();
 
@@ -83,6 +89,10 @@ export function createServer({ host, port, root }) {
     sceneStore: store,
     agentStateManager,
     teamStatusStore,
+    contentStore,
+    experimentStore,
+    experimentPipeline,
+    workspaceRoot: resolve(root),
   });
   startGitActivityPolling((activity) => {
     broadcastStudioEvent("git-activity-update", { activity });
@@ -655,11 +665,8 @@ export function createServer({ host, port, root }) {
           event: { kind: "office-layout-update", layout: store.readOfficeLayout() },
         });
         sendSocketJson(websocket, {
-          type: "kuma-studio:event",
-          event: {
-            kind: "kuma-studio:team-status-update",
-            teamStatus: teamStatusStore.getSnapshot(),
-          },
+          type: "kuma-studio:team-status-update",
+          snapshot: toStudioTeamStatusSnapshot(teamStatusStore.getSnapshot()),
         });
       });
       return;
