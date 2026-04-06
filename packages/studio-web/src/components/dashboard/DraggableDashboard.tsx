@@ -156,6 +156,11 @@ function shouldIgnoreDragStart(target: HTMLElement | null) {
     return true;
   }
 
+  // Only allow drag initiation from the title bar
+  if (!target.closest(".game-panel-titlebar")) {
+    return true;
+  }
+
   return target.closest(
     [
       "input",

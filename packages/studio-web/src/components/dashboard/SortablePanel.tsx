@@ -32,7 +32,7 @@ export function FloatingPanel({
       aria-label={title}
       onMouseDown={onMouseDown}
       onClickCapture={onClickCapture}
-      className={`pointer-events-auto absolute left-0 top-0 max-w-[calc(100vw-2rem)] cursor-grab active:cursor-grabbing ${className}`}
+      className={`pointer-events-auto absolute left-0 top-0 max-w-[calc(100vw-2rem)] ${className}`}
       style={{
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
         zIndex,
@@ -47,7 +47,7 @@ export function FloatingPanel({
     >
       <div className="game-panel-frame overflow-hidden rounded-xl">
         {/* Game window title bar */}
-        <div className="game-panel-titlebar flex items-center gap-1.5 px-3 py-1.5">
+        <div className="game-panel-titlebar flex items-center gap-1.5 px-3 py-1.5 cursor-grab active:cursor-grabbing">
           <span className="w-1.5 h-1.5 rounded-sm bg-amber-400/50 shrink-0" />
           <span className="game-panel-title text-[9px] font-black uppercase tracking-[0.15em] truncate">{title}</span>
           <span className="ml-auto flex gap-0.5">
