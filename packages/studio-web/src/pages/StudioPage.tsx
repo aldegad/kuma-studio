@@ -206,11 +206,11 @@ export function StudioPage() {
   ];
 
   return (
-    <div className="h-screen w-screen overflow-hidden relative select-none" data-theme={isNight ? "night" : "day"} style={{ background: ambientBg, transition: "background 60s ease" }}>
+    <div className={`h-screen w-screen overflow-hidden relative${dragState ? " select-none" : ""}`} data-theme={isNight ? "night" : "day"} style={{ background: ambientBg, transition: "background 60s ease" }}>
       {particlesEnabled && <AmbientParticles isNight={isNight} />}
 
       {/* Office canvas */}
-      <div ref={containerRef} className="absolute inset-0 overflow-hidden" onMouseDown={(e) => { setSelectedCharId(null); handleCanvasMouseDown(e); }} style={{ cursor: dragState?.kind === "pan" ? "grabbing" : "grab" }}>
+      <div ref={containerRef} className="absolute inset-0 overflow-hidden select-none" onMouseDown={(e) => { setSelectedCharId(null); handleCanvasMouseDown(e); }} style={{ cursor: dragState?.kind === "pan" ? "grabbing" : "grab" }}>
         <div style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `translate(${panX}px, ${panY}px) scale(${zoom})`, transformOrigin: "0 0", transition: dragState ? "none" : "transform 0.2s ease-out" }}>
           <OfficeBackground background={scene.background} isNight={isNight} />
 
