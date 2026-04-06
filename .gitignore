@@ -7,3 +7,4 @@ dist/
 !.env.example
 output/
 artifacts/
+.kuma/plans/

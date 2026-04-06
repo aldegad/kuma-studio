@@ -13,10 +13,10 @@ interface TeamZoneConfig {
 }
 
 const TEAM_ZONE_LAYOUT: Record<string, TeamZoneConfig> = {
-  management: { origin: { x: 850, y: 140 }, cols: 2 },
-  dev:        { origin: { x: 200, y: 430 }, cols: 3 },
-  analytics:  { origin: { x: 1350, y: 430 }, cols: 2 },
-  strategy:   { origin: { x: 750, y: 960 }, cols: 3 },
+  management: { origin: { x: 830, y: 100 }, cols: 2 },
+  dev:        { origin: { x: 200, y: 580 }, cols: 3 },
+  analytics:  { origin: { x: 1350, y: 580 }, cols: 2 },
+  strategy:   { origin: { x: 750, y: 1250 }, cols: 3 },
 };
 
 const DESK_SPACING = { x: 220, y: 180 };
@@ -175,14 +175,14 @@ export function buildDynamicFurniture(members: typeof SCENE_TEAM_MEMBERS = SCENE
 
   // Decorative furniture — positioned to complement team zones
   furniture.push(
-    { id: "whiteboard-1", type: "whiteboard", position: { x: 650, y: 160 }, imageUrl: "" },
+    { id: "whiteboard-1", type: "whiteboard", position: { x: 650, y: 120 }, imageUrl: "" },
     { id: "plant-1", type: "plant", position: { x: 70, y: 70 }, imageUrl: "" },
     { id: "plant-2", type: "plant", position: { x: 1900, y: 70 }, imageUrl: "" },
-    { id: "plant-3", type: "plant", position: { x: 70, y: 1400 }, imageUrl: "" },
-    { id: "plant-4", type: "plant", position: { x: 1900, y: 1400 }, imageUrl: "" },
-    { id: "coffee-1", type: "coffee", position: { x: 980, y: 700 }, imageUrl: "" },
-    { id: "bookshelf-1", type: "bookshelf", position: { x: 70, y: 700 }, imageUrl: "" },
-    { id: "watercooler-1", type: "watercooler", position: { x: 1900, y: 700 }, imageUrl: "" },
+    { id: "plant-3", type: "plant", position: { x: 70, y: 1600 }, imageUrl: "" },
+    { id: "plant-4", type: "plant", position: { x: 1900, y: 1600 }, imageUrl: "" },
+    { id: "coffee-1", type: "coffee", position: { x: 980, y: 850 }, imageUrl: "" },
+    { id: "bookshelf-1", type: "bookshelf", position: { x: 70, y: 850 }, imageUrl: "" },
+    { id: "watercooler-1", type: "watercooler", position: { x: 1900, y: 850 }, imageUrl: "" },
   );
 
   return furniture;
