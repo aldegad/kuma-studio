@@ -8,8 +8,10 @@ const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
 const DEFAULT_SURFACE_POLL_MS = 10_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
 const PROMPT_LINE_PATTERN = /^(❯|>)\s*$|^›/u;
+const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
 const SURFACE_HINT_PATTERNS = [
   /^bypass permissions\b/iu,
+  /^brewed for\b/iu,
   /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
   /^esc to\b/iu,
   /^press up to edit\b/iu,
@@ -141,11 +143,15 @@ function isIgnoredSurfaceLine(line) {
     return false;
   }
 
+  if (BOX_DRAWING_PATTERN.test(trimmed)) {
+    return true;
+  }
+
   if (!/[\p{L}\p{N}]/u.test(trimmed)) {
     return true;
   }
 
-  const normalized = trimmed.replace(/^[⏵›>]+\s*/u, "");
+  const normalized = trimmed.replace(/^[^\p{L}\p{N}]+/u, "");
   return SURFACE_HINT_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
