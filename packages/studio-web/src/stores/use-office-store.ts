@@ -165,8 +165,17 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     set((prev) => {
       const layout = memberIds ? buildProjectLayout(memberIds) : DEFAULT_PROJECT_LAYOUT;
 
-      // Reposition characters to their new desk/sofa positions
+      // Load user-dragged positions from localStorage
+      let storedPositions: Record<string, { x: number; y: number }> = {};
+      try {
+        const raw = localStorage.getItem("kuma-office-character-positions");
+        if (raw) storedPositions = JSON.parse(raw);
+      } catch { /* ignore */ }
+
+      // Reposition characters: prefer localStorage > auto-position > current
       const characters = prev.scene.characters.map((c: OfficeCharacter) => {
+        const stored = storedPositions[c.id];
+        if (stored) return { ...c, position: stored };
         const newPos = getAutoPosition(
           c.id, c.state, c.team,
           layout.deskPositions, layout.sofaPositions,
@@ -176,7 +185,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
 
       return {
         activeLayout: layout,
-        draggedIds: new Set<string>(),
+        draggedIds: new Set<string>(Object.keys(storedPositions)),
         scene: {
           ...prev.scene,
           characters,

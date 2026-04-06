@@ -15,6 +15,7 @@ const SURFACE_HINT_PATTERNS = [
   /^press up to edit\b/iu,
   /^shift\+tab to cycle\b/iu,
   /^tab to queue\b/iu,
+  /^[─━═─]{3,}$/u,
 ];
 
 /**
