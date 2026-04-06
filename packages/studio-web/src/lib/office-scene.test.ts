@@ -14,7 +14,7 @@ describe("office-scene", () => {
   it("TEAM_POSITIONS has entry for all 13 team members", () => {
     const expected = [
       "kuma", "howl", "tookdaki", "saemi", "koon", "bamdori",
-      "rumi", "darami", "buri",
+      "lumi", "darami", "buri",
       "noeuri", "kongkongi", "moongchi", "jjooni",
     ];
     for (const id of expected) {

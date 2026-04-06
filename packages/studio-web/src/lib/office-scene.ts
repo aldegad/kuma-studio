@@ -3,51 +3,194 @@ import { KUMA_TEAM } from "../types/agent";
 import type { Agent } from "../types/agent";
 import type { OfficeCharacter, OfficeFurniture, OfficeLayoutSnapshot, OfficeScene } from "../types/office";
 
-const LEGACY_SCENE_MEMBER_IDS: Record<string, string> = {
-  lumi: "rumi",
-};
+// ---------------------------------------------------------------------------
+// Team zone layout — dynamic desk/sofa generation
+// ---------------------------------------------------------------------------
 
-const TEAM_LAYOUT_SLOTS: Record<string, Array<{ x: number; y: number }>> = {
-  management: [{ x: 500, y: 80 }],
-  dev: [
-    { x: 120, y: 160 },
-    { x: 260, y: 160 },
-    { x: 120, y: 300 },
-    { x: 260, y: 300 },
-    { x: 190, y: 430 },
-  ],
-  analytics: [
-    { x: 660, y: 160 },
-    { x: 800, y: 160 },
-    { x: 730, y: 290 },
-  ],
-  strategy: [
-    { x: 660, y: 380 },
-    { x: 800, y: 380 },
-    { x: 660, y: 510 },
-    { x: 800, y: 510 },
-  ],
-};
-
-const TEAM_HIERARCHY_COLORS: Record<string, { lead: string; member: string }> = {
-  dev: {
-    lead: "rgba(59, 130, 246, 0.15)",
-    member: "rgba(59, 130, 246, 0.1)",
-  },
-  analytics: {
-    lead: "rgba(249, 115, 22, 0.15)",
-    member: "rgba(249, 115, 22, 0.1)",
-  },
-  strategy: {
-    lead: "rgba(34, 197, 94, 0.15)",
-    member: "rgba(34, 197, 94, 0.1)",
-  },
-};
-
-function toSceneMemberId(id: string | null | undefined): string | null {
-  if (id == null) return null;
-  return LEGACY_SCENE_MEMBER_IDS[id] ?? id;
+interface TeamZoneConfig {
+  origin: { x: number; y: number };
+  cols: number;
 }
+
+const TEAM_ZONE_LAYOUT: Record<string, TeamZoneConfig> = {
+  management: { origin: { x: 850, y: 140 }, cols: 2 },
+  dev:        { origin: { x: 200, y: 430 }, cols: 3 },
+  analytics:  { origin: { x: 1350, y: 430 }, cols: 2 },
+  strategy:   { origin: { x: 750, y: 960 }, cols: 3 },
+};
+
+const DESK_SPACING = { x: 220, y: 180 };
+const SOFA_GAP_Y = 70;
+
+// Teams that get a sofa (management excluded)
+const SOFA_TEAMS = ["dev", "analytics", "strategy"];
+
+// ---------------------------------------------------------------------------
+// Scene member data
+// ---------------------------------------------------------------------------
+
+const SCENE_TEAM_MEMBERS = teamData.members.map((member) => ({
+  ...member,
+  id: member.id,
+  parentId: member.parentId ?? null,
+}));
+
+const TEAM_ORDER_INDEX = new Map(teamData.teams.map((team, index) => [team.id, index]));
+const MEMBER_ORDER_INDEX = new Map(SCENE_TEAM_MEMBERS.map((member, index) => [member.id, index]));
+
+// ---------------------------------------------------------------------------
+// Dynamic position computation
+// ---------------------------------------------------------------------------
+
+/** Group members by team */
+function groupByTeam(members: typeof SCENE_TEAM_MEMBERS) {
+  const groups = new Map<string, typeof members>();
+  for (const member of members) {
+    const list = groups.get(member.team) ?? [];
+    list.push(member);
+    groups.set(member.team, list);
+  }
+  return groups;
+}
+
+/** Compute desk position for a member within their team zone */
+function computeDeskPosition(teamId: string, indexInTeam: number): { x: number; y: number } {
+  const config = TEAM_ZONE_LAYOUT[teamId] ?? TEAM_ZONE_LAYOUT.dev;
+  const col = indexInTeam % config.cols;
+  const row = Math.floor(indexInTeam / config.cols);
+  return {
+    x: config.origin.x + col * DESK_SPACING.x,
+    y: config.origin.y + row * DESK_SPACING.y,
+  };
+}
+
+/** Compute sofa center position for a team */
+function computeSofaCenter(teamId: string, memberCount: number): { x: number; y: number } {
+  const config = TEAM_ZONE_LAYOUT[teamId] ?? TEAM_ZONE_LAYOUT.dev;
+  const rows = Math.ceil(memberCount / config.cols);
+  return {
+    x: config.origin.x + (config.cols - 1) * DESK_SPACING.x / 2,
+    y: config.origin.y + rows * DESK_SPACING.y + SOFA_GAP_Y,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Build desk & sofa position maps (computed once from team data)
+// ---------------------------------------------------------------------------
+
+const teamGroups = groupByTeam(SCENE_TEAM_MEMBERS);
+
+/** Member ID → desk position */
+export const DESK_POSITIONS: Record<string, { x: number; y: number }> = {};
+
+/** Team ID → sofa center position */
+export const SOFA_POSITIONS: Record<string, { x: number; y: number }> = {};
+
+for (const [teamId, members] of teamGroups) {
+  members.forEach((member, index) => {
+    DESK_POSITIONS[member.id] = computeDeskPosition(teamId, index);
+  });
+
+  if (SOFA_TEAMS.includes(teamId)) {
+    SOFA_POSITIONS[teamId] = computeSofaCenter(teamId, members.length);
+  }
+}
+
+/**
+ * TEAM_POSITIONS — used for initial placement & hierarchy lines.
+ * Characters start at their desk position.
+ */
+export const TEAM_POSITIONS: Record<string, { x: number; y: number }> = { ...DESK_POSITIONS };
+
+// ---------------------------------------------------------------------------
+// Auto-positioning: working → desk, idle → sofa scatter
+// ---------------------------------------------------------------------------
+
+/** Get the target position for a character based on their current state.
+ *  Accepts optional project-specific position maps for per-project offices. */
+export function getAutoPosition(
+  memberId: string,
+  state: string,
+  team: string,
+  deskPos: Record<string, { x: number; y: number }> = DESK_POSITIONS,
+  sofaPos: Record<string, { x: number; y: number }> = SOFA_POSITIONS,
+): { x: number; y: number } | null {
+  if (state === "working" || state === "thinking") {
+    return deskPos[memberId] ?? null;
+  }
+
+  if (state === "idle" || state === "completed") {
+    const sofaCenter = sofaPos[team];
+    if (!sofaCenter) {
+      // Management or unknown team — stay at desk
+      return deskPos[memberId] ?? null;
+    }
+    // Scatter around sofa based on member ID hash
+    const hash = memberId.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    const angle = (hash % 6) * (Math.PI / 3);
+    const radius = 40 + (hash % 30);
+    return {
+      x: sofaCenter.x + Math.cos(angle) * radius,
+      y: sofaCenter.y + Math.sin(angle) * radius - 20,
+    };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic furniture generation
+// ---------------------------------------------------------------------------
+
+/** Build furniture list dynamically based on team members */
+export function buildDynamicFurniture(members: typeof SCENE_TEAM_MEMBERS = SCENE_TEAM_MEMBERS): OfficeFurniture[] {
+  const furniture: OfficeFurniture[] = [];
+  const groups = groupByTeam(members);
+
+  // Generate 1 desk per member
+  for (const [teamId, teamMembers] of groups) {
+    teamMembers.forEach((member, index) => {
+      const pos = computeDeskPosition(teamId, index);
+      furniture.push({
+        id: `desk-${member.id}`,
+        type: "desk",
+        position: pos,
+        imageUrl: "",
+      });
+    });
+  }
+
+  // Generate 1 sofa per team (dev, analytics, strategy)
+  for (const teamId of SOFA_TEAMS) {
+    const teamMembers = groups.get(teamId);
+    if (!teamMembers || teamMembers.length === 0) continue;
+    const pos = computeSofaCenter(teamId, teamMembers.length);
+    furniture.push({
+      id: `sofa-${teamId}`,
+      type: "sofa",
+      position: pos,
+      imageUrl: "",
+    });
+  }
+
+  // Decorative furniture — positioned to complement team zones
+  furniture.push(
+    { id: "whiteboard-1", type: "whiteboard", position: { x: 650, y: 160 }, imageUrl: "" },
+    { id: "plant-1", type: "plant", position: { x: 70, y: 70 }, imageUrl: "" },
+    { id: "plant-2", type: "plant", position: { x: 1900, y: 70 }, imageUrl: "" },
+    { id: "plant-3", type: "plant", position: { x: 70, y: 1400 }, imageUrl: "" },
+    { id: "plant-4", type: "plant", position: { x: 1900, y: 1400 }, imageUrl: "" },
+    { id: "coffee-1", type: "coffee", position: { x: 980, y: 700 }, imageUrl: "" },
+    { id: "bookshelf-1", type: "bookshelf", position: { x: 70, y: 700 }, imageUrl: "" },
+    { id: "watercooler-1", type: "watercooler", position: { x: 1900, y: 700 }, imageUrl: "" },
+  );
+
+  return furniture;
+}
+
+// ---------------------------------------------------------------------------
+// Default characters
+// ---------------------------------------------------------------------------
 
 function getOverflowPosition(index: number): { x: number; y: number } {
   return {
@@ -56,65 +199,10 @@ function getOverflowPosition(index: number): { x: number; y: number } {
   };
 }
 
-function createAnimalFallback(animal: string, used: Set<string>): string {
-  const normalized = animal.trim().toLowerCase();
-  for (let length = 1; length <= normalized.length; length += 1) {
-    const candidate = normalized.slice(0, length);
-    const fallback = candidate[0].toUpperCase() + candidate.slice(1);
-    if (!used.has(fallback)) {
-      used.add(fallback);
-      return fallback;
-    }
-  }
-
-  let suffix = 2;
-  while (true) {
-    const fallback = `${normalized[0].toUpperCase()}${suffix}`;
-    if (!used.has(fallback)) {
-      used.add(fallback);
-      return fallback;
-    }
-    suffix += 1;
-  }
-}
-
-const SCENE_TEAM_MEMBERS = teamData.members.map((member) => ({
-  ...member,
-  id: toSceneMemberId(member.id) ?? member.id,
-  parentId: toSceneMemberId(member.parentId),
-}));
-
-const TEAM_ORDER_INDEX = new Map(teamData.teams.map((team, index) => [team.id, index]));
-const MEMBER_ORDER_INDEX = new Map(SCENE_TEAM_MEMBERS.map((member, index) => [member.id, index]));
-const TEAM_LABELS = Object.fromEntries(teamData.teams.map((team) => [team.id, team.name.ko])) as Record<string, string>;
-
-/**
- * Team-grouped initial positions.
- * Characters are clustered by team so the office layout feels organized.
- */
-export const TEAM_POSITIONS: Record<string, { x: number; y: number }> = Object.fromEntries(
-  teamData.teams.flatMap((team) => {
-    const members = teamData.members.filter((member) => member.team === team.id);
-    const slots = TEAM_LAYOUT_SLOTS[team.id] ?? [];
-
-    return members.flatMap((member, index) => {
-      const position = slots[index] ?? getOverflowPosition(index);
-      const sceneId = toSceneMemberId(member.id) ?? member.id;
-      const entries: Array<[string, { x: number; y: number }]> = [[sceneId, position]];
-
-      if (sceneId !== member.id) {
-        entries.push([member.id, position]);
-      }
-
-      return entries;
-    });
-  }),
-);
-
 export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeCharacter[] {
   return team.map((agent, index) => ({
     ...agent,
-    position: TEAM_POSITIONS[agent.id] ?? { x: 80 + (index % 4) * 200, y: 120 + Math.floor(index / 4) * 160 },
+    position: TEAM_POSITIONS[agent.id] ?? getOverflowPosition(index),
     spriteSheet: "",
     image: agent.image,
   }));
@@ -122,40 +210,21 @@ export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeC
 
 export const DEFAULT_OFFICE_CHARACTERS: OfficeCharacter[] = buildDefaultOfficeCharacters();
 
-export const DEFAULT_OFFICE_FURNITURE: OfficeFurniture[] = [
-  // Dev team desks (left zone)
-  { id: "desk-dev-1", type: "desk", position: { x: 140, y: 200 }, imageUrl: "" },
-  { id: "desk-dev-2", type: "desk", position: { x: 260, y: 200 }, imageUrl: "" },
-  { id: "desk-dev-3", type: "desk", position: { x: 140, y: 320 }, imageUrl: "" },
-  { id: "desk-dev-4", type: "desk", position: { x: 260, y: 320 }, imageUrl: "" },
-  // Analytics team desks (right-top zone)
-  { id: "desk-ana-1", type: "desk", position: { x: 680, y: 200 }, imageUrl: "" },
-  { id: "desk-ana-2", type: "desk", position: { x: 790, y: 200 }, imageUrl: "" },
-  // Strategy team desks (right-bottom zone)
-  { id: "desk-str-1", type: "desk", position: { x: 680, y: 430 }, imageUrl: "" },
-  { id: "desk-str-2", type: "desk", position: { x: 790, y: 430 }, imageUrl: "" },
-  // Whiteboard (top center)
-  { id: "whiteboard-1", type: "whiteboard", position: { x: 450, y: 80 }, imageUrl: "" },
-  // Corner plants
-  { id: "plant-1", type: "plant", position: { x: 40, y: 50 }, imageUrl: "" },
-  { id: "plant-2", type: "plant", position: { x: 860, y: 50 }, imageUrl: "" },
-  { id: "plant-3", type: "plant", position: { x: 40, y: 560 }, imageUrl: "" },
-  { id: "plant-4", type: "plant", position: { x: 860, y: 560 }, imageUrl: "" },
-  // Common area (center)
-  { id: "sofa-1", type: "sofa", position: { x: 450, y: 340 }, imageUrl: "" },
-  { id: "coffee-1", type: "coffee", position: { x: 450, y: 420 }, imageUrl: "" },
-  // Utility area (bottom center)
-  { id: "printer-1", type: "printer", position: { x: 360, y: 530 }, imageUrl: "" },
-  { id: "watercooler-1", type: "watercooler", position: { x: 540, y: 530 }, imageUrl: "" },
-  // Bookshelf (side wall)
-  { id: "bookshelf-1", type: "bookshelf", position: { x: 40, y: 300 }, imageUrl: "" },
-];
+// ---------------------------------------------------------------------------
+// Default scene (uses dynamic furniture)
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_OFFICE_FURNITURE: OfficeFurniture[] = buildDynamicFurniture();
 
 export const DEFAULT_OFFICE_SCENE: OfficeScene = {
   characters: DEFAULT_OFFICE_CHARACTERS,
   furniture: DEFAULT_OFFICE_FURNITURE,
   background: "woodland-office",
 };
+
+// ---------------------------------------------------------------------------
+// Canvas & furniture sizes
+// ---------------------------------------------------------------------------
 
 export const OFFICE_CANVAS_SIZE = {
   width: 900,
@@ -174,15 +243,114 @@ export const FURNITURE_SIZES: Record<string, { w: number; h: number }> = {
   watercooler: { w: 90, h: 112 },
 };
 
-/** Team zone bounding rectangles for visual grouping in the office */
-export const TEAM_ZONES: { team: string; label: string; color: string; x: number; y: number; w: number; h: number }[] = [
-  { team: "management", label: TEAM_LABELS.management ?? "총괄", color: "rgba(217, 119, 6, 0.06)", x: 430, y: 30, w: 160, h: 100 },
-  { team: "dev", label: TEAM_LABELS.dev ?? "개발팀", color: "rgba(59, 130, 246, 0.06)", x: 60, y: 110, w: 280, h: 380 },
-  { team: "analytics", label: TEAM_LABELS.analytics ?? "분석팀", color: "rgba(249, 115, 22, 0.06)", x: 600, y: 110, w: 260, h: 230 },
-  { team: "strategy", label: TEAM_LABELS.strategy ?? "전략팀", color: "rgba(34, 197, 94, 0.06)", x: 600, y: 330, w: 260, h: 240 },
-];
+// ---------------------------------------------------------------------------
+// Team zones — visual grouping (NO labels — labels removed per spec)
+// ---------------------------------------------------------------------------
 
-/** Hierarchy connection lines: from parent → child positions */
+export interface TeamZone {
+  team: string;
+  color: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const TEAM_ZONE_COLORS: Record<string, string> = {
+  management: "rgba(217, 119, 6, 0.04)",
+  dev: "rgba(59, 130, 246, 0.05)",
+  analytics: "rgba(249, 115, 22, 0.05)",
+  strategy: "rgba(34, 197, 94, 0.05)",
+};
+
+function buildTeamZonesForMembers(members: typeof SCENE_TEAM_MEMBERS): TeamZone[] {
+  const groups = groupByTeam(members);
+  const zones: TeamZone[] = [];
+
+  for (const [teamId, teamMembers] of groups) {
+    const config = TEAM_ZONE_LAYOUT[teamId];
+    if (!config) continue;
+
+    const rows = Math.ceil(teamMembers.length / config.cols);
+    const hasSofa = SOFA_TEAMS.includes(teamId);
+    const pad = 60;
+
+    zones.push({
+      team: teamId,
+      color: TEAM_ZONE_COLORS[teamId] ?? "rgba(107, 114, 128, 0.04)",
+      x: config.origin.x - pad,
+      y: config.origin.y - pad,
+      w: (config.cols - 1) * DESK_SPACING.x + 200 + pad * 2,
+      h: (rows - 1) * DESK_SPACING.y + 144 + (hasSofa ? SOFA_GAP_Y + 144 : 0) + pad * 2,
+    });
+  }
+
+  return zones;
+}
+
+function buildTeamZones(): TeamZone[] {
+  return buildTeamZonesForMembers(SCENE_TEAM_MEMBERS);
+}
+
+export const TEAM_ZONES: TeamZone[] = buildTeamZones();
+
+// ---------------------------------------------------------------------------
+// Project layout — per-project office generation
+// ---------------------------------------------------------------------------
+
+export interface ProjectLayout {
+  furniture: OfficeFurniture[];
+  deskPositions: Record<string, { x: number; y: number }>;
+  sofaPositions: Record<string, { x: number; y: number }>;
+  teamZones: TeamZone[];
+}
+
+/** Build a complete office layout for a given set of member IDs.
+ *  When memberIds is null/undefined, builds for ALL members (default view). */
+export function buildProjectLayout(memberIds?: string[] | null): ProjectLayout {
+  const members = memberIds
+    ? SCENE_TEAM_MEMBERS.filter((m) => memberIds.includes(m.id))
+    : SCENE_TEAM_MEMBERS;
+
+  const groups = groupByTeam(members);
+  const deskPositions: Record<string, { x: number; y: number }> = {};
+  const sofaPositions: Record<string, { x: number; y: number }> = {};
+
+  for (const [teamId, teamMembers] of groups) {
+    teamMembers.forEach((member, index) => {
+      deskPositions[member.id] = computeDeskPosition(teamId, index);
+    });
+    if (SOFA_TEAMS.includes(teamId) && teamMembers.length > 0) {
+      sofaPositions[teamId] = computeSofaCenter(teamId, teamMembers.length);
+    }
+  }
+
+  return {
+    furniture: buildDynamicFurniture(members),
+    deskPositions,
+    sofaPositions,
+    teamZones: buildTeamZonesForMembers(members),
+  };
+}
+
+/** Default project layout (all members) */
+export const DEFAULT_PROJECT_LAYOUT: ProjectLayout = {
+  furniture: DEFAULT_OFFICE_FURNITURE,
+  deskPositions: { ...DESK_POSITIONS },
+  sofaPositions: { ...SOFA_POSITIONS },
+  teamZones: TEAM_ZONES,
+};
+
+// ---------------------------------------------------------------------------
+// Hierarchy connection lines
+// ---------------------------------------------------------------------------
+
+const TEAM_HIERARCHY_COLORS: Record<string, { lead: string; member: string }> = {
+  dev: { lead: "rgba(59, 130, 246, 0.15)", member: "rgba(59, 130, 246, 0.1)" },
+  analytics: { lead: "rgba(249, 115, 22, 0.15)", member: "rgba(249, 115, 22, 0.1)" },
+  strategy: { lead: "rgba(34, 197, 94, 0.15)", member: "rgba(34, 197, 94, 0.1)" },
+};
+
 export const HIERARCHY_LINES: { from: string; to: string; color: string }[] = SCENE_TEAM_MEMBERS
   .filter((member) => member.parentId != null)
   .sort((left, right) => {
@@ -209,14 +377,9 @@ export const HIERARCHY_LINES: { from: string; to: string; color: string }[] = SC
     };
   });
 
-export const ANIMAL_FALLBACKS: Record<string, string> = (() => {
-  const used = new Set<string>();
-  const animals = Array.from(new Set(SCENE_TEAM_MEMBERS.map((member) => member.animal.en)));
-
-  return Object.fromEntries(
-    animals.map((animal) => [animal, createAnimalFallback(animal, used)]),
-  );
-})();
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
 export function sceneToLayout(scene: OfficeScene): OfficeLayoutSnapshot {
   return {
@@ -233,3 +396,55 @@ export function sceneToLayout(scene: OfficeScene): OfficeLayoutSnapshot {
     })),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Animal fallbacks (used by office-capture.ts)
+// ---------------------------------------------------------------------------
+
+function createAnimalFallback(animal: string, used: Set<string>): string {
+  const normalized = animal.trim().toLowerCase();
+  for (let length = 1; length <= normalized.length; length += 1) {
+    const candidate = normalized.slice(0, length);
+    const fallback = candidate[0].toUpperCase() + candidate.slice(1);
+    if (!used.has(fallback)) {
+      used.add(fallback);
+      return fallback;
+    }
+  }
+  let suffix = 2;
+  while (true) {
+    const fallback = `${normalized[0].toUpperCase()}${suffix}`;
+    if (!used.has(fallback)) {
+      used.add(fallback);
+      return fallback;
+    }
+    suffix += 1;
+  }
+}
+
+export const ANIMAL_FALLBACKS: Record<string, string> = (() => {
+  const used = new Set<string>();
+  const animals = Array.from(new Set(SCENE_TEAM_MEMBERS.map((member) => member.animal.en)));
+  return Object.fromEntries(
+    animals.map((animal) => [animal, createAnimalFallback(animal, used)]),
+  );
+})();
+
+/** Sofa team label lookup (for rendering labels on sofa furniture) */
+export const SOFA_TEAM_LABELS: Record<string, string> = {
+  dev: "개발팀 휴게",
+  analytics: "분석팀 휴게",
+  strategy: "전략팀 휴게",
+};
+
+/** Desk member info lookup (for rendering name plates on desk furniture) */
+const TEAM_NAME_KO_MAP: Record<string, string> = Object.fromEntries(
+  teamData.teams.map((team) => [team.id, team.name.ko]),
+);
+
+export const DESK_MEMBER_INFO: Record<string, { name: string; teamName: string; emoji: string }> = Object.fromEntries(
+  SCENE_TEAM_MEMBERS.map((member) => [
+    member.id,
+    { name: member.name.ko, teamName: TEAM_NAME_KO_MAP[member.team] ?? member.team, emoji: member.emoji },
+  ]),
+);
