@@ -32,6 +32,10 @@ describe("team-status-store", () => {
       "idle",
     );
     assert.strictEqual(
+      classifySurfaceStatus("─────────────────────────────❯"),
+      "idle",
+    );
+    assert.strictEqual(
       classifySurfaceStatus("gpt-5.4 high fast\nesc to interrupt\ntab to queue"),
       "idle",
     );
