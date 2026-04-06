@@ -139,6 +139,8 @@ export async function readPlans() {
 
   for (const file of mdFiles) {
     const planId = file.replace(/\.md$/u, "");
+    const slashIndex = file.indexOf("/");
+    const project = slashIndex > 0 ? file.slice(0, slashIndex) : null;
 
     try {
       const content = await readFile(join(plansDir, file), "utf8");
@@ -153,6 +155,7 @@ export async function readPlans() {
 
       plans.push({
         id: planId,
+        project,
         title: frontmatter.title || planId,
         status: frontmatter.status || "in_progress",
         created: frontmatter.created || null,
@@ -169,6 +172,7 @@ export async function readPlans() {
       const message = error instanceof Error ? error.message : "Unknown read error";
       plans.push({
         id: planId,
+        project,
         title: planId,
         status: "error",
         created: null,
