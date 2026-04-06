@@ -10,7 +10,6 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({
-  isNight,
   animationsEnabled,
   onToggleAnimations,
   particlesEnabled,
@@ -23,9 +22,8 @@ export function SettingsPanel({
     <div className={`relative z-30 ${className}`}>
       <button
         onClick={() => setOpen(!open)}
-        className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-md transition-colors ${
-          isNight ? "bg-indigo-900/80 text-indigo-300 hover:bg-indigo-800" : "bg-white/80 text-stone-500 hover:bg-white"
-        } backdrop-blur-md border ${isNight ? "border-indigo-700/40" : "border-white/50"}`}
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-md transition-colors backdrop-blur-md border"
+        style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)", color: "var(--t-muted)" }}
         title="설정"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -35,10 +33,11 @@ export function SettingsPanel({
       </button>
 
       {open && (
-        <div className={`absolute top-10 right-0 w-52 rounded-2xl backdrop-blur-md border shadow-xl p-3 animate-fade-in ${
-          isNight ? "bg-indigo-950/80 border-indigo-800/50" : "bg-white/90 border-white/50"
-        }`}>
-          <p className={`text-[10px] font-bold uppercase tracking-wider mb-3 ${isNight ? "text-indigo-400" : "text-stone-500"}`}>
+        <div
+          className="absolute top-10 right-0 w-52 rounded-2xl backdrop-blur-md border shadow-xl p-3 animate-fade-in"
+          style={{ background: "var(--panel-bg-strong)", borderColor: "var(--panel-border)" }}
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--t-muted)" }}>
             오피스 설정
           </p>
 
@@ -47,13 +46,11 @@ export function SettingsPanel({
               label="애니메이션"
               enabled={animationsEnabled}
               onToggle={onToggleAnimations}
-              isNight={isNight}
             />
             <ToggleRow
               label="파티클 효과"
               enabled={particlesEnabled}
               onToggle={onToggleParticles}
-              isNight={isNight}
             />
           </div>
         </div>
@@ -62,20 +59,18 @@ export function SettingsPanel({
   );
 }
 
-function ToggleRow({ label, enabled, onToggle, isNight }: {
+function ToggleRow({ label, enabled, onToggle }: {
   label: string;
   enabled: boolean;
   onToggle: () => void;
-  isNight: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className={`text-[11px] ${isNight ? "text-indigo-200" : "text-stone-600"}`}>{label}</span>
+      <span className="text-[11px]" style={{ color: "var(--t-secondary)" }}>{label}</span>
       <button
         onClick={onToggle}
-        className={`w-9 h-5 rounded-full transition-colors relative ${
-          enabled ? "bg-amber-500" : isNight ? "bg-indigo-700" : "bg-stone-300"
-        }`}
+        className="w-9 h-5 rounded-full transition-colors relative"
+        style={{ background: enabled ? "var(--color-kuma-orange)" : "var(--card-border)" }}
       >
         <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
           enabled ? "left-[18px]" : "left-0.5"

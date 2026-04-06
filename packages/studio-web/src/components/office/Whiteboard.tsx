@@ -15,24 +15,28 @@ export function Whiteboard({ position }: WhiteboardProps) {
   return (
     <div
       className={position
-        ? "pointer-events-none absolute rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"
-        : "rounded-lg border-2 border-stone-300 bg-white/90 p-3 shadow-md"}
-      style={position
-        ? {
-            left: position.x,
-            top: position.y,
-            width: 220,
-            minHeight: 120,
-            transform: "translate(-50%, 0)",
-          }
-        : {
-            width: 220,
-            minHeight: 120,
-          }}
+        ? "pointer-events-none absolute rounded-lg border-2 p-3 shadow-md"
+        : "rounded-lg border-2 p-3 shadow-md"}
+      style={{
+        background: "var(--wb-bg)",
+        borderColor: "var(--wb-border)",
+        ...(position
+          ? {
+              left: position.x,
+              top: position.y,
+              width: 220,
+              minHeight: 120,
+              transform: "translate(-50%, 0)",
+            }
+          : {
+              width: 220,
+              minHeight: 120,
+            }),
+      }}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-bold uppercase tracking-wide text-stone-600">작업 보드</span>
-        <span className="text-[9px] text-stone-400">{today}</span>
+        <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "var(--t-secondary)" }}>작업 보드</span>
+        <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>{today}</span>
       </div>
 
       {inProgressJobs.length > 0 ? (
@@ -40,10 +44,11 @@ export function Whiteboard({ position }: WhiteboardProps) {
           {inProgressJobs.map((job) => (
             <div
               key={job.id}
-              className="rounded border border-amber-200/60 bg-amber-50/50 px-2 py-1"
+              className="rounded border px-2 py-1"
+              style={{ background: "var(--wb-card-bg)", borderColor: "var(--wb-card-border)" }}
             >
               <div className="flex items-center justify-between">
-                <p className="truncate text-[10px] font-medium text-stone-700">
+                <p className="truncate text-[10px] font-medium" style={{ color: "var(--t-secondary)" }}>
                   {job.message.slice(0, 30)}
                 </p>
                 <StatusBadge status={job.status} />
@@ -52,11 +57,11 @@ export function Whiteboard({ position }: WhiteboardProps) {
           ))}
         </div>
       ) : (
-        <p className="py-2 text-center text-[10px] text-stone-400">현재 진행 중인 작업이 없습니다</p>
+        <p className="py-2 text-center text-[10px]" style={{ color: "var(--t-faint)" }}>현재 진행 중인 작업이 없습니다</p>
       )}
 
-      <div className="mt-2 border-t border-stone-200/50 pt-1.5">
-        <p className="text-[9px] font-bold uppercase text-stone-400">오늘 커밋: {commitCount}건</p>
+      <div className="mt-2 pt-1.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+        <p className="text-[9px] font-bold uppercase" style={{ color: "var(--t-faint)" }}>오늘 커밋: {commitCount}건</p>
       </div>
     </div>
   );

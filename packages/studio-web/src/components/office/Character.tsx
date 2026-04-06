@@ -4,7 +4,8 @@ import { KUMA_TEAM } from "../../types/agent";
 import { CharacterSprite } from "./CharacterSprite";
 import { CharacterTooltip } from "./CharacterTooltip";
 import { useRandomEmote } from "../../hooks/use-random-emote";
-import { STATE_COLORS, STATE_LABELS_KO } from "../../lib/constants";
+import { STATE_COLORS, STATE_LABELS_KO, formatModelName, modelBadgeClass, getSkillDisplayName, formatEffort, effortColorClass, contextBarColor } from "../../lib/constants";
+import { useTeamStatusStore, type ModelInfo } from "../../stores/use-team-status-store";
 
 interface CharacterProps {
   character: OfficeCharacter;
@@ -16,21 +17,13 @@ interface CharacterProps {
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
-function modelBadgeClass(model: string | undefined): string {
-  if (!model) return "bg-stone-100 text-stone-400";
-  if (model.includes("opus")) return "bg-indigo-100 text-indigo-600";
-  if (model.includes("sonnet")) return "bg-blue-100 text-blue-600";
-  if (model.includes("codex")) return "bg-emerald-100 text-emerald-700";
-  return "bg-stone-100 text-stone-400";
-}
-
-function modelShortName(model: string | undefined): string | null {
-  if (!model) return null;
-  if (model.includes("opus")) return "opus";
-  if (model.includes("sonnet")) return "sonnet";
-  if (model.includes("codex")) return "codex";
-  return model;
-}
+const STATE_EMOJI: Record<string, string> = {
+  working: "\u26A1",
+  thinking: "\uD83D\uDCAD",
+  idle: "\uD83D\uDCA4",
+  completed: "\u2705",
+  error: "\u274C",
+};
 
 export function Character({ character, isDragging = false, isSelected = false, speechBubble, onClick, onDragStart, onDoubleClick }: CharacterProps) {
   const [hovered, setHovered] = useState(false);
@@ -42,13 +35,22 @@ export function Character({ character, isDragging = false, isSelected = false, s
   const displayRole = teamMember?.roleKo ?? character.role;
   const displayEmoji = teamMember?.emoji ?? "";
   const model = teamMember?.model;
-  const shortModel = modelShortName(model);
+  const shortModel = formatModelName(model);
   const skills = teamMember?.skills ?? [];
+
+  // Live model info from team-status API
+  const liveModelInfo: ModelInfo | null = useTeamStatusStore((s) => s.memberStatus.get(character.id)?.modelInfo ?? null);
+  const liveModel = liveModelInfo?.model ? formatModelName(liveModelInfo.model) : null;
+  const displayModel = liveModel ?? shortModel;
+  const badgeModel = liveModelInfo?.model ?? model;
+  const effort = formatEffort(liveModelInfo?.effort);
+  const effortClass = effortColorClass(liveModelInfo?.effort);
+  const contextPct = liveModelInfo?.contextRemaining;
 
   return (
     <div
       className={`absolute flex select-none flex-col items-center ${
-        isDragging ? "z-20 cursor-grabbing" : "transition-all duration-500 ease-in-out cursor-grab"
+        isDragging ? "z-20 cursor-grabbing" : "transition-all duration-300 ease-in-out cursor-grab"
       }`}
       onMouseDown={onDragStart}
       onClick={onClick}
@@ -113,12 +115,13 @@ export function Character({ character, isDragging = false, isSelected = false, s
 
         {/* State indicator */}
         <div className="mt-1 flex items-center gap-1">
+          <span className="text-[8px]">{STATE_EMOJI[character.state] ?? ""}</span>
           <div
             className="h-1.5 w-1.5 rounded-full"
             style={{ backgroundColor: stateColor }}
             title={stateLabel}
           />
-          <span className="text-[8px] text-stone-400">{stateLabel}</span>
+          <span className="text-[8px] text-stone-400 font-medium">{stateLabel}</span>
         </div>
 
         {/* Working progress bar */}
@@ -132,34 +135,62 @@ export function Character({ character, isDragging = false, isSelected = false, s
           </p>
         )}
 
-        {/* Name + emoji */}
-        <p className="mt-1 text-xs font-bold text-stone-800">
-          {displayEmoji} {displayName}
-        </p>
-
-        {/* Role */}
-        <p className="text-[10px] text-stone-500">{displayRole}</p>
-
-        {/* Model badge */}
-        {shortModel && (
-          <span className={`mt-1 inline-block rounded-full px-1.5 py-px text-[7px] font-semibold leading-tight ${modelBadgeClass(model)}`}>
-            {shortModel}
-          </span>
+        {/* Model badge — shows live effort/speed when available */}
+        {displayModel && (
+          <div className="mt-1 flex flex-col items-center gap-0.5">
+            <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[7px] font-semibold leading-tight ${modelBadgeClass(badgeModel)}`}>
+              {displayModel}
+              {effort && (
+                <span className={`font-bold ${effortClass}`}>
+                  {effort}
+                </span>
+              )}
+              {liveModelInfo?.speed && (
+                <span className="opacity-60">⚡</span>
+              )}
+            </span>
+            {/* Context remaining micro-bar */}
+            {contextPct != null && (
+              <div className="w-full h-[3px] rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.1)" }}>
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${contextPct}%`,
+                    backgroundColor: contextBarColor(contextPct),
+                  }}
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {/* Skills */}
         {skills.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap justify-center gap-0.5">
-            {skills.map((skill) => (
+          <div className="mt-1 flex flex-wrap justify-center gap-0.5">
+            {skills.slice(0, 2).map((skill) => (
               <span
                 key={skill}
                 className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[8px] text-amber-800"
+                title={skill}
               >
-                {skill}
+                {getSkillDisplayName(skill)}
               </span>
             ))}
+            {skills.length > 2 && (
+              <span className="rounded-full bg-stone-100 px-1.5 py-0.5 text-[8px] text-stone-500" title={skills.slice(2).map(getSkillDisplayName).join(", ")}>
+                +{skills.length - 2}
+              </span>
+            )}
           </div>
         )}
+
+        {/* Name plate — game RPG style */}
+        <div className="character-name-plate mt-1.5 -mx-2 -mb-2 px-2 py-1.5 rounded-b-lg">
+          <p className="text-[11px] font-bold text-amber-100 text-center" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}>
+            {displayEmoji} {displayName}
+          </p>
+          <p className="text-[9px] text-stone-300/80 text-center">{displayRole}</p>
+        </div>
       </div>
     </div>
   );

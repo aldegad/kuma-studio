@@ -1,6 +1,7 @@
 import type { OfficeCharacter } from "../../types/office";
 import { KUMA_TEAM } from "../../types/agent";
-import { STATE_COLORS, STATE_LABELS_KO } from "../../lib/constants";
+import { STATE_COLORS, STATE_LABELS_KO, formatModelName, getSkillDisplayName, formatEffort, effortColorClass, contextBarColor } from "../../lib/constants";
+import { useTeamStatusStore } from "../../stores/use-team-status-store";
 
 interface CharacterTooltipProps {
   character: OfficeCharacter;
@@ -45,12 +46,31 @@ export function CharacterTooltip({ character }: CharacterTooltipProps) {
           <span className="text-stone-500">팀:</span> {member.teamKo}
         </div>
 
-        {/* Model */}
-        {member.model && (
-          <div className="text-[9px] text-stone-400 mb-1">
-            <span className="text-stone-500">모델:</span> {member.model}
-          </div>
-        )}
+        {/* Model — live info from team-status when available */}
+        {member.model && (() => {
+          const live = useTeamStatusStore.getState().memberStatus.get(character.id)?.modelInfo;
+          const liveModel = live?.model ? formatModelName(live.model) : null;
+          const display = liveModel ?? formatModelName(member.model) ?? member.model;
+          const effort = formatEffort(live?.effort);
+          const eCls = effortColorClass(live?.effort);
+          const ctx = live?.contextRemaining;
+          return (
+            <div className="text-[9px] text-stone-400 mb-1">
+              <span className="text-stone-500">모델:</span>{" "}
+              <span className="font-medium text-stone-300">{display}</span>
+              {effort && <span className={`ml-1 font-bold ${eCls}`}>{effort}</span>}
+              {live?.speed && <span className="ml-0.5 opacity-60">⚡</span>}
+              {ctx != null && (
+                <span className="ml-1.5 inline-flex items-center gap-1">
+                  <span className="inline-block w-8 h-[3px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                    <span className="block h-full rounded-full" style={{ width: `${ctx}%`, backgroundColor: contextBarColor(ctx) }} />
+                  </span>
+                  <span className={`text-[8px] ${ctx <= 20 ? "text-red-400" : "text-stone-500"}`}>{ctx}%</span>
+                </span>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Node type */}
         {member.nodeType && (
@@ -67,8 +87,9 @@ export function CharacterTooltip({ character }: CharacterTooltipProps) {
               <span
                 key={skill}
                 className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[8px] text-amber-300"
+                title={skill}
               >
-                {skill}
+                {getSkillDisplayName(skill)}
               </span>
             ))}
           </div>
