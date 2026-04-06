@@ -170,109 +170,140 @@ export function PlanPanel() {
 
             {visiblePlans.length > 0 && (
               <div
-                className="mt-1 space-y-1 border-t pt-1.5"
+                className="mt-1 space-y-1.5 border-t pt-1.5"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
-                {visiblePlans.map((plan) => (
-                  <div key={plan.id}>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        className="flex min-w-0 flex-1 items-center justify-between text-left"
-                        onClick={() => setExpanded((current) => (current === plan.id ? null : plan.id))}
-                        aria-expanded={expanded === plan.id}
-                        aria-controls={getPlanRegionId(plan.id)}
-                      >
-                        <span
-                          className="max-w-[120px] truncate text-[10px]"
-                          style={{ color: "var(--t-secondary)" }}
-                        >
-                          {expanded === plan.id ? "\u25be" : "\u25b8"} {plan.title}
-                        </span>
-                        <span
-                          className="text-[10px] font-mono"
-                          style={{ color: "var(--t-muted)" }}
-                        >
-                          {plan.checkedItems}/{plan.totalItems}
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openPlanDetail(plan)}
-                        className="shrink-0 rounded-md p-1 opacity-50 transition-opacity hover:opacity-100"
-                        style={{ color: "var(--t-muted)" }}
-                        aria-label={`${plan.title} 상세 보기`}
-                      >
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 20 20"
-                          className="h-3.5 w-3.5"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M7 3H3v4" />
-                          <path d="M13 3h4v4" />
-                          <path d="M17 13v4h-4" />
-                          <path d="M3 13v4h4" />
-                          <path d="M7 3L3 7" />
-                          <path d="M13 3l4 4" />
-                          <path d="M17 13l-4 4" />
-                          <path d="M3 13l4 4" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    {expanded === plan.id && (
+                {(() => {
+                  const grouped = new Map<string, typeof visiblePlans>();
+                  for (const plan of visiblePlans) {
+                    const key = plan.project ?? "기타";
+                    const arr = grouped.get(key);
+                    if (arr) arr.push(plan);
+                    else grouped.set(key, [plan]);
+                  }
+                  return Array.from(grouped.entries()).map(([project, projectPlans]) => (
+                    <div key={project}>
                       <div
-                        id={getPlanRegionId(plan.id)}
-                        className="mt-1 space-y-1 pl-2"
+                        className="flex items-center gap-1.5 pb-0.5"
                       >
-                        {plan.sections.map((section, i) => {
-                          const sc = section.items.filter(
-                            (item) => item.checked,
-                          ).length;
-                          const st = section.items.length;
-                          return (
-                            <div
-                              key={`${plan.id}-${section.title || "untitled"}-${i}`}
-                              className="flex items-center justify-between gap-1"
-                            >
-                              <span
-                                className="max-w-[90px] truncate text-[9px]"
-                                style={{ color: "var(--t-faint)" }}
+                        <span
+                          className="text-[9px] font-bold uppercase tracking-wider"
+                          style={{ color: "var(--t-faint)" }}
+                        >
+                          {project}
+                        </span>
+                        <span
+                          className="text-[8px] font-mono"
+                          style={{ color: "var(--t-faint)" }}
+                        >
+                          {projectPlans.reduce((s, p) => s + p.checkedItems, 0)}/{projectPlans.reduce((s, p) => s + p.totalItems, 0)}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 pl-1">
+                        {projectPlans.map((plan) => (
+                          <div key={plan.id}>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                className="flex min-w-0 flex-1 items-center justify-between text-left"
+                                onClick={() => setExpanded((current) => (current === plan.id ? null : plan.id))}
+                                aria-expanded={expanded === plan.id}
+                                aria-controls={getPlanRegionId(plan.id)}
                               >
-                                {section.title || "기타"}
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <div
-                                  className="h-1 w-8 overflow-hidden rounded-full"
-                                  style={{ background: "var(--track-bg)" }}
-                                >
-                                  <div
-                                    className="h-full rounded-full bg-stone-400"
-                                    style={{
-                                      width: `${st > 0 ? (sc / st) * 100 : 0}%`,
-                                    }}
-                                  />
-                                </div>
                                 <span
-                                  className="text-[8px] font-mono"
+                                  className="max-w-[120px] truncate text-[10px]"
+                                  style={{ color: "var(--t-secondary)" }}
+                                >
+                                  {expanded === plan.id ? "\u25be" : "\u25b8"} {plan.title}
+                                </span>
+                                <span
+                                  className="text-[10px] font-mono"
                                   style={{ color: "var(--t-muted)" }}
                                 >
-                                  {sc}/{st}
+                                  {plan.checkedItems}/{plan.totalItems}
                                 </span>
-                              </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openPlanDetail(plan)}
+                                className="shrink-0 rounded-md p-1 opacity-50 transition-opacity hover:opacity-100"
+                                style={{ color: "var(--t-muted)" }}
+                                aria-label={`${plan.title} 상세 보기`}
+                              >
+                                <svg
+                                  aria-hidden="true"
+                                  viewBox="0 0 20 20"
+                                  className="h-3.5 w-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.7"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M7 3H3v4" />
+                                  <path d="M13 3h4v4" />
+                                  <path d="M17 13v4h-4" />
+                                  <path d="M3 13v4h4" />
+                                  <path d="M7 3L3 7" />
+                                  <path d="M13 3l4 4" />
+                                  <path d="M17 13l-4 4" />
+                                  <path d="M3 13l4 4" />
+                                </svg>
+                              </button>
                             </div>
-                          );
-                        })}
+
+                            {expanded === plan.id && (
+                              <div
+                                id={getPlanRegionId(plan.id)}
+                                className="mt-1 space-y-1 pl-2"
+                              >
+                                {plan.sections.map((section, i) => {
+                                  const sc = section.items.filter(
+                                    (item) => item.checked,
+                                  ).length;
+                                  const st = section.items.length;
+                                  return (
+                                    <div
+                                      key={`${plan.id}-${section.title || "untitled"}-${i}`}
+                                      className="flex items-center justify-between gap-1"
+                                    >
+                                      <span
+                                        className="max-w-[90px] truncate text-[9px]"
+                                        style={{ color: "var(--t-faint)" }}
+                                      >
+                                        {section.title || "기타"}
+                                      </span>
+                                      <div className="flex items-center gap-1">
+                                        <div
+                                          className="h-1 w-8 overflow-hidden rounded-full"
+                                          style={{ background: "var(--track-bg)" }}
+                                        >
+                                          <div
+                                            className="h-full rounded-full bg-stone-400"
+                                            style={{
+                                              width: `${st > 0 ? (sc / st) * 100 : 0}%`,
+                                            }}
+                                          />
+                                        </div>
+                                        <span
+                                          className="text-[8px] font-mono"
+                                          style={{ color: "var(--t-muted)" }}
+                                        >
+                                          {sc}/{st}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    )}
-                  </div>
-                ))}
+                    </div>
+                  ));
+                })()}
               </div>
             )}
           </div>
