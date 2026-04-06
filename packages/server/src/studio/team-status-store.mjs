@@ -9,13 +9,16 @@ const DEFAULT_SURFACE_POLL_MS = 10_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
 const PROMPT_LINE_PATTERN = /^(❯|>)\s*$|^›/u;
 const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
+const SURFACE_SPINNER_PATTERN = /^[✻✶✳✢·]\s*/u;
+const COMPLETED_SURFACE_PATTERN =
+  /^[✻✶✳✢·]\s*(?:baked|brewed|cooked|toasted|charred|churned|saut(?:e|é)ed)\s+for\b/iu;
 const WORKING_SURFACE_PATTERNS = [
-  /^[✻✶✳✢·]\s*(?:concocting|meandering|fiddle-faddling|saut(?:e|é)ed|churned|cooked|baked|brewed|metamorphosing|working)\b/iu,
+  /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading\b).*(?:\.\.\.|…)?$/iu,
   /\brunning(?:\.\.\.|…)/iu,
 ];
 const SURFACE_HINT_PATTERNS = [
   /^bypass permissions\b/iu,
-  /^(?:brewed|baked) for\b/iu,
+  /^(?:brewed|baked|cooked|toasted|charred|churned|saut(?:e|é)ed) for\b/iu,
   /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
   /^esc to\b/iu,
   /^press up to edit\b/iu,
@@ -66,18 +69,18 @@ export function classifySurfaceStatus(output) {
   }
 
   const lines = getOutputLines(normalized);
-  if (hasWorkingSurfaceSignal(lines)) {
-    return "working";
-  }
-
+  const workingSignalIndex = getWorkingSurfaceSignalIndex(lines);
   const promptVisible = lines.some((line) => {
-    if (PROMPT_LINE_PATTERN.test(line)) {
+    if (isPromptLine(line)) {
       return true;
     }
-
-    const withoutBoxDrawing = line.replace(/[\u2500-\u257F]/gu, "").trim();
-    return PROMPT_LINE_PATTERN.test(withoutBoxDrawing);
+    return false;
   });
+  const promptLineIndex = lines.findIndex((line) => isPromptLine(line));
+
+  if (workingSignalIndex !== -1) {
+    return promptLineIndex > workingSignalIndex ? "idle" : "working";
+  }
 
   if (promptVisible) {
     return "idle";
@@ -152,8 +155,28 @@ function getOutputLines(output) {
     .filter(Boolean);
 }
 
-function hasWorkingSurfaceSignal(lines) {
-  return lines.some((line) => WORKING_SURFACE_PATTERNS.some((pattern) => pattern.test(line)));
+function isPromptLine(line) {
+  const trimmed = String(line ?? "").trim();
+  if (PROMPT_LINE_PATTERN.test(trimmed)) {
+    return true;
+  }
+
+  const withoutBoxDrawing = trimmed.replace(/[\u2500-\u257F]/gu, "").trim();
+  return PROMPT_LINE_PATTERN.test(withoutBoxDrawing);
+}
+
+function getWorkingSurfaceSignalIndex(lines) {
+  return lines.findIndex((line) => {
+    if (COMPLETED_SURFACE_PATTERN.test(line)) {
+      return false;
+    }
+
+    if (WORKING_SURFACE_PATTERNS.some((pattern) => pattern.test(line))) {
+      return true;
+    }
+
+    return SURFACE_SPINNER_PATTERN.test(line) && /(?:\.\.\.|…)\s*$/u.test(line);
+  });
 }
 
 function isIgnoredSurfaceLine(line) {
@@ -176,7 +199,7 @@ function isIgnoredSurfaceLine(line) {
 
 function getMeaningfulOutputLines(output) {
   return getOutputLines(output).filter(
-    (line) => !PROMPT_LINE_PATTERN.test(line) && !isIgnoredSurfaceLine(line),
+    (line) => !isPromptLine(line) && !isIgnoredSurfaceLine(line),
   );
 }
 
@@ -214,7 +237,7 @@ function getLastOutputLines(output) {
     return meaningfulLines.slice(-3);
   }
 
-  const promptLines = getOutputLines(output).filter((line) => PROMPT_LINE_PATTERN.test(line));
+  const promptLines = getOutputLines(output).filter((line) => isPromptLine(line));
   return promptLines.slice(-1);
 }
 
@@ -225,7 +248,7 @@ function deriveTaskFromOutput(status, lastOutputLines) {
 
   const taskLine = [...lastOutputLines]
     .reverse()
-    .find((line) => !PROMPT_LINE_PATTERN.test(line) && !isIgnoredSurfaceLine(line));
+    .find((line) => !isPromptLine(line) && !isIgnoredSurfaceLine(line));
 
   return taskLine ?? null;
 }

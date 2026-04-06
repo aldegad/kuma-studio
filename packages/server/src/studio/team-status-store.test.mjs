@@ -26,10 +26,14 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus("Working on packages/server...\nApplying patch"), "working");
   });
 
-  it("prefers Claude working spinner signals over visible prompts", () => {
-    assert.strictEqual(classifySurfaceStatus("✻ Concocting...\n❯"), "working");
-    assert.strictEqual(classifySurfaceStatus("✶ Churned for 12s\n❯"), "working");
-    assert.strictEqual(classifySurfaceStatus("Running…\n❯"), "working");
+  it("reclassifies spinner lines to idle when a prompt appears after them", () => {
+    assert.strictEqual(classifySurfaceStatus("✻ Baked for 6m 35s\n❯"), "idle");
+    assert.strictEqual(classifySurfaceStatus("✻ Concocting...\n❯"), "idle");
+  });
+
+  it("keeps active spinner lines as working when no prompt follows", () => {
+    assert.strictEqual(classifySurfaceStatus("✻ Concocting..."), "working");
+    assert.strictEqual(classifySurfaceStatus("✻ Thinking...\nReading file.ts"), "working");
   });
 
   it("classifies prompt and footer-only output as idle", () => {
