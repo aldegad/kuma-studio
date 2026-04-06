@@ -22,8 +22,8 @@ const TEAM_ZONE_LAYOUT: Record<string, TeamZoneConfig> = {
 const DESK_SPACING = { x: 220, y: 180 };
 const SOFA_GAP_Y = 70;
 
-// Teams that get a sofa (management excluded)
-const SOFA_TEAMS = ["dev", "analytics", "strategy"];
+// Teams that get a sofa
+const SOFA_TEAMS = ["management", "dev", "analytics", "strategy"];
 
 // ---------------------------------------------------------------------------
 // Scene member data
@@ -122,7 +122,7 @@ export function getAutoPosition(
   if (state === "idle" || state === "completed") {
     const sofaCenter = sofaPos[team];
     if (!sofaCenter) {
-      // Management or unknown team — stay at desk
+      // Unknown team — stay at desk
       return deskPos[memberId] ?? null;
     }
     // Scatter around sofa based on member ID hash
@@ -160,7 +160,7 @@ export function buildDynamicFurniture(members: typeof SCENE_TEAM_MEMBERS = SCENE
     });
   }
 
-  // Generate 1 sofa per team (dev, analytics, strategy)
+  // Generate 1 sofa per team
   for (const teamId of SOFA_TEAMS) {
     const teamMembers = groups.get(teamId);
     if (!teamMembers || teamMembers.length === 0) continue;

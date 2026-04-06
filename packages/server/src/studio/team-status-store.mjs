@@ -78,19 +78,15 @@ export function classifySurfaceStatus(output) {
   }
 
   const lines = getOutputLines(normalized);
-  const workingSignalIndex = getWorkingSurfaceSignalIndex(lines);
-  const promptVisible = lines.some((line) => {
-    if (isPromptLine(line)) {
-      return true;
-    }
-    return false;
-  });
-  const promptLineIndex = lines.findIndex((line) => isPromptLine(line));
-
-  if (workingSignalIndex !== -1) {
-    return promptLineIndex > workingSignalIndex ? "idle" : "working";
+  if (hasCompletedSurfaceSignal(lines)) {
+    return "idle";
   }
 
+  if (hasActiveWorkingSurfaceSignal(lines)) {
+    return "working";
+  }
+
+  const promptVisible = lines.some((line) => isPromptLine(line));
   if (promptVisible) {
     return "idle";
   }
@@ -182,8 +178,12 @@ function stripStatusBarText(line) {
   ).trim();
 }
 
-function getWorkingSurfaceSignalIndex(lines) {
-  return lines.findIndex((line) => {
+function hasCompletedSurfaceSignal(lines) {
+  return lines.some((line) => COMPLETED_SURFACE_PATTERN.test(line));
+}
+
+function hasActiveWorkingSurfaceSignal(lines) {
+  return lines.some((line) => {
     if (COMPLETED_SURFACE_PATTERN.test(line)) {
       return false;
     }
@@ -192,7 +192,7 @@ function getWorkingSurfaceSignalIndex(lines) {
       return true;
     }
 
-    return SURFACE_SPINNER_PATTERN.test(line) && /(?:\.\.\.|…)\s*$/u.test(line);
+    return SURFACE_SPINNER_PATTERN.test(line) && /(?:\.\.\.|…)/u.test(line);
   });
 }
 
