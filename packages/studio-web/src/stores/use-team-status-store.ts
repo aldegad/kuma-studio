@@ -7,11 +7,19 @@ import { KUMA_TEAM } from "../types/agent.js";
 // Types
 // ---------------------------------------------------------------------------
 
+export interface ModelInfo {
+  model: string | null;
+  effort: string | null;
+  speed: string | null;
+  contextRemaining: number | null;
+}
+
 export interface TeamMemberStatus {
   id: string;
   state: AgentState;
   lastOutputLines: string[];
   task: string | null;
+  modelInfo: ModelInfo | null;
   updatedAt: string | null;
 }
 
@@ -24,6 +32,24 @@ export interface ProjectTeamStatus {
 export interface TeamStatusSnapshot {
   projects: ProjectTeamStatus[];
 }
+
+type TeamStatusApiMember = {
+  id?: unknown;
+  name?: unknown;
+  state?: unknown;
+  status?: unknown;
+  lastOutput?: unknown;
+  lastOutputLines?: unknown;
+  task?: unknown;
+  modelInfo?: unknown;
+  updatedAt?: unknown;
+};
+
+type TeamStatusApiProject = {
+  projectId?: unknown;
+  projectName?: unknown;
+  members?: unknown;
+};
 
 // ---------------------------------------------------------------------------
 // Store
@@ -51,19 +77,20 @@ interface TeamStatusState {
 /** Default project derived from team.json when API is unavailable */
 const DEFAULT_PROJECT: ProjectTeamStatus = {
   projectId: "kuma-studio",
-  projectName: "Kuma Studio",
+  projectName: "kuma-studio",
   members: KUMA_TEAM.map((agent: Agent) => ({
     id: agent.id,
     state: "idle" as AgentState,
     lastOutputLines: [],
     task: null,
+    modelInfo: null,
     updatedAt: null,
   })),
 };
 
 export const useTeamStatusStore = create<TeamStatusState>((set) => ({
   projects: [DEFAULT_PROJECT],
-  activeProjectId: null,
+  activeProjectId: "kuma-studio",
   memberStatus: new Map(),
   loading: false,
   error: null,
@@ -105,6 +132,144 @@ export const useTeamStatusStore = create<TeamStatusState>((set) => ({
 // ---------------------------------------------------------------------------
 
 const teamById = new Map(teamData.teams.map((t) => [t.id, t] as const));
+const memberIdByDisplayName = new Map(teamData.members.map((member) => [member.name.ko, member.id] as const));
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function normalizeMemberState(value: unknown): AgentState {
+  switch (value) {
+    case "idle":
+    case "working":
+    case "thinking":
+    case "completed":
+    case "error":
+      return value;
+    case "dead":
+      return "error";
+    default:
+      return "idle";
+  }
+}
+
+function normalizeLastOutputLines(member: TeamStatusApiMember): string[] {
+  if (Array.isArray(member.lastOutputLines)) {
+    return member.lastOutputLines.filter((line): line is string => typeof line === "string");
+  }
+
+  if (typeof member.lastOutput === "string") {
+    return member.lastOutput
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(-3);
+  }
+
+  return [];
+}
+
+function normalizeModelInfo(value: unknown): ModelInfo | null {
+  if (!isRecord(value)) return null;
+  const info = value as Record<string, unknown>;
+  const model = typeof info.model === "string" ? info.model : null;
+  const effort = typeof info.effort === "string" ? info.effort : null;
+  const speed = typeof info.speed === "string" ? info.speed : null;
+  const contextRemaining = typeof info.contextRemaining === "number" ? info.contextRemaining : null;
+  if (!model && !effort && !speed && contextRemaining === null) return null;
+  return { model, effort, speed, contextRemaining };
+}
+
+function normalizeMember(member: unknown): TeamMemberStatus | null {
+  if (!isRecord(member)) {
+    return null;
+  }
+
+  const apiMember = member as TeamStatusApiMember;
+  const id =
+    typeof apiMember.id === "string" && apiMember.id.trim()
+      ? apiMember.id
+      : typeof apiMember.name === "string"
+        ? memberIdByDisplayName.get(apiMember.name.trim()) ?? null
+        : null;
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    state: normalizeMemberState(apiMember.state ?? apiMember.status),
+    lastOutputLines: normalizeLastOutputLines(apiMember),
+    task: typeof apiMember.task === "string" && apiMember.task.trim() ? apiMember.task : null,
+    modelInfo: normalizeModelInfo(apiMember.modelInfo),
+    updatedAt: typeof apiMember.updatedAt === "string" ? apiMember.updatedAt : null,
+  };
+}
+
+function normalizeProject(projectId: string, projectName: string, members: unknown): ProjectTeamStatus {
+  return {
+    projectId,
+    projectName,
+    members: Array.isArray(members)
+      ? members.map(normalizeMember).filter((member): member is TeamMemberStatus => member !== null)
+      : [],
+  };
+}
+
+export function normalizeTeamStatusSnapshot(value: unknown): TeamStatusSnapshot | null {
+  if (!isRecord(value) || !("projects" in value)) {
+    return null;
+  }
+
+  const { projects } = value;
+
+  if (Array.isArray(projects)) {
+    return {
+      projects: projects
+        .filter((project): project is TeamStatusApiProject => isRecord(project))
+        .map((project) => {
+          const projectId = typeof project.projectId === "string" ? project.projectId : "unknown";
+          const projectName =
+            typeof project.projectName === "string" && project.projectName.trim()
+              ? project.projectName
+              : projectId;
+          return normalizeProject(projectId, projectName, project.members);
+        }),
+    };
+  }
+
+  if (!isRecord(projects)) {
+    return null;
+  }
+
+  return {
+    projects: Object.entries(projects).map(([projectId, project]) => {
+      const members = isRecord(project) ? project.members : [];
+      return normalizeProject(projectId, projectId, members);
+    }),
+  };
+}
+
+export function extractTeamStatusSnapshotFromWsMessage(value: unknown): TeamStatusSnapshot | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (value.type === "kuma-studio:team-status-update") {
+    return normalizeTeamStatusSnapshot(value.snapshot ?? value.teamStatus ?? value);
+  }
+
+  if (
+    value.type === "kuma-studio:event" &&
+    isRecord(value.event) &&
+    value.event.kind === "kuma-studio:team-status-update"
+  ) {
+    return normalizeTeamStatusSnapshot(value.event.snapshot ?? value.event.teamStatus ?? value.event);
+  }
+
+  return null;
+}
 
 export interface TeamGroup {
   teamId: string;
@@ -120,11 +285,17 @@ export function getTeamGroups(
   memberStatus: Map<string, TeamMemberStatus>,
 ): TeamGroup[] {
   // Determine which member IDs are in the active project
+  // "system" project members (e.g. jjooni) are always visible regardless of active tab
+  const systemMembers = projects.find((p) => p.projectId === "system")?.members ?? [];
   const projectMembers = activeProjectId
-    ? projects.find((p) => p.projectId === activeProjectId)?.members
+    ? [...(projects.find((p) => p.projectId === activeProjectId)?.members ?? []), ...systemMembers]
     : projects.flatMap((p) => p.members);
 
-  const activeMemberIds = new Set(projectMembers?.map((m: TeamMemberStatus) => m.id) ?? KUMA_TEAM.map((a: Agent) => a.id));
+  const activeMemberIds = new Set(
+    projectMembers.length > 0
+      ? projectMembers.map((m: TeamMemberStatus) => m.id)
+      : KUMA_TEAM.map((a: Agent) => a.id),
+  );
 
   // Group agents by team
   const groups: TeamGroup[] = teamData.teams
@@ -142,6 +313,7 @@ export function getTeamGroups(
             state: "idle" as AgentState,
             lastOutputLines: [],
             task: null,
+            modelInfo: null,
             updatedAt: null,
           },
         })),
@@ -158,6 +330,7 @@ export function getTeamGroups(
         state: "idle" as AgentState,
         lastOutputLines: [],
         task: null,
+        modelInfo: null,
         updatedAt: null,
       },
     }));

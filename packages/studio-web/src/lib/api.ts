@@ -1,12 +1,14 @@
 import type { OfficeLayoutSnapshot } from "../types/office";
 import type { TeamMetadataResponse } from "../types/agent";
+import type { ContentItem, ContentListResponse, ContentStatus, ContentType } from "../types/content";
+import type { ExperimentItem, ExperimentListResponse, ExperimentSettings, ExperimentSource, ExperimentStatus } from "../types/experiment";
 import type {
   DailyReport,
   DashboardStats,
   GitActivitySnapshot,
 } from "../types/stats";
 import type { Plan, PlanItem, PlanSection, PlanWarning, PlansSnapshot } from "../types/plan";
-import type { TeamStatusSnapshot } from "../stores/use-team-status-store";
+import { normalizeTeamStatusSnapshot, type TeamStatusSnapshot } from "../stores/use-team-status-store";
 
 const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
 const BASE_URL = `http://${window.location.hostname}:${KUMA_PORT}`;
@@ -260,24 +262,177 @@ export async function saveOfficeLayout(layout: OfficeLayoutSnapshot): Promise<Of
   return res.json();
 }
 
-export async function fetchTeamStatus(): Promise<TeamStatusSnapshot> {
-  const res = await fetch(`${BASE_URL}/studio/team-status`, {
+export async function fetchTeamStatus(project = "kuma-studio"): Promise<TeamStatusSnapshot> {
+  const search = project ? `?project=${encodeURIComponent(project)}` : "";
+  const res = await fetch(`${BASE_URL}/studio/team-status${search}`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch team status: ${res.statusText}`);
   const payload: unknown = await res.json();
-  if (
-    !isRecord(payload) ||
-    !Array.isArray(payload.projects) ||
-    !payload.projects.every(
-      (p: unknown) =>
-        isRecord(p) &&
-        typeof p.projectId === "string" &&
-        typeof p.projectName === "string" &&
-        Array.isArray(p.members),
-    )
-  ) {
+  const snapshot = normalizeTeamStatusSnapshot(payload);
+  if (!snapshot) {
     throw new Error("Failed to fetch team status: invalid response payload");
   }
-  return payload as unknown as TeamStatusSnapshot;
+  return snapshot;
+}
+
+export async function fetchContentItems(project?: string, assignee?: string | null): Promise<ContentListResponse> {
+  const params = new URLSearchParams();
+  if (project) {
+    params.set("project", project);
+  }
+  if (assignee !== undefined) {
+    params.set("assignee", assignee ?? "unassigned");
+  }
+  const search = params.size > 0 ? `?${params.toString()}` : "";
+  const res = await fetch(`${BASE_URL}/studio/content${search}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch content items: ${res.statusText}`);
+  return res.json();
+}
+
+export async function createContentItem(input: {
+  project: string;
+  type: ContentType;
+  title: string;
+  body: string;
+  scheduledFor?: string | null;
+  assignee?: string | null;
+}): Promise<ContentItem> {
+  const res = await fetch(`${BASE_URL}/studio/content`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Failed to create content item: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateContentItem(
+  id: string,
+  patch: Partial<Pick<ContentItem, "project" | "type" | "title" | "body" | "scheduledFor" | "assignee">>,
+): Promise<ContentItem> {
+  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`Failed to update content item: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateContentStatus(
+  id: string,
+  status: ContentStatus,
+  scheduledFor?: string | null,
+): Promise<ContentItem> {
+  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}/status`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status, scheduledFor: scheduledFor ?? null }),
+  });
+  if (!res.ok) throw new Error(`Failed to update content status: ${res.statusText}`);
+  return res.json();
+}
+
+export async function deleteContentItem(id: string): Promise<ContentItem> {
+  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to delete content item: ${res.statusText}`);
+  return res.json();
+}
+
+export async function generateContentDrafts(project: string): Promise<ContentListResponse> {
+  const res = await fetch(`${BASE_URL}/studio/content/generate`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ project, persist: true }),
+  });
+  if (!res.ok) throw new Error(`Failed to generate content drafts: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchExperiments(): Promise<ExperimentListResponse> {
+  const res = await fetch(`${BASE_URL}/studio/experiments`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch experiments: ${res.statusText}`);
+  return res.json();
+}
+
+export async function createExperiment(input: {
+  title: string;
+  source: ExperimentSource;
+}): Promise<ExperimentItem> {
+  const res = await fetch(`${BASE_URL}/studio/experiments`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Failed to create experiment: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateExperimentStatus(id: string, status: ExperimentStatus): Promise<ExperimentItem> {
+  const res = await fetch(`${BASE_URL}/studio/experiments/${encodeURIComponent(id)}/status`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(`Failed to update experiment status: ${res.statusText}`);
+  return res.json();
+}
+
+export async function deleteExperiment(id: string): Promise<ExperimentItem> {
+  const res = await fetch(`${BASE_URL}/studio/experiments/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to delete experiment: ${res.statusText}`);
+  return res.json();
+}
+
+export async function updateExperimentSettings(
+  settings: Partial<ExperimentSettings>,
+): Promise<ExperimentSettings> {
+  const res = await fetch(`${BASE_URL}/studio/experiments/settings`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error(`Failed to update experiment settings: ${res.statusText}`);
+  return res.json();
+}
+
+export async function ingestTrendExperiments(): Promise<ExperimentListResponse> {
+  const res = await fetch(`${BASE_URL}/studio/experiments/ingest-trends`, {
+    method: "POST",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to ingest trend experiments: ${res.statusText}`);
+  return res.json();
 }

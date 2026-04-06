@@ -43,3 +43,83 @@ export const STATE_COLORS: Record<string, string> = {
   completed: "#10B981",
   error: "#EF4444",
 };
+
+/** Human-readable skill display names */
+export const SKILL_DISPLAY_NAMES: Record<string, string> = {
+  "kuma": "쿠마 총괄",
+  "dev-team": "개발팀 운영",
+  "analytics-team": "분석팀 운영",
+  "strategy-team": "전략팀 운영",
+  "frontend-design": "프론트엔드 디자인",
+  "gateproof-full-security-check": "보안 감사",
+  "security-threat-intel": "위협 인텔리전스",
+  "kuma-picker": "브라우저 피커",
+  "nano-banana": "이미지 생성",
+  "imagegen": "이미지 생성",
+  "codex-autoresearch": "자율 탐색",
+  "codex-autoresearch:fix": "자동 수정",
+  "codex-autoresearch:debug": "자동 디버깅",
+  "codex-autoresearch:learn": "코드 학습",
+  "codex-autoresearch:ship": "배포 워크플로",
+  "codex-autoresearch:security": "보안 감사",
+  "codex-autoresearch:plan": "계획 수립",
+  "codex-autoresearch:reason": "추론 엔진",
+  "codex-autoresearch:scenario": "시나리오 분석",
+  "codex-autoresearch:predict": "예측 분석",
+};
+
+/** Get display name for a skill ID */
+export function getSkillDisplayName(skillId: string): string {
+  return SKILL_DISPLAY_NAMES[skillId] ?? skillId.replace(/^codex-autoresearch:/, "").replace(/-/g, " ");
+}
+
+/** Format model name for display */
+export function formatModelName(model: string | undefined): string | null {
+  if (!model) return null;
+  if (model.includes("opus")) return "Opus";
+  if (model.includes("sonnet")) return "Sonnet";
+  if (model.startsWith("gpt-5")) return "GPT-5.4";
+  if (model.includes("o4-mini")) return "o4-mini";
+  return model;
+}
+
+export function modelBadgeClass(model: string | undefined): string {
+  if (!model) return "bg-stone-100 text-stone-400";
+  if (model.includes("opus")) return "bg-indigo-100 text-indigo-600";
+  if (model.includes("sonnet")) return "bg-blue-100 text-blue-600";
+  if (model.startsWith("gpt-5") || model.includes("codex")) return "bg-emerald-100 text-emerald-700";
+  return "bg-stone-100 text-stone-400";
+}
+
+/** Effort display labels (compact) */
+const EFFORT_LABELS: Record<string, string> = {
+  low: "lo",
+  medium: "med",
+  high: "hi",
+  xhigh: "max",
+};
+
+/** Format effort for compact display */
+export function formatEffort(effort: string | null | undefined): string | null {
+  if (!effort) return null;
+  return EFFORT_LABELS[effort.toLowerCase()] ?? effort;
+}
+
+/** Effort badge color class */
+export function effortColorClass(effort: string | null | undefined): string {
+  if (!effort) return "";
+  switch (effort.toLowerCase()) {
+    case "xhigh": return "text-amber-500";
+    case "high": return "text-orange-500";
+    case "medium": return "text-yellow-600";
+    case "low": return "text-stone-400";
+    default: return "text-stone-400";
+  }
+}
+
+/** Context remaining color: green > 50%, amber > 20%, red <= 20% */
+export function contextBarColor(percent: number): string {
+  if (percent > 50) return "#22c55e";
+  if (percent > 20) return "#f59e0b";
+  return "#ef4444";
+}
