@@ -40,26 +40,28 @@ export function TeamTree() {
   return (
     <div className="space-y-1 text-[11px]">
       {/* Root */}
-      <div className="flex items-center gap-1.5 px-1 py-0.5 rounded font-semibold text-stone-700">
+      <div className="flex items-center gap-1.5 px-1 py-0.5 rounded font-semibold" style={{ color: "var(--t-secondary)" }}>
         <StateDot state={getState(tree.id)} />
         <span>{tree.emoji} {tree.nameKo}</span>
-        <span className="text-[9px] text-stone-400 ml-auto">{tree.roleKo}</span>
+        <span className="text-[9px] ml-auto" style={{ color: "var(--t-faint)" }}>{tree.roleKo}</span>
       </div>
       {/* Teams */}
       {tree.children.map((team) => (
         <div key={team.id} className="ml-2">
-          <div className="flex items-center gap-1.5 px-1 py-0.5 rounded font-medium text-stone-600">
+          <div className="flex items-center gap-1.5 px-1 py-0.5 rounded font-medium" style={{ color: "var(--t-secondary)" }}>
             <StateDot state={getState(team.id)} />
             <span>{team.emoji} {team.nameKo}</span>
-            <span className="text-[9px] text-stone-400 ml-auto">{team.teamKo}</span>
+            <span className="text-[9px] ml-auto" style={{ color: "var(--t-faint)" }}>{team.teamKo}</span>
           </div>
           {/* Workers */}
           {team.children.map((worker) => (
             <div
               key={worker.id}
-              className={`ml-3 flex items-center gap-1.5 px-1 py-0.5 rounded text-stone-500 ${
-                getState(worker.id) !== "idle" ? "bg-stone-50" : ""
-              }`}
+              className="ml-3 flex items-center gap-1.5 px-1 py-0.5 rounded"
+              style={{
+                color: "var(--t-muted)",
+                background: getState(worker.id) !== "idle" ? "var(--card-bg)" : undefined,
+              }}
             >
               <StateDot state={getState(worker.id)} />
               <span>{worker.emoji} {worker.nameKo}</span>

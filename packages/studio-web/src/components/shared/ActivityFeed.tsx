@@ -24,21 +24,22 @@ export function ActivityFeed() {
 
   return (
     <div className="absolute bottom-4 right-4 z-30 w-64">
-      <div className="rounded-2xl bg-white/80 backdrop-blur-md border border-white/50 shadow-lg overflow-hidden">
+      <div className="rounded-2xl backdrop-blur-md shadow-lg overflow-hidden" style={{ background: "var(--panel-bg)", borderWidth: 1, borderColor: "var(--panel-border)" }}>
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-stone-50/50 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-2.5 text-left transition-colors"
+          style={{ color: "var(--t-muted)" }}
         >
-          <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
+          <span className="text-[10px] font-bold uppercase tracking-wider">
             활동 로그
           </span>
-          <span className="text-[10px] text-stone-400">
+          <span className="text-[10px]" style={{ color: "var(--t-faint)" }}>
             {collapsed ? "▼" : "▲"} {events.length}
           </span>
         </button>
 
         {!collapsed && (
-          <div className="max-h-48 overflow-y-auto border-t border-stone-100 px-3 py-2 space-y-1.5">
+          <div className="max-h-48 overflow-y-auto px-3 py-2 space-y-1.5" style={{ borderTop: "1px solid var(--border-subtle)" }}>
             {events.slice(0, 20).map((event) => (
               <div
                 key={event.id}
@@ -48,13 +49,13 @@ export function ActivityFeed() {
                   {TYPE_ICONS[event.type]}
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-stone-700 leading-tight">
-                    <span className="font-semibold">
+                  <p className="text-[10px] leading-tight" style={{ color: "var(--t-secondary)" }}>
+                    <span className="font-semibold" style={{ color: "var(--t-primary)" }}>
                       {event.emoji} {event.agentName}
                     </span>{" "}
                     {event.message}
                   </p>
-                  <p className="text-[8px] text-stone-400 mt-0.5">
+                  <p className="text-[8px] mt-0.5" style={{ color: "var(--t-faint)" }}>
                     {timeAgo(event.timestamp)}
                   </p>
                 </div>

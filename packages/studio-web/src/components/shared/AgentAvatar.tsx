@@ -22,7 +22,8 @@ export function AgentAvatar({ name, size = "md" }: AgentAvatarProps) {
 
   return (
     <div
-      className={`flex items-center justify-center rounded-full bg-amber-100 font-bold text-amber-800 ${sizeClasses[size]}`}
+      className={`flex items-center justify-center rounded-full font-bold ${sizeClasses[size]}`}
+      style={{ background: "var(--badge-bg)", color: "var(--t-secondary)" }}
     >
       {initials}
     </div>

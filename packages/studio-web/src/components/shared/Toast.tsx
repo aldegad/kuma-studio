@@ -30,10 +30,10 @@ export function pushToast(text: string, type: ToastMessage["type"] = "info") {
 // Toast container component — renders in top-left under the top bar
 // ---------------------------------------------------------------------------
 
-const TYPE_STYLES: Record<ToastMessage["type"], string> = {
-  info: "bg-blue-50/90 border-blue-200/60 text-blue-700",
-  success: "bg-green-50/90 border-green-200/60 text-green-700",
-  error: "bg-red-50/90 border-red-200/60 text-red-700",
+const TYPE_STYLES: Record<ToastMessage["type"], { bg: string; border: string; text: string }> = {
+  info:    { bg: "var(--toast-info-bg)",    border: "var(--toast-info-border)",    text: "var(--toast-info-text)" },
+  success: { bg: "var(--toast-success-bg)", border: "var(--toast-success-border)", text: "var(--toast-success-text)" },
+  error:   { bg: "var(--toast-error-bg)",   border: "var(--toast-error-border)",   text: "var(--toast-error-text)" },
 };
 
 export function ToastContainer() {
@@ -59,14 +59,18 @@ export function ToastContainer() {
 
   return (
     <div className="absolute top-14 left-4 z-40 flex flex-col gap-1.5 pointer-events-none">
-      {items.map((toast) => (
-        <div
-          key={toast.id}
-          className={`rounded-lg border px-3 py-1.5 shadow-sm backdrop-blur-sm text-[10px] font-medium animate-fade-in ${TYPE_STYLES[toast.type]}`}
-        >
-          {toast.text}
-        </div>
-      ))}
+      {items.map((toast) => {
+        const s = TYPE_STYLES[toast.type];
+        return (
+          <div
+            key={toast.id}
+            className="rounded-lg border px-3 py-1.5 shadow-sm backdrop-blur-sm text-[10px] font-medium animate-fade-in"
+            style={{ background: s.bg, borderColor: s.border, color: s.text }}
+          >
+            {toast.text}
+          </div>
+        );
+      })}
     </div>
   );
 }

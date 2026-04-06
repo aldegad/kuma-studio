@@ -177,31 +177,36 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
       {/* ── Left: File tree panel ── */}
       <div
         className={[
-          "relative flex h-full flex-col bg-stone-50",
+          "relative flex h-full flex-col",
           hasViewer
-            ? "border-r border-stone-200/80 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)]"
+            ? "border-r shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)]"
             : "shadow-[2px_0_8px_-2px_rgba(0,0,0,0.06)]",
         ].join(" ")}
-        style={hasViewer ? { width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX } : { width: "100%" }}
+        style={{
+          background: "var(--ide-bg)",
+          borderColor: "var(--card-border)",
+          ...(hasViewer ? { width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX } : { width: "100%" }),
+        }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-stone-200/80 bg-gradient-to-b from-stone-100 to-stone-50 px-3 py-2">
+        <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: "var(--card-border)", background: `linear-gradient(to bottom, var(--ide-header-from), var(--ide-header-to))` }}>
           <div className="flex items-center gap-2 min-w-0">
             <svg width="14" height="14" viewBox="0 0 16 16" className="shrink-0 text-amber-500" fill="currentColor">
               <path d="M2 3.5A1.5 1.5 0 013.5 2h2.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 009.62 4H12.5A1.5 1.5 0 0114 5.5v7a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" />
             </svg>
             <div className="min-w-0">
-              <h3 className="text-[11px] font-semibold text-stone-700 truncate">
+              <h3 className="text-[11px] font-semibold truncate" style={{ color: "var(--t-secondary)" }}>
                 {projectName}
               </h3>
-              <p className="truncate text-[9px] text-stone-400 leading-tight">{tree?.path || WORKSPACE_ROOT}</p>
+              <p className="truncate text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>{tree?.path || WORKSPACE_ROOT}</p>
             </div>
           </div>
           {onCollapse && (
             <button
               type="button"
               onClick={onCollapse}
-              className="shrink-0 rounded p-0.5 text-stone-400 transition-colors hover:bg-stone-200/80 hover:text-stone-600"
+              className="shrink-0 rounded p-0.5 transition-colors"
+              style={{ color: "var(--t-faint)" }}
               title="탐색기 접기"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -215,17 +220,17 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
         {/* Scrollable tree content */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
           {/* Workspace section */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-stone-100">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">Explorer</span>
+          <div className="flex items-center gap-1.5 px-3 py-1.5" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--t-faint)" }}>Explorer</span>
           </div>
 
           <div className="py-0.5">
             {loading && (
               <div className="flex items-center gap-2 px-3 py-4">
-                <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin text-stone-300">
+                <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin" style={{ color: "var(--t-faint)" }}>
                   <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
                 </svg>
-                <span className="text-[10px] text-stone-400">Loading...</span>
+                <span className="text-[10px]" style={{ color: "var(--t-faint)" }}>Loading...</span>
               </div>
             )}
             {error && (
@@ -259,29 +264,31 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                 <button
                   type="button"
                   onClick={() => toggleGlobalSection(section)}
-                  className="flex w-full items-center gap-1.5 px-3 py-1.5 border-t border-stone-200/60 bg-stone-100/50 hover:bg-stone-100 transition-colors"
+                  className="flex w-full items-center gap-1.5 px-3 py-1.5 transition-colors"
+                  style={{ borderTop: "1px solid var(--card-border)", background: "var(--card-bg)" }}
                   data-panel-no-drag="true"
                 >
                   <svg
                     width="10" height="10" viewBox="0 0 16 16"
-                    className={`shrink-0 transition-transform duration-150 text-stone-400 ${isExpanded ? "rotate-90" : ""}`}
+                    className={`shrink-0 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+                    style={{ color: "var(--t-faint)" }}
                     fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
                   >
                     <path d="M6 4l4 4-4 4" />
                   </svg>
                   <span className={`text-[11px] font-bold ${section.color}`}>{section.icon}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500">{section.label}</span>
-                  <span className="text-[9px] text-stone-400 ml-auto">~/</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--t-muted)" }}>{section.label}</span>
+                  <span className="text-[9px] ml-auto" style={{ color: "var(--t-faint)" }}>~/</span>
                 </button>
 
                 {isExpanded && (
-                  <div className="py-0.5 bg-stone-50/50">
+                  <div className="py-0.5">
                     {!sectionTree && (
                       <div className="flex items-center gap-2 px-3 py-2">
-                        <svg width="10" height="10" viewBox="0 0 12 12" className="animate-spin text-stone-300">
+                        <svg width="10" height="10" viewBox="0 0 12 12" className="animate-spin" style={{ color: "var(--t-faint)" }}>
                           <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
                         </svg>
-                        <span className="text-[9px] text-stone-400">Loading...</span>
+                        <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>Loading...</span>
                       </div>
                     )}
                     {sectionTree?.children?.map((child) => (
@@ -296,7 +303,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                       />
                     ))}
                     {sectionTree && (!sectionTree.children || sectionTree.children.length === 0) && (
-                      <p className="px-3 py-2 text-[9px] text-stone-400 italic">(empty)</p>
+                      <p className="px-3 py-2 text-[9px] italic" style={{ color: "var(--t-faint)" }}>(empty)</p>
                     )}
                   </div>
                 )}
@@ -307,8 +314,8 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
         {/* Footer status bar */}
         {tree && (
-          <div className="flex items-center gap-1.5 border-t border-stone-100 bg-stone-50 px-3 py-1">
-            <span className="text-[9px] text-stone-400">
+          <div className="flex items-center gap-1.5 px-3 py-1" style={{ borderTop: "1px solid var(--border-subtle)", background: "var(--ide-bg)" }}>
+            <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>
               {tree.children?.length ?? 0} items
             </span>
           </div>
@@ -325,14 +332,14 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
       {/* ── Right: File viewer panel — only rendered when a file is selected ── */}
       {hasViewer && (
-        <div className="relative flex-1 flex flex-col min-w-0 bg-white">
+        <div className="relative flex-1 flex flex-col min-w-0" style={{ background: "var(--ide-bg-alt)" }}>
           {fileLoading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-              <div className="flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 shadow-sm border border-stone-100">
+              <div className="flex items-center gap-2 rounded-lg px-4 py-2 shadow-sm border" style={{ background: "var(--panel-bg-strong)", borderColor: "var(--border-subtle)" }}>
                 <svg width="14" height="14" viewBox="0 0 12 12" className="animate-spin text-amber-500">
                   <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
                 </svg>
-                <span className="text-[11px] text-stone-500">Loading...</span>
+                <span className="text-[11px]" style={{ color: "var(--t-muted)" }}>Loading...</span>
               </div>
             </div>
           )}
@@ -344,6 +351,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
               language={viewerFile.language}
               filePath={viewerFile.path}
               onClose={() => setViewerFile(null)}
+              onSave={(newContent) => setViewerFile({ ...viewerFile, content: newContent })}
             />
           )}
 
@@ -359,20 +367,21 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
           {viewerFile?.type === "binary" && (
             <div className="flex flex-1 items-center justify-center">
-              <div className="flex flex-col items-center gap-3 text-stone-400">
-                <svg width="40" height="40" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2" className="text-stone-300">
+              <div className="flex flex-col items-center gap-3" style={{ color: "var(--t-faint)" }}>
+                <svg width="40" height="40" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.2">
                   <rect x="8" y="8" width="32" height="32" rx="4" />
                   <path d="M16 20h4v8h-4zM20 24h4v4h-4zM28 20h4v8h-4zM24 20h4v4h-4z" fill="currentColor" opacity="0.3" />
                 </svg>
                 <div className="text-center">
                   <p className="text-[12px] font-medium">바이너리 파일</p>
-                  <p className="text-[10px] text-stone-300 mt-0.5">{viewerFile.path.split("/").pop()}</p>
-                  <p className="text-[10px] text-stone-300">{(viewerFile.size / 1024).toFixed(1)} KB</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "var(--t-faint)" }}>{viewerFile.path.split("/").pop()}</p>
+                  <p className="text-[10px]" style={{ color: "var(--t-faint)" }}>{(viewerFile.size / 1024).toFixed(1)} KB</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setViewerFile(null)}
-                  className="mt-1 rounded px-3 py-1 text-[10px] font-medium text-stone-500 bg-stone-100 hover:bg-stone-200 transition-colors"
+                  className="mt-1 rounded px-3 py-1 text-[10px] font-medium transition-colors"
+                  style={{ color: "var(--t-muted)", background: "var(--badge-bg)" }}
                 >
                   닫기
                 </button>

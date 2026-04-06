@@ -7,19 +7,19 @@ interface JobCardProps {
 
 export function JobCard({ job }: JobCardProps) {
   return (
-    <div className="rounded-lg border border-stone-200 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border p-4 shadow-sm" style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-medium text-stone-500">{job.author}</span>
+        <span className="text-xs font-medium" style={{ color: "var(--t-muted)" }}>{job.author}</span>
         <StatusBadge status={job.status} />
       </div>
-      <p className="text-sm text-stone-800">{job.message}</p>
+      <p className="text-sm" style={{ color: "var(--t-primary)" }}>{job.message}</p>
       {job.tokensUsed > 0 && (
-        <p className="mt-2 text-xs text-stone-400">
+        <p className="mt-2 text-xs" style={{ color: "var(--t-faint)" }}>
           {job.tokensUsed.toLocaleString()} 토큰
           {job.model && ` (${job.model})`}
         </p>
       )}
-      <p className="mt-1 text-xs text-stone-300">
+      <p className="mt-1 text-xs" style={{ color: "var(--t-faint)" }}>
         {new Date(job.updatedAt).toLocaleString("ko-KR")}
       </p>
     </div>
