@@ -9,7 +9,7 @@ import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mj
 import { DevSelectionStore } from "./dev-selection-store.mjs";
 import { buildJobCardFromSelection, JobCardStore } from "./job-card-store.mjs";
 import { SceneStore, watchSceneFile } from "./scene-store.mjs";
-import { ensureOfficeLayoutShape } from "./scene-schema.mjs";
+import { ensureOfficeLayoutShape, encodeSceneEvent } from "./scene-schema.mjs";
 import {
   SceneEventBroker,
   buildBrowserSessionResponse,

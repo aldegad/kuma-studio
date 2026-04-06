@@ -432,9 +432,9 @@ export const ANIMAL_FALLBACKS: Record<string, string> = (() => {
 
 /** Sofa team label lookup (for rendering labels on sofa furniture) */
 export const SOFA_TEAM_LABELS: Record<string, string> = {
-  dev: "개발팀 휴게",
-  analytics: "분석팀 휴게",
-  strategy: "전략팀 휴게",
+  dev: "개발팀 휴게실",
+  analytics: "분석팀 휴게실",
+  strategy: "전략팀 휴게실",
 };
 
 /** Desk member info lookup (for rendering name plates on desk furniture) */
