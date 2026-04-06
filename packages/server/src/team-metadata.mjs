@@ -159,8 +159,7 @@ export function resolveAgentIdByDescriptor({ description, subagentType, model })
     return null;
   };
 
-  if (sub === "codex:codex-rescue" || sub === "codex") {
-    // Legacy codex:codex-rescue references — map to team members by description
+  if (sub === "codex") {
     // Review/critic → 새미
     if (includesAny(desc, ["review", "critic", "qa", "quality", "리뷰", "검토", "품질", "비평"])) {
       return findMemberBySkillKeywords("dev", ["리뷰", "보안", "품질", "비평"]) ?? "saemi";
