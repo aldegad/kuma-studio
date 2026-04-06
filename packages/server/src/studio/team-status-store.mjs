@@ -9,6 +9,10 @@ const DEFAULT_SURFACE_POLL_MS = 10_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
 const PROMPT_LINE_PATTERN = /^(❯|>)\s*$|^›/u;
 const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
+const WORKING_SURFACE_PATTERNS = [
+  /^[✻✶✳✢·]\s*(?:concocting|meandering|fiddle-faddling|saut(?:e|é)ed|churned|cooked|baked|brewed|metamorphosing|working)\b/iu,
+  /\brunning(?:\.\.\.|…)/iu,
+];
 const SURFACE_HINT_PATTERNS = [
   /^bypass permissions\b/iu,
   /^(?:brewed|baked) for\b/iu,
@@ -62,6 +66,10 @@ export function classifySurfaceStatus(output) {
   }
 
   const lines = getOutputLines(normalized);
+  if (hasWorkingSurfaceSignal(lines)) {
+    return "working";
+  }
+
   const promptVisible = lines.some((line) => {
     if (PROMPT_LINE_PATTERN.test(line)) {
       return true;
@@ -142,6 +150,10 @@ function getOutputLines(output) {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function hasWorkingSurfaceSignal(lines) {
+  return lines.some((line) => WORKING_SURFACE_PATTERNS.some((pattern) => pattern.test(line)));
 }
 
 function isIgnoredSurfaceLine(line) {
