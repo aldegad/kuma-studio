@@ -7,10 +7,25 @@ const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
 const DEFAULT_SURFACE_POLL_MS = 10_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
+const PROMPT_LINE_PATTERN = /^(❯|›|>)\s*$/u;
+const SURFACE_HINT_PATTERNS = [
+  /^bypass permissions\b/iu,
+  /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
+  /^esc to\b/iu,
+  /^press up to edit\b/iu,
+  /^shift\+tab to cycle\b/iu,
+  /^tab to queue\b/iu,
+];
 
 /**
  * @typedef {"idle" | "working" | "dead"} TeamSurfaceStatus
  */
+
+const STUDIO_MEMBER_STATE_BY_SURFACE_STATUS = {
+  idle: "idle",
+  working: "working",
+  dead: "error",
+};
 
 /**
  * Strip a leading emoji prefix such as "🦫 뚝딱이" down to the display name.
@@ -43,20 +58,17 @@ export function classifySurfaceStatus(output) {
     return "dead";
   }
 
-  const lines = normalized
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  const lastLine = lines.at(-1) ?? "";
+  const lines = getOutputLines(normalized);
+  const promptVisible = lines.slice(-2).some((line) => PROMPT_LINE_PATTERN.test(line));
 
-  if (/^(❯|›|>)\s*$/u.test(lastLine)) {
+  if (promptVisible) {
     return "idle";
   }
 
-  if (
-    /working|thinking|synthesizing|analyzing|processing|executing|running|searching|writing|editing|generating|planning|reviewing|patching|debugging|작업 중|생각 중|분석 중/iu.test(normalized)
-  ) {
-    return "working";
+  const meaningfulLines = getMeaningfulOutputLines(normalized);
+
+  if (meaningfulLines.length === 0) {
+    return "idle";
   }
 
   return "working";
@@ -77,10 +89,8 @@ export function buildTeamStatusSnapshot(registry, surfaceStates, membersByName) 
     }
 
     projects[projectName] = {
-      members: Object.entries(projectMembers)
-        .filter(([, surface]) => typeof surface === "string" && surface.trim().length > 0)
-        .map(([label, surface]) => {
-          const { name, emoji: labelEmoji } = parseRegistryLabel(label);
+      members: getRegistryProjectMembers(projectMembers)
+        .map(({ name, emoji: labelEmoji, surface }) => {
           const memberMeta = membersByName.get(name);
           const surfaceState = surfaceStates.get(surface) ?? { status: "dead", lastOutput: "" };
 
@@ -108,11 +118,179 @@ function createMembersByName() {
     }
 
     members.set(displayName.trim(), {
+      id: typeof member?.id === "string" ? member.id : "",
       emoji: typeof member?.emoji === "string" ? member.emoji : "",
       role: typeof member?.role?.ko === "string" ? member.role.ko : "",
     });
   }
+
   return members;
+}
+
+function getOutputLines(output) {
+  return String(output ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function isIgnoredSurfaceLine(line) {
+  const trimmed = String(line ?? "").trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (!/[\p{L}\p{N}]/u.test(trimmed)) {
+    return true;
+  }
+
+  const normalized = trimmed.replace(/^[⏵›>]+\s*/u, "");
+  return SURFACE_HINT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function getMeaningfulOutputLines(output) {
+  return getOutputLines(output).filter(
+    (line) => !PROMPT_LINE_PATTERN.test(line) && !isIgnoredSurfaceLine(line),
+  );
+}
+
+function isPseudoRegistryMember(name) {
+  return /\b(?:server|frontend)\b/iu.test(String(name ?? "").trim());
+}
+
+function getRegistryProjectMembers(projectMembers) {
+  return Object.entries(projectMembers ?? {})
+    .filter(([, surface]) => typeof surface === "string" && surface.trim().length > 0)
+    .map(([label, surface]) => {
+      const { name, emoji } = parseRegistryLabel(label);
+      return { name, emoji, surface };
+    })
+    .filter(({ name }) => !isPseudoRegistryMember(name));
+}
+
+function getLastOutputLines(output) {
+  const meaningfulLines = getMeaningfulOutputLines(output);
+  if (meaningfulLines.length > 0) {
+    return meaningfulLines.slice(-3);
+  }
+
+  const promptLines = getOutputLines(output).filter((line) => PROMPT_LINE_PATTERN.test(line));
+  return promptLines.slice(-1);
+}
+
+function deriveTaskFromOutput(status, lastOutputLines) {
+  if (status !== "working") {
+    return null;
+  }
+
+  const taskLine = [...lastOutputLines]
+    .reverse()
+    .find((line) => !PROMPT_LINE_PATTERN.test(line) && !isIgnoredSurfaceLine(line));
+
+  return taskLine ?? null;
+}
+
+/**
+ * Parse model, effort, speed, and context remaining from surface footer lines.
+ *
+ * Known footer patterns:
+ * - Codex:  "gpt-5.4 high fast · 46% left"
+ * - Claude: "esc to interrupt · /model opus[1m]"
+ * - Claude: "claude-opus-4-6" (standalone or embedded)
+ *
+ * @param {string} output — raw surface output (typically last 3 lines)
+ * @returns {{ model: string | null, effort: string | null, speed: string | null, contextRemaining: number | null } | null}
+ */
+export function parseModelInfo(output) {
+  const lines = getOutputLines(String(output ?? ""));
+
+  let model = null;
+  let effort = null;
+  let speed = null;
+  let contextRemaining = null;
+
+  for (const line of lines) {
+    // Codex pattern: "gpt-5.4 high fast"
+    const codexMatch = line.match(/(gpt-[\w.-]+)\s+(low|medium|high|xhigh)(?:\s+(fast))?/iu);
+    if (codexMatch) {
+      model = codexMatch[1].toLowerCase();
+      effort = codexMatch[2].toLowerCase();
+      speed = codexMatch[3]?.toLowerCase() ?? null;
+    }
+
+    // Context pattern: "46% left"
+    const contextMatch = line.match(/(\d+)%\s*left/iu);
+    if (contextMatch) {
+      contextRemaining = parseInt(contextMatch[1], 10);
+    }
+
+    // Claude /model command: "/model opus" or "/model opus[1m]"
+    const modelCmdMatch = line.match(/\/model\s+([\w-]+)(?:\[([\w]+)\])?/iu);
+    if (modelCmdMatch && !model) {
+      model = modelCmdMatch[1].toLowerCase();
+    }
+
+    // Claude model identifier: "claude-opus-4-6", "claude-sonnet-4-6"
+    const claudeMatch = line.match(/\b(claude-(?:opus|sonnet|haiku)-[\w.-]+)\b/iu);
+    if (claudeMatch && !model) {
+      model = claudeMatch[1].toLowerCase();
+    }
+  }
+
+  if (!model && effort === null && speed === null && contextRemaining === null) {
+    return null;
+  }
+
+  return { model, effort, speed, contextRemaining };
+}
+
+/**
+ * @param {TeamSurfaceStatus} status
+ * @returns {"idle" | "working" | "error"}
+ */
+export function mapSurfaceStatusToStudioState(status) {
+  return STUDIO_MEMBER_STATE_BY_SURFACE_STATUS[status] ?? "idle";
+}
+
+/**
+ * @param {{ projects: Record<string, { members: Array<{ name: string, emoji: string, role: string, surface: string, status: TeamSurfaceStatus, lastOutput: string }> }> }} snapshot
+ * @param {string} [updatedAt]
+ * @returns {{ projects: Array<{ projectId: string, projectName: string, members: Array<{ id: string, state: "idle" | "working" | "error", lastOutputLines: string[], task: string | null, updatedAt: string | null }> }> }}
+ */
+export function toStudioTeamStatusSnapshot(snapshot, updatedAt = new Date().toISOString()) {
+  const membersByName = createMembersByName();
+
+  return {
+    projects: Object.entries(snapshot?.projects ?? {}).map(([projectId, project]) => ({
+      projectId,
+      projectName: projectId,
+      members: (project?.members ?? []).map((member) => {
+        const memberMeta = membersByName.get(member.name);
+        const lastOutputLines = getLastOutputLines(member.lastOutput);
+
+        return {
+          id: memberMeta?.id || member.surface,
+          state: mapSurfaceStatusToStudioState(member.status),
+          lastOutputLines,
+          task: deriveTaskFromOutput(member.status, lastOutputLines),
+          modelInfo: parseModelInfo(member.lastOutput),
+          updatedAt,
+        };
+      }),
+    })),
+  };
+}
+
+export function filterTeamStatusSnapshot(snapshot, projectId) {
+  const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
+  if (!normalizedProjectId) {
+    return cloneSnapshot(snapshot ?? { projects: {} });
+  }
+
+  const project = snapshot?.projects?.[normalizedProjectId];
+  return {
+    projects: project ? { [normalizedProjectId]: cloneSnapshot(project) } : {},
+  };
 }
 
 async function defaultReadRegistry(registryPath) {
@@ -350,8 +528,8 @@ export class TeamStatusStore {
     return Array.from(
       new Set(
         Object.values(this.#registry)
-          .flatMap((projectMembers) => Object.values(projectMembers ?? {}))
-          .filter((surface) => typeof surface === "string" && surface.trim().length > 0),
+          .flatMap((projectMembers) => getRegistryProjectMembers(projectMembers))
+          .map(({ surface }) => surface),
       ),
     );
   }

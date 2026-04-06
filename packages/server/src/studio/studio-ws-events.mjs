@@ -89,12 +89,12 @@ export class StudioWsEvents {
 
   /**
    * Broadcast a team status snapshot update.
-   * @param {{ projects: Record<string, { members: Array<{ name: string, emoji: string, role: string, surface: string, status: string, lastOutput: string }> }> }} teamStatus
+   * @param {{ projects: Array<{ projectId: string, projectName: string, members: Array<{ id: string, state: string, lastOutputLines: string[], task: string | null, updatedAt: string | null }> }> }} snapshot
    */
-  broadcastTeamStatusUpdate(teamStatus) {
+  broadcastTeamStatusUpdate(snapshot) {
     this.#broadcast({
-      type: "kuma-studio:event",
-      event: { kind: "kuma-studio:team-status-update", teamStatus },
+      type: "kuma-studio:team-status-update",
+      snapshot,
     });
   }
 
