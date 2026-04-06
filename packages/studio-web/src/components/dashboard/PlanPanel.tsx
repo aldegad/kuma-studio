@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import type { Plan } from "../../types/plan";
 import { PlanDetailModal } from "./PlanDetailModal";
@@ -232,15 +233,16 @@ export function PlanPanel() {
         )}
       </section>
 
-      {selectedPlan && (
+      {selectedPlan && createPortal(
         <PlanDetailModal
           plan={selectedPlan}
           isOpen={isDetailOpen}
           onClose={closePlanDetail}
-        />
+        />,
+        document.body,
       )}
 
-      {isOverviewOpen && (
+      {isOverviewOpen && createPortal(
         <PlansOverviewModal
           groupedPlans={groupedPlans}
           total={total}
@@ -248,7 +250,8 @@ export function PlanPanel() {
           rate={rate}
           onSelectPlan={openPlanDetail}
           onClose={() => setIsOverviewOpen(false)}
-        />
+        />,
+        document.body,
       )}
     </>
   );
