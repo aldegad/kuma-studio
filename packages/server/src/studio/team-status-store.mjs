@@ -62,7 +62,14 @@ export function classifySurfaceStatus(output) {
   }
 
   const lines = getOutputLines(normalized);
-  const promptVisible = lines.some((line) => PROMPT_LINE_PATTERN.test(line));
+  const promptVisible = lines.some((line) => {
+    if (PROMPT_LINE_PATTERN.test(line)) {
+      return true;
+    }
+
+    const withoutBoxDrawing = line.replace(/[\u2500-\u257F]/gu, "").trim();
+    return PROMPT_LINE_PATTERN.test(withoutBoxDrawing);
+  });
 
   if (promptVisible) {
     return "idle";
