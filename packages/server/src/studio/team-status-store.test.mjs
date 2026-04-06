@@ -26,19 +26,24 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus("Working on packages/server...\nApplying patch"), "working");
   });
 
-  it("reclassifies spinner lines to idle when a prompt appears after them", () => {
+  it("classifies completion banners as idle", () => {
     assert.strictEqual(classifySurfaceStatus("✻ Baked for 6m 35s\n❯"), "idle");
-    assert.strictEqual(classifySurfaceStatus("✻ Concocting...\n❯"), "idle");
+    assert.strictEqual(classifySurfaceStatus("✻ Brewed for 45s"), "idle");
   });
 
-  it("keeps active spinner lines as working when no prompt follows", () => {
+  it("keeps active spinner lines as working even when a prompt is visible", () => {
     assert.strictEqual(classifySurfaceStatus("✻ Concocting..."), "working");
     assert.strictEqual(classifySurfaceStatus("✻ Thinking...\nReading file.ts"), "working");
+    assert.strictEqual(classifySurfaceStatus("✻ Concocting...\n❯"), "working");
+    assert.strictEqual(
+      classifySurfaceStatus("· Concocting… (1m 31s)\n──────────────────────────\n❯\n──────────────────────────\n⏵⏵ bypass           ·"),
+      "working",
+    );
   });
 
   it("classifies Codex working lines and respects the Codex prompt", () => {
     assert.strictEqual(classifySurfaceStatus("• Working (34s • esc to interr…)"), "working");
-    assert.strictEqual(classifySurfaceStatus("• Working (34s • esc to interr…)\n›"), "idle");
+    assert.strictEqual(classifySurfaceStatus("• Working (34s • esc to interr…)\n›"), "working");
     assert.strictEqual(classifySurfaceStatus("• Thinking…"), "working");
   });
 
