@@ -36,6 +36,12 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus("✻ Thinking...\nReading file.ts"), "working");
   });
 
+  it("classifies Codex working lines and respects the Codex prompt", () => {
+    assert.strictEqual(classifySurfaceStatus("• Working (34s • esc to interr…)"), "working");
+    assert.strictEqual(classifySurfaceStatus("• Working (34s • esc to interr…)\n›"), "idle");
+    assert.strictEqual(classifySurfaceStatus("• Thinking…"), "working");
+  });
+
   it("ignores Claude status bar lines while finding prompts", () => {
     assert.strictEqual(
       classifySurfaceStatus("───────────────────────────\n❯\n───────────────────────────\n  ⏵⏵ bypass permissions\n  Now using extra usage"),

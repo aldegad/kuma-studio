@@ -1,0 +1,27 @@
+{
+  "_comment": "이 파일은 참조용. kuma-setup.sh가 ~/.claude/settings.json에 머지하지 않음. 수동으로 확인/적용.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "~/.claude/hooks/codex-cc-guard.sh", "timeout": 5},
+          {"type": "command", "command": "~/.claude/hooks/kuma-bash-guard.sh", "timeout": 5}
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {"type": "command", "command": "jq -r 'if (.tool_input.file_path | test(\"\\.claude/plans/\")) then {\"continue\": false, \"stopReason\": \".claude/plans/는 사용 금지. ~/.kuma/plans/{프로젝트명}/에 쿠마 스튜디오 포맷으로 작성하세요.\"} else {\"continue\": true} end'", "timeout": 5}
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {"type": "command", "command": "~/.claude/hooks/kuma-worker-guard.sh", "timeout": 5}
+        ]
+      }
+    ]
+  },
+  "requiredPlugins": ["discord@claude-plugins-official", "codex@openai-codex", "frontend-design@claude-plugins-official"]
+}
