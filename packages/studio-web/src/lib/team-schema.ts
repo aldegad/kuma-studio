@@ -27,6 +27,9 @@ interface RawTeamMember {
   team?: string;
   role: string;
   roleLabel?: RoleLabel;
+  spawnType?: string;
+  spawnModel?: string;
+  spawnOptions?: string;
   engine?: string;
   model?: string;
   effort?: string;
@@ -70,6 +73,9 @@ export interface FlatTeamMember {
   emoji: string;
   model: string;
   engine: string;
+  spawnType: string;
+  spawnModel: string;
+  spawnOptions: string;
   effort: string | null;
   serviceTier: string | null;
   team: string;
@@ -103,10 +109,13 @@ function normalizeRoleLabel(member: RawTeamMember): RoleLabel {
 }
 
 function normalizeEngine(member: RawTeamMember): string {
+  if (member.spawnType === "claude" || member.spawnType === "codex") {
+    return member.spawnType;
+  }
   if (member.engine === "claude" || member.engine === "codex") {
     return member.engine;
   }
-  return String(member.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+  return String(member.spawnModel ?? member.model ?? "").startsWith("gpt-") ? "codex" : "claude";
 }
 
 function normalizeOfficePoint(point?: RawTeamOffice["origin"]): OfficePoint {
@@ -139,8 +148,15 @@ function normalizeTeamMember(teamId: string, member: RawTeamMember): FlatTeamMem
       en: typeof member.animalEn === "string" ? member.animalEn : "",
     },
     emoji: typeof member.emoji === "string" ? member.emoji : "",
-    model: typeof member.model === "string" ? member.model : "",
+    model: typeof member.spawnModel === "string" && member.spawnModel
+      ? member.spawnModel
+      : typeof member.model === "string" ? member.model : "",
     engine: normalizeEngine(member),
+    spawnType: member.spawnType === "claude" || member.spawnType === "codex" ? member.spawnType : normalizeEngine(member),
+    spawnModel: typeof member.spawnModel === "string" && member.spawnModel
+      ? member.spawnModel
+      : typeof member.model === "string" ? member.model : "",
+    spawnOptions: typeof member.spawnOptions === "string" ? member.spawnOptions : "",
     effort: typeof member.effort === "string" ? member.effort : null,
     serviceTier: typeof member.serviceTier === "string" ? member.serviceTier : null,
     team: typeof member.team === "string" && member.team ? member.team : teamId,

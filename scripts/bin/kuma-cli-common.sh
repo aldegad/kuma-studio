@@ -3,7 +3,7 @@ set -euo pipefail
 
 KUMA_HOME_DIR="${KUMA_HOME_DIR:-$HOME/.kuma}"
 KUMA_CMUX_DIR="${KUMA_CMUX_DIR:-$KUMA_HOME_DIR/cmux}"
-KUMA_TEAM_CONFIG_PATH="${KUMA_TEAM_CONFIG_PATH:-$KUMA_HOME_DIR/team-config.json}"
+KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$KUMA_HOME_DIR/team.json}"
 KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 KUMA_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
 KUMA_RESULT_DIR="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
@@ -26,7 +26,7 @@ require_file() {
 ensure_runtime_requirements() {
   require_cmd node
   require_cmd cmux
-  require_file "$KUMA_TEAM_CONFIG_PATH"
+  require_file "$KUMA_TEAM_JSON_PATH"
   require_file "$KUMA_SURFACES_PATH"
 }
 
@@ -56,18 +56,29 @@ resolve_initiator_surface() {
 resolve_member_json() {
   local query="${1:?member query required}"
 
-  node --input-type=module - "$KUMA_TEAM_CONFIG_PATH" "$query" <<'NODE'
+  node --input-type=module - "$KUMA_TEAM_JSON_PATH" "$query" <<'NODE'
 import { readFileSync } from "node:fs";
 
 const [, , configPath, rawQuery] = process.argv;
 const config = JSON.parse(readFileSync(configPath, "utf8"));
-const members = Object.entries(config.members ?? {}).map(([displayName, member]) => ({
-  displayName,
-  id: String(member?.id ?? ""),
-  emoji: String(member?.emoji ?? ""),
-  type: String(member?.type ?? ""),
-  team: String(member?.team ?? ""),
-}));
+const members = Object.entries(config.teams ?? {}).flatMap(([teamId, team]) =>
+  Array.isArray(team?.members)
+    ? team.members.map((member) => {
+      const spawnType = typeof member?.spawnType === "string" && member.spawnType
+        ? member.spawnType
+        : typeof member?.engine === "string" && member.engine
+          ? member.engine
+          : String(member?.spawnModel ?? member?.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+      return {
+        displayName: String(member?.name ?? member?.id ?? ""),
+        id: String(member?.id ?? ""),
+        emoji: String(member?.emoji ?? ""),
+        type: spawnType,
+        team: String(member?.team ?? teamId ?? ""),
+      };
+    })
+    : [],
+);
 
 const query = String(rawQuery ?? "").trim();
 const strippedQuery = query.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim() || query;
@@ -171,20 +182,32 @@ NODE
 resolve_project_member_lines() {
   local project_filter="${1:-}"
 
-  node --input-type=module - "$KUMA_TEAM_CONFIG_PATH" "$KUMA_SURFACES_PATH" "$project_filter" <<'NODE'
+  node --input-type=module - "$KUMA_TEAM_JSON_PATH" "$KUMA_SURFACES_PATH" "$project_filter" <<'NODE'
 import { readFileSync } from "node:fs";
 
 const [, , configPath, registryPath, projectFilter] = process.argv;
 const config = JSON.parse(readFileSync(configPath, "utf8"));
 const registry = JSON.parse(readFileSync(registryPath, "utf8"));
 const membersByName = new Map(
-  Object.entries(config.members ?? {}).map(([displayName, member]) => [displayName, {
-    displayName,
-    id: String(member?.id ?? ""),
-    emoji: String(member?.emoji ?? ""),
-    type: String(member?.type ?? ""),
-    team: String(member?.team ?? ""),
-  }]),
+  Object.entries(config.teams ?? {}).flatMap(([teamId, team]) =>
+    Array.isArray(team?.members)
+      ? team.members.map((member) => {
+        const spawnType = typeof member?.spawnType === "string" && member.spawnType
+          ? member.spawnType
+          : typeof member?.engine === "string" && member.engine
+            ? member.engine
+            : String(member?.spawnModel ?? member?.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+        const displayName = String(member?.name ?? member?.id ?? "");
+        return [displayName, {
+          displayName,
+          id: String(member?.id ?? ""),
+          emoji: String(member?.emoji ?? ""),
+          type: spawnType,
+          team: String(member?.team ?? teamId ?? ""),
+        }];
+      })
+      : [],
+  ),
 );
 
 function parseLabel(label) {

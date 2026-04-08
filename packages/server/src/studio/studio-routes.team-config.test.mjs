@@ -63,7 +63,7 @@ describe("studio-routes team-config", () => {
     tempDirs.push(root);
 
     const staticDir = join(root, "static");
-    const store = new TeamConfigStore(join(root, "team-config.json"));
+    const store = new TeamConfigStore(join(root, "team.json"));
     const broadcasts = [];
     const respawns = [];
 
@@ -145,7 +145,7 @@ describe("studio-routes team-config", () => {
     tempDirs.push(root);
 
     const staticDir = join(root, "static");
-    const store = new TeamConfigStore(join(root, "team-config.json"));
+    const store = new TeamConfigStore(join(root, "team.json"));
     const handler = createStudioRouteHandler({
       staticDir,
       statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },

@@ -171,7 +171,7 @@ export function SettingsPanel({
   }, [refreshTeamConfig]);
 
   return (
-    <div className={`relative z-40 ${className}`}>
+    <div className={`relative z-50 ${className}`}>
       <button
         onClick={() => setOpen(!open)}
         className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-md transition-colors backdrop-blur-md border"
