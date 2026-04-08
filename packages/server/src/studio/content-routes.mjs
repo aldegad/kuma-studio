@@ -1,6 +1,8 @@
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { getMembersById } from "../team-metadata.mjs";
+import { generateThreadPosts } from "./content-post-generator.mjs";
 import { generateContentDrafts } from "./content-suggestions.mjs";
+import { startResearchForContent } from "./research-workflow.mjs";
 import { getContentConstants } from "./content-store.mjs";
 
 function parseContentId(pathname) {
@@ -10,6 +12,16 @@ function parseContentId(pathname) {
 
 function parseContentStatusPath(pathname) {
   const match = pathname.match(/^\/studio\/contents?\/([^/]+)\/status$/u);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function parseContentGeneratePostPath(pathname) {
+  const match = pathname.match(/^\/studio\/contents?\/([^/]+)\/generate-post$/u);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function parseContentStartResearchPath(pathname) {
+  const match = pathname.match(/^\/studio\/contents?\/([^/]+)\/start-research$/u);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
@@ -37,8 +49,9 @@ function normalizeAssigneeQuery(value) {
   return value.trim() || null;
 }
 
-export function createContentRouteHandler({ contentStore, workspaceRoot }) {
+export function createContentRouteHandler({ contentStore, trendStore, experimentStore, experimentPipeline, workspaceRoot }) {
   const membersById = getMembersById();
+  const contentConstants = getContentConstants();
   const validAssigneeIds = new Set(
     Array.from(membersById.values())
       .map((member) => (typeof member?.id === "string" ? member.id : ""))
@@ -78,24 +91,42 @@ export function createContentRouteHandler({ contentStore, workspaceRoot }) {
     return nextBody;
   }
 
+  function normalizePostStatusQuery(value) {
+    if (value == null || value === "") {
+      return undefined;
+    }
+
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+
+    if (!contentConstants.allowedPostStatuses.includes(normalized)) {
+      throw new Error(`Unsupported postStatus: ${normalized}`);
+    }
+
+    return normalized;
+  }
+
   return async (req, res, url) => {
     if (!contentStore) {
       return false;
     }
 
     if (isContentMetaPath(url.pathname) && req.method === "GET") {
-      sendJson(res, 200, getContentConstants());
+      sendJson(res, 200, contentConstants);
       return true;
     }
 
     if (isContentCollectionPath(url.pathname) && req.method === "GET") {
       try {
         const assignee = normalizeAssigneeQuery(url.searchParams.get("assignee"));
+        const postStatus = normalizePostStatusQuery(url.searchParams.get("postStatus"));
         if (typeof assignee === "string") {
           validateAssignee(assignee);
         }
         sendJson(res, 200, {
-          items: contentStore.list(url.searchParams.get("project"), assignee),
+          items: contentStore.list(url.searchParams.get("project"), assignee, postStatus),
         });
       } catch (error) {
         sendJson(res, 400, {
@@ -133,6 +164,69 @@ export function createContentRouteHandler({ contentStore, workspaceRoot }) {
       } catch (error) {
         sendJson(res, 500, {
           error: "Failed to generate content drafts.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    const generatePostId = parseContentGeneratePostPath(url.pathname);
+    if (generatePostId && req.method === "POST") {
+      const item = contentStore.readById(generatePostId);
+      if (!item) {
+        sendJson(res, 404, { error: "Content item not found." });
+        return true;
+      }
+
+      try {
+        const body = await readJsonBody(req).catch(() => ({}));
+        const sourceTrend = item.sourceTrendId ? trendStore?.readById?.(item.sourceTrendId) : null;
+        const threadPosts = generateThreadPosts({
+          title: item.title,
+          summary: item.body,
+          sourceLinks: item.sourceLinks,
+          tags: Array.isArray(body?.tags) ? body.tags : sourceTrend?.tags ?? [],
+        });
+        const updated = contentStore.update(generatePostId, {
+          threadPosts,
+          postStatus: "preview",
+        });
+        sendJson(res, 200, updated);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to generate post preview.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    const startResearchId = parseContentStartResearchPath(url.pathname);
+    if (startResearchId && req.method === "POST") {
+      if (!experimentStore || !experimentPipeline) {
+        sendJson(res, 503, { error: "Experiment pipeline is not available." });
+        return true;
+      }
+
+      const item = contentStore.readById(startResearchId);
+      if (!item) {
+        sendJson(res, 404, { error: "Content item not found." });
+        return true;
+      }
+
+      try {
+        const sourceTrend = item.sourceTrendId ? trendStore?.readById?.(item.sourceTrendId) : null;
+        const started = startResearchForContent({
+          contentItem: item,
+          contentStore,
+          experimentStore,
+          experimentPipeline,
+          sourceTrend,
+        });
+        sendJson(res, 200, started);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to start research.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }

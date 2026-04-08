@@ -4,6 +4,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fetchJson, normalizeDaemonUrl } from "./automation-client.mjs";
 
 export const MAX_AUTO_RECOVERY_ATTEMPTS = 3;
+export const SCREENSHOT_AUTO_RETRY_DELAY_MS = 1_000;
+export const URL_MATCH_AUTO_RETRY_DELAY_MS = 1_000;
+export const BROWSER_SESSION_AUTO_RETRY_DELAY_MS = 5_000;
 export const FINAL_BROWSER_CONNECTION_FAILURE_MESSAGE =
   "Browser connection failed after 3 attempts. Check if Kuma Picker extension is installed and enabled in Chrome.";
 
@@ -21,6 +24,14 @@ export function isNoBrowserConnectionError(error) {
 
 export function isImageReadbackFailedError(error) {
   return asError(error).message.toLowerCase().includes("image readback failed");
+}
+
+export function isMissingTargetTabError(error) {
+  const message = asError(error).message;
+  return (
+    message.includes("No browser tab matches the requested URL fragment:") ||
+    message.includes("No browser tab matches the requested URL:")
+  );
 }
 
 function normalizeRecoveryUrl(rawValue) {
@@ -71,6 +82,10 @@ export async function readBrowserSessionSummary(daemonUrl) {
   });
 }
 
+export function hasActiveBrowserSession(summary) {
+  return summary?.connected === true;
+}
+
 export async function resolveCurrentPageUrl({
   daemonUrl,
   targets,
@@ -88,6 +103,37 @@ export async function resolveCurrentPageUrl({
   } catch {
     return inferRecoveryUrlFromTargets(targets, daemonUrl);
   }
+}
+
+export async function readBrowserSessionWithAutoRecovery({
+  daemonUrl,
+  targets = {},
+  openBrowserFn = openBrowserUrl,
+  delayFn = delay,
+  logFn = defaultAutoRecoveryLogger,
+  readBrowserSessionSummaryFn = readBrowserSessionSummary,
+} = {}) {
+  let lastSummary = null;
+
+  for (let attempt = 1; attempt <= MAX_AUTO_RECOVERY_ATTEMPTS; attempt += 1) {
+    lastSummary = await readBrowserSessionSummaryFn(daemonUrl);
+    if (hasActiveBrowserSession(lastSummary)) {
+      return lastSummary;
+    }
+
+    if (attempt >= MAX_AUTO_RECOVERY_ATTEMPTS) {
+      return lastSummary;
+    }
+
+    const recoveryUrl = inferRecoveryUrlFromTargets(targets, daemonUrl);
+    logFn(
+      `No active browser session. Auto-opening browser and retrying... (attempt ${attempt + 1}/${MAX_AUTO_RECOVERY_ATTEMPTS})`,
+    );
+    openBrowserFn(recoveryUrl);
+    await delayFn(BROWSER_SESSION_AUTO_RETRY_DELAY_MS);
+  }
+
+  return lastSummary;
 }
 
 function shellQuote(value) {
@@ -143,15 +189,27 @@ export async function runWithBrowserAutoRecovery({
         continue;
       }
 
+      if (isMissingTargetTabError(lastError)) {
+        const recoveryUrl = inferRecoveryUrlFromTargets(targets, daemonUrl);
+        logFn(
+          `No matching browser tab. Auto-opening target URL and retrying... (attempt ${attempt + 1}/${MAX_AUTO_RECOVERY_ATTEMPTS})`,
+        );
+        openBrowserFn(recoveryUrl);
+        await delayFn(URL_MATCH_AUTO_RETRY_DELAY_MS);
+        continue;
+      }
+
       if (allowImageReadbackRetry && isImageReadbackFailedError(lastError)) {
         const recoveryUrl = await resolveCurrentPageUrl({
           daemonUrl,
           targets,
           readBrowserSessionSummaryFn,
         });
-        logFn(`Screenshot image readback failed. Auto-opening browser and retrying... (attempt ${attempt + 1}/${MAX_AUTO_RECOVERY_ATTEMPTS})`);
+        logFn(
+          `Screenshot image readback failed. Auto-activating browser tab and retrying... (attempt ${attempt + 1}/${MAX_AUTO_RECOVERY_ATTEMPTS})`,
+        );
         openBrowserFn(recoveryUrl);
-        await delayFn(3_000);
+        await delayFn(SCREENSHOT_AUTO_RETRY_DELAY_MS);
         continue;
       }
 

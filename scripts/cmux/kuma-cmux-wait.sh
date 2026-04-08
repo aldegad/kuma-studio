@@ -3,6 +3,27 @@
 # Waits for a cmux signal and prints the result file contents when available.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+find_repo_root() {
+  local dir="$SCRIPT_DIR"
+
+  while [ "$dir" != "/" ]; do
+    if [ -f "$dir/package.json" ] && [ -f "$dir/packages/server/src/cli.mjs" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+
+  return 1
+}
+
+REPO_ROOT="${KUMA_REPO_ROOT:-$(find_repo_root || pwd)}"
+AUTO_INGEST_ENABLED="${KUMA_AUTO_VAULT_INGEST:-1}"
+AUTO_INGEST_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
+AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-/tmp/kuma-vault-auto-ingest}"
+
 SIGNAL="${1:?signal name required}"
 shift
 
@@ -43,6 +64,43 @@ if [ -n "$LEGACY_TIMEOUT" ] && [ "$TIMEOUT" = "120" ]; then
   TIMEOUT="$LEGACY_TIMEOUT"
 fi
 
+SIGNAL_DIR="/tmp/kuma-signals"
+
+signal_file_exists() {
+  [ -f "$SIGNAL_DIR/$SIGNAL" ]
+}
+
+auto_ingest_result() {
+  [ "$AUTO_INGEST_ENABLED" != "0" ] || return 0
+  [ -n "$RESULT_FILE" ] || return 0
+  [ -f "$RESULT_FILE" ] || return 0
+
+  local cmd=(
+    npm run --silent --prefix "$REPO_ROOT" kuma-studio -- vault-auto-ingest "$RESULT_FILE"
+    --signal "$SIGNAL"
+    --task-dir "$AUTO_INGEST_TASK_DIR"
+    --stamp-dir "$AUTO_INGEST_STAMP_DIR"
+  )
+  local output=""
+
+  if [ -n "${KUMA_VAULT_DIR:-}" ]; then
+    cmd+=(--vault-dir "$KUMA_VAULT_DIR")
+  fi
+
+  if [ -n "${KUMA_WIKI_DIR:-}" ]; then
+    cmd+=(--wiki-dir "$KUMA_WIKI_DIR")
+  fi
+
+  if ! output="$("${cmd[@]}" 2>&1)"; then
+    printf 'AUTO_INGEST_FAILED: %s\n' "$output" >&2
+    return 1
+  fi
+
+  if [ -n "$output" ]; then
+    printf 'AUTO_INGEST: %s\n' "$output" >&2
+  fi
+}
+
 print_result() {
   echo "SIGNAL_RECEIVED: $SIGNAL"
   if [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ]; then
@@ -50,6 +108,16 @@ print_result() {
     cat "$RESULT_FILE"
   fi
   echo "DISCORD_REPORT_NEEDED"
+}
+
+finish_success() {
+  if ! auto_ingest_result; then
+    print_result
+    exit 1
+  fi
+
+  print_result
+  exit 0
 }
 
 resolve_workspace() {
@@ -95,13 +163,36 @@ EOF
 
 wait_once() {
   local timeout="$1"
-  cmux wait-for "$SIGNAL" --timeout "$timeout"
+  local elapsed=0
+  local interval=5
+
+  # Check file-based signal first (worker may have written it before wait started)
+  if signal_file_exists; then
+    return 0
+  fi
+
+  # Poll: try cmux native wait in short intervals, check signal file between each
+  while [ "$elapsed" -lt "$timeout" ]; do
+    local remaining=$((timeout - elapsed))
+    local wait_time=$((interval < remaining ? interval : remaining))
+
+    if cmux wait-for "$SIGNAL" --timeout "$wait_time"; then
+      return 0
+    fi
+
+    if signal_file_exists; then
+      return 0
+    fi
+
+    elapsed=$((elapsed + wait_time))
+  done
+
+  return 1
 }
 
 if [ -z "$SURFACE" ]; then
   if wait_once "$TIMEOUT"; then
-    print_result
-    exit 0
+    finish_success
   fi
 
   echo "SIGNAL_TIMEOUT: $SIGNAL (timeout=${TIMEOUT}s)" >&2
@@ -113,8 +204,7 @@ RETRY_COUNT=0
 
 while true; do
   if wait_once "$CURRENT_TIMEOUT"; then
-    print_result
-    exit 0
+    finish_success
   fi
 
   if ! surface_alive "$SURFACE"; then

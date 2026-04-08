@@ -33,6 +33,7 @@ if [ -z "$KUMA_P" ]; then
   echo "✗ 쿠마 pane 조회 실패"
   exit 1
 fi
+"$SCRIPT_DIR/kuma-cmux-register.sh" "system" "🐻 쿠마" "$KUMA_S" 2>/dev/null || true
 
 JOONI_S=$(jq -r '.system["쭈니"] // empty' /tmp/kuma-surfaces.json 2>/dev/null || echo "")
 JOONI_READY=false
@@ -62,7 +63,7 @@ else
     exit 1
   fi
 
-  cmux send --workspace "$CURRENT_WS" --surface "$JOONI_S" "cd \"$WORKSPACE_DIR\" && KUMA_ROLE=worker codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c service_tier=fast" > /dev/null
+  cmux send --workspace "$CURRENT_WS" --surface "$JOONI_S" "cd \"$WORKSPACE_DIR\" && KUMA_ROLE=worker codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c service_tier=fast -c model_reasoning_effort=\"xhigh\"" > /dev/null
   cmux send-key --workspace "$CURRENT_WS" --surface "$JOONI_S" Enter > /dev/null
   cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$JOONI_S" --title "🐝 쭈니" > /dev/null 2>&1 || true
   "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "쭈니" "$JOONI_S" 2>/dev/null || true
@@ -93,7 +94,7 @@ else
       STALE_PID=$(lsof -i :4312 -t 2>/dev/null)
       [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
       echo "→ 쿠마 서버 시작 중..."
-      cmux send --surface "$INFRA_S" "cd \"$KUMA_STUDIO_DIR\" && npm run kuma-studio:serve"
+      cmux send --surface "$INFRA_S" "cd \"$KUMA_STUDIO_DIR\" && npm run server:reload"
       cmux send-key --surface "$INFRA_S" Enter
       cmux tab-action --action rename --surface "$INFRA_S" --title "kuma-server" > /dev/null 2>&1
       "$SCRIPT_DIR/kuma-cmux-register.sh" "kuma-studio" "server" "$INFRA_S" 2>/dev/null || true

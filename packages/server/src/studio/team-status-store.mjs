@@ -1,32 +1,40 @@
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 
+import { withCmuxEnv } from "../cmux-env.mjs";
 import { getMembersById } from "../team-metadata.mjs";
 
 const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
 const DEFAULT_SURFACE_POLL_MS = 5_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
-const PROMPT_LINE_PATTERN = /^(❯|>)\s*$|^›/u;
+const PROMPT_LINE_PATTERN = /^(?:❯|>|›)\s*$/u;
+const CODEX_SUGGESTION_LINE_PATTERN = /^›\s+\S/u;
 const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
 const SURFACE_SPINNER_PATTERN = /^[✻✶✳✢·]\s*/u;
 const COMPLETED_SURFACE_PATTERN =
   /^[✻✶✳✢·]\s*(?:baked|brewed|cooked|toasted|charred|churned|saut(?:e|é)ed)\s+for\b/iu;
 const WORKING_SURFACE_PATTERNS = [
-  /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading\b).*(?:\.\.\.|…)?$/iu,
-  /^•\s*working\s*\(/iu,
+  /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading|creating|cultivating)\b.*(?:\.\.\.|…)?$/iu,
+  /^•\s*(?:working|creating|cultivating)\b.*$/iu,
   /^•\s*thinking(?:\.\.\.|…)?$/iu,
   /\brunning(?:\.\.\.|…)/iu,
 ];
 const STATUS_BAR_LINE_PATTERNS = [
-  /⏵⏵\s*bypass permissions(?: on\b.*)?/iu,
+  /⏵⏵\s*bypass(?:\s+permissions?)?(?: on\b.*)?/iu,
   /\bnow using extra usage\b/iu,
   /\bextra credit\b/iu,
 ];
 const SURFACE_HINT_PATTERNS = [
-  /^bypass permissions\b/iu,
+  /^bypass(?:\s+permissions?)?\b/iu,
   /^now using extra usage\b/iu,
   /^extra credit\b/iu,
+  /^compacting conversation(?:\.\.\.|…)?$/iu,
+  /^compacting conversation\b/iu,
+  /^compacted conversation\b/iu,
+  /^tip:.*\/statusline\b/iu,
+  /^\/statusline\b/iu,
+  /^context left until auto-compact\b/iu,
   /^(?:brewed|baked|cooked|toasted|charred|churned|saut(?:e|é)ed) for\b/iu,
   /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
   /^esc to\b/iu,
@@ -34,6 +42,11 @@ const SURFACE_HINT_PATTERNS = [
   /^shift\+tab to cycle\b/iu,
   /^tab to queue\b/iu,
   /^[─━═─]{3,}$/u,
+];
+const IDLE_PROMPT_HINT_PATTERNS = [
+  /^gpt-[\w.-]+(?:\s+.*)?$/iu,
+  /^new task\?\s*\/clear to save \d+(?:\.\d+)?k tokens$/iu,
+  /^\d+(?:\.\d+)?%\s+until auto-compact$/iu,
 ];
 
 /**
@@ -45,6 +58,79 @@ const STUDIO_MEMBER_STATE_BY_SURFACE_STATUS = {
   working: "working",
   dead: "error",
 };
+
+const IMPLICIT_REGISTRY_MEMBERS = Array.from(getMembersById().values())
+  .filter((member) => member.team === "system" && typeof member.defaultSurface === "string" && member.defaultSurface)
+  .map((member) => ({
+    project: "system",
+    name: member.name.ko,
+    emoji: member.emoji,
+    surface: member.defaultSurface,
+  }));
+
+function formatRegistryLabel(name, emoji = "") {
+  const normalizedName = String(name ?? "").trim();
+  const normalizedEmoji = String(emoji ?? "").trim();
+  return normalizedEmoji && normalizedName ? `${normalizedEmoji} ${normalizedName}` : normalizedName;
+}
+
+function cloneRegistryProjects(registry) {
+  return Object.fromEntries(
+    Object.entries(registry ?? {}).flatMap(([projectName, projectMembers]) =>
+      projectMembers && typeof projectMembers === "object" && !Array.isArray(projectMembers)
+        ? [[projectName, { ...projectMembers }]]
+        : [],
+    ),
+  );
+}
+
+function hasRegistryEntries(registry) {
+  return Object.values(registry ?? {}).some(
+    (projectMembers) => projectMembers && typeof projectMembers === "object" && Object.keys(projectMembers).length > 0,
+  );
+}
+
+function hasRegistryMember(registry, memberName) {
+  const normalizedName = String(memberName ?? "").trim();
+  if (!normalizedName) {
+    return false;
+  }
+
+  for (const projectMembers of Object.values(registry ?? {})) {
+    if (!projectMembers || typeof projectMembers !== "object") {
+      continue;
+    }
+
+    for (const label of Object.keys(projectMembers)) {
+      if (parseRegistryLabel(label).name === normalizedName) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function withImplicitRegistryMembers(registry) {
+  const next = cloneRegistryProjects(registry);
+
+  if (!hasRegistryEntries(next)) {
+    return next;
+  }
+
+  for (const member of IMPLICIT_REGISTRY_MEMBERS) {
+    if (hasRegistryMember(next, member.name)) {
+      continue;
+    }
+
+    next[member.project] = {
+      ...(next[member.project] ?? {}),
+      [formatRegistryLabel(member.name, member.emoji)]: member.surface,
+    };
+  }
+
+  return next;
+}
 
 /**
  * Strip a leading emoji prefix such as "🦫 뚝딱이" down to the display name.
@@ -78,11 +164,33 @@ export function classifySurfaceStatus(output) {
   }
 
   const lines = getOutputLines(normalized);
+  const activeWorkingSignal = hasActiveWorkingSurfaceSignal(lines);
   if (hasCompletedSurfaceSignal(lines)) {
     return "idle";
   }
 
-  if (hasActiveWorkingSurfaceSignal(lines)) {
+  const lastInteractiveLine = getLastInteractiveLine(normalized);
+  if (
+    activeWorkingSignal &&
+    lastInteractiveLine &&
+    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
+  ) {
+    return "working";
+  }
+
+  if (
+    lastInteractiveLine &&
+    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
+  ) {
+    return "idle";
+  }
+
+  if (activeWorkingSignal) {
+    return "working";
+  }
+
+  const meaningfulLines = getMeaningfulOutputLines(normalized);
+  if (meaningfulLines.length > 0) {
     return "working";
   }
 
@@ -91,13 +199,7 @@ export function classifySurfaceStatus(output) {
     return "idle";
   }
 
-  const meaningfulLines = getMeaningfulOutputLines(normalized);
-
-  if (meaningfulLines.length === 0) {
-    return "idle";
-  }
-
-  return "working";
+  return "idle";
 }
 
 /**
@@ -171,6 +273,16 @@ function isPromptLine(line) {
   return PROMPT_LINE_PATTERN.test(withoutBoxDrawing);
 }
 
+function isCodexSuggestionLine(line) {
+  const trimmed = stripStatusBarText(String(line ?? "").trim());
+  return CODEX_SUGGESTION_LINE_PATTERN.test(trimmed);
+}
+
+function isIdlePromptHintLine(line) {
+  const trimmed = stripStatusBarText(String(line ?? "").trim());
+  return IDLE_PROMPT_HINT_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
 function stripStatusBarText(line) {
   return STATUS_BAR_LINE_PATTERNS.reduce(
     (current, pattern) => current.replace(pattern, " "),
@@ -206,6 +318,14 @@ function isIgnoredSurfaceLine(line) {
     return true;
   }
 
+  if (isCodexSuggestionLine(trimmed)) {
+    return true;
+  }
+
+  if (isIdlePromptHintLine(trimmed)) {
+    return true;
+  }
+
   if (!/[\p{L}\p{N}]/u.test(trimmed)) {
     return true;
   }
@@ -216,8 +336,27 @@ function isIgnoredSurfaceLine(line) {
 
 function getMeaningfulOutputLines(output) {
   return getOutputLines(output).filter(
-    (line) => !isPromptLine(line) && !isIgnoredSurfaceLine(line),
+    (line) => !isPromptLine(line) && !isCodexSuggestionLine(line) && !isIgnoredSurfaceLine(line),
   );
+}
+
+function getLastInteractiveLine(output) {
+  const lines = getOutputLines(output);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (isPromptLine(line) || isCodexSuggestionLine(line) || isIdlePromptHintLine(line)) {
+      return line;
+    }
+
+    if (isIgnoredSurfaceLine(line)) {
+      continue;
+    }
+
+    return line;
+  }
+
+  return null;
 }
 
 function isPseudoRegistryMember(name) {
@@ -249,6 +388,17 @@ function getRegistryProjectMembers(projectMembers) {
 }
 
 function getLastOutputLines(output) {
+  const lines = getOutputLines(output);
+  const activeWorkingSignal = hasActiveWorkingSurfaceSignal(lines);
+  const lastInteractiveLine = getLastInteractiveLine(output);
+  if (
+    !activeWorkingSignal &&
+    lastInteractiveLine &&
+    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
+  ) {
+    return [];
+  }
+
   const meaningfulLines = getMeaningfulOutputLines(output);
   if (meaningfulLines.length > 0) {
     return meaningfulLines.slice(-3);
@@ -350,6 +500,7 @@ export function toStudioTeamStatusSnapshot(snapshot, updatedAt = new Date().toIS
 
         return {
           id: memberMeta?.id || member.surface,
+          surface: member.surface || null,
           state: mapSurfaceStatusToStudioState(member.status),
           lastOutputLines,
           task: deriveTaskFromOutput(member.status, lastOutputLines),
@@ -387,10 +538,10 @@ async function defaultReadSurface(surface) {
     execFile(
       "cmux",
       ["read-screen", "--surface", surface, "--lines", "10"],
-      {
+      withCmuxEnv({
         encoding: "utf8",
         timeout: SURFACE_READ_TIMEOUT_MS,
-      },
+      }),
       (error, stdout = "", stderr = "") => {
         const output = `${stdout}${stderr}`.trim();
         if (error) {
@@ -512,6 +663,10 @@ export class TeamStatusStore {
     return cloneSnapshot(this.#snapshot);
   }
 
+  getMembersByName() {
+    return this.#membersByName;
+  }
+
   /**
    * @param {(snapshot: { projects: Record<string, { members: Array<{ name: string, emoji: string, role: string, surface: string, status: TeamSurfaceStatus, lastOutput: string }> }> }) => void} listener
    * @returns {() => void}
@@ -531,7 +686,8 @@ export class TeamStatusStore {
     this.#refreshingRegistry = true;
 
     try {
-      const registry = await this.#readRegistry(this.#registryPath);
+      const registry = withImplicitRegistryMembers(await this.#readRegistry(this.#registryPath));
+      await this.#seedImplicitSurfaceStates(registry);
       this.#registry = registry;
 
       const nextSnapshot = buildTeamStatusSnapshot(this.#registry, this.#surfaceStates, this.#membersByName);
@@ -640,5 +796,27 @@ export class TeamStatusStore {
     }
 
     return true;
+  }
+
+  async #seedImplicitSurfaceStates(registry) {
+    for (const member of IMPLICIT_REGISTRY_MEMBERS) {
+      if (!hasRegistryMember(registry, member.name) || this.#surfaceStates.has(member.surface)) {
+        continue;
+      }
+
+      try {
+        const result = await this.#readSurface(member.surface);
+        const output = String(result?.output ?? "").trim();
+        this.#surfaceStates.set(member.surface, {
+          status: result?.ok ? classifySurfaceStatus(output) : "dead",
+          lastOutput: output,
+        });
+      } catch (error) {
+        this.#surfaceStates.set(member.surface, {
+          status: "dead",
+          lastOutput: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
   }
 }

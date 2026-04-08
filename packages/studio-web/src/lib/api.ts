@@ -1,7 +1,16 @@
 import type { OfficeLayoutSnapshot } from "../types/office";
-import type { TeamMetadataResponse } from "../types/agent";
-import type { ContentItem, ContentListResponse, ContentStatus, ContentType } from "../types/content";
+import type { TeamMetadataResponse, TeamConfigResponse } from "../types/agent";
+import type {
+  ContentItem,
+  ContentListResponse,
+  ContentPostStatus,
+  ContentResearchStartResponse,
+  ContentStatus,
+  ContentType,
+} from "../types/content";
 import type { ExperimentItem, ExperimentListResponse, ExperimentSettings, ExperimentSource, ExperimentStatus } from "../types/experiment";
+import type { Memo, MemoListResponse } from "../types/memo";
+import type { ExtensionsCatalogResponse, StudioSkillEntry } from "../types/extensions";
 import type {
   DailyReport,
   DashboardStats,
@@ -136,6 +145,7 @@ function isPlan(value: unknown): value is Plan {
     typeof value.id === "string" &&
     typeof value.title === "string" &&
     typeof value.status === "string" &&
+    typeof value.statusColor === "string" &&
     (value.created === null || typeof value.created === "string") &&
     Array.isArray(value.sections) &&
     value.sections.every(isPlanSection) &&
@@ -155,6 +165,66 @@ function isPlansSnapshot(value: unknown): value is PlansSnapshot {
     typeof value.totalItems === "number" &&
     typeof value.checkedItems === "number" &&
     typeof value.overallCompletionRate === "number"
+  );
+}
+
+function isMemo(value: unknown): value is Memo {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    (value.path === undefined || typeof value.path === "string") &&
+    typeof value.title === "string" &&
+    (value.text === undefined || typeof value.text === "string") &&
+    Array.isArray(value.images) &&
+    value.images.every((image) => typeof image === "string") &&
+    typeof value.createdAt === "string" &&
+    (value.source === undefined || value.source === "vault" || value.source === "legacy-memo") &&
+    (value.section === undefined || value.section === "vault" || value.section === "inbox")
+  );
+}
+
+function isMemoListResponse(value: unknown): value is MemoListResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.memos) &&
+    value.memos.every(isMemo) &&
+    (value.inbox === undefined || (Array.isArray(value.inbox) && value.inbox.every(isMemo)))
+  );
+}
+
+function isStudioSkillEntry(value: unknown): value is StudioSkillEntry {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.description === "string" &&
+    typeof value.file === "string" &&
+    typeof value.content === "string" &&
+    typeof value.path === "string"
+  );
+}
+
+function isExtensionsCatalogCategory(value: unknown): value is ExtensionsCatalogResponse["ecosystems"][number]["categories"][number] {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.label === "string" &&
+    typeof value.markdown === "string"
+  );
+}
+
+function isExtensionsCatalogResponse(value: unknown): value is ExtensionsCatalogResponse {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.ecosystems) &&
+    value.ecosystems.every((ecosystem) =>
+      isRecord(ecosystem) &&
+      typeof ecosystem.id === "string" &&
+      typeof ecosystem.label === "string" &&
+      typeof ecosystem.sourcePath === "string" &&
+      typeof ecosystem.available === "boolean" &&
+      Array.isArray(ecosystem.categories) &&
+      ecosystem.categories.every(isExtensionsCatalogCategory),
+    )
   );
 }
 
@@ -217,6 +287,14 @@ export async function fetchTeamMetadata(): Promise<TeamMetadataResponse> {
   return payload;
 }
 
+export async function fetchTeamConfig(): Promise<TeamConfigResponse> {
+  const res = await fetch(`${BASE_URL}/studio/team-config`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch team config: ${res.statusText}`);
+  return res.json();
+}
+
 export async function fetchGitLog(): Promise<{ commits: { hash: string; message: string }[] }> {
   const res = await fetch(`${BASE_URL}/studio/git-log`, {
     headers: { Accept: "application/json" },
@@ -249,6 +327,131 @@ export async function fetchPlans(): Promise<PlansSnapshot> {
   return payload;
 }
 
+export async function fetchMemos(): Promise<MemoListResponse> {
+  const res = await fetch(`${BASE_URL}/studio/memos`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch memos: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isMemoListResponse(payload)) {
+    throw new Error("Failed to fetch memos: invalid response payload");
+  }
+  return payload;
+}
+
+export async function createMemo(input: {
+  title: string;
+  text?: string;
+  images: string[];
+}): Promise<Memo> {
+  const res = await fetch(`${BASE_URL}/studio/vault`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Failed to create memo: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isMemo(payload)) {
+    throw new Error("Failed to create memo: invalid response payload");
+  }
+  return payload;
+}
+
+export async function deleteMemo(id: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/studio/vault/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to delete memo: ${res.statusText}`);
+}
+
+export async function createInboxMemo(input: {
+  title?: string;
+  text: string;
+}): Promise<Memo> {
+  const res = await fetch(`${BASE_URL}/studio/vault/inbox`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`Failed to create inbox entry: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isMemo(payload)) {
+    throw new Error("Failed to create inbox entry: invalid response payload");
+  }
+  return payload;
+}
+
+export async function fetchStudioSkills(): Promise<StudioSkillEntry[]> {
+  const res = await fetch(`${BASE_URL}/studio/skills`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch skills: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isRecord(payload) || !Array.isArray(payload.skills) || !payload.skills.every(isStudioSkillEntry)) {
+    throw new Error("Failed to fetch skills: invalid response payload");
+  }
+  return payload.skills;
+}
+
+export async function fetchStudioPlugins(): Promise<string[]> {
+  const res = await fetch(`${BASE_URL}/studio/plugins`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch plugins: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isRecord(payload) || !Array.isArray(payload.plugins) || !payload.plugins.every((plugin) => typeof plugin === "string")) {
+    throw new Error("Failed to fetch plugins: invalid response payload");
+  }
+  return payload.plugins;
+}
+
+export async function fetchExtensionsCatalog(): Promise<ExtensionsCatalogResponse> {
+  const res = await fetch(`${BASE_URL}/studio/extensions-catalog`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch extensions catalog: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isExtensionsCatalogResponse(payload)) {
+    throw new Error("Failed to fetch extensions catalog: invalid response payload");
+  }
+  return payload;
+}
+
+export async function deleteStudioSkill(skillName: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/studio/skills/${encodeURIComponent(skillName)}`, {
+    method: "DELETE",
+    headers: { Accept: "application/json" },
+  });
+  const payload: unknown = await res.json();
+  if (!res.ok) throw new Error(`Failed to delete skill: ${res.statusText}`);
+  if (!isRecord(payload) || payload.success !== true) {
+    throw new Error("Failed to delete skill: invalid response payload");
+  }
+}
+
+export async function writeStudioFile(path: string, content: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/studio/fs/write`, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, content }),
+  });
+  const payload: unknown = await res.json();
+  if (!res.ok) throw new Error(`Failed to save file: ${res.statusText}`);
+  if (!isRecord(payload) || payload.success !== true) {
+    throw new Error("Failed to save file: invalid response payload");
+  }
+}
+
 export async function saveOfficeLayout(layout: OfficeLayoutSnapshot): Promise<OfficeLayoutSnapshot> {
   const res = await fetch(`${BASE_URL}/studio/office-layout`, {
     method: "PUT",
@@ -262,8 +465,9 @@ export async function saveOfficeLayout(layout: OfficeLayoutSnapshot): Promise<Of
   return res.json();
 }
 
-export async function fetchTeamStatus(project = "kuma-studio"): Promise<TeamStatusSnapshot> {
-  const search = project ? `?project=${encodeURIComponent(project)}` : "";
+export async function fetchTeamStatus(project?: string | null): Promise<TeamStatusSnapshot> {
+  const normalizedProject = typeof project === "string" ? project.trim() : "";
+  const search = normalizedProject ? `?project=${encodeURIComponent(normalizedProject)}` : "";
   const res = await fetch(`${BASE_URL}/studio/team-status${search}`, {
     headers: { Accept: "application/json" },
   });
@@ -276,13 +480,16 @@ export async function fetchTeamStatus(project = "kuma-studio"): Promise<TeamStat
   return snapshot;
 }
 
-export async function fetchContentItems(project?: string, assignee?: string | null): Promise<ContentListResponse> {
+export async function fetchContentItems(project?: string, assignee?: string | null, postStatus?: ContentPostStatus): Promise<ContentListResponse> {
   const params = new URLSearchParams();
   if (project) {
     params.set("project", project);
   }
   if (assignee !== undefined) {
     params.set("assignee", assignee ?? "unassigned");
+  }
+  if (postStatus) {
+    params.set("postStatus", postStatus);
   }
   const search = params.size > 0 ? `?${params.toString()}` : "";
   const res = await fetch(`${BASE_URL}/studio/content${search}`, {
@@ -314,7 +521,7 @@ export async function createContentItem(input: {
 
 export async function updateContentItem(
   id: string,
-  patch: Partial<Pick<ContentItem, "project" | "type" | "title" | "body" | "scheduledFor" | "assignee">>,
+  patch: Partial<Pick<ContentItem, "project" | "type" | "title" | "body" | "scheduledFor" | "assignee" | "postStatus" | "threadPosts">>,
 ): Promise<ContentItem> {
   const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -325,6 +532,19 @@ export async function updateContentItem(
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw new Error(`Failed to update content item: ${res.statusText}`);
+  return res.json();
+}
+
+export async function generateContentPost(id: string, tags: string[] = []): Promise<ContentItem> {
+  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}/generate-post`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ tags }),
+  });
+  if (!res.ok) throw new Error(`Failed to generate content post: ${res.statusText}`);
   return res.json();
 }
 
@@ -342,6 +562,19 @@ export async function updateContentStatus(
     body: JSON.stringify({ status, scheduledFor: scheduledFor ?? null }),
   });
   if (!res.ok) throw new Error(`Failed to update content status: ${res.statusText}`);
+  return res.json();
+}
+
+export async function startContentResearch(id: string): Promise<ContentResearchStartResponse> {
+  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}/start-research`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) throw new Error(`Failed to start research: ${res.statusText}`);
   return res.json();
 }
 

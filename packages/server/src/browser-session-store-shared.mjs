@@ -148,17 +148,19 @@ export function sanitizeCommandPayload(candidate) {
   }
 
   const targetTabId = sanitizeOptionalInteger(candidate.targetTabId);
+  const targetTabIndex = sanitizeOptionalInteger(candidate.targetTabIndex);
   const resolvedTargetTabId = sanitizeOptionalInteger(candidate.resolvedTargetTabId);
   const targetUrl = sanitizeString(candidate.targetUrl, 2_000);
   const targetUrlContains = sanitizeString(candidate.targetUrlContains, 1_000);
   const hasTarget =
     Number.isInteger(targetTabId) ||
+    Number.isInteger(targetTabIndex) ||
     (typeof targetUrl === "string" && targetUrl.length > 0) ||
     (typeof targetUrlContains === "string" && targetUrlContains.length > 0);
   const action = type === "playwright" ? sanitizeString(candidate.action, 128) : null;
 
   if (!hasTarget && !isImplicitActiveTabCommand(type, action)) {
-    throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
+    throw new Error("Browser commands must include targetTabId, targetTabIndex, targetUrl, or targetUrlContains.");
   }
 
   if (type === "playwright") {
@@ -177,6 +179,7 @@ export function sanitizeCommandPayload(candidate) {
       type,
       action,
       targetTabId,
+      targetTabIndex: Number.isInteger(targetTabIndex) && targetTabIndex >= 1 ? targetTabIndex : null,
       resolvedTargetTabId,
       targetUrl,
       targetUrlContains,
@@ -256,7 +259,7 @@ export function sanitizeCommandPayload(candidate) {
   const files = sanitizeFileList(candidate.files);
   const sequenceSteps = Array.isArray(candidate.steps) ? cloneValue(candidate.steps) : null;
   if (!hasTarget && type !== "navigate" && type !== "screenshot") {
-    throw new Error("Browser commands must include targetTabId, targetUrl, or targetUrlContains.");
+    throw new Error("Browser commands must include targetTabId, targetTabIndex, targetUrl, or targetUrlContains.");
   }
   if (type === "navigate" && !navigationUrl) {
     throw new Error("Browser navigate commands require a navigationUrl.");
@@ -283,6 +286,7 @@ export function sanitizeCommandPayload(candidate) {
     filenameContains,
     downloadUrlContains,
     targetTabId,
+    targetTabIndex: Number.isInteger(targetTabIndex) && targetTabIndex >= 1 ? targetTabIndex : null,
     resolvedTargetTabId,
     nth: Number.isFinite(nth) && nth >= 1 ? Math.round(nth) : null,
     exactText: candidate.exactText === true,

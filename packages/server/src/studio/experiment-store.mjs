@@ -22,6 +22,23 @@ function normalizeString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeStatusValue(value) {
+  if (value === "completed") {
+    return "success";
+  }
+
+  return normalizeString(value);
+}
+
+function normalizeOptionalNumber(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric * 1000) / 1000 : null;
+}
+
 function normalizeSources(value) {
   if (!Array.isArray(value)) {
     return [...DEFAULT_TREND_SOURCES];
@@ -68,6 +85,8 @@ function normalizeExperiment(item, fallback = {}) {
   }
 
   const createdAt = normalizeString(candidate.createdAt) ?? normalizeString(base.createdAt) ?? now();
+  const candidateStatus = normalizeStatusValue(candidate.status);
+  const baseStatus = normalizeStatusValue(base.status);
 
   return {
     id: normalizeString(candidate.id) ?? normalizeString(base.id) ?? createId(),
@@ -77,14 +96,26 @@ function normalizeExperiment(item, fallback = {}) {
       : ALLOWED_SOURCES.has(base.source)
         ? base.source
         : "user-idea",
-    status: ALLOWED_STATUSES.has(candidate.status)
-      ? candidate.status
-      : ALLOWED_STATUSES.has(base.status)
-        ? base.status
+    status: ALLOWED_STATUSES.has(candidateStatus)
+      ? candidateStatus
+      : ALLOWED_STATUSES.has(baseStatus)
+        ? baseStatus
         : "proposed",
     branch: resolveNullableString(candidate, base, "branch"),
     worktree: resolveNullableString(candidate, base, "worktree"),
     pr_url: resolveNullableString(candidate, base, "pr_url"),
+    sourceContentId: resolveNullableString(candidate, base, "sourceContentId"),
+    sourceTrendId: resolveNullableString(candidate, base, "sourceTrendId"),
+    researchScore:
+      Object.prototype.hasOwnProperty.call(candidate, "researchScore")
+        ? normalizeOptionalNumber(candidate.researchScore)
+        : normalizeOptionalNumber(base.researchScore),
+    researchQuestion: resolveNullableString(candidate, base, "researchQuestion"),
+    resultSummary: resolveNullableString(candidate, base, "resultSummary"),
+    reportSummary: resolveNullableString(candidate, base, "reportSummary"),
+    reportMarkdown: resolveNullableString(candidate, base, "reportMarkdown"),
+    reportGeneratedAt: resolveNullableString(candidate, base, "reportGeneratedAt"),
+    resultContentId: resolveNullableString(candidate, base, "resultContentId"),
     thread_draft: Object.prototype.hasOwnProperty.call(candidate, "thread_draft")
       ? typeof candidate.thread_draft === "string"
         ? candidate.thread_draft.trim()
@@ -144,6 +175,24 @@ export class ExperimentStore {
     }
 
     return this.readAll().items.find((item) => item.id === normalizedId) ?? null;
+  }
+
+  readBySourceContentId(sourceContentId) {
+    const normalizedId = normalizeString(sourceContentId);
+    if (!normalizedId) {
+      return null;
+    }
+
+    return this.readAll().items.find((item) => item.sourceContentId === normalizedId) ?? null;
+  }
+
+  readBySourceTrendId(sourceTrendId) {
+    const normalizedId = normalizeString(sourceTrendId);
+    if (!normalizedId) {
+      return null;
+    }
+
+    return this.readAll().items.find((item) => item.sourceTrendId === normalizedId) ?? null;
   }
 
   write(itemInput, fallback = {}) {

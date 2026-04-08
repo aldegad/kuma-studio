@@ -1,3 +1,5 @@
+import { teamData } from "./team-schema";
+
 export const COLORS = {
   kumaBrown: "#5C4033",
   kumaOrange: "#FF8C42",
@@ -7,18 +9,15 @@ export const COLORS = {
 } as const;
 
 export const TEAM_COLORS: Record<string, string> = {
-  management: "#5C4033",
+  system: "#5C4033",
   analytics: "#FF8C42",
   dev: "#4CAF50",
   strategy: "#6366F1",
 };
 
-export const TEAM_LABELS_KO: Record<string, string> = {
-  management: "총괄",
-  analytics: "분석팀",
-  dev: "개발팀",
-  strategy: "전략팀",
-};
+export const TEAM_LABELS_KO: Record<string, string> = Object.fromEntries(
+  teamData.teams.map((team) => [team.id, team.name.ko] as const),
+);
 
 export const STATE_LABELS: Record<string, string> = {
   idle: "Idle",
@@ -76,11 +75,34 @@ export function getSkillDisplayName(skillId: string): string {
 /** Format model name for display */
 export function formatModelName(model: string | undefined): string | null {
   if (!model) return null;
-  if (model.includes("opus")) return "Opus";
-  if (model.includes("sonnet")) return "Sonnet";
+  if (model.includes("opus")) return "Claude Opus 4.6";
+  if (model.includes("sonnet")) return "Claude Sonnet 4.6";
   if (model.startsWith("gpt-5")) return "GPT-5.4";
   if (model.includes("o4-mini")) return "o4-mini";
   return model;
+}
+
+/** Default effort/speed per model family (used when no live data) */
+export function getModelDefaults(model: string | undefined): { effort: string | null; speed: string | null } {
+  if (!model) return { effort: null, speed: null };
+  if (model.includes("opus") || model.includes("sonnet") || model.includes("haiku")) {
+    return { effort: "high", speed: null };
+  }
+  if (model.startsWith("gpt-5") || model.includes("codex")) {
+    return { effort: "xhigh", speed: "fast" };
+  }
+  return { effort: null, speed: null };
+}
+
+/** Full model detail: "Claude Opus 4.6 · high" or "GPT-5.4 · xhigh · fast" */
+export function formatModelDetail(model: string | undefined): string | null {
+  const name = formatModelName(model);
+  if (!name) return null;
+  const defaults = getModelDefaults(model);
+  const parts = [name];
+  if (defaults.effort) parts.push(defaults.effort);
+  if (defaults.speed) parts.push(defaults.speed);
+  return parts.join(" · ");
 }
 
 export function modelBadgeClass(model: string | undefined): string {
@@ -96,7 +118,7 @@ const EFFORT_LABELS: Record<string, string> = {
   low: "lo",
   medium: "med",
   high: "hi",
-  xhigh: "max",
+  xhigh: "xhigh",
 };
 
 /** Format effort for compact display */

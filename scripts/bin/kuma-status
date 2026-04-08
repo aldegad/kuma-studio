@@ -1,0 +1,55 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-status [--project <프로젝트>]
+EOF
+}
+
+PROJECT_FILTER=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT_FILTER="${2:?project required}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+ensure_runtime_requirements
+
+printf 'PROJECT\tMEMBER\tSURFACE\tSTATUS\tPREVIEW\n'
+
+while IFS=$'\t' read -r project display_name member_id emoji member_type member_team surface; do
+  [ -n "$surface" ] || continue
+
+  if output="$("$KUMA_CMUX_DIR/kuma-cmux-read.sh" "$surface" 2>&1)"; then
+    status_json="$(classify_surface_output_json "$output")"
+  else
+    status_json='{"status":"dead","preview":""}'
+  fi
+
+  status="$(printf '%s' "$status_json" | node -e 'const fs=require("node:fs"); const data=JSON.parse(fs.readFileSync(0,"utf8")); console.log(data.status);')"
+  preview="$(printf '%s' "$status_json" | node -e 'const fs=require("node:fs"); const data=JSON.parse(fs.readFileSync(0,"utf8")); console.log((data.preview || "").replace(/\t/g, " ").replace(/\r?\n/g, " ").trim());')"
+
+  printf '%s\t%s%s\t%s\t%s\t%s\n' \
+    "$project" \
+    "${emoji:+$emoji }" \
+    "$display_name" \
+    "$surface" \
+    "$status" \
+    "$preview"
+done < <(resolve_project_member_lines "$PROJECT_FILTER")

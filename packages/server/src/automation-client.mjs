@@ -22,11 +22,17 @@ export function createBrowserSessionSocketUrl(daemonUrl) {
 
 export function readTargetOptions(options) {
   const tabId = readNumber(options, "tab-id", null);
+  const tabIndex = readNumber(options, "tab-index", null);
   const targetUrl = readOptionalString(options, "url");
   const targetUrlContains = readOptionalString(options, "url-contains");
 
+  if (tabIndex != null && (!Number.isInteger(tabIndex) || tabIndex < 1)) {
+    throw new Error("--tab-index must be a positive integer.");
+  }
+
   return {
     targetTabId: Number.isInteger(tabId) ? tabId : null,
+    targetTabIndex: Number.isInteger(tabIndex) ? tabIndex : null,
     targetUrl,
     targetUrlContains,
   };
@@ -34,35 +40,83 @@ export function readTargetOptions(options) {
 
 export function requireTarget(options) {
   const target = readTargetOptions(options);
-  if (!target.targetTabId && !target.targetUrl && !target.targetUrlContains) {
-    throw new Error("The run command requires --tab-id, --url, or --url-contains.");
+  if (!target.targetTabId && !target.targetTabIndex && !target.targetUrl && !target.targetUrlContains) {
+    throw new Error("The run command requires --tab-id, --tab-index, --url, or --url-contains.");
   }
 
   return target;
 }
 
-function withRecoveryHint(message) {
+export function formatAutomationErrorMessage(message) {
   const normalized = typeof message === "string" ? message.trim() : "";
   if (!normalized) {
-    return "Automation request failed.";
+    return "자동화 요청에 실패했습니다.";
+  }
+
+  const noBrowserTabByUrlMatch = normalized.match(/^No browser tab matches the requested URL: (.+)$/u);
+  if (noBrowserTabByUrlMatch) {
+    return `URL '${noBrowserTabByUrlMatch[1]}'에 해당하는 탭이 없습니다. 열어주세요. (${normalized})`;
+  }
+
+  const noBrowserTabByFragmentMatch = normalized.match(/^No browser tab matches the requested URL fragment: (.+)$/u);
+  if (noBrowserTabByFragmentMatch) {
+    return `URL '${noBrowserTabByFragmentMatch[1]}'에 해당하는 탭이 없습니다. 열어주세요. (${normalized})`;
+  }
+
+  const noBrowserTabByIndexMatch = normalized.match(/^No browser tab matches the requested tab index: (\d+)$/u);
+  if (noBrowserTabByIndexMatch) {
+    return `탭 인덱스 ${noBrowserTabByIndexMatch[1]}에 해당하는 탭이 없습니다. browser-list-tabs로 확인해주세요. (${normalized})`;
+  }
+
+  if (
+    normalized.includes("No browser found") ||
+    normalized.includes("No active browser connection is available") ||
+    normalized.includes("No active browser tab is available")
+  ) {
+    return `브라우저가 실행 중이 아니거나 Kuma Picker가 연결되지 않았습니다. Chrome을 열어주세요. (${normalized})`;
   }
 
   if (normalized.includes("automation runtime is not loaded")) {
-    return `${normalized} Refresh the target page once or retry after the content script reattaches.`;
+    return `페이지 자동화 런타임이 아직 준비되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해주세요. (${normalized})`;
+  }
+
+  if (normalized.includes("does not accept the Kuma Picker automation runtime")) {
+    return `이 페이지는 Kuma Picker 자동화를 지원하지 않습니다. 일반 웹페이지 탭에서 다시 시도해주세요. (${normalized})`;
+  }
+
+  if (normalized.includes("socket closed before the command completed")) {
+    return `자동화 연결이 작업 중에 끊어졌습니다. 페이지를 다시 열거나 새로고침한 뒤 다시 시도해주세요. (${normalized})`;
+  }
+
+  return normalized;
+}
+
+function withRecoveryHint(message) {
+  const normalized = typeof message === "string" ? message.trim() : "";
+  if (!normalized) {
+    return formatAutomationErrorMessage(normalized);
+  }
+
+  if (normalized.includes("automation runtime is not loaded")) {
+    return formatAutomationErrorMessage(
+      `${normalized} Refresh the target page once or retry after the content script reattaches.`,
+    );
   }
 
   if (normalized.includes("No active browser connection is available")) {
     if (normalized.includes("Try page.goto() instead of page.reload() for stale connections")) {
-      return normalized;
+      return formatAutomationErrorMessage(normalized);
     }
-    return `${normalized} Refresh the target page once so the extension can send a fresh presence heartbeat.`;
+    return formatAutomationErrorMessage(
+      `${normalized} Refresh the target page once so the extension can send a fresh presence heartbeat.`,
+    );
   }
 
   if (normalized.includes("socket closed before the command completed")) {
-    return `${normalized} If the page just reloaded, refresh the target page once and retry.`;
+    return formatAutomationErrorMessage(`${normalized} If the page just reloaded, refresh the target page once and retry.`);
   }
 
-  return normalized;
+  return formatAutomationErrorMessage(normalized);
 }
 
 export async function fetchJson(endpoint, init = {}, { allowNoContent = false } = {}) {

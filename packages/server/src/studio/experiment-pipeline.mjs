@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import { resolveProjectStateDir } from "../state-home.mjs";
+import { buildExperimentThreadDraft } from "./experiment-report.mjs";
 
 function runCommand(command, args, options = {}) {
   return execFileSync(command, args, {
@@ -40,22 +41,6 @@ function buildWorktreePath(root, branch) {
   return resolve(stateDir, "experiments", "worktrees", branch.replace(/[\\/]/gu, "--"));
 }
 
-function buildThreadDraft(experiment) {
-  return [
-    `1/ ${experiment.title}`,
-    "",
-    `- 출처: ${experiment.source}`,
-    `- 브랜치: ${experiment.branch ?? "미생성"}`,
-    `- 워크트리: ${experiment.worktree ? basename(experiment.worktree) : "미생성"}`,
-    experiment.pr_url ? `- PR: ${experiment.pr_url}` : "- PR: 생성 예정",
-    "",
-    "이번 실험에서 무엇을 시도했고, 무엇이 좋아졌는지 요약해서 이어쓰기",
-    "- 적용 배경",
-    "- 구현 포인트",
-    "- 결과와 다음 단계",
-  ].join("\n");
-}
-
 export function createExperimentPipeline(root, execFn = runCommand) {
   const repoRoot = resolve(root);
 
@@ -72,8 +57,15 @@ export function createExperimentPipeline(root, execFn = runCommand) {
       return { branch, worktree };
     },
 
-    finalize(experiment) {
-      const thread_draft = buildThreadDraft(experiment);
+    finalize(experiment, context = {}) {
+      const thread_draft = buildExperimentThreadDraft({
+        experiment: {
+          ...experiment,
+          worktree: experiment.worktree ? basename(experiment.worktree) : experiment.worktree,
+        },
+        sourceTrend: context.sourceTrend,
+        sourceContent: context.sourceContent,
+      });
       let pr_url = experiment.pr_url ?? null;
 
       if (experiment.branch && experiment.worktree && !pr_url) {

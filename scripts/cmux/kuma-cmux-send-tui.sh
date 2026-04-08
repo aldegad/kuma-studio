@@ -1,16 +1,7 @@
 #!/bin/bash
+# Thin wrapper around kuma-cmux-send.sh for backwards compatibility.
+# Delegates all work (paste + Enter + retry + verification) to the robust script.
 set -euo pipefail
 
-SURFACE="${1:?surface id required}"
-shift
-
-if [ $# -eq 0 ]; then
-  echo "message text required" >&2
-  exit 1
-fi
-
-MESSAGE="$*"
-
-cmux send --surface "$SURFACE" "$MESSAGE"
-sleep 3
-cmux send-key --surface "$SURFACE" enter
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/kuma-cmux-send.sh" "$@"

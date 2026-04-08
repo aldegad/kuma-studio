@@ -213,6 +213,7 @@ async function handleSocketCommandRequest(daemonUrl, message) {
   try {
     const tab = await resolveTargetTab({
       tabId: Number.isInteger(command?.resolvedTargetTabId) ? command.resolvedTargetTabId : command?.targetTabId,
+      tabIndex: command?.targetTabIndex,
       url: command?.targetUrl,
       urlContains: command?.targetUrlContains,
     });

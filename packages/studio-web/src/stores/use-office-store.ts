@@ -80,13 +80,15 @@ function clearIdleGraceTimer(characterId: string) {
   }
 }
 
-/** Patch desk/sofa auto-position anchors with stored furniture positions from localStorage. */
-function patchLayoutFurniturePositions(layout: ProjectLayout): ProjectLayout {
-  const stored = readStoredPositions("kuma-office-furniture-positions");
+function patchLayoutAnchorPositions(
+  layout: ProjectLayout,
+  positions: Record<string, { x: number; y: number }>,
+): ProjectLayout {
   let patched = false;
   const deskPositions = { ...layout.deskPositions };
   const sofaPositions = { ...layout.sofaPositions };
-  for (const [id, pos] of Object.entries(stored)) {
+
+  for (const [id, pos] of Object.entries(positions)) {
     if (id.startsWith("desk-")) {
       const memberId = id.slice(5);
       if (memberId in deskPositions) {
@@ -105,6 +107,54 @@ function patchLayoutFurniturePositions(layout: ProjectLayout): ProjectLayout {
     }
   }
   return patched ? { ...layout, deskPositions, sofaPositions } : layout;
+}
+
+/** Patch desk/sofa auto-position anchors with stored furniture positions from localStorage. */
+function patchLayoutFurniturePositions(layout: ProjectLayout): ProjectLayout {
+  return patchLayoutAnchorPositions(layout, readStoredPositions("kuma-office-furniture-positions"));
+}
+
+function patchLayoutFromFurniture(layout: ProjectLayout, furniture: Pick<OfficeFurniture, "id" | "position">[]): ProjectLayout {
+  return patchLayoutAnchorPositions(
+    layout,
+    Object.fromEntries(furniture.map((item) => [item.id, item.position])),
+  );
+}
+
+function repositionIdleTeamMembers(
+  characters: OfficeCharacter[],
+  activeLayout: ProjectLayout,
+  teamId: string,
+  draggedIds: Set<string>,
+): OfficeCharacter[] {
+  return characters.map((character) => {
+    if (character.team !== teamId) {
+      return character;
+    }
+
+    if (draggedIds.has(character.id)) {
+      return character;
+    }
+
+    if (character.state !== "idle" && character.state !== "completed") {
+      return character;
+    }
+
+    const autoPosition = getAutoPosition(
+      character.id,
+      character.state,
+      character.team,
+      activeLayout.deskPositions,
+      activeLayout.sofaPositions,
+      activeLayout.teamMemberIdsByTeam,
+    );
+
+    if (!autoPosition || positionsEqual(character.position, autoPosition)) {
+      return character;
+    }
+
+    return { ...character, position: autoPosition };
+  });
 }
 
 function scheduleIdleGraceReposition(characterId: string, delayMs: number) {
@@ -128,6 +178,7 @@ function scheduleIdleGraceReposition(characterId: string, delayMs: number) {
         character.team,
         prev.activeLayout.deskPositions,
         prev.activeLayout.sofaPositions,
+        prev.activeLayout.teamMemberIdsByTeam,
       );
 
       if (!idlePosition || positionsEqual(character.position, idlePosition)) {
@@ -160,10 +211,16 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     set((prev) => {
       const characterPositions = new Map(layout.characters.map((c: Pick<OfficeCharacter, "id" | "position">) => [c.id, c.position] as const));
       const furnitureById = new Map(layout.furniture.map((f: OfficeFurniture) => [f.id, f] as const));
-      const knownFurnitureIds = new Set(prev.scene.furniture.map((f: OfficeFurniture) => f.id));
-      const appendedFurniture = layout.furniture.filter((f: OfficeFurniture) => !knownFurnitureIds.has(f.id));
+      const furniture = prev.scene.furniture.map((item: OfficeFurniture) => {
+        const next = furnitureById.get(item.id);
+        return next
+          ? { ...item, type: next.type, position: next.position, imageUrl: next.imageUrl }
+          : item;
+      });
+      const activeLayout = patchLayoutFromFurniture(prev.activeLayout, furniture);
 
       return {
+        activeLayout,
         scene: {
           ...prev.scene,
           background: layout.background,
@@ -175,21 +232,14 @@ export const useOfficeStore = create<OfficeState>((set) => ({
                   character.id,
                   character.state,
                   character.team,
-                  prev.activeLayout.deskPositions,
-                  prev.activeLayout.sofaPositions,
+                  activeLayout.deskPositions,
+                  activeLayout.sofaPositions,
+                  activeLayout.teamMemberIdsByTeam,
                 );
             const position = autoPosition ?? layoutPosition ?? character.position;
             return positionsEqual(position, character.position) ? character : { ...character, position };
           }),
-          furniture: [
-            ...prev.scene.furniture.map((furniture: OfficeFurniture) => {
-              const next = furnitureById.get(furniture.id);
-              return next
-                ? { ...furniture, type: next.type, position: next.position, imageUrl: next.imageUrl }
-                : furniture;
-            }),
-            ...appendedFurniture,
-          ],
+          furniture,
         },
       };
     }),
@@ -224,6 +274,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
         character.team,
         prev.activeLayout.deskPositions,
         prev.activeLayout.sofaPositions,
+        prev.activeLayout.teamMemberIdsByTeam,
       );
       const shouldMove = autoPos != null && !positionsEqual(character.position, autoPos);
       const stateChanged = character.state !== state || character.task !== nextTask;
@@ -285,6 +336,7 @@ export const useOfficeStore = create<OfficeState>((set) => ({
     set((prev) => {
       // Keep auto-position anchors in sync with draggable furniture.
       let activeLayout = prev.activeLayout;
+      let idleTeamId: string | null = null;
       if (furnitureId.startsWith("desk-")) {
         const memberId = furnitureId.slice(5);
         if (memberId in activeLayout.deskPositions) {
@@ -298,16 +350,22 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       if (furnitureId.startsWith("sofa-")) {
         const teamId = furnitureId.slice(5);
         if (teamId in activeLayout.sofaPositions) {
+          idleTeamId = teamId;
           activeLayout = {
             ...activeLayout,
             sofaPositions: { ...activeLayout.sofaPositions, [teamId]: position },
           };
         }
       }
+
+      const characters = idleTeamId
+        ? repositionIdleTeamMembers(prev.scene.characters, activeLayout, idleTeamId, prev.draggedIds)
+        : prev.scene.characters;
       return {
         activeLayout,
         scene: {
           ...prev.scene,
+          characters,
           furniture: prev.scene.furniture.map((f: OfficeFurniture) =>
             f.id === furnitureId ? { ...f, position } : f,
           ),
@@ -350,24 +408,31 @@ export const useOfficeStore = create<OfficeState>((set) => ({
       // Load user-dragged positions from localStorage
       const storedCharPositions = readStoredPositions("kuma-office-character-positions");
       const storedFurniturePositions = readStoredPositions("kuma-office-furniture-positions");
-
-      const patchedLayout = patchLayoutFurniturePositions(layout);
+      const currentFurniturePositions = Object.fromEntries(
+        prev.scene.furniture.map((item: OfficeFurniture) => [item.id, item.position]),
+      ) as Record<string, { x: number; y: number }>;
 
       // Reposition characters: keep persisted manual positions only while the member is still marked as dragged.
+      const furniture = layout.furniture.map((f: OfficeFurniture) => {
+        const stored = storedFurniturePositions[f.id];
+        if (stored) {
+          return { ...f, position: stored };
+        }
+
+        const current = currentFurniturePositions[f.id];
+        return current ? { ...f, position: current } : f;
+      });
+      const patchedLayout = patchLayoutFromFurniture(layout, furniture);
+
       const characters = prev.scene.characters.map((c: OfficeCharacter) => {
         const stored = prev.draggedIds.has(c.id) ? storedCharPositions[c.id] : null;
         if (stored) return { ...c, position: stored };
         const newPos = getAutoPosition(
           c.id, c.state, c.team,
           patchedLayout.deskPositions, patchedLayout.sofaPositions,
+          patchedLayout.teamMemberIdsByTeam,
         );
         return newPos ? { ...c, position: newPos } : c;
-      });
-
-      // Reposition furniture: prefer localStorage > layout default
-      const furniture = layout.furniture.map((f: OfficeFurniture) => {
-        const stored = storedFurniturePositions[f.id];
-        return stored ? { ...f, position: stored } : f;
       });
 
       return {

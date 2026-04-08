@@ -1,7 +1,8 @@
 import { create } from "zustand";
-import teamData from "../../../shared/team.json";
+import { teamData } from "../lib/team-schema";
 import type { Agent, AgentState } from "../types/agent.js";
 import { KUMA_TEAM } from "../types/agent.js";
+import { useTeamConfigStore } from "./use-team-config-store.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,6 +17,7 @@ export interface ModelInfo {
 
 export interface TeamMemberStatus {
   id: string;
+  surface: string | null;
   state: AgentState;
   lastOutputLines: string[];
   task: string | null;
@@ -36,6 +38,7 @@ export interface TeamStatusSnapshot {
 type TeamStatusApiMember = {
   id?: unknown;
   name?: unknown;
+  surface?: unknown;
   state?: unknown;
   status?: unknown;
   lastOutput?: unknown;
@@ -80,6 +83,7 @@ const DEFAULT_PROJECT: ProjectTeamStatus = {
   projectName: "kuma-studio",
   members: KUMA_TEAM.map((agent: Agent) => ({
     id: agent.id,
+    surface: null,
     state: "idle" as AgentState,
     lastOutputLines: [],
     task: null,
@@ -199,6 +203,7 @@ function normalizeMember(member: unknown): TeamMemberStatus | null {
 
   return {
     id,
+    surface: typeof apiMember.surface === "string" ? apiMember.surface : null,
     state: normalizeMemberState(apiMember.state ?? apiMember.status),
     lastOutputLines: normalizeLastOutputLines(apiMember),
     task: typeof apiMember.task === "string" && apiMember.task.trim() ? apiMember.task : null,
@@ -285,31 +290,35 @@ export function getTeamGroups(
   memberStatus: Map<string, TeamMemberStatus>,
 ): TeamGroup[] {
   // Determine which member IDs are in the active project
-  // "system" project members (e.g. jjooni) are always visible regardless of active tab
+  // "system" project members (e.g. kuma, jjooni) are always visible
   const systemMembers = projects.find((p) => p.projectId === "system")?.members ?? [];
   const projectMembers = activeProjectId
     ? [...(projects.find((p) => p.projectId === activeProjectId)?.members ?? []), ...systemMembers]
     : projects.flatMap((p) => p.members);
 
+  const allMembers = useTeamConfigStore.getState().members;
+  const systemMemberIds = allMembers.filter((a: Agent) => a.team === "system").map((a: Agent) => a.id);
+
   const activeMemberIds = new Set(
     projectMembers.length > 0
-      ? projectMembers.map((m: TeamMemberStatus) => m.id)
-      : KUMA_TEAM.map((a: Agent) => a.id),
+      ? [...projectMembers.map((m: TeamMemberStatus) => m.id), ...systemMemberIds]
+      : allMembers.map((a: Agent) => a.id),
   );
 
   // Group agents by team
   const groups: TeamGroup[] = teamData.teams
-    .filter((t) => t.id !== "management") // management shown separately or inline
+    .filter((t) => t.id !== "system") // system shown separately or inline
     .map((team) => ({
       teamId: team.id,
       label: team.name.ko,
-      emoji: team.pm ? KUMA_TEAM.find((a: Agent) => a.id === team.pm)?.emoji ?? "" : "",
-      members: KUMA_TEAM
+      emoji: team.pm ? allMembers.find((a: Agent) => a.id === team.pm)?.emoji ?? "" : "",
+      members: allMembers
         .filter((a: Agent) => a.team === team.id && activeMemberIds.has(a.id))
         .map((agent: Agent) => ({
           ...agent,
           status: memberStatus.get(agent.id) ?? {
             id: agent.id,
+            surface: null,
             state: "idle" as AgentState,
             lastOutputLines: [],
             task: null,
@@ -320,13 +329,14 @@ export function getTeamGroups(
     }))
     .filter((g) => g.members.length > 0);
 
-  // Prepend management if any management members are active
-  const mgmtMembers = KUMA_TEAM
-    .filter((a: Agent) => a.team === "management" && activeMemberIds.has(a.id))
+  // Prepend system if any system members are active
+  const systemTeamMembers = allMembers
+    .filter((a: Agent) => a.team === "system" && activeMemberIds.has(a.id))
     .map((agent: Agent) => ({
       ...agent,
       status: memberStatus.get(agent.id) ?? {
         id: agent.id,
+        surface: null,
         state: "idle" as AgentState,
         lastOutputLines: [],
         task: null,
@@ -335,13 +345,13 @@ export function getTeamGroups(
       },
     }));
 
-  if (mgmtMembers.length > 0) {
-    const mgmtTeam = teamById.get("management");
+  if (systemTeamMembers.length > 0) {
+    const systemTeam = teamById.get("system");
     groups.unshift({
-      teamId: "management",
-      label: mgmtTeam?.name.ko ?? "총괄",
+      teamId: "system",
+      label: systemTeam?.name.ko ?? "시스템",
       emoji: "🐻",
-      members: mgmtMembers,
+      members: systemTeamMembers,
     });
   }
 

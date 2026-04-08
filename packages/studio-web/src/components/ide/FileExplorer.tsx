@@ -1,12 +1,82 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { FileTreeNode, type FsNode } from "./FileTreeNode";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FileTreeNode, type FsNode, type GitStatusMap } from "./FileTreeNode";
 import { CodeViewer } from "./CodeViewer";
 import { ImageViewer } from "./ImageViewer";
+import { MarkdownBody } from "../dashboard/MarkdownBody";
+
+interface FrontmatterMeta {
+  title?: string;
+  domain?: string;
+  tags?: string[];
+  created?: string;
+  updated?: string;
+}
+
+function parseFrontmatter(text: string): { meta: FrontmatterMeta; body: string } {
+  const match = text?.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!match) return { meta: {}, body: text ?? "" };
+  const meta: FrontmatterMeta = {};
+  for (const line of match[1].split("\n")) {
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim() as keyof FrontmatterMeta;
+    const raw = line.slice(colonIdx + 1).trim();
+    if (raw.startsWith("[") && raw.endsWith("]")) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (meta as any)[key] = raw.slice(1, -1).split(",").map((s) => s.trim().replace(/^["']|["']$/g, "")).filter(Boolean);
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (meta as any)[key] = raw;
+    }
+  }
+  return { meta, body: match[2].trim() };
+}
+
+interface TocDoc {
+  title: string;
+  path: string;
+  description?: string;
+}
+
+interface TocSection {
+  id: string;
+  label: string;
+  docs: TocDoc[];
+}
+
+/** Parse ~/.kuma/vault/index.md into a section/doc tree. */
+function parseIndexMd(content: string): TocSection[] {
+  const sections: TocSection[] = [];
+  let current: TocSection | null = null;
+  for (const line of content.split("\n")) {
+    const heading = line.match(/^##\s+(.+)$/);
+    if (heading) {
+      current = { id: heading[1].toLowerCase().replace(/\s+/g, "-"), label: heading[1], docs: [] };
+      sections.push(current);
+      continue;
+    }
+    if (current) {
+      const link = line.match(/^-\s+\[(.+?)\]\((.+?)\)(?:\s*[—\-–]\s*(.+))?/);
+      if (link) current.docs.push({ title: link[1], path: link[2], description: link[3]?.trim() });
+    }
+  }
+  return sections;
+}
+
+const VAULT_SECTIONS_META: Record<string, { accent: string; textClass: string; icon: string }> = {
+  domains:          { accent: "#8b5cf6", textClass: "text-violet-400", icon: "🏛" },
+  projects:         { accent: "#f59e0b", textClass: "text-amber-400", icon: "📁" },
+  learnings:        { accent: "#10b981", textClass: "text-emerald-400", icon: "💡" },
+  inbox:            { accent: "#64748b", textClass: "text-slate-400", icon: "📥" },
+  "cross-references": { accent: "#0ea5e9", textClass: "text-sky-400", icon: "🔗" },
+};
+const VAULT_FALLBACK_META = { accent: "#6366f1", textClass: "text-indigo-400", icon: "📄" };
 
 type ViewerFile =
   | { type: "code"; content: string; language: string; path: string }
   | { type: "image"; content: string; mimeType: string; path: string }
   | { type: "binary"; size: number; path: string }
+  | { type: "vault"; content: string; title: string; path: string; meta: FrontmatterMeta }
   | null;
 
 interface FileExplorerProps {
@@ -30,6 +100,7 @@ interface GlobalSection {
 }
 
 const GLOBAL_SECTIONS: GlobalSection[] = [
+  { id: "vault", label: ".kuma/vault", icon: "V", color: "text-sky-500", path: `${HOME_DIR}/.kuma/vault` },
   { id: "claude", label: ".claude", icon: "C", color: "text-violet-500", path: `${HOME_DIR}/.claude` },
   { id: "codex", label: ".codex", icon: "X", color: "text-emerald-500", path: `${HOME_DIR}/.codex` },
 ];
@@ -44,6 +115,70 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   const [viewerFile, setViewerFile] = useState<ViewerFile>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const resizingRef = useRef(false);
+
+  // Sidebar tab state
+  const [sidebarTab, setSidebarTab] = useState<"files" | "vault">("files");
+
+  // Vault state
+  const [vaultIndexLoaded, setVaultIndexLoaded] = useState(false);
+  const [tocSections, setTocSections] = useState<TocSection[]>([]);
+  const [vaultSectionExpanded, setVaultSectionExpanded] = useState<Record<string, boolean>>({});
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Git status state
+  const [gitStatus, setGitStatus] = useState<GitStatusMap>({});
+  const [gitRoot, setGitRoot] = useState<string>("");
+
+  // Fetch git status
+  useEffect(() => {
+    const root = tree?.path || "";
+    if (!root) return;
+    fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`)
+      .then((r) => r.json())
+      .then((data: { root: string; files: GitStatusMap }) => {
+        setGitStatus(data.files);
+        setGitRoot(data.root);
+      })
+      .catch(() => {});
+
+    // Refresh every 30s
+    const interval = setInterval(() => {
+      fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`)
+        .then((r) => r.json())
+        .then((data: { root: string; files: GitStatusMap }) => {
+          setGitStatus(data.files);
+          setGitRoot(data.root);
+        })
+        .catch(() => {});
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [tree?.path]);
+
+  // Filter tree by search query
+  const filteredTree = useMemo(() => {
+    if (!tree || !searchQuery.trim()) return tree;
+    const q = searchQuery.toLowerCase();
+    function filterNode(node: FsNode): FsNode | null {
+      if (node.type === "file") {
+        return node.name.toLowerCase().includes(q) ? node : null;
+      }
+      // Directory: include if any child matches
+      const filteredChildren = (node.children ?? [])
+        .map(filterNode)
+        .filter((n): n is FsNode => n !== null);
+      if (filteredChildren.length > 0 || node.name.toLowerCase().includes(q)) {
+        return { ...node, children: filteredChildren };
+      }
+      return null;
+    }
+    const result = filterNode(tree);
+    return result;
+  }, [tree, searchQuery]);
+
+  // Git status summary
+  const gitChangedCount = Object.keys(gitStatus).length;
 
   // Fetch root tree
   useEffect(() => {
@@ -158,6 +293,53 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
     document.addEventListener("mouseup", onUp);
   }, [treeWidth]);
 
+  // Parse index.md when vault tab is selected
+  useEffect(() => {
+    if (sidebarTab !== "vault" || vaultIndexLoaded) return;
+    const indexPath = `${HOME_DIR}/.kuma/vault/index.md`;
+    fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(indexPath)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.content) {
+          const sections = parseIndexMd(data.content);
+          setTocSections(sections);
+          // Wiki style: all sections with docs expanded by default
+          const expanded: Record<string, boolean> = {};
+          for (const s of sections) {
+            if (s.docs.length > 0) expanded[s.id] = true;
+          }
+          setVaultSectionExpanded(expanded);
+        }
+        setVaultIndexLoaded(true);
+      })
+      .catch(() => setVaultIndexLoaded(true));
+  }, [vaultIndexLoaded, sidebarTab]);
+
+  const handleVaultSelect = useCallback(async (doc: TocDoc) => {
+    if (viewerFile?.type === "vault" && viewerFile.path === doc.path) return;
+    if (viewerFile?.type === "image" && viewerFile.path === doc.path) return;
+    const filePath = `${HOME_DIR}/.kuma/vault/${doc.path}`;
+    setFileLoading(true);
+    try {
+      const r = await fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(filePath)}`);
+      const data = await r.json();
+      if (data.mimeType) {
+        // Image file from vault TOC
+        setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path: doc.path });
+      } else if (data.content) {
+        const { meta, body } = parseFrontmatter(data.content);
+        setViewerFile({
+          type: "vault",
+          content: body,
+          title: meta.title || doc.title,
+          path: doc.path,
+          meta,
+        });
+      }
+    } catch { /* ignore */ }
+    setFileLoading(false);
+  }, [viewerFile]);
+
   // Keyboard: Esc closes viewer
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -217,11 +399,81 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
           )}
         </div>
 
+        {/* Tab bar: 파일 / Vault */}
+        <div className="flex border-b" style={{ borderColor: "var(--card-border)" }}>
+          <button
+            type="button"
+            onClick={() => setSidebarTab("files")}
+            className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
+            style={{
+              color: sidebarTab === "files" ? "var(--t-primary)" : "var(--t-faint)",
+              background: sidebarTab === "files" ? "var(--card-bg)" : "transparent",
+              borderBottom: sidebarTab === "files" ? "2px solid var(--t-accent, #f59e0b)" : "2px solid transparent",
+            }}
+          >
+            파일
+          </button>
+          <button
+            type="button"
+            onClick={() => setSidebarTab("vault")}
+            className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
+            style={{
+              color: sidebarTab === "vault" ? "var(--t-primary)" : "var(--t-faint)",
+              background: sidebarTab === "vault" ? "var(--card-bg)" : "transparent",
+              borderBottom: sidebarTab === "vault" ? "2px solid #0ea5e9" : "2px solid transparent",
+            }}
+          >
+            Vault
+          </button>
+        </div>
+
         {/* Scrollable tree content */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
-          {/* Workspace section */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+          {sidebarTab === "files" && (<>
+          {/* Search bar */}
+          <div className="px-2 py-1.5" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+            <div className="relative flex items-center">
+              <svg width="12" height="12" viewBox="0 0 16 16" className="absolute left-2 shrink-0" style={{ color: "var(--t-faint)" }} fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="M10.5 10.5L14 14" strokeLinecap="round" />
+              </svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="파일 검색..."
+                className="w-full rounded py-1 pl-7 pr-2 text-[11px] outline-none transition-colors"
+                style={{
+                  background: "var(--card-bg)",
+                  color: "var(--t-primary)",
+                  border: "1px solid var(--border-subtle)",
+                }}
+                data-panel-no-drag="true"
+                spellCheck={false}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-1.5 rounded-full p-0.5 transition-colors hover:bg-white/10"
+                  style={{ color: "var(--t-faint)" }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Workspace header */}
+          <div className="flex items-center gap-1.5 px-3 py-1" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
             <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--t-faint)" }}>Explorer</span>
+            {gitChangedCount > 0 && (
+              <span className="ml-auto rounded-full px-1.5 text-[8px] font-bold tabular-nums" style={{ color: "#f59e0b", background: "rgba(245, 158, 11, 0.12)" }}>
+                {gitChangedCount} changed
+              </span>
+            )}
           </div>
 
           <div className="py-0.5">
@@ -241,7 +493,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                 {error}
               </div>
             )}
-            {tree && tree.children && tree.children.map((child) => (
+            {(searchQuery ? filteredTree : tree)?.children?.map((child) => (
               <FileTreeNode
                 key={child.path}
                 node={child}
@@ -250,8 +502,15 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                 onFileSelect={handleFileSelect}
                 onLoadChildren={handleLoadChildren}
                 onDelete={handleFileDelete}
+                gitStatus={gitStatus}
+                gitRoot={gitRoot}
               />
             ))}
+            {searchQuery && (!filteredTree?.children || filteredTree.children.length === 0) && (
+              <p className="px-3 py-3 text-[10px] italic" style={{ color: "var(--t-faint)" }}>
+                &quot;{searchQuery}&quot; 검색 결과 없음
+              </p>
+            )}
           </div>
 
           {/* Global Config sections */}
@@ -310,14 +569,127 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
               </div>
             );
           })}
+
+          </>)}
+
+          {/* ── Vault tab: Wiki-style TOC ── */}
+          {sidebarTab === "vault" && (
+            <div className="py-1">
+              {/* Wiki header */}
+              <div className="px-4 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <h3 className="text-[12px] font-bold" style={{ color: "var(--t-primary)" }}>Kuma Wiki</h3>
+                <p className="text-[9px] mt-0.5" style={{ color: "var(--t-faint)" }}>~/.kuma/vault</p>
+              </div>
+
+              {/* Schema fixed link */}
+              <button
+                type="button"
+                onClick={() => { void handleVaultSelect({ title: "Schema", path: "schema.md" }); }}
+                className="flex w-full items-center gap-2 px-4 py-1.5 text-left transition-colors hover:bg-white/5"
+                style={{
+                  borderBottom: "1px solid var(--border-subtle)",
+                  background: viewerFile?.type === "vault" && viewerFile.path === "schema.md" ? "rgba(14,165,233,0.1)" : "transparent",
+                }}
+              >
+                <span className="text-[11px]">📋</span>
+                <span className="text-[10px] font-semibold" style={{ color: viewerFile?.type === "vault" && viewerFile.path === "schema.md" ? "#0ea5e9" : "var(--t-secondary)" }}>Schema</span>
+                <span className="ml-auto text-[8px]" style={{ color: "var(--t-faint)" }}>운영 규칙</span>
+              </button>
+
+              {!vaultIndexLoaded && (
+                <div className="flex items-center gap-2 px-4 py-3">
+                  <svg width="10" height="10" viewBox="0 0 12 12" className="animate-spin" style={{ color: "var(--t-faint)" }}>
+                    <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
+                  </svg>
+                  <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>index.md 파싱 중...</span>
+                </div>
+              )}
+
+              {vaultIndexLoaded && tocSections.length === 0 && (
+                <p className="px-4 py-3 text-[9px] italic" style={{ color: "var(--t-faint)" }}>(index.md 없음)</p>
+              )}
+
+              {vaultIndexLoaded && tocSections.map((sec) => {
+                const meta = VAULT_SECTIONS_META[sec.id] ?? VAULT_FALLBACK_META;
+                const isExpanded = vaultSectionExpanded[sec.id] ?? false;
+                const selectedPath = viewerFile?.type === "vault" ? viewerFile.path : (viewerFile?.type === "image" ? viewerFile.path : null);
+
+                return (
+                  <div key={sec.id} className="mt-0.5">
+                    {/* Section header — wiki category */}
+                    <button
+                      type="button"
+                      onClick={() => setVaultSectionExpanded((prev) => ({ ...prev, [sec.id]: !prev[sec.id] }))}
+                      className="flex w-full items-center gap-1.5 px-4 py-1.5 transition-colors hover:bg-white/5"
+                      style={{ borderLeft: `3px solid ${meta.accent}` }}
+                    >
+                      <span className="text-[11px]">{meta.icon}</span>
+                      <span className={`text-[10px] font-bold ${meta.textClass}`}>{sec.label}</span>
+                      {sec.docs.length > 0 && (
+                        <span className="ml-auto rounded-full px-1.5 text-[8px] font-medium" style={{ background: `${meta.accent}15`, color: meta.accent }}>{sec.docs.length}</span>
+                      )}
+                    </button>
+
+                    {/* Doc entries — title + description */}
+                    {isExpanded && (
+                      <ul className="pb-1">
+                        {sec.docs.length === 0 ? (
+                          <li className="px-5 py-1.5 text-[9px] italic" style={{ color: "var(--t-faint)" }}>(아직 없음)</li>
+                        ) : (
+                          sec.docs.map((doc) => {
+                            const isActive = selectedPath === doc.path;
+                            return (
+                              <li key={doc.path}>
+                                <button
+                                  type="button"
+                                  onClick={() => { void handleVaultSelect(doc); }}
+                                  className="w-full px-5 py-1.5 text-left transition-colors hover:bg-white/5"
+                                  style={{
+                                    background: isActive ? `${meta.accent}12` : "transparent",
+                                    borderLeft: isActive ? `2px solid ${meta.accent}` : "2px solid transparent",
+                                  }}
+                                >
+                                  <span className="block text-[10px] font-medium truncate" style={{ color: isActive ? meta.accent : "var(--t-primary)" }}>
+                                    {doc.title}
+                                  </span>
+                                  {doc.description && (
+                                    <span className="block text-[9px] truncate mt-0.5" style={{ color: "var(--t-faint)" }}>
+                                      {doc.description}
+                                    </span>
+                                  )}
+                                </button>
+                              </li>
+                            );
+                          })
+                        )}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Last updated footer */}
+              {vaultIndexLoaded && tocSections.length > 0 && (
+                <div className="px-4 pt-2 pb-1 mt-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                  <span className="text-[8px]" style={{ color: "var(--t-faint)" }}>index.md 기반 목차</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer status bar */}
         {tree && (
-          <div className="flex items-center gap-1.5 px-3 py-1" style={{ borderTop: "1px solid var(--border-subtle)", background: "var(--ide-bg)" }}>
+          <div className="flex items-center gap-2 px-3 py-1" style={{ borderTop: "1px solid var(--border-subtle)", background: "var(--ide-bg)" }}>
             <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>
               {tree.children?.length ?? 0} items
             </span>
+            {gitChangedCount > 0 && (
+              <span className="flex items-center gap-1 text-[8px] font-mono" style={{ color: "#f59e0b" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                {gitChangedCount}
+              </span>
+            )}
           </div>
         )}
 
@@ -385,6 +757,58 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                 >
                   닫기
                 </button>
+              </div>
+            </div>
+          )}
+
+          {viewerFile?.type === "vault" && (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {/* Vault doc header */}
+              <div
+                className="flex-shrink-0 flex items-start justify-between gap-3 border-b px-4 py-3"
+                style={{ borderColor: "var(--card-border)", background: "var(--ide-bg)" }}
+              >
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[13px] font-bold leading-snug truncate" style={{ color: "var(--t-primary)" }}>
+                    {viewerFile.title}
+                  </h2>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    {Array.isArray(viewerFile.meta.tags) && viewerFile.meta.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="rounded-full px-2 py-0.5 text-[9px] font-medium"
+                        style={{ background: "rgba(14,165,233,0.12)", color: "#0ea5e9", border: "1px solid rgba(14,165,233,0.2)" }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                    {viewerFile.meta.created && (
+                      <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>{viewerFile.meta.created}</span>
+                    )}
+                    {viewerFile.path && (
+                      <code className="text-[8px]" style={{ color: "var(--t-faint)" }}>{viewerFile.path}</code>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewerFile(null)}
+                  className="shrink-0 rounded p-1 text-[10px] transition-colors"
+                  style={{ color: "var(--t-faint)" }}
+                  title="닫기"
+                >
+                  <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
+              </div>
+              {/* Vault doc body */}
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+                {viewerFile.content ? (
+                  <MarkdownBody content={viewerFile.content} />
+                ) : (
+                  <p className="text-[11px] italic" style={{ color: "var(--t-faint)" }}>(내용 없음)</p>
+                )}
               </div>
             </div>
           )}

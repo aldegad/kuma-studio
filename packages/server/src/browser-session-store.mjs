@@ -233,6 +233,9 @@ export class BrowserSessionStore {
 
     const envelope = sanitizeCommandEnvelope(payload);
     const targetSession = this.findMatchingSession(envelope.command);
+    if (Number.isInteger(envelope.command.targetTabIndex) && !targetSession) {
+      throw new Error(`No browser tab matches the requested tab index: ${envelope.command.targetTabIndex}`);
+    }
     const browserConnection =
       (targetSession?.connectionId ? this.browserConnections.get(targetSession.connectionId) : null) ??
       this.findFallbackBrowserConnection();
@@ -406,7 +409,28 @@ export class BrowserSessionStore {
   }
 
   findMatchingSession(command) {
-    const sessions = [...this.sessions.values()].filter((session) => isFreshSession(session));
+    const sessions = [...this.sessions.values()].filter((session) => isFreshSession(session)).sort(compareSessions);
+
+    if (Number.isInteger(command?.targetTabIndex)) {
+      const indexedSession = sessions[command.targetTabIndex - 1] ?? null;
+      if (!indexedSession) {
+        return null;
+      }
+
+      const indexedUrl = indexedSession.page?.url ?? null;
+      if (Number.isInteger(command.targetTabId) && indexedSession.tabId !== command.targetTabId) {
+        return null;
+      }
+      if (command.targetUrl && indexedUrl !== command.targetUrl) {
+        return null;
+      }
+      if (command.targetUrlContains && !indexedUrl?.includes(command.targetUrlContains)) {
+        return null;
+      }
+
+      return indexedSession;
+    }
+
     const matching = sessions.filter((session) =>
       doesCommandMatchClaimant(command, {
         tabId: session.tabId,
@@ -416,7 +440,7 @@ export class BrowserSessionStore {
       }),
     );
 
-    return matching.sort(compareSessions)[0] ?? null;
+    return matching[0] ?? null;
   }
 
   findFallbackBrowserConnection() {

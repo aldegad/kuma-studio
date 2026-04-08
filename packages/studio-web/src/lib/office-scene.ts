@@ -1,4 +1,4 @@
-import teamData from "../../../shared/team.json";
+import { teamData } from "./team-schema";
 import { KUMA_TEAM } from "../types/agent";
 import type { Agent } from "../types/agent";
 import type { OfficeCharacter, OfficeFurniture, OfficeLayoutSnapshot, OfficeScene } from "../types/office";
@@ -10,40 +10,58 @@ import type { OfficeCharacter, OfficeFurniture, OfficeLayoutSnapshot, OfficeScen
 interface TeamZoneConfig {
   origin: { x: number; y: number };
   cols: number;
+  hasSofa: boolean;
+  zoneColor: string;
 }
-
-const TEAM_ZONE_LAYOUT: Record<string, TeamZoneConfig> = {
-  management: { origin: { x: 830, y: 100 }, cols: 2 },
-  dev:        { origin: { x: 200, y: 580 }, cols: 3 },
-  analytics:  { origin: { x: 1350, y: 580 }, cols: 2 },
-  strategy:   { origin: { x: 750, y: 1250 }, cols: 3 },
-};
 
 const DESK_SPACING = { x: 220, y: 180 };
 const SOFA_GAP_Y = 70;
-
-// Teams that get a sofa
-const SOFA_TEAMS = ["management", "dev", "analytics", "strategy"];
+const WORKING_POSITION_OFFSET = { x: 28, y: 18 };
+const WORKING_POSITION_JITTER = { x: 6, y: 4 };
+const IDLE_SOFA_ORIGIN_OFFSET_Y = 12;
+const IDLE_BASE_RADIUS = 92;
+const IDLE_RADIUS_STEP = 24;
+const IDLE_MIN_GAP = 70;
+const SOFA_EXCLUSION_RADIUS = { x: 92, y: 60 };
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+const DEFAULT_TEAM_ZONE_CONFIG: TeamZoneConfig = {
+  origin: { x: 220, y: 160 },
+  cols: 2,
+  hasSofa: true,
+  zoneColor: "rgba(107, 114, 128, 0.04)",
+};
 
 // ---------------------------------------------------------------------------
 // Scene member data
 // ---------------------------------------------------------------------------
 
-const SCENE_TEAM_MEMBERS = teamData.members.map((member) => ({
+const OFFICE_TEAM_MEMBERS = teamData.members.map((member) => ({
   ...member,
   id: member.id,
   parentId: member.parentId ?? null,
 }));
 
+const TEAM_CONFIG_BY_ID = new Map<string, TeamZoneConfig>(
+  teamData.teams.map((team) => [
+    team.id,
+    {
+      origin: team.office.origin,
+      cols: team.office.cols,
+      hasSofa: team.office.hasSofa,
+      zoneColor: team.office.zoneColor,
+    },
+  ]),
+);
+const SOFA_TEAM_IDS = teamData.teams.filter((team) => team.office.hasSofa).map((team) => team.id);
 const TEAM_ORDER_INDEX = new Map(teamData.teams.map((team, index) => [team.id, index]));
-const MEMBER_ORDER_INDEX = new Map(SCENE_TEAM_MEMBERS.map((member, index) => [member.id, index]));
+const MEMBER_ORDER_INDEX = new Map(OFFICE_TEAM_MEMBERS.map((member, index) => [member.id, index]));
 
 // ---------------------------------------------------------------------------
 // Dynamic position computation
 // ---------------------------------------------------------------------------
 
 /** Group members by team */
-function groupByTeam(members: typeof SCENE_TEAM_MEMBERS) {
+function groupByTeam(members: typeof OFFICE_TEAM_MEMBERS) {
   const groups = new Map<string, typeof members>();
   for (const member of members) {
     const list = groups.get(member.team) ?? [];
@@ -53,9 +71,13 @@ function groupByTeam(members: typeof SCENE_TEAM_MEMBERS) {
   return groups;
 }
 
+function getTeamZoneConfig(teamId: string): TeamZoneConfig {
+  return TEAM_CONFIG_BY_ID.get(teamId) ?? DEFAULT_TEAM_ZONE_CONFIG;
+}
+
 /** Compute desk position for a member within their team zone */
 function computeDeskPosition(teamId: string, indexInTeam: number): { x: number; y: number } {
-  const config = TEAM_ZONE_LAYOUT[teamId] ?? TEAM_ZONE_LAYOUT.dev;
+  const config = getTeamZoneConfig(teamId);
   const col = indexInTeam % config.cols;
   const row = Math.floor(indexInTeam / config.cols);
   return {
@@ -66,7 +88,7 @@ function computeDeskPosition(teamId: string, indexInTeam: number): { x: number; 
 
 /** Compute sofa center position for a team */
 function computeSofaCenter(teamId: string, memberCount: number): { x: number; y: number } {
-  const config = TEAM_ZONE_LAYOUT[teamId] ?? TEAM_ZONE_LAYOUT.dev;
+  const config = getTeamZoneConfig(teamId);
   const rows = Math.ceil(memberCount / config.cols);
   return {
     x: config.origin.x + (config.cols - 1) * DESK_SPACING.x / 2,
@@ -74,11 +96,96 @@ function computeSofaCenter(teamId: string, memberCount: number): { x: number; y:
   };
 }
 
+function getMemberStableHash(memberId: string): number {
+  return memberId.split("").reduce((sum, char, index) => sum + char.charCodeAt(0) * (index + 1), 0);
+}
+
+function distanceBetween(
+  left: { x: number; y: number },
+  right: { x: number; y: number },
+): number {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
+
+function isInsideSofaExclusionZone(
+  point: { x: number; y: number },
+  sofaCenter: { x: number; y: number },
+): boolean {
+  const dx = (point.x - sofaCenter.x) / SOFA_EXCLUSION_RADIUS.x;
+  const dy = (point.y - sofaCenter.y) / SOFA_EXCLUSION_RADIUS.y;
+  return dx * dx + dy * dy < 1;
+}
+
+function computeWorkingPosition(
+  memberId: string,
+  deskAnchor: { x: number; y: number },
+): { x: number; y: number } {
+  const hash = getMemberStableHash(memberId);
+  const jitterX = ((hash % 3) - 1) * WORKING_POSITION_JITTER.x;
+  const jitterY = ((Math.floor(hash / 3) % 3) - 1) * WORKING_POSITION_JITTER.y;
+
+  return {
+    x: deskAnchor.x + WORKING_POSITION_OFFSET.x + jitterX,
+    y: deskAnchor.y + WORKING_POSITION_OFFSET.y + jitterY,
+  };
+}
+
+function buildIdleScatterPositions(
+  sofaCenter: { x: number; y: number },
+  teamMemberIds: string[],
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  const orderedMemberIds = teamMemberIds
+    .slice()
+    .sort((left, right) => (MEMBER_ORDER_INDEX.get(left) ?? 0) - (MEMBER_ORDER_INDEX.get(right) ?? 0));
+  const scatterOrigin = {
+    x: sofaCenter.x,
+    y: sofaCenter.y + IDLE_SOFA_ORIGIN_OFFSET_Y,
+  };
+
+  for (const [index, memberId] of orderedMemberIds.entries()) {
+    const hash = getMemberStableHash(memberId);
+    let angle = -Math.PI / 2 + index * GOLDEN_ANGLE + ((hash % 11) - 5) * 0.04;
+    let radius = IDLE_BASE_RADIUS + Math.floor(index / 5) * IDLE_RADIUS_STEP + (hash % 9);
+    let candidate = {
+      x: scatterOrigin.x + Math.cos(angle) * radius,
+      y: scatterOrigin.y + Math.sin(angle) * Math.max(radius * 0.72, 62),
+    };
+
+    let attempts = 0;
+    while (attempts < 18) {
+      const overlappingMember = Array.from(positions.values()).find(
+        (position) => distanceBetween(position, candidate) < IDLE_MIN_GAP,
+      );
+      const onSofa = isInsideSofaExclusionZone(candidate, sofaCenter);
+
+      if (!overlappingMember && !onSofa) {
+        break;
+      }
+
+      angle += 0.42;
+      radius += 10;
+      candidate = {
+        x: scatterOrigin.x + Math.cos(angle) * radius,
+        y: scatterOrigin.y + Math.sin(angle) * Math.max(radius * 0.72, 62),
+      };
+      attempts += 1;
+    }
+
+    positions.set(memberId, candidate);
+  }
+
+  return positions;
+}
+
 // ---------------------------------------------------------------------------
 // Build desk & sofa position maps (computed once from team data)
 // ---------------------------------------------------------------------------
 
-const teamGroups = groupByTeam(SCENE_TEAM_MEMBERS);
+const teamGroups = groupByTeam(OFFICE_TEAM_MEMBERS);
+const TEAM_MEMBER_IDS_BY_TEAM = Object.fromEntries(
+  Array.from(teamGroups.entries()).map(([teamId, members]) => [teamId, members.map((member) => member.id)]),
+) as Record<string, string[]>;
 
 /** Member ID → desk position */
 export const DESK_POSITIONS: Record<string, { x: number; y: number }> = {};
@@ -91,7 +198,7 @@ for (const [teamId, members] of teamGroups) {
     DESK_POSITIONS[member.id] = computeDeskPosition(teamId, index);
   });
 
-  if (SOFA_TEAMS.includes(teamId)) {
+  if (getTeamZoneConfig(teamId).hasSofa) {
     SOFA_POSITIONS[teamId] = computeSofaCenter(teamId, members.length);
   }
 }
@@ -106,6 +213,24 @@ export const TEAM_POSITIONS: Record<string, { x: number; y: number }> = { ...DES
 // Auto-positioning: working → desk, idle → sofa scatter
 // ---------------------------------------------------------------------------
 
+function getIdleTeamMemberIds(
+  team: string,
+  memberId: string,
+  teamMemberIdsByTeam: Record<string, string[]>,
+): string[] {
+  const fullTeamMemberIds = TEAM_MEMBER_IDS_BY_TEAM[team];
+  if (Array.isArray(fullTeamMemberIds) && fullTeamMemberIds.length > 0) {
+    return fullTeamMemberIds;
+  }
+
+  const scopedTeamMemberIds = teamMemberIdsByTeam[team];
+  if (Array.isArray(scopedTeamMemberIds) && scopedTeamMemberIds.length > 0) {
+    return scopedTeamMemberIds.includes(memberId) ? scopedTeamMemberIds : [...scopedTeamMemberIds, memberId];
+  }
+
+  return [memberId];
+}
+
 /** Get the target position for a character based on their current state.
  *  Accepts optional project-specific position maps for per-project offices. */
 export function getAutoPosition(
@@ -114,9 +239,11 @@ export function getAutoPosition(
   team: string,
   deskPos: Record<string, { x: number; y: number }> = DESK_POSITIONS,
   sofaPos: Record<string, { x: number; y: number }> = SOFA_POSITIONS,
+  teamMemberIdsByTeam: Record<string, string[]> = TEAM_MEMBER_IDS_BY_TEAM,
 ): { x: number; y: number } | null {
   if (state === "working" || state === "thinking") {
-    return deskPos[memberId] ?? null;
+    const deskAnchor = deskPos[memberId];
+    return deskAnchor ? computeWorkingPosition(memberId, deskAnchor) : null;
   }
 
   if (state === "idle" || state === "completed") {
@@ -125,14 +252,9 @@ export function getAutoPosition(
       // Unknown team — stay at desk
       return deskPos[memberId] ?? null;
     }
-    // Scatter around sofa based on member ID hash
-    const hash = memberId.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-    const angle = (hash % 6) * (Math.PI / 3);
-    const radius = 40 + (hash % 30);
-    return {
-      x: sofaCenter.x + Math.cos(angle) * radius,
-      y: sofaCenter.y + Math.sin(angle) * radius - 20,
-    };
+    const teamMemberIds = getIdleTeamMemberIds(team, memberId, teamMemberIdsByTeam);
+    const scatterPositions = buildIdleScatterPositions(sofaCenter, teamMemberIds);
+    return scatterPositions.get(memberId) ?? deskPos[memberId] ?? null;
   }
 
   return null;
@@ -143,7 +265,7 @@ export function getAutoPosition(
 // ---------------------------------------------------------------------------
 
 /** Build furniture list dynamically based on team members */
-export function buildDynamicFurniture(members: typeof SCENE_TEAM_MEMBERS = SCENE_TEAM_MEMBERS): OfficeFurniture[] {
+export function buildDynamicFurniture(members: typeof OFFICE_TEAM_MEMBERS = OFFICE_TEAM_MEMBERS): OfficeFurniture[] {
   const furniture: OfficeFurniture[] = [];
   const groups = groupByTeam(members);
 
@@ -161,10 +283,12 @@ export function buildDynamicFurniture(members: typeof SCENE_TEAM_MEMBERS = SCENE
   }
 
   // Generate 1 sofa per team
-  for (const teamId of SOFA_TEAMS) {
+  for (const teamId of SOFA_TEAM_IDS) {
     const teamMembers = groups.get(teamId);
     if (!teamMembers || teamMembers.length === 0) continue;
-    const pos = computeSofaCenter(teamId, teamMembers.length);
+    // Sofas are shared team furniture, so their anchors stay fixed even when
+    // a project view filters the visible member subset.
+    const pos = SOFA_POSITIONS[teamId] ?? computeSofaCenter(teamId, teamMembers.length);
     furniture.push({
       id: `sofa-${teamId}`,
       type: "sofa",
@@ -200,12 +324,18 @@ function getOverflowPosition(index: number): { x: number; y: number } {
 }
 
 export function buildDefaultOfficeCharacters(team: Agent[] = KUMA_TEAM): OfficeCharacter[] {
-  return team.map((agent, index) => ({
-    ...agent,
-    position: TEAM_POSITIONS[agent.id] ?? getOverflowPosition(index),
-    spriteSheet: "",
-    image: agent.image,
-  }));
+  return team.map((agent, index) => {
+    // Idle agents start at sofa scatter positions, not desks
+    const autoPos = agent.state === "idle" || agent.state === "completed"
+      ? getAutoPosition(agent.id, agent.state, agent.team)
+      : null;
+    return {
+      ...agent,
+      position: autoPos ?? TEAM_POSITIONS[agent.id] ?? getOverflowPosition(index),
+      spriteSheet: "",
+      image: agent.image,
+    };
+  });
 }
 
 export const DEFAULT_OFFICE_CHARACTERS: OfficeCharacter[] = buildDefaultOfficeCharacters();
@@ -256,32 +386,22 @@ export interface TeamZone {
   h: number;
 }
 
-const TEAM_ZONE_COLORS: Record<string, string> = {
-  management: "rgba(217, 119, 6, 0.04)",
-  dev: "rgba(59, 130, 246, 0.05)",
-  analytics: "rgba(249, 115, 22, 0.05)",
-  strategy: "rgba(34, 197, 94, 0.05)",
-};
-
-function buildTeamZonesForMembers(members: typeof SCENE_TEAM_MEMBERS): TeamZone[] {
+function buildTeamZonesForMembers(members: typeof OFFICE_TEAM_MEMBERS): TeamZone[] {
   const groups = groupByTeam(members);
   const zones: TeamZone[] = [];
 
   for (const [teamId, teamMembers] of groups) {
-    const config = TEAM_ZONE_LAYOUT[teamId];
-    if (!config) continue;
-
+    const config = getTeamZoneConfig(teamId);
     const rows = Math.ceil(teamMembers.length / config.cols);
-    const hasSofa = SOFA_TEAMS.includes(teamId);
     const pad = 60;
 
     zones.push({
       team: teamId,
-      color: TEAM_ZONE_COLORS[teamId] ?? "rgba(107, 114, 128, 0.04)",
+      color: config.zoneColor,
       x: config.origin.x - pad,
       y: config.origin.y - pad,
       w: (config.cols - 1) * DESK_SPACING.x + 200 + pad * 2,
-      h: (rows - 1) * DESK_SPACING.y + 144 + (hasSofa ? SOFA_GAP_Y + 144 : 0) + pad * 2,
+      h: (rows - 1) * DESK_SPACING.y + 144 + (config.hasSofa ? SOFA_GAP_Y + 144 : 0) + pad * 2,
     });
   }
 
@@ -289,7 +409,7 @@ function buildTeamZonesForMembers(members: typeof SCENE_TEAM_MEMBERS): TeamZone[
 }
 
 function buildTeamZones(): TeamZone[] {
-  return buildTeamZonesForMembers(SCENE_TEAM_MEMBERS);
+  return buildTeamZonesForMembers(OFFICE_TEAM_MEMBERS);
 }
 
 export const TEAM_ZONES: TeamZone[] = buildTeamZones();
@@ -302,6 +422,7 @@ export interface ProjectLayout {
   furniture: OfficeFurniture[];
   deskPositions: Record<string, { x: number; y: number }>;
   sofaPositions: Record<string, { x: number; y: number }>;
+  teamMemberIdsByTeam: Record<string, string[]>;
   teamZones: TeamZone[];
 }
 
@@ -309,19 +430,24 @@ export interface ProjectLayout {
  *  When memberIds is null/undefined, builds for ALL members (default view). */
 export function buildProjectLayout(memberIds?: string[] | null): ProjectLayout {
   const members = memberIds
-    ? SCENE_TEAM_MEMBERS.filter((m) => memberIds.includes(m.id))
-    : SCENE_TEAM_MEMBERS;
+    ? OFFICE_TEAM_MEMBERS.filter((m) => memberIds.includes(m.id))
+    : OFFICE_TEAM_MEMBERS;
 
   const groups = groupByTeam(members);
-  const deskPositions: Record<string, { x: number; y: number }> = {};
-  const sofaPositions: Record<string, { x: number; y: number }> = {};
+  const deskPositions: Record<string, { x: number; y: number }> = { ...DESK_POSITIONS };
+  const sofaPositions: Record<string, { x: number; y: number }> = { ...SOFA_POSITIONS };
+  const teamMemberIdsByTeam = Object.fromEntries(
+    Object.entries(TEAM_MEMBER_IDS_BY_TEAM).map(([teamId, teamMembers]) => [teamId, [...teamMembers]]),
+  ) as Record<string, string[]>;
 
   for (const [teamId, teamMembers] of groups) {
     teamMembers.forEach((member, index) => {
       deskPositions[member.id] = computeDeskPosition(teamId, index);
     });
-    if (SOFA_TEAMS.includes(teamId) && teamMembers.length > 0) {
-      sofaPositions[teamId] = computeSofaCenter(teamId, teamMembers.length);
+    if (getTeamZoneConfig(teamId).hasSofa && teamMembers.length > 0) {
+      // Use full-team sofa positions so idle characters always go to the correct
+      // rest area regardless of which project view is active.
+      sofaPositions[teamId] = SOFA_POSITIONS[teamId] ?? computeSofaCenter(teamId, teamMembers.length);
     }
   }
 
@@ -329,6 +455,7 @@ export function buildProjectLayout(memberIds?: string[] | null): ProjectLayout {
     furniture: buildDynamicFurniture(members),
     deskPositions,
     sofaPositions,
+    teamMemberIdsByTeam,
     teamZones: buildTeamZonesForMembers(members),
   };
 }
@@ -338,6 +465,9 @@ export const DEFAULT_PROJECT_LAYOUT: ProjectLayout = {
   furniture: DEFAULT_OFFICE_FURNITURE,
   deskPositions: { ...DESK_POSITIONS },
   sofaPositions: { ...SOFA_POSITIONS },
+  teamMemberIdsByTeam: Object.fromEntries(
+    Object.entries(TEAM_MEMBER_IDS_BY_TEAM).map(([teamId, teamMembers]) => [teamId, [...teamMembers]]),
+  ) as Record<string, string[]>,
   teamZones: TEAM_ZONES,
 };
 
@@ -351,7 +481,7 @@ const TEAM_HIERARCHY_COLORS: Record<string, { lead: string; member: string }> = 
   strategy: { lead: "rgba(34, 197, 94, 0.15)", member: "rgba(34, 197, 94, 0.1)" },
 };
 
-export const HIERARCHY_LINES: { from: string; to: string; color: string }[] = SCENE_TEAM_MEMBERS
+export const HIERARCHY_LINES: { from: string; to: string; color: string }[] = OFFICE_TEAM_MEMBERS
   .filter((member) => member.parentId != null)
   .sort((left, right) => {
     const leadPriority = (left.nodeType === "team" ? 0 : 1) - (right.nodeType === "team" ? 0 : 1);
@@ -424,18 +554,21 @@ function createAnimalFallback(animal: string, used: Set<string>): string {
 
 export const ANIMAL_FALLBACKS: Record<string, string> = (() => {
   const used = new Set<string>();
-  const animals = Array.from(new Set(SCENE_TEAM_MEMBERS.map((member) => member.animal.en)));
+  const animals = Array.from(new Set(OFFICE_TEAM_MEMBERS.map((member) => member.animal.en)));
   return Object.fromEntries(
     animals.map((animal) => [animal, createAnimalFallback(animal, used)]),
   );
 })();
 
 /** Sofa team label lookup (for rendering labels on sofa furniture) */
-export const SOFA_TEAM_LABELS: Record<string, string> = {
-  dev: "개발팀 휴게실",
-  analytics: "분석팀 휴게실",
-  strategy: "전략팀 휴게실",
-};
+export const SOFA_TEAM_LABELS: Record<string, string> = Object.fromEntries(
+  teamData.teams
+    .filter((team) => team.office.hasSofa)
+    .map((team) => [
+    team.id,
+    `${team.name.ko}${team.id === "system" ? " 라운지" : " 휴게실"}`,
+  ]),
+);
 
 /** Desk member info lookup (for rendering name plates on desk furniture) */
 const TEAM_NAME_KO_MAP: Record<string, string> = Object.fromEntries(
@@ -443,7 +576,7 @@ const TEAM_NAME_KO_MAP: Record<string, string> = Object.fromEntries(
 );
 
 export const DESK_MEMBER_INFO: Record<string, { name: string; teamName: string; emoji: string }> = Object.fromEntries(
-  SCENE_TEAM_MEMBERS.map((member) => [
+  OFFICE_TEAM_MEMBERS.map((member) => [
     member.id,
     { name: member.name.ko, teamName: TEAM_NAME_KO_MAP[member.team] ?? member.team, emoji: member.emoji },
   ]),

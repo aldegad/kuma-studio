@@ -1,10 +1,22 @@
 export type PlanStatus =
   | "draft"
+  | "active"
   | "in_progress"
+  | "hold"
   | "blocked"
   | "completed"
   | "archived"
+  | "failed"
   | "error"
+  | (string & {});
+
+export type PlanStatusColor =
+  | "blue"
+  | "yellow"
+  | "orange"
+  | "green"
+  | "red"
+  | "gray"
   | (string & {});
 
 export interface PlanWarning {
@@ -32,6 +44,7 @@ export interface Plan {
   project: string | null;
   title: string;
   status: PlanStatus;
+  statusColor: PlanStatusColor;
   created: string | null;
   body: string;
   sections: PlanSection[];

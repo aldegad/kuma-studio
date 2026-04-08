@@ -15,8 +15,8 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""')
 # 공용 규칙: cmux browser 명령 실행은 누구든 차단
 # 주의: cmux send 안의 메시지 텍스트에 "cmux browser"가 포함된 경우는 통과시켜야 함
 if echo "$cmd" | grep -qE '^\s*cmux\s+browser'; then
-  echo '{"continue": false, "stopReason": "cmux browser 사용 금지. 대안: 워커에게 Playwright headless 스크린샷 위임. 예: ~/.kuma/cmux/kuma-cmux-send-tui.sh surface:N \"npx playwright screenshot --headless URL /tmp/output.png\". 멈추지 말고 대안을 즉시 실행할 것."}'
-  exit 0
+  echo "⚠️ cmux browser 사용 금지. 대안: 워커에게 Playwright headless 스크린샷 위임. 예: ~/.kuma/cmux/kuma-cmux-send-tui.sh surface:N \"npx playwright screenshot --headless URL /tmp/output.png\". 즉시 대안을 실행할 것."
+  exit 2
 fi
 
 # Workers are spawned with KUMA_ROLE=worker — let them through (cmux browser 제외)
@@ -53,5 +53,6 @@ if echo "$cmd" | grep -qE '^\s*(cat|ls|echo) '; then
   exit 0
 fi
 
-# 그 외 전부 차단
-echo '{"continue": false, "stopReason": "쿠마는 이 명령 직접 실행 금지. 대안: git/kill/chmod → cmux send로 쭈니(surface:2)에게 위임. node/npm → cmux send로 워커에게 위임. 코드 수정 → Read/Edit 도구 또는 워커 위임. 멈추지 말고 대안을 즉시 실행할 것."}'
+# 그 외 전부 차단 — exit 2 (warn): 차단하되 Claude가 죽지 않고 대안 실행 가능
+echo "⚠️ 쿠마는 이 명령 직접 실행 금지. 대안: git/kill/chmod → cmux send로 쭈니(surface:2)에게 위임. node/npm → cmux send로 워커에게 위임. 코드 수정 → Read/Edit 도구 또는 워커 위임. 즉시 대안을 실행할 것."
+exit 2

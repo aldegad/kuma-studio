@@ -1,6 +1,8 @@
 # Claude Workflow
 
-- `npm run kuma-studio:serve` starts the daemon server on port 4312.
+- `npm run server:reload` is the one standard way to start or restart the daemon server on port 4312.
+- `npm run server:start` exists as the raw non-reloading entrypoint for scripts, but human/operator workflows should use `server:reload`.
+- `npm run kuma-studio:serve` is kept only as a compatibility alias to `server:reload`.
 - `npm run kuma-studio:get-selection` reads the latest browser selection.
 - `npm run kuma-studio:set-job-status -- --status in_progress --message "..."` updates a job card.
 - `npm run kuma-studio:dashboard` opens the studio dashboard in a browser.
@@ -17,6 +19,7 @@
 
 ## Conventions
 
+- Server boot/restart is standardized on `npm run server:reload`.
 - Server code uses `.mjs` (ESM).
 - Frontend code uses TypeScript (`.ts`, `.tsx`).
 - Browser extension is vanilla JS, no build step.

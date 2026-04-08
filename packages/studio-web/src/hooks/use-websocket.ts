@@ -3,6 +3,8 @@ import { fetchJobCards, fetchTeamStatus } from "../lib/api";
 import { useWsStore } from "../stores/use-ws-store";
 import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
+import { useTeamConfigStore } from "../stores/use-team-config-store";
+import { getAutoPosition } from "../lib/office-scene";
 import {
   extractTeamStatusSnapshotFromWsMessage,
   useTeamStatusStore,
@@ -10,6 +12,7 @@ import {
 } from "../stores/use-team-status-store";
 import type { AgentState } from "../types/agent";
 import type { JobCard } from "../types/job-card";
+import type { PlansSnapshot } from "../types/plan";
 
 interface StudioEvent {
   type: "kuma-studio:event";
@@ -22,19 +25,44 @@ interface StudioEvent {
     | { kind: "office-layout-update"; layout: import("../types/office").OfficeLayoutSnapshot };
 }
 
+interface PlansUpdateEvent {
+  type: "kuma-studio:plans-update";
+  snapshot: PlansSnapshot;
+}
+
 /** Sync team-status snapshot → office character states */
 function syncTeamStatusToOffice(snapshot: TeamStatusSnapshot) {
-  const { scene, updateCharacterState } = useOfficeStore.getState();
-  const characterStates = new Map(
-    scene.characters.map((c) => [c.id, { state: c.state, task: c.task }] as const),
+  const { scene, updateCharacterState, draggedIds, activeLayout } = useOfficeStore.getState();
+  const characterMap = new Map(
+    scene.characters.map((c) => [c.id, c] as const),
   );
 
   for (const project of snapshot.projects) {
     for (const member of project.members) {
-      const current = characterStates.get(member.id);
+      const current = characterMap.get(member.id);
       if (!current) continue;
-      // Only update if state or task actually changed
-      if (current.state !== member.state || current.task !== member.task) {
+
+      const stateChanged = current.state !== member.state || current.task !== member.task;
+      const hasDragFlag = draggedIds.has(member.id);
+
+      // Also detect position mismatch: idle characters stuck at desk on page load.
+      // getAutoPosition is deterministic so this is cheap to compute.
+      let positionMismatch = false;
+      if (!stateChanged && !hasDragFlag) {
+        const expected = getAutoPosition(
+          member.id,
+          member.state as AgentState,
+          current.team,
+          activeLayout.deskPositions,
+          activeLayout.sofaPositions,
+          activeLayout.teamMemberIdsByTeam,
+        );
+        if (expected && (current.position.x !== expected.x || current.position.y !== expected.y)) {
+          positionMismatch = true;
+        }
+      }
+
+      if (stateChanged || hasDragFlag || positionMismatch) {
         updateCharacterState(member.id, member.state as AgentState, member.task);
       }
     }
@@ -43,9 +71,10 @@ function syncTeamStatusToOffice(snapshot: TeamStatusSnapshot) {
 
 export function useWebSocket() {
   const { connect, ws, status } = useWsStore();
-  const { upsertJob, setJobs, setStats, addTokenUsage, setGitActivity } = useDashboardStore();
-  const { updateCharacterState, applyLayout } = useOfficeStore();
+  const { upsertJob, setJobs, setStats, addTokenUsage, setGitActivity, setPlans } = useDashboardStore();
+  const { updateCharacterState, applyLayout, syncCharactersFromTeam } = useOfficeStore();
   const { setProjects } = useTeamStatusStore();
+  const fetchTeamConfigFromStore = useTeamConfigStore((s) => s.fetch);
 
   useEffect(() => {
     connect();
@@ -103,7 +132,24 @@ export function useWebSocket() {
           return;
         }
 
+        if ((payload as { type?: string }).type === "kuma-studio:team-config-changed") {
+          void (async () => {
+            try {
+              const agents = await fetchTeamConfigFromStore();
+              syncCharactersFromTeam(agents);
+            } catch {
+              // Leave the existing team config in place if refresh fails.
+            }
+          })();
+          return;
+        }
+
         const data = payload as StudioEvent;
+        if ((payload as PlansUpdateEvent).type === "kuma-studio:plans-update") {
+          setPlans((payload as PlansUpdateEvent).snapshot);
+          return;
+        }
+
         if (data.type !== "kuma-studio:event") return;
 
         const evt = data.event;
@@ -141,7 +187,7 @@ export function useWebSocket() {
     return () => {
       ws.removeEventListener("message", handleMessage);
     };
-  }, [ws, upsertJob, setStats, addTokenUsage, setGitActivity, updateCharacterState, applyLayout, setProjects]);
+  }, [ws, upsertJob, setStats, addTokenUsage, setGitActivity, setPlans, updateCharacterState, applyLayout, setProjects, fetchTeamConfigFromStore, syncCharactersFromTeam]);
 
   return { status };
 }

@@ -44,4 +44,56 @@ describe("browser-session-store", () => {
     assert.strictEqual(summary.extensionId, "abcdefghijklmnopabcdefghijklmnop");
     assert.strictEqual(summary.browserName, "chrome");
   });
+
+  it("resolves targetTabIndex against the sorted live tab list", () => {
+    const store = new BrowserSessionStore();
+    const now = Date.now();
+
+    store.registerHello(
+      "browser-1",
+      {
+        role: "browser",
+        extensionId: "abcdefghijklmnopabcdefghijklmnop",
+        extensionName: "Kuma Picker Bridge",
+        extensionVersion: "1.2.3",
+        browserName: "chrome",
+      },
+      () => {},
+    );
+
+    store.recordBrowserPresence("browser-1", {
+      activeTabId: 11,
+      source: "websocket:presence",
+      lastSeenAt: new Date(now).toISOString(),
+      visible: true,
+      focused: true,
+      page: {
+        url: "https://example.com/first",
+        pathname: "/first",
+        title: "First",
+      },
+      capabilities: ["run", "screenshot"],
+    });
+
+    store.recordBrowserPresence("browser-1", {
+      activeTabId: 22,
+      source: "websocket:presence",
+      lastSeenAt: new Date(now - 1_000).toISOString(),
+      visible: true,
+      focused: false,
+      page: {
+        url: "https://example.com/second",
+        pathname: "/second",
+        title: "Second",
+      },
+      capabilities: ["run", "screenshot"],
+    });
+
+    const matched = store.findMatchingSession({
+      targetTabIndex: 2,
+    });
+
+    assert.strictEqual(matched?.tabId, 22);
+    assert.strictEqual(matched?.page?.url, "https://example.com/second");
+  });
 });

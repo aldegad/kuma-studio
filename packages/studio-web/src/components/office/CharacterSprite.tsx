@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import teamData from "../../../../shared/team.json";
+import { flatTeamMembers } from "../../lib/team-schema";
 import type { OfficeCharacter } from "../../types/office";
 
 interface CharacterSpriteProps {
@@ -52,7 +52,7 @@ const PREFERRED_ANIMAL_ORDER = [
   "bee",
 ];
 
-const memberAnimalData = (teamData.members as TeamMemberSpriteData[]).reduce<Record<string, Pick<AnimalSpriteData, "emoji" | "codePoint">>>((acc, member) => {
+const memberAnimalData = (flatTeamMembers as TeamMemberSpriteData[]).reduce<Record<string, Pick<AnimalSpriteData, "emoji" | "codePoint">>>((acc, member) => {
   const animal = member.animal?.en;
   const emoji = member.emoji;
 

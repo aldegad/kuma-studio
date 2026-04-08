@@ -6,6 +6,7 @@ interface PanelPosition {
 }
 
 interface FloatingPanelProps {
+  panelId?: string;
   title: string;
   children: ReactNode;
   className?: string;
@@ -17,6 +18,7 @@ interface FloatingPanelProps {
 }
 
 export function FloatingPanel({
+  panelId,
   title,
   children,
   className = "",
@@ -30,6 +32,7 @@ export function FloatingPanel({
     <div
       role="group"
       aria-label={title}
+      data-panel-id={panelId}
       onMouseDown={onMouseDown}
       onClickCapture={onClickCapture}
       className={`pointer-events-auto absolute left-0 top-0 max-w-[calc(100vw-2rem)] ${className}`}

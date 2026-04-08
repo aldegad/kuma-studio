@@ -7,6 +7,7 @@ const DEFAULT_PANEL_X = 16;
 const DEFAULT_PANEL_Y = 56;
 const DEFAULT_PANEL_VERTICAL_STEP = 148;
 const DRAG_THRESHOLD_PX = 5;
+const VIEWPORT_EDGE_MARGIN = 8;
 
 export interface PanelPosition {
   x: number;
@@ -102,6 +103,21 @@ function getViewportSize(): ViewportSize {
   return {
     width: window.innerWidth,
     height: window.innerHeight,
+  };
+}
+
+function clampPositionToViewport(
+  position: PanelPosition,
+  containerWidth: number,
+  containerHeight: number,
+  panelWidth = 0,
+  panelHeight = 0,
+): PanelPosition {
+  const maxX = Math.max(0, containerWidth - Math.max(panelWidth, VIEWPORT_EDGE_MARGIN * 2));
+  const maxY = Math.max(0, containerHeight - Math.max(panelHeight, VIEWPORT_EDGE_MARGIN * 2));
+  return {
+    x: Math.max(0, Math.min(position.x, maxX)),
+    y: Math.max(0, Math.min(position.y, maxY)),
   };
 }
 
@@ -251,6 +267,55 @@ export function DraggableDashboard({
     });
   }, [visiblePanels, visibleSignature]);
 
+  // Clamp panels into viewport on mount and on every resize.
+  // Shrink → panels are pushed inward.  Grow → panels return to their
+  // stored (intended) positions if they now fit.  We always re-clamp from
+  // localStorage so that resize-only clamping is reversible.
+  useEffect(() => {
+    const clampAllPanels = () => {
+      if (dragSessionRef.current) return;
+      const container = containerRef.current;
+      if (!container) return;
+
+      const { width: cw, height: ch } = container.getBoundingClientRect();
+      if (cw === 0 || ch === 0) return;
+
+      // Always start from STORED positions (user's intended positions),
+      // not the current possibly-clamped React state.
+      const stored = reconcilePositions(readStoredPositions(storageKey), visiblePanels);
+
+      setPositions((current) => {
+        let changed = false;
+        const next = { ...current };
+
+        for (const id of visibleIds) {
+          const intendedPos = stored[id];
+          if (!intendedPos) continue;
+          const el = container.querySelector<HTMLElement>(`[data-panel-id="${id}"]`);
+          const clamped = clampPositionToViewport(intendedPos, cw, ch, el?.offsetWidth ?? 0, el?.offsetHeight ?? 0);
+          if (clamped.x !== next[id]?.x || clamped.y !== next[id]?.y) {
+            next[id] = clamped;
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          positionsRef.current = next;
+          // Do NOT write to localStorage — keep user's intended positions intact
+        }
+        return changed ? next : current;
+      });
+    };
+
+    // Run once immediately so panels loaded from localStorage
+    // (saved at a larger viewport) are clamped on first paint.
+    clampAllPanels();
+
+    window.addEventListener("resize", clampAllPanels);
+    return () => window.removeEventListener("resize", clampAllPanels);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey, visibleSignature]);
+
   const stopDragging = useCallback(
     (persist: boolean) => {
       const dragSession = dragSessionRef.current;
@@ -299,10 +364,20 @@ export function DraggableDashboard({
     }
 
     const rect = container.getBoundingClientRect();
-    const nextPosition = {
+    const panelEl = container.querySelector<HTMLElement>(`[data-panel-id="${dragSession.id}"]`);
+    const panelWidth = panelEl?.offsetWidth ?? 0;
+    const panelHeight = panelEl?.offsetHeight ?? 0;
+    const rawPosition = {
       x: event.clientX - rect.left - dragSession.offsetX,
       y: event.clientY - rect.top - dragSession.offsetY,
     };
+    const nextPosition = clampPositionToViewport(
+      rawPosition,
+      rect.width,
+      rect.height,
+      panelWidth,
+      panelHeight,
+    );
 
     setPositions((currentPositions) => {
       const currentPosition = currentPositions[dragSession.id];
@@ -391,7 +466,7 @@ export function DraggableDashboard({
   return (
     <div
       ref={containerRef}
-      className="pointer-events-none absolute inset-0 z-30 overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-40 overflow-hidden max-[768px]:kuma-mobile-panels"
     >
       {visiblePanels.map((panel, index) => {
         const position = positions[panel.id] ?? resolveDefaultPosition(panel, index);
@@ -399,6 +474,7 @@ export function DraggableDashboard({
         return (
           <FloatingPanel
             key={panel.id}
+            panelId={panel.id}
             title={panel.title}
             className={panel.className}
             position={position}

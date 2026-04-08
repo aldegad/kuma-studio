@@ -25,6 +25,7 @@ interface DashboardState {
   setJobs: (jobs: JobCard[]) => void;
   addTokenUsage: (entry: TokenUsageEntry) => void;
   setGitActivity: (activity: GitActivitySnapshot) => void;
+  setPlans: (plans: PlansSnapshot) => void;
   fetchGitActivity: () => Promise<void>;
   fetchPlans: () => Promise<void>;
 }
@@ -94,6 +95,8 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     })),
 
   setGitActivity: (gitActivity) => set({ gitActivity }),
+
+  setPlans: (plans) => set({ plans, plansLoading: false, plansError: null }),
 
   fetchGitActivity: async () => {
     const gitActivity = await fetchGitActivitySnapshot();

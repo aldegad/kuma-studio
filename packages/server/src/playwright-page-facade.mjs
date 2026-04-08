@@ -825,15 +825,33 @@ export function createPage(client, state) {
       return result;
     },
     async reload(options = {}) {
-      const result = await client.send(
-        "page.reload",
-        {
-          bypassCache: options.bypassCache === true,
-        },
-        { timeoutMs: options.timeout },
-      );
-      updatePageState(state, result);
-      return result;
+      try {
+        const result = await client.send(
+          "page.reload",
+          {
+            bypassCache: options.bypassCache === true,
+          },
+          { timeoutMs: options.timeout },
+        );
+        updatePageState(state, result);
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!message.includes("Try page.goto() instead of page.reload() for stale connections") || !state.url) {
+          throw error;
+        }
+
+        const result = await client.send(
+          "page.goto",
+          {
+            url: state.url,
+            waitUntil: options.waitUntil ?? null,
+          },
+          { timeoutMs: options.timeout },
+        );
+        updatePageState(state, result);
+        return result;
+      }
     },
     url() {
       return state.url ?? null;

@@ -1,114 +1,14 @@
-# /dev-team — 🐺 개발팀 호출
+# /dev-team — 🐺 하울 오케스트레이션
 
-품앗이 기반 병렬 개발 스킬. 코드는 전부 Codex가 작성한다.
+canonical: `./.claude/skills/dev-team/skill.md`
 
-## 팀 구조
+이 스킬의 기준 문서는 `.claude/skills/dev-team/skill.md`다. 하울은 `kuma-cmux-send.sh`를 통해 뚝딱이 구현, 새미 리뷰, 밤토리 QA를 순차 오케스트레이션하고, 최종 `result` 파일과 `signal`만 쿠마에게 올린다.
 
-| 닉네임 | 동물 | 모델 | 역할 | 보유 스킬 |
-|------|------|------|------|----------|
-| 🐺 하울 | 늑대 (wolf) | `claude-opus-4-6` | PM. 작업 분해, 시그니처/제약사항 정의, 디스패치, 결과 취합. **코드 body 절대 금지** | 품앗이 오케스트레이션, Bash 게이트 검증 |
-| 🔨 뚝딱이 | 비버 (beaver) | `gpt-5.4-codex` | 구현. 병렬 다수 투입 (뚝딱이1, 뚝딱이2, 뚝딱이3...) | 코드 구현, 버그 수정, 리팩토링 |
-| 🦅 새미 | 독수리 (eagle) | `gpt-5.4-codex` | 비평가/리뷰어. 게이트 통과 후 코드 품질 검증 | 코드 리뷰, 품질 분석 |
-| 🦝 쿤 | 너구리 (raccoon) | `claude-opus-4-6` | 퍼블리셔. 그래픽 + HTML + CSS 디자인. 시각적 완성도 담당 | frontend-design, 나노바나나 (이미지 생성) |
-| 🦔 밤돌이 | 고슴도치 (hedgehog) | `claude-sonnet-4-6` | 빌드/배포/화면검증. 코드 수정 X | Kuma Picker, 빌드/배포, 디버깅 |
+핵심 규칙만 요약하면 아래와 같다.
 
-## 품앗이 워크플로우
-
-### Phase 1: 작업 분해 (하울)
-1. 작업을 **독립 실행 가능한 단위**로 분해
-2. 각 단위에 **시그니처 + 요구사항 + 제약사항**만 정의 (코드 body 금지)
-3. 공통 타입/인터페이스가 있으면 먼저 정의
-4. **디자인/퍼블리싱 작업은 쿤(Opus)에게**, **로직 구현은 뚝딱이(Codex)에게** 배분
-
-```
-## 시그니처
-export function generateToken(userId: string, role: string): string
-
-## 요구사항
-- jsonwebtoken 라이브러리 사용
-
-## 제약사항
-- 다른 JWT 라이브러리 금지
-```
-
-### Phase 2: 병렬 디스패치 (하울 → 뚝딱이들/쿤)
-- 독립 작업은 **동시에 `run_in_background: true`로 전부 스폰**
-- 의존성 있으면 라운드 분리: Round 1 완료 → Round 2 스폰
-- 디자인 → 코드 순서가 필요하면: 쿤 먼저 → 뚝딱이가 이어서
-
-### Phase 3: 검증 게이트 (하울, Bash)
-뚝딱이/쿤 결과 돌아오면 **토큰 안 쓰는 Bash 검증**:
-```bash
-# 파일 존재
-[ -f src/auth/token.ts ]
-# 타입 체크
-npx tsc --noEmit
-# 빌드
-npm run build
-# 필수 패턴 확인
-grep -q 'jsonwebtoken' src/auth/token.ts
-```
-- 게이트 실패 시 → 해당 워커에게 **실패 내용 + 수정 지시** 재위임
-
-### Phase 4: 통합 리뷰 (새미)
-- 모든 게이트 통과 후 새미가 **전체 코드 리뷰**
-- 리뷰 실패 시 → 해당 워커에게 재위임
-
-### Phase 5: 배포 (밤돌이)
-1. 빌드/배포 실행
-2. Kuma Picker 브라우저 검증
-3. 검증 실패 시 하울에게 보고
-
-## 작업 규모별 판단
-
-| 규모 | 방식 |
-|------|------|
-| 단일 파일/함수 | 뚝딱이 1명에게 위임 |
-| 2~3개 독립 작업 | 뚝딱이 2~3명 병렬 |
-| 디자인+코드 혼합 | 쿤 + 뚝딱이 병렬 |
-| 4개+ 독립 모듈 | 뚝딱이 다수 + 쿤 병렬 (품앗이 풀가동) |
-
-**어떤 규모든 코드는 뚝딱이(Codex)가, 디자인은 쿤(Opus)이 작성한다.** 하울은 시그니처/제약사항만.
-
-## 핵심 원칙
-
-> "코드를 주지 말고, 제약사항을 주고 게이트로 검증하라"
-
-- 하울이 instruction에 완성된 코드를 넣으면 토큰 낭비. 시그니처 + 제약사항 + 게이트로 충분
-- Bash 검증은 토큰을 안 쓰므로 최대한 활용
-- 워커에게 보내는 프롬프트는 짧고 명확하게
-- 시각적 완성도가 필요한 작업은 반드시 쿤을 거칠 것
-
-## 호출 방법
-
-**Codex 워커 (뚝딱이, 새미) → tmux pane 스폰**
-```bash
-# 뚝딱이 스폰 (Codex, gpt-5.4 fast high)
-PANE_ID=$(bash ~/.kuma/tmux/kuma-tmux-spawn.sh "뚝딱이1" "codex" "$WORK_DIR")
-tmux send-keys -t $PANE_ID "작업 프롬프트" Enter
-
-# 새미 스폰 (Codex, 리뷰용)
-PANE_ID=$(bash ~/.kuma/tmux/kuma-tmux-spawn.sh "새미1" "codex" "$WORK_DIR")
-tmux send-keys -t $PANE_ID "리뷰 프롬프트" Enter
-
-# 결과 읽기
-tmux capture-pane -t $PANE_ID -p
-```
-
-**Claude 워커 → Agent tool (반드시 description에 팀원 이름 포함)**
-```
-# 쿤 퍼블리싱 (Opus)
-Agent(model: "opus", description: "쿤: [작업요약]", prompt: "You are 🦝 쿤 (frontend designer).\n\n[작업 내용]", run_in_background: true)
-
-# 밤돌이 검증/배포 (Sonnet)
-Agent(model: "sonnet", description: "밤돌이: [작업요약]", prompt: "You are 🦔 밤돌이 (build/deploy).\n\n[검증/배포 내용]", run_in_background: true)
-```
-
-**tmux 스폰은 하울(PM subagent) 또는 쭈니(CoS)가 실행한다.** 쿠마 메인쓰레드에서 직접 Bash 금지.
-
-## 쿠마(메인 쓰레드)가 직접 하는 것
-- 사용자 응답 (Discord reply 등)
-- 에이전트 결과 전달
-- 권한 필요 작업 (Write, Edit — 서브에이전트가 못 하는 것)
-- 병렬 에이전트 조율
-- **Bash 실행 금지** — 모든 Bash는 쭈니(CoS) 또는 하울(PM) subagent에게 위임
+1. 상위 작업은 `/tmp/kuma-tasks/{project}-{task-id}.task.md` frontmatter 형식으로 받는다.
+2. surface는 `/tmp/kuma-surfaces.json`에서 조회한다.
+3. 모든 전달은 `~/.kuma/cmux/kuma-cmux-send.sh`만 사용한다. raw `cmux send`는 금지다.
+4. 구현은 뚝딱이, 리뷰는 새미, QA는 밤토리로 고정한다.
+5. 실패 시 하울이 뚝딱이에게 재지시하고, 최종 PASS 후에만 `/tmp/kuma-results/{task-id}.result.md` 작성 + `cmux wait-for -S {project}-{task-id}-done` 실행한다. 쿠마가 `kuma-cmux-wait.sh`로 대기 중이면 결과는 vault에 자동 ingest된다.
+6. smoke test로 active surface를 확인할 때만 `kuma-cmux-send.sh --dry-run`을 쓴다.

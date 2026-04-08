@@ -423,6 +423,89 @@ body {
   background: linear-gradient(180deg, rgba(40, 35, 70, 0.85) 0%, rgba(30, 25, 55, 0.92) 100%);
 }
 
+/* -----------------------------------------------------------------------
+   Responsive breakpoints
+   ----------------------------------------------------------------------- */
+
+/* Tablet: ≤ 1024px */
+@media (max-width: 1024px) {
+  .game-hud-bar {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
+/* Mobile: ≤ 768px */
+@media (max-width: 768px) {
+  /* HUD bar compact */
+  .game-hud-bar {
+    padding: 0.25rem 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  /* Floating panels: switch from absolute drag to stacked scroll */
+  .kuma-mobile-panels {
+    position: fixed !important;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto !important;
+    z-index: 50;
+    max-height: 60vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: var(--panel-bg-strong);
+    border-top: 2px solid var(--panel-border);
+    backdrop-filter: blur(16px);
+    padding: 0.5rem;
+  }
+
+  .kuma-mobile-panels > * {
+    position: static !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Settings panel — fullscreen on mobile */
+  .kuma-settings-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
+    z-index: 60 !important;
+  }
+
+  /* Hide minimap on mobile */
+  [data-panel-id="minimap"] {
+    display: none !important;
+  }
+
+  /* Zoom controls compact */
+  .game-zoom-bar {
+    bottom: 0.5rem !important;
+    right: 0.5rem !important;
+    padding: 0.125rem 0.25rem;
+  }
+
+  .game-zoom-bar button {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
+/* Small mobile: ≤ 480px */
+@media (max-width: 480px) {
+  [data-panel-id="whiteboard"],
+  [data-panel-id="experiment"] {
+    display: none !important;
+  }
+}
+
 /* Ambient floating particles */
 @keyframes ambient-float {
   0% { transform: translateY(110vh) translateX(0); opacity: 0; }

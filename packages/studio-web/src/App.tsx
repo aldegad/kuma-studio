@@ -1,29 +1,28 @@
 import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import { StudioPage } from "./pages/StudioPage";
-import { fetchTeamMetadata } from "./lib/api";
 import { useOfficeStore } from "./stores/use-office-store";
-import { applyTeamMetadata } from "./types/agent";
+import { useTeamConfigStore } from "./stores/use-team-config-store";
 
 export default function App() {
   const syncCharactersFromTeam = useOfficeStore((state) => state.syncCharactersFromTeam);
+  const fetchTeamConfigFromStore = useTeamConfigStore((state) => state.fetch);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
-        const metadata = await fetchTeamMetadata();
+        const agents = await fetchTeamConfigFromStore();
         if (cancelled) return;
-        const nextTeam = applyTeamMetadata(metadata);
-        syncCharactersFromTeam(nextTeam);
+        syncCharactersFromTeam(agents);
       } catch {
-        // Keep the hardcoded fallback when the API is unavailable.
+        // Keep the build-time fallback when the API is unavailable.
       }
     })();
 
     return () => { cancelled = true; };
-  }, [syncCharactersFromTeam]);
+  }, [syncCharactersFromTeam, fetchTeamConfigFromStore]);
 
   return (
     <Routes>

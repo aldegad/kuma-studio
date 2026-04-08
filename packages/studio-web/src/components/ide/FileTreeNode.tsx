@@ -10,6 +10,8 @@ export interface FsNode {
   size?: number;
 }
 
+export type GitStatusMap = Record<string, "modified" | "added" | "deleted" | "renamed">;
+
 interface FileTreeNodeProps {
   node: FsNode;
   depth: number;
@@ -17,6 +19,8 @@ interface FileTreeNodeProps {
   onFileSelect: (path: string) => void;
   onLoadChildren: (path: string) => Promise<FsNode>;
   onDelete?: (path: string, name: string) => Promise<void>;
+  gitStatus?: GitStatusMap;
+  gitRoot?: string;
 }
 
 // --- SVG-style icon colors by extension ---
@@ -110,7 +114,41 @@ function TrashIcon() {
   );
 }
 
-export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren, onDelete }: FileTreeNodeProps) {
+// --- Git status badge ---
+const GIT_STATUS_STYLE: Record<string, { label: string; color: string }> = {
+  modified: { label: "M", color: "text-amber-500" },
+  added:    { label: "A", color: "text-emerald-500" },
+  deleted:  { label: "D", color: "text-red-500" },
+  renamed:  { label: "R", color: "text-sky-500" },
+};
+
+function getGitStatusForPath(
+  nodePath: string,
+  gitStatus: GitStatusMap | undefined,
+  gitRoot: string | undefined,
+): string | null {
+  if (!gitStatus || !gitRoot) return null;
+  // Convert absolute path to relative path from git root
+  const prefix = gitRoot.endsWith("/") ? gitRoot : gitRoot + "/";
+  const rel = nodePath.startsWith(prefix) ? nodePath.slice(prefix.length) : null;
+  if (!rel) return null;
+  return gitStatus[rel] ?? null;
+}
+
+function hasDirGitChanges(
+  nodePath: string,
+  gitStatus: GitStatusMap | undefined,
+  gitRoot: string | undefined,
+): boolean {
+  if (!gitStatus || !gitRoot) return false;
+  const prefix = gitRoot.endsWith("/") ? gitRoot : gitRoot + "/";
+  const dirRel = nodePath.startsWith(prefix) ? nodePath.slice(prefix.length) : null;
+  if (!dirRel) return false;
+  const dirPrefix = dirRel.endsWith("/") ? dirRel : dirRel + "/";
+  return Object.keys(gitStatus).some((key) => key.startsWith(dirPrefix));
+}
+
+export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren, onDelete, gitStatus, gitRoot }: FileTreeNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FsNode[] | null>(node.children ?? null);
   const [loading, setLoading] = useState(false);
@@ -121,6 +159,9 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
   const isSkipped = isDir && node.expandable === false;
   const isSelected = !isDir && selectedPath === node.path;
   const fileMeta = !isDir ? getFileMeta(node.name) : null;
+  const fileGitStatus = !isDir ? getGitStatusForPath(node.path, gitStatus, gitRoot) : null;
+  const dirHasChanges = isDir ? hasDirGitChanges(node.path, gitStatus, gitRoot) : false;
+  const gitStyle = fileGitStatus ? GIT_STATUS_STYLE[fileGitStatus] : null;
 
   const handleToggle = useCallback(async () => {
     if (!isDir) return;
@@ -201,10 +242,19 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
               <FileIcon color={fileMeta?.color || "text-stone-400"} />
             </>
           )}
-          <span className={`truncate ${isDir ? "font-medium text-stone-700" : "text-stone-600"}`}>
+          <span className={`truncate ${isDir ? "font-medium text-stone-700" : "text-stone-600"} ${gitStyle ? gitStyle.color : ""} ${dirHasChanges ? "text-amber-600" : ""}`}>
             {node.name}
           </span>
-          {!isDir && fileMeta && !confirmDelete && (
+          {/* Git status badge */}
+          {gitStyle && !confirmDelete && (
+            <span className={`shrink-0 text-[8px] font-mono font-black ${gitStyle.color}`}>
+              {gitStyle.label}
+            </span>
+          )}
+          {dirHasChanges && (
+            <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400 opacity-60" />
+          )}
+          {!isDir && fileMeta && !confirmDelete && !gitStyle && (
             <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-0 group-hover:opacity-60 transition-opacity`}>
               {fileMeta.label}
             </span>
@@ -277,6 +327,8 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
               onFileSelect={onFileSelect}
               onLoadChildren={onLoadChildren}
               onDelete={onDelete}
+              gitStatus={gitStatus}
+              gitRoot={gitRoot}
             />
           ))}
           {children.length === 0 && (

@@ -1,5 +1,5 @@
-import { resolve } from "node:path";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 export function printJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -11,7 +11,9 @@ export function writeScreenshotFile(filePath, dataUrl) {
     throw new Error("The browser screenshot result did not include a PNG data URL.");
   }
 
-  writeFileSync(resolve(filePath), Buffer.from(match[2], "base64"));
+  const resolvedFilePath = resolve(filePath);
+  mkdirSync(dirname(resolvedFilePath), { recursive: true });
+  writeFileSync(resolvedFilePath, Buffer.from(match[2], "base64"));
 }
 
 export function printScreenshotResult(file, result) {

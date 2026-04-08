@@ -51,4 +51,52 @@ describe("experiment-pipeline", () => {
     assert.strictEqual(cleaned.branch, null);
     assert.strictEqual(cleaned.worktree, null);
   });
+
+  it("embeds result summary and source links into the draft PR body", () => {
+    const calls = [];
+    const execFn = (command, args) => {
+      calls.push({ command, args });
+
+      if (command === "git" && args[0] === "symbolic-ref") {
+        return "refs/remotes/origin/main";
+      }
+
+      if (command === "gh") {
+        return "https://github.com/example/repo/pull/99";
+      }
+
+      return "";
+    };
+
+    const pipeline = createExperimentPipeline("/tmp/kuma-exp-pipeline", execFn);
+    const finalized = pipeline.finalize(
+      {
+        id: "exp-5678",
+        title: "Agent SDK rollout",
+        source: "ai-trend",
+        branch: "exp/agent-sdk-rollout",
+        worktree: "/tmp/worktree-agent-sdk",
+        pr_url: null,
+        researchQuestion: "이 SDK를 자동화 워크플로에 바로 붙일 수 있을까?",
+        resultSummary: "실험 결과 workflow orchestration path를 바로 연결할 수 있었다.",
+      },
+      {
+        sourceTrend: {
+          title: "OpenAI Agent SDK ships",
+          articleUrl: "https://example.com/agent-sdk",
+          feedUrl: "https://example.com/feed.xml",
+        },
+      },
+    );
+
+    assert.strictEqual(finalized.pr_url, "https://github.com/example/repo/pull/99");
+    assert.include(finalized.thread_draft, "실험 결과 workflow orchestration path를 바로 연결할 수 있었다.");
+    assert.include(finalized.thread_draft, "https://example.com/agent-sdk");
+
+    const ghCall = calls.find((entry) => entry.command === "gh");
+    const bodyIndex = ghCall.args.indexOf("--body");
+    assert.ok(bodyIndex >= 0);
+    assert.include(ghCall.args[bodyIndex + 1], "## Result Summary");
+    assert.include(ghCall.args[bodyIndex + 1], "https://example.com/agent-sdk");
+  });
 });

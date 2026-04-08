@@ -65,6 +65,21 @@ async function resolveTargetTab(message) {
     throw new Error(`No browser tab matches the requested URL fragment: ${targetUrlContains}`);
   }
 
+  const targetTabIndex =
+    typeof message?.tabIndex === "number"
+      ? message.tabIndex
+      : typeof message?.targetTabIndex === "number"
+        ? message.targetTabIndex
+        : Number.NaN;
+  if (Number.isInteger(targetTabIndex) && targetTabIndex >= 1) {
+    const matchingTabs = await queryMatchingTabs(() => true);
+    if (matchingTabs[targetTabIndex - 1]) {
+      return matchingTabs[targetTabIndex - 1];
+    }
+
+    throw new Error(`No browser tab matches the requested tab index: ${targetTabIndex}`);
+  }
+
   return queryActiveTab();
 }
 

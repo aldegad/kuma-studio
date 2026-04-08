@@ -1,0 +1,51 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-read <멤버이름> [--project <프로젝트>] [--lines N]
+EOF
+}
+
+[ $# -ge 1 ] || {
+  usage >&2
+  exit 1
+}
+
+MEMBER_QUERY="$1"
+shift
+
+PROJECT="$KUMA_DEFAULT_PROJECT"
+LINES=40
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT="${2:?project required}"
+      shift 2
+      ;;
+    --lines)
+      LINES="${2:?line count required}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+ensure_runtime_requirements
+
+MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
+SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$MEMBER_JSON")" || die "surface not found for $MEMBER_QUERY in project '$PROJECT'"
+WORKER_SURFACE="$(printf '%s' "$SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+
+"$KUMA_CMUX_DIR/kuma-cmux-read.sh" "$WORKER_SURFACE" | tail -n "$LINES"

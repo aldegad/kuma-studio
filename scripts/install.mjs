@@ -30,7 +30,9 @@ const CLAUDE_DIR = join(HOME, ".claude");
 const CLAUDE_SKILLS_DIR = join(CLAUDE_DIR, "skills");
 const KUMA_DIR = join(HOME, ".kuma");
 const KUMA_CMUX_DIR = join(KUMA_DIR, "cmux");
+const KUMA_BIN_DIR = join(KUMA_DIR, "bin");
 const STATE_DIR = join(HOME, ".kuma-picker");
+const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.json");
 
 const SKILLS = ["kuma", "dev-team", "analytics-team", "strategy-team"];
 const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
@@ -137,6 +139,7 @@ async function installSkills() {
 
 async function findRepoTeamMetadata(dir = ROOT) {
   const candidates = [
+    BUNDLED_TEAM_METADATA_PATH,
     resolve(ROOT, ".claude", "team.json"),
     resolve(ROOT, "team.json"),
   ];
@@ -166,21 +169,10 @@ async function findRepoTeamMetadata(dir = ROOT) {
   return null;
 }
 
-async function writeDefaultTeamMetadata(dest) {
-  const teamMeta = {
-    name: "쿠마팀",
-    version: "1.0.0",
-    leader: "kuma",
-    teams: {
-      management: { lead: "kuma", emoji: "🐻", label: "총괄" },
-      dev: { lead: "howl", emoji: "🐺", label: "개발팀", workers: ["tookdaki", "saemi", "koon", "bamdori"] },
-      analytics: { lead: "rumi", emoji: "🦊", label: "분석팀", workers: ["darami", "buri"] },
-      strategy: { lead: "noeuri", emoji: "🦌", label: "전략팀", workers: ["kongkongi", "moongchi", "jjooni"] },
-    },
-    updatedAt: new Date().toISOString(),
-  };
-
-  await writeFile(dest, JSON.stringify(teamMeta, null, 2) + "\n");
+async function writeBundledTeamMetadata(dest) {
+  const bundled = await readFile(BUNDLED_TEAM_METADATA_PATH, "utf8");
+  const normalized = bundled.endsWith("\n") ? bundled : `${bundled}\n`;
+  await writeFile(dest, normalized, "utf8");
 }
 
 async function setupStateDir() {
@@ -211,9 +203,9 @@ async function setupStateDir() {
     return;
   }
 
-  await writeDefaultTeamMetadata(teamMetaPath);
-  log(`Created default team metadata → ${summarizePath(teamMetaPath)}`);
-  addSummary("created", `Created default metadata ${summarizePath(teamMetaPath)}`);
+  await writeBundledTeamMetadata(teamMetaPath);
+  log(`Created bundled team metadata → ${summarizePath(teamMetaPath)}`);
+  addSummary("created", `Created bundled metadata ${summarizePath(teamMetaPath)}`);
 }
 
 function installDeps(flags) {
@@ -262,6 +254,36 @@ async function installCmux() {
   for (const script of scripts) {
     const src = resolve(srcDir, script);
     const dest = resolve(KUMA_CMUX_DIR, script);
+    const result = await copyFileIfChanged(src, dest);
+    if (result === "skipped") {
+      log(`${script} already up to date`);
+      addSummary("skipped", `Skipped existing ${script}`);
+    } else {
+      await chmod(dest, 0o755);
+      log(`${result} ${script} → ${summarizePath(dest)}`);
+      addSummary(result, `${result} ${summarizePath(src)} → ${summarizePath(dest)}`);
+    }
+  }
+}
+
+async function installBinScripts() {
+  header("Installing kuma bin scripts");
+  const srcDir = resolve(ROOT, "scripts", "bin");
+  await ensureDirWithSummary(KUMA_DIR);
+  await ensureDirWithSummary(KUMA_BIN_DIR);
+
+  if (!(await pathExists(srcDir))) {
+    warn(`bin source not found: ${summarizePath(srcDir)} — skipping`);
+    addSummary("missing", `Missing bin source ${summarizePath(srcDir)}`);
+    return;
+  }
+
+  const entries = await readdir(srcDir);
+  const scripts = entries.filter((file) => file.endsWith(".sh") || !file.includes("."));
+
+  for (const script of scripts) {
+    const src = resolve(srcDir, script);
+    const dest = resolve(KUMA_BIN_DIR, script);
     const result = await copyFileIfChanged(src, dest);
     if (result === "skipped") {
       log(`${script} already up to date`);
@@ -330,6 +352,7 @@ async function main() {
   installDeps(flags);
   await installSkills();
   await installCmux();
+  await installBinScripts();
   await setupStateDir();
   await registerSettings();
   buildStudio(flags);
@@ -338,7 +361,7 @@ async function main() {
   process.stdout.write(`
   Quick start:
     cd ${ROOT}
-    npm run kuma-studio:serve     # Start daemon (port ${DEFAULT_PORT})
+    npm run server:reload         # Start/restart daemon (port ${DEFAULT_PORT})
     npm run kuma-studio:dashboard # Open studio in browser
 
   Skills installed:
@@ -348,6 +371,9 @@ ${SKILLS.map((s) => `    /claude ${s}`).join("\n")}
     1. Open chrome://extensions
     2. Enable Developer Mode
     3. Load unpacked → ${resolve(ROOT, "packages/browser-extension")}
+
+  PATH hint:
+    export PATH="$HOME/.kuma/bin:$PATH"
 
 `);
 
