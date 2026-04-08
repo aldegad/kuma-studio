@@ -16,7 +16,7 @@
  */
 
 import { access } from "node:fs/promises";
-import { chmod, copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, symlink, unlink, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -31,6 +31,7 @@ const CLAUDE_SKILLS_DIR = join(CLAUDE_DIR, "skills");
 const KUMA_DIR = join(HOME, ".kuma");
 const KUMA_CMUX_DIR = join(KUMA_DIR, "cmux");
 const KUMA_BIN_DIR = join(KUMA_DIR, "bin");
+const KUMA_TEAM_JSON_PATH = join(KUMA_DIR, "team.json");
 const STATE_DIR = join(HOME, ".kuma-picker");
 const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.json");
 
@@ -103,6 +104,26 @@ async function copyFileIfChanged(src, dest) {
   await mkdir(dirname(dest), { recursive: true });
   await copyFile(src, dest);
   return destExists ? "updated" : "copied";
+}
+
+async function ensureSymlink(target, dest) {
+  const destExists = await pathExists(dest);
+
+  if (destExists) {
+    const stats = await lstat(dest);
+    if (stats.isSymbolicLink()) {
+      const resolved = await realpath(dest).catch(() => null);
+      if (resolved === resolve(target)) {
+        return "skipped";
+      }
+    }
+
+    await unlink(dest);
+  }
+
+  await mkdir(dirname(dest), { recursive: true });
+  await symlink(target, dest);
+  return destExists ? "updated" : "created";
 }
 
 async function installSkills() {
@@ -206,6 +227,21 @@ async function setupStateDir() {
   await writeBundledTeamMetadata(teamMetaPath);
   log(`Created bundled team metadata → ${summarizePath(teamMetaPath)}`);
   addSummary("created", `Created bundled metadata ${summarizePath(teamMetaPath)}`);
+}
+
+async function setupTeamJsonLink() {
+  header("Linking team metadata");
+  await ensureDirWithSummary(KUMA_DIR);
+
+  const result = await ensureSymlink(BUNDLED_TEAM_METADATA_PATH, KUMA_TEAM_JSON_PATH);
+  if (result === "skipped") {
+    log(`${summarizePath(KUMA_TEAM_JSON_PATH)} already points to bundled team.json`);
+    addSummary("skipped", `Skipped existing symlink ${summarizePath(KUMA_TEAM_JSON_PATH)}`);
+    return;
+  }
+
+  log(`${result} ${summarizePath(KUMA_TEAM_JSON_PATH)} → ${summarizePath(BUNDLED_TEAM_METADATA_PATH)}`);
+  addSummary(result, `${result} symlink ${summarizePath(KUMA_TEAM_JSON_PATH)} → ${summarizePath(BUNDLED_TEAM_METADATA_PATH)}`);
 }
 
 function installDeps(flags) {
@@ -353,6 +389,7 @@ async function main() {
   await installSkills();
   await installCmux();
   await installBinScripts();
+  await setupTeamJsonLink();
   await setupStateDir();
   await registerSettings();
   buildStudio(flags);

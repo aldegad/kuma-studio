@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage: kuma-cmux-spawn.sh <name> [type] [dir] [project] [--direction <dir>] [--surface <ref>] [--workspace <ref>] [--pane <ref>]
-# type is optional when the member exists in ~/.kuma/team-config.json
+# type is optional when the member exists in ~/.kuma/team.json
 # Returns: surface ID
 set -euo pipefail
 

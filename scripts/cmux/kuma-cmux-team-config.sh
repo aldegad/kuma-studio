@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-KUMA_TEAM_CONFIG_PATH="${KUMA_TEAM_CONFIG_PATH:-$HOME/.kuma/team-config.json}"
+KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
+DEFAULT_CLAUDE_MODEL="claude-opus-4-6"
+DEFAULT_CLAUDE_OPTIONS="--dangerously-skip-permissions"
+DEFAULT_CODEX_MODEL="gpt-5.4"
+DEFAULT_CODEX_OPTIONS='--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"'
 
 normalize_member_name() {
   local raw="${1:-}"
@@ -13,25 +17,63 @@ normalize_member_name() {
 }
 
 team_config_exists() {
-  [ -f "$KUMA_TEAM_CONFIG_PATH" ]
+  [ -f "$KUMA_TEAM_JSON_PATH" ]
 }
 
 require_team_config() {
   if ! team_config_exists; then
-    echo "ERROR: team config not found at $KUMA_TEAM_CONFIG_PATH" >&2
+    echo "ERROR: team config not found at $KUMA_TEAM_JSON_PATH" >&2
     exit 1
   fi
+}
+
+team_config_get_member_json() {
+  local name="$1"
+  jq -c \
+    --arg name "$name" \
+    --arg defaultClaudeModel "$DEFAULT_CLAUDE_MODEL" \
+    --arg defaultClaudeOptions "$DEFAULT_CLAUDE_OPTIONS" \
+    --arg defaultCodexModel "$DEFAULT_CODEX_MODEL" \
+    --arg defaultCodexOptions "$DEFAULT_CODEX_OPTIONS" '
+    .teams
+    | to_entries[]
+    | .key as $teamId
+    | (.value.members // [])[]
+    | select(.name == $name)
+    | (.spawnType // .engine // (if ((.spawnModel // .model // "") | startswith("gpt-")) then "codex" else "claude" end)) as $type
+    | {
+        id: (.id // ""),
+        name: (.name // ""),
+        emoji: (.emoji // ""),
+        role: (.roleLabel.ko // .role // ""),
+        team: (.team // $teamId),
+        nodeType: (.nodeType // "worker"),
+        type: $type,
+        model: (.spawnModel // .model // (if $type == "codex" then $defaultCodexModel else $defaultClaudeModel end)),
+        options: (.spawnOptions // (if $type == "codex" then $defaultCodexOptions else $defaultClaudeOptions end))
+      }
+    ' "$KUMA_TEAM_JSON_PATH"
 }
 
 team_config_get_member_field() {
   local name="$1"
   local field="$2"
-  jq -r --arg name "$name" --arg field "$field" '.members[$name][$field] // empty' "$KUMA_TEAM_CONFIG_PATH"
+  local member_json
+  member_json="$(team_config_get_member_json "$name")"
+  [ -n "$member_json" ] || return 0
+  printf '%s\n' "$member_json" | jq -r --arg field "$field" '.[$field] // empty'
 }
 
 team_config_member_exists() {
   local name="$1"
-  jq -e --arg name "$name" '.members[$name] != null' "$KUMA_TEAM_CONFIG_PATH" > /dev/null
+  jq -e --arg name "$name" '
+    any(
+      .teams
+      | to_entries[]
+      | (.value.members // [])[];
+      (.name // "") == $name
+    )
+  ' "$KUMA_TEAM_JSON_PATH" > /dev/null
 }
 
 normalize_codex_options() {
@@ -93,14 +135,27 @@ list_team_members() {
   local node_type="${2:-}"
 
   if [ -n "$node_type" ]; then
-    jq -r --arg team "$team" --arg nodeType "$node_type" '.members | to_entries[] | select(.value.team == $team and .value.nodeType == $nodeType) | .key' "$KUMA_TEAM_CONFIG_PATH"
+    jq -r --arg team "$team" --arg nodeType "$node_type" '
+      (.teams[$team].members // [])[]
+      | select((.nodeType // "worker") == $nodeType)
+      | .name
+    ' "$KUMA_TEAM_JSON_PATH"
   else
-    jq -r --arg team "$team" '.members | to_entries[] | select(.value.team == $team) | .key' "$KUMA_TEAM_CONFIG_PATH"
+    jq -r --arg team "$team" '
+      (.teams[$team].members // [])[]
+      | .name
+    ' "$KUMA_TEAM_JSON_PATH"
   fi
 }
 
 list_spawn_members() {
-  jq -r '.members | to_entries[] | select(.value.team != "system") | .key' "$KUMA_TEAM_CONFIG_PATH"
+  jq -r '
+    .teams
+    | to_entries[]
+    | select(.key != "system")
+    | (.value.members // [])[]
+    | .name
+  ' "$KUMA_TEAM_JSON_PATH"
 }
 
 member_display_label() {

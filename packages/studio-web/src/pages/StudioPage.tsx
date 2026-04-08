@@ -354,7 +354,7 @@ export function StudioPage() {
 
       {/* File Explorer */}
       {explorerOpen && (
-        <div className="absolute left-0 top-10 bottom-0 z-40" style={{ maxWidth: "min(900px, 60vw)" }}>
+        <div className="absolute left-0 top-10 bottom-0 z-50" style={{ maxWidth: "min(900px, 60vw)" }}>
           <FileExplorer onCollapse={() => setExplorerOpen(false)} />
         </div>
       )}

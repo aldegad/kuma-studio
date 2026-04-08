@@ -2,7 +2,7 @@
 # Usage: kuma-cmux-project-init.sh <project> <dir> [--workspace <ws-id>]
 # --workspace: 기존 워크스페이스에 right split으로 배치 (bootstrap용)
 # 생략 시: 새 워크스페이스(탭) 생성 (추가 프로젝트용)
-# Layout: 팀 리더/워커 탭 수는 `team-config.json`에서 동적으로 계산
+# Layout: 팀 리더/워커 탭 수는 `team.json`에서 동적으로 계산
 #         시스템 팀은 공용 surface를 유지하고, 프로젝트 워커는 dev/analytics/strategy만 배치
 set -uo pipefail
 

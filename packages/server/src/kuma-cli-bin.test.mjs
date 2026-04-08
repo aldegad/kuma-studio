@@ -36,12 +36,17 @@ async function setupCliSandbox() {
   await mkdir(outputDir, { recursive: true });
 
   await writeFile(
-    join(kumaDir, "team-config.json"),
+    join(kumaDir, "team.json"),
     `${JSON.stringify({
-      members: {
-        "뚝딱이": { id: "tookdaki", emoji: "🦫", type: "codex", team: "dev" },
-        "쿤": { id: "koon", emoji: "🦝", type: "claude", team: "dev" },
-        "밤토리": { id: "bamdori", emoji: "🦔", type: "claude", team: "dev" },
+      teams: {
+        dev: {
+          name: "개발팀",
+          members: [
+            { id: "tookdaki", name: "뚝딱이", emoji: "🦫", spawnType: "codex", team: "dev" },
+            { id: "koon", name: "쿤", emoji: "🦝", spawnType: "claude", team: "dev" },
+            { id: "bamdori", name: "밤토리", emoji: "🦔", spawnType: "claude", team: "dev" },
+          ],
+        },
       },
     }, null, 2)}\n`,
     "utf8",
