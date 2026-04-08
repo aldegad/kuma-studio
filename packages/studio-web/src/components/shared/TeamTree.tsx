@@ -1,5 +1,6 @@
-import { KUMA_TEAM, type Agent } from "../../types/agent";
+import type { Agent } from "../../types/agent";
 import { useOfficeStore } from "../../stores/use-office-store";
+import { useTeamConfigStore } from "../../stores/use-team-config-store";
 import { STATE_COLORS } from "../../lib/constants";
 import type { OfficeCharacter } from "../../types/office";
 
@@ -31,7 +32,8 @@ function StateDot({ state }: { state: string }) {
 export function TeamTree() {
   const characters = useOfficeStore((s) => s.scene.characters) as OfficeCharacter[];
   const stateMap = new Map(characters.map((c) => [c.id, c.state]));
-  const tree = buildTree(KUMA_TEAM);
+  const teamMembers = useTeamConfigStore((s) => s.members);
+  const tree = buildTree(teamMembers);
 
   function getState(id: string): string {
     return stateMap.get(id) ?? "idle";

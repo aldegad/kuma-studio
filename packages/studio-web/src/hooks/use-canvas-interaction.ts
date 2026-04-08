@@ -225,6 +225,20 @@ export function useCanvasInteraction(containerRef: RefObject<HTMLDivElement | nu
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [fitToScreen, focusOnZone]);
 
+  // Auto-zoom on small viewports (responsive)
+  useEffect(() => {
+    const handleResize = () => {
+      const w = window.innerWidth;
+      if (w <= 768) {
+        const autoZoom = clamp(w / CANVAS_WIDTH * 1.2, ZOOM_MIN, 0.5);
+        setZoom(autoZoom);
+      }
+    };
+    handleResize(); // Run once on mount
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Pan start handler
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent) => {

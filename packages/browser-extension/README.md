@@ -12,7 +12,7 @@ This folder contains the unpacked Chrome extension that connects arbitrary pages
 
 ## Load it in Chrome
 
-1. start the daemon with `npm run kuma-pickerd:serve`
+1. start the daemon with `npm run server:reload`
 2. open `chrome://extensions`
 3. enable `Developer mode`
 4. click `Load unpacked`

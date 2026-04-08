@@ -30,7 +30,13 @@ import { TeamStatusStore, toStudioTeamStatusSnapshot } from "./studio/team-statu
 import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
 import { ContentStore } from "./studio/content-store.mjs";
 import { ExperimentStore } from "./studio/experiment-store.mjs";
+import { TrendStore } from "./studio/trend-store.mjs";
 import { createExperimentPipeline } from "./studio/experiment-pipeline.mjs";
+import { MemoStore } from "./studio/memo-store.mjs";
+import { TeamConfigStore } from "./studio/team-config-store.mjs";
+import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
+import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
+import { readPlans, watchPlans } from "./studio/plan-store.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -56,9 +62,14 @@ export function createServer({ host, port, root }) {
   const agentStateManager = new AgentStateManager();
   const tokenTracker = new TokenTracker();
   const teamStatusStore = new TeamStatusStore();
+  const agentHistoryStore = new AgentHistoryStore();
   const contentStore = new ContentStore(root);
+  const trendStore = new TrendStore(root);
   const experimentStore = new ExperimentStore(root);
   const experimentPipeline = createExperimentPipeline(resolve(root));
+  const memoStore = new MemoStore(resolve(root));
+  const teamConfigStore = new TeamConfigStore();
+  teamConfigStore.ensure();
 
   // Register agent hierarchy from team.json — session → team → worker
   const AGENT_HIERARCHY = getAgentHierarchy();
@@ -78,6 +89,7 @@ export function createServer({ host, port, root }) {
 
   teamStatusStore.onChange((snapshot) => {
     studioWsEvents.broadcastTeamStatusUpdate(toStudioTeamStatusSnapshot(snapshot));
+    agentHistoryStore.recordFromSnapshot(snapshot, teamStatusStore.getMembersByName());
   });
   teamStatusStore.start();
 
@@ -90,8 +102,13 @@ export function createServer({ host, port, root }) {
     agentStateManager,
     teamStatusStore,
     contentStore,
+    trendStore,
     experimentStore,
     experimentPipeline,
+    memoStore,
+    teamConfigStore,
+    studioWsEvents,
+    agentHistoryStore,
     workspaceRoot: resolve(root),
   });
   startGitActivityPolling((activity) => {
@@ -120,6 +137,14 @@ export function createServer({ host, port, root }) {
   } catch {
     // Extension directory may not exist in production deployments.
   }
+
+  const stopWatchingPlans = watchPlans({
+    debounceMs: 500,
+    onChange(snapshot) {
+      studioWsEvents.broadcastPlansUpdate(snapshot);
+    },
+  });
+  void readPlans();
 
   const socketServer = new WebSocketServer({ noServer: true });
   const socketStates = new Map();
@@ -668,6 +693,20 @@ export function createServer({ host, port, root }) {
           type: "kuma-studio:team-status-update",
           snapshot: toStudioTeamStatusSnapshot(teamStatusStore.getSnapshot()),
         });
+        sendSocketJson(websocket, {
+          type: "kuma-studio:nightmode",
+          enabled: isNightModeEnabled(),
+        });
+        void readPlans()
+          .then((snapshot) => {
+            sendSocketJson(websocket, {
+              type: "kuma-studio:plans-update",
+              snapshot,
+            });
+          })
+          .catch(() => {
+            // Initial plans snapshot is best-effort only.
+          });
       });
       return;
     }
@@ -684,6 +723,7 @@ export function createServer({ host, port, root }) {
 
   server.on("close", () => {
     stopWatching();
+    stopWatchingPlans();
     if (extensionWatcher) {
       extensionWatcher.close();
     }

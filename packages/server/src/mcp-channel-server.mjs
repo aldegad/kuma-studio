@@ -324,7 +324,7 @@ async function main() {
   if (!healthy) {
     log(
       `ERROR: kuma-studio daemon is not reachable at ${DAEMON_URL}\n` +
-        `  Start the daemon first:  node packages/server/src/cli.mjs serve\n` +
+        `  Start the daemon first:  npm run server:reload\n` +
         `  Or set KUMA_DAEMON_URL to the correct address.`,
     );
     process.exit(1);

@@ -99,6 +99,39 @@ export class StudioWsEvents {
   }
 
   /**
+   * Broadcast the current nightmode state.
+   * @param {boolean} enabled
+   */
+  broadcastNightMode(enabled) {
+    this.#broadcast({
+      type: "kuma-studio:nightmode",
+      enabled: enabled === true,
+    });
+  }
+
+  /**
+   * Broadcast the latest plans snapshot.
+   * @param {object} snapshot
+   */
+  broadcastPlansUpdate(snapshot) {
+    this.#broadcast({
+      type: "kuma-studio:plans-update",
+      snapshot,
+    });
+  }
+
+  /**
+   * Broadcast a team-config change event.
+   * @param {object} payload
+   */
+  broadcastTeamConfigChanged(payload) {
+    this.#broadcast({
+      type: "kuma-studio:team-config-changed",
+      payload,
+    });
+  }
+
+  /**
    * Get the number of connected studio clients.
    * @returns {number}
    */

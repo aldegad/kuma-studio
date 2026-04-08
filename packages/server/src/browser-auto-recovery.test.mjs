@@ -1,10 +1,14 @@
 import { assert, describe, it } from "vitest";
 
 import {
+  BROWSER_SESSION_AUTO_RETRY_DELAY_MS,
   FINAL_BROWSER_CONNECTION_FAILURE_MESSAGE,
   inferRecoveryUrlFromTargets,
+  readBrowserSessionWithAutoRecovery,
   resolveCurrentPageUrl,
   runWithBrowserAutoRecovery,
+  SCREENSHOT_AUTO_RETRY_DELAY_MS,
+  URL_MATCH_AUTO_RETRY_DELAY_MS,
 } from "./browser-auto-recovery.mjs";
 
 describe("browser-auto-recovery", () => {
@@ -104,7 +108,64 @@ describe("browser-auto-recovery", () => {
 
     assert.strictEqual(result, "ok");
     assert.deepEqual(openedUrls, ["https://current.example.com/page"]);
-    assert.deepEqual(delays, [3_000]);
+    assert.deepEqual(delays, [SCREENSHOT_AUTO_RETRY_DELAY_MS]);
+  });
+
+  it("auto-opens a matching URL when url-contains does not resolve to an existing tab", async () => {
+    const openedUrls = [];
+    const delays = [];
+    let attempts = 0;
+
+    const result = await runWithBrowserAutoRecovery({
+      daemonUrl: "http://127.0.0.1:4312",
+      targets: { targetUrlContains: "studio" },
+      execute: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("No browser tab matches the requested URL fragment: studio");
+        }
+        return "ok";
+      },
+      openBrowserFn: (url) => openedUrls.push(url),
+      delayFn: async (ms) => delays.push(ms),
+      logFn: () => {},
+    });
+
+    assert.strictEqual(result, "ok");
+    assert.deepEqual(openedUrls, ["http://127.0.0.1:4312/studio"]);
+    assert.deepEqual(delays, [URL_MATCH_AUTO_RETRY_DELAY_MS]);
+  });
+
+  it("retries get-browser-session by auto-opening the browser when the session is disconnected", async () => {
+    const openedUrls = [];
+    const delays = [];
+    let attempts = 0;
+
+    const session = await readBrowserSessionWithAutoRecovery({
+      daemonUrl: "http://127.0.0.1:4312",
+      targets: { targetUrl: "https://example.com/dashboard" },
+      readBrowserSessionSummaryFn: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return {
+            connected: false,
+            message: "No active Kuma Picker browser session is available.",
+          };
+        }
+
+        return {
+          connected: true,
+          page: { url: "https://example.com/dashboard" },
+        };
+      },
+      openBrowserFn: (url) => openedUrls.push(url),
+      delayFn: async (ms) => delays.push(ms),
+      logFn: () => {},
+    });
+
+    assert.strictEqual(session?.connected, true);
+    assert.deepEqual(openedUrls, ["https://example.com/dashboard"]);
+    assert.deepEqual(delays, [BROWSER_SESSION_AUTO_RETRY_DELAY_MS]);
   });
 
   it("throws the final browser connection failure message after three attempts", async () => {

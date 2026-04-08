@@ -6,6 +6,15 @@ export interface ExperimentItem {
   title: string;
   source: ExperimentSource;
   status: ExperimentStatus;
+  sourceContentId: string | null;
+  sourceTrendId: string | null;
+  researchScore: number | null;
+  researchQuestion: string | null;
+  resultSummary: string | null;
+  reportSummary: string | null;
+  reportMarkdown: string | null;
+  reportGeneratedAt: string | null;
+  resultContentId: string | null;
   branch: string | null;
   worktree: string | null;
   pr_url: string | null;

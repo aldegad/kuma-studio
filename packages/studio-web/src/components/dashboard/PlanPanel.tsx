@@ -1,8 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
-import type { Plan } from "../../types/plan";
+import type { Plan, PlanStatus } from "../../types/plan";
 import { PlanDetailModal } from "./PlanDetailModal";
+
+/** Status → color mapping for plan status dots */
+const PLAN_STATUS_COLORS: Record<string, { dot: string; glow: string; label: string }> = {
+  completed: { dot: "#22c55e", glow: "rgba(34, 197, 94, 0.4)", label: "완료" },
+  active:    { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)", label: "진행 중" },
+  in_progress: { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)", label: "진행 중" },
+  hold:      { dot: "#eab308", glow: "rgba(234, 179, 8, 0.4)", label: "보류" },
+  blocked:   { dot: "#f97316", glow: "rgba(249, 115, 22, 0.4)", label: "컨펌 대기" },
+  failed:    { dot: "#ef4444", glow: "rgba(239, 68, 68, 0.4)", label: "실패" },
+  error:     { dot: "#ef4444", glow: "rgba(239, 68, 68, 0.4)", label: "에러" },
+  draft:     { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.3)", label: "초안" },
+  archived:  { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "보관됨" },
+};
+const DEFAULT_STATUS_COLOR = { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "" };
+
+function getStatusColor(status: PlanStatus) {
+  return PLAN_STATUS_COLORS[status] ?? DEFAULT_STATUS_COLOR;
+}
 
 /** Sort plans by created date descending, fallback to id reverse-alpha. */
 function sortPlansDesc(plans: Plan[]): Plan[] {
@@ -34,7 +52,7 @@ export function PlanPanel() {
   const [collapsed, setCollapsed] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isOverviewOpen, setIsOverviewOpen] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     void fetchPlans();
@@ -73,7 +91,6 @@ export function PlanPanel() {
   }, [selectedPlan, sortedPlans]);
 
   function openPlanDetail(plan: Plan) {
-    setIsOverviewOpen(false);
     setSelectedPlan(plan);
     setIsDetailOpen(true);
   }
@@ -81,6 +98,15 @@ export function PlanPanel() {
   function closePlanDetail() {
     setIsDetailOpen(false);
     setSelectedPlan(null);
+  }
+
+  function toggleProject(project: string) {
+    setExpandedProjects((prev) => {
+      const next = new Set(prev);
+      if (next.has(project)) next.delete(project);
+      else next.add(project);
+      return next;
+    });
   }
 
   return (
@@ -139,19 +165,15 @@ export function PlanPanel() {
             계획문서 없음
           </p>
         ) : (
-          <div className="space-y-1.5">
+          <div className="space-y-1">
+            {/* Overall progress */}
             <div className="flex items-center justify-between">
-              <span
-                className="text-[10px]"
-                style={{ color: "var(--t-muted)" }}
-              >
-                전체
-              </span>
-              <span
-                className="text-xs font-bold"
-                style={{ color: "var(--t-primary)" }}
-              >
+              <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>전체</span>
+              <span className="text-xs font-bold" style={{ color: "var(--t-primary)" }}>
                 {checked}/{total}
+                <span className="ml-1 text-[10px] font-normal" style={{ color: "var(--t-faint)" }}>
+                  {rate.toFixed(0)}%
+                </span>
               </span>
             </div>
 
@@ -170,62 +192,101 @@ export function PlanPanel() {
               />
             </div>
 
-            <div className="flex items-center justify-between">
-              <span
-                className="text-[10px]"
-                style={{ color: "var(--t-muted)" }}
-              >
-                완료율
-              </span>
-              <span
-                className={`text-xs font-bold ${
-                  rate >= 80
-                    ? "text-green-500"
-                    : rate >= 50
-                      ? "text-stone-500"
-                      : "text-red-500"
-                }`}
-              >
-                {rate.toFixed(0)}%
-              </span>
-            </div>
-
+            {/* Project tree */}
             {sortedPlans.length > 0 && (
               <div
-                className="mt-1 space-y-1 border-t pt-1.5"
+                className="mt-1.5 space-y-0.5 border-t pt-1.5"
                 style={{ borderColor: "var(--border-subtle)" }}
               >
-                {Array.from(groupedPlans.entries()).map(([project, projectPlans]) => (
-                  <div key={project} className="flex items-center justify-between">
-                    <span
-                      className="text-[9px] font-bold uppercase tracking-wider"
-                      style={{ color: "var(--t-faint)" }}
-                    >
-                      {project}
-                    </span>
-                    <span
-                      className="text-[8px] font-mono"
-                      style={{ color: "var(--t-faint)" }}
-                    >
-                      {projectPlans.reduce((s, p) => s + p.checkedItems, 0)}/{projectPlans.reduce((s, p) => s + p.totalItems, 0)}
-                    </span>
-                  </div>
-                ))}
+                {Array.from(groupedPlans.entries()).map(([project, projectPlans]) => {
+                  const pChecked = projectPlans.reduce((s, p) => s + p.checkedItems, 0);
+                  const pTotal = projectPlans.reduce((s, p) => s + p.totalItems, 0);
+                  const isExpanded = expandedProjects.has(project);
 
-                <button
-                  type="button"
-                  onClick={() => setIsOverviewOpen(true)}
-                  className="mt-1 w-full rounded-lg border py-1.5 text-[10px] font-bold transition-colors"
-                  style={{
-                    borderColor: "var(--border-subtle)",
-                    color: "var(--t-secondary)",
-                    background: "var(--card-bg)",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "var(--card-bg)"; }}
-                >
-                  전체보기
-                </button>
+                  return (
+                    <div key={project}>
+                      {/* Project folder row */}
+                      <button
+                        type="button"
+                        onClick={() => toggleProject(project)}
+                        className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left transition-colors"
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <span className="text-[9px] shrink-0" style={{ color: "var(--t-faint)" }}>
+                          {isExpanded ? "▾" : "▸"}
+                        </span>
+                        <svg viewBox="0 0 16 16" className="h-3 w-3 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.3" style={{ color: "var(--t-faint)" }}>
+                          {isExpanded
+                            ? <path d="M1.5 4.5h13l-1.5 9h-10z" strokeLinejoin="round" />
+                            : <path d="M1.5 3.5h5l1.5 2h6.5v8h-13z" strokeLinejoin="round" />
+                          }
+                        </svg>
+                        <span
+                          className="flex-1 truncate text-[10px] font-bold"
+                          style={{ color: "var(--t-secondary)" }}
+                        >
+                          {project}
+                        </span>
+                        <span
+                          className="text-[8px] font-mono shrink-0"
+                          style={{ color: "var(--t-faint)" }}
+                        >
+                          {pChecked}/{pTotal}
+                        </span>
+                      </button>
+
+                      {/* Plan files */}
+                      {isExpanded && (
+                        <div className="ml-3 space-y-px border-l pl-2" style={{ borderColor: "var(--border-subtle)" }}>
+                          {projectPlans.map((plan) => {
+                            const planRate = plan.totalItems > 0
+                              ? (plan.checkedItems / plan.totalItems) * 100
+                              : 0;
+                            const isComplete = planRate >= 100;
+                            const sc = getStatusColor(plan.status);
+                            return (
+                              <button
+                                key={plan.id}
+                                type="button"
+                                onClick={() => openPlanDetail(plan)}
+                                className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors"
+                                style={{ background: `linear-gradient(90deg, ${sc.dot}08 0%, transparent 40%)` }}
+                                onMouseEnter={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}18 0%, var(--panel-hover) 40%)`; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}08 0%, transparent 40%)`; }}
+                              >
+                                {/* Status dot with glow */}
+                                <span
+                                  className="shrink-0 rounded-full"
+                                  style={{
+                                    width: 6,
+                                    height: 6,
+                                    backgroundColor: sc.dot,
+                                    boxShadow: `0 0 6px ${sc.glow}`,
+                                  }}
+                                  title={sc.label || plan.status}
+                                />
+                                <span
+                                  className="flex-1 truncate text-[9px]"
+                                  style={{ color: isComplete ? "var(--t-muted)" : "var(--t-primary)" }}
+                                  title={plan.title}
+                                >
+                                  {plan.title}
+                                </span>
+                                <span
+                                  className="text-[7px] font-mono shrink-0"
+                                  style={{ color: sc.dot }}
+                                >
+                                  {plan.checkedItems}/{plan.totalItems}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -242,199 +303,6 @@ export function PlanPanel() {
         />,
         document.body,
       )}
-
-      {isOverviewOpen && createPortal(
-        <PlansOverviewModal
-          groupedPlans={groupedPlans}
-          total={total}
-          checked={checked}
-          rate={rate}
-          onSelectPlan={openPlanDetail}
-          onClose={() => setIsOverviewOpen(false)}
-        />,
-        document.body,
-      )}
     </>
-  );
-}
-
-/* ─── Plans Overview Modal ─── */
-
-interface PlansOverviewModalProps {
-  groupedPlans: Map<string, Plan[]>;
-  total: number;
-  checked: number;
-  rate: number;
-  onSelectPlan: (plan: Plan) => void;
-  onClose: () => void;
-}
-
-function PlansOverviewModal({
-  groupedPlans,
-  total,
-  checked,
-  rate,
-  onSelectPlan,
-  onClose,
-}: PlansOverviewModalProps) {
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="계획 전체보기"
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border shadow-[0_25px_60px_-12px_rgba(0,0,0,0.15)] backdrop-blur-md"
-        style={{
-          background: "var(--panel-bg-strong)",
-          borderColor: "var(--panel-border)",
-          animation: "planModalIn 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between px-5 py-4"
-          style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}
-        >
-          <div className="space-y-2 min-w-0 flex-1">
-            <h2 className="text-sm font-bold" style={{ color: "var(--t-primary)" }}>
-              계획 진행률
-            </h2>
-            <div className="flex items-center gap-3">
-              <div
-                className="h-1.5 flex-1 overflow-hidden rounded-full"
-                style={{ background: "var(--track-bg)" }}
-              >
-                <div
-                  className="h-full rounded-full bg-green-600 transition-all duration-500"
-                  style={{ width: `${rate}%` }}
-                />
-              </div>
-              <span className="text-xs font-bold font-mono" style={{ color: "var(--t-primary)" }}>
-                {checked}/{total}
-                <span className="ml-1" style={{ color: "var(--t-faint)" }}>
-                  ({rate.toFixed(0)}%)
-                </span>
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-4 shrink-0 rounded-xl border p-2 shadow-sm transition-all duration-200"
-            style={{ borderColor: "var(--card-border)", background: "var(--card-bg)", color: "var(--t-faint)" }}
-            aria-label="닫기"
-          >
-            <svg aria-hidden="true" viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-              <path d="M5 5l10 10" />
-              <path d="M15 5L5 15" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4 space-y-4">
-          {Array.from(groupedPlans.entries()).map(([project, projectPlans]) => {
-            const pChecked = projectPlans.reduce((s, p) => s + p.checkedItems, 0);
-            const pTotal = projectPlans.reduce((s, p) => s + p.totalItems, 0);
-            const pRate = pTotal > 0 ? (pChecked / pTotal) * 100 : 0;
-
-            return (
-              <section key={project}>
-                {/* Project header */}
-                <div className="flex items-center justify-between mb-2">
-                  <span
-                    className="text-[11px] font-bold uppercase tracking-wider"
-                    style={{ color: "var(--t-secondary)" }}
-                  >
-                    {project}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="h-1 w-12 overflow-hidden rounded-full"
-                      style={{ background: "var(--track-bg)" }}
-                    >
-                      <div
-                        className="h-full rounded-full bg-green-600"
-                        style={{ width: `${pRate}%` }}
-                      />
-                    </div>
-                    <span className="text-[10px] font-mono" style={{ color: "var(--t-muted)" }}>
-                      {pChecked}/{pTotal}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Plans in this project */}
-                <div className="space-y-1.5 pl-1">
-                  {projectPlans.map((plan) => {
-                    const planRate = plan.totalItems > 0
-                      ? (plan.checkedItems / plan.totalItems) * 100
-                      : 0;
-                    return (
-                      <button
-                        key={plan.id}
-                        type="button"
-                        onClick={() => onSelectPlan(plan)}
-                        className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors"
-                        style={{
-                          borderColor: "var(--card-border)",
-                          background: "var(--card-bg)",
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "var(--card-bg)"; }}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <span className="block truncate text-[11px] font-medium" style={{ color: "var(--t-primary)" }}>
-                            {plan.title}
-                          </span>
-                          {plan.created && (
-                            <span className="text-[9px]" style={{ color: "var(--t-faint)" }}>
-                              {plan.created}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <div
-                            className="h-1 w-10 overflow-hidden rounded-full"
-                            style={{ background: "var(--track-bg)" }}
-                          >
-                            <div
-                              className="h-full rounded-full bg-stone-400"
-                              style={{ width: `${planRate}%` }}
-                            />
-                          </div>
-                          <span className="text-[9px] font-mono" style={{ color: "var(--t-muted)" }}>
-                            {plan.checkedItems}/{plan.totalItems}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
-        </div>
-      </div>
-
-      <style>{`
-        @keyframes planModalIn {
-          from { opacity: 0; transform: scale(0.96) translateY(8px); }
-          to { opacity: 1; transform: scale(1) translateY(0); }
-        }
-      `}</style>
-    </div>
   );
 }

@@ -1,20 +1,32 @@
 #!/bin/bash
-# Usage: kuma-cmux-send.sh <surface> <prompt> [--workspace <workspace-id>]
+# Usage: kuma-cmux-send.sh <surface> <prompt> [--workspace <workspace-id>] [--dry-run]
 # Sends prompt to a cmux surface, presses Enter, and verifies delivery.
 # Retries Enter up to 3 times if the text is still sitting at the prompt.
 set -euo pipefail
 
-SURFACE="${1:?surface required (e.g. surface:3)}"
+RAW_SURFACE="${1:?surface required (e.g. surface:3)}"
 PROMPT="${2:?prompt required}"
+
+# Auto-prefix "surface:" if bare number passed
+if [[ "$RAW_SURFACE" =~ ^[0-9]+$ ]]; then
+  SURFACE="surface:${RAW_SURFACE}"
+else
+  SURFACE="$RAW_SURFACE"
+fi
 shift 2
 
 WORKSPACE=""
+DRY_RUN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --workspace)
       WORKSPACE="${2:?workspace required (e.g. workspace:1)}"
       shift 2
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -52,6 +64,12 @@ fi
 SEND_ARGS+=(--surface "$SURFACE")
 READ_ARGS+=(--surface "$SURFACE" --lines 12)
 
+if [ "$DRY_RUN" = "1" ]; then
+  cmux read-screen "${READ_ARGS[@]}" > /dev/null
+  echo "DRY_RUN_OK $SURFACE${WORKSPACE:+ $WORKSPACE}"
+  exit 0
+fi
+
 # Use last 30 chars for check — near the cursor, visible even for long wrapped prompts
 if [ ${#PROMPT} -le 30 ]; then
   CHECK="$PROMPT"
@@ -79,8 +97,9 @@ read_input_view() {
 prompt_still_pending() {
   local view="$1"
 
+  # Detect prompt lines from Claude Code (❯ ›), Codex (>), and shell ($).
   printf '%s\n' "$view" | awk -v check="$CHECK" '
-    /^[[:space:]]*[❯›]/ {
+    /^[[:space:]]*[❯›>$]/ {
       last_prompt = NR
       if (index($0, check)) {
         target_prompt = NR

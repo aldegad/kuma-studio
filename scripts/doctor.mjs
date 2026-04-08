@@ -80,7 +80,7 @@ async function main() {
     check("Daemon server reachable", data.ok === true);
   } catch {
     check("Daemon server reachable", false);
-    process.stdout.write("    Start server: npm run kuma-studio:serve\n");
+    process.stdout.write("    Start server: npm run server:reload\n");
   }
 
   process.stdout.write(`\n${allOk ? "All critical checks passed!" : "Some checks failed. See above."}\n`);

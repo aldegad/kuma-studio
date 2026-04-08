@@ -18,6 +18,9 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
+        "/studio/memo-images": {
+          target: `http://127.0.0.1:${KUMA_PORT}`,
+        },
         "/ws": {
           target: `ws://127.0.0.1:${KUMA_PORT}`,
           ws: true,

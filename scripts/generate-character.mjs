@@ -5,7 +5,7 @@
  *
  * Usage:
  *   node scripts/generate-character.mjs --animal beaver --name "Tookdaki" --role "Developer" [--state idle]
- *   node scripts/generate-character.mjs --all   # Generate all kuma team characters
+ *   node scripts/generate-character.mjs --all   # Generate all characters from packages/shared/team.json
  *
  * Requires OPENAI_API_KEY environment variable.
  */
@@ -14,25 +14,19 @@ import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { FLAT_TEAM_MEMBERS } from "../packages/server/src/team-schema.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ASSETS_DIR = resolve(__dirname, "../packages/studio-web/src/assets/characters");
 const OPENAI_ENV_PATH = join(homedir(), ".claude", ".env.openai");
 
-const KUMA_TEAM = [
-  { id: "kuma", name: "Kuma", animal: "bear", role: "Leader" },
-  { id: "rumi", name: "Rumi", animal: "fox", role: "Team Lead" },
-  { id: "darami", name: "Darami", animal: "chipmunk", role: "SNS/Marketing Analyst" },
-  { id: "buri", name: "Buri", animal: "eagle", role: "Market Analyst" },
-  { id: "howl", name: "Howl", animal: "wolf", role: "Operator" },
-  { id: "tookdaki", name: "Tookdaki", animal: "beaver", role: "Developer" },
-  { id: "saemi", name: "Saemi", animal: "parrot", role: "Code Critic" },
-  { id: "bamdori", name: "Bamdori", animal: "hedgehog", role: "QA Engineer" },
-  { id: "noeuri", name: "Noeuri", animal: "deer", role: "Strategy Director" },
-  { id: "kongkongi", name: "Kongkongi", animal: "rabbit", role: "Content Creator" },
-  { id: "moongchi", name: "Moongchi", animal: "cat", role: "UX/Growth Specialist" },
-  { id: "jjooni", name: "Jjooni", animal: "hamster", role: "Business Analyst" },
-];
+const KUMA_TEAM = FLAT_TEAM_MEMBERS.map((member) => ({
+  id: member.id,
+  name: member.name.en || member.id,
+  animal: member.animal.en || member.animal.ko || "animal",
+  role: member.role.en || member.roleId,
+  team: member.team,
+}));
 
 const STATES = ["idle", "working", "thinking", "completed", "error"];
 
@@ -146,7 +140,7 @@ async function generateForCharacter(character, state, apiKey) {
       id: character.id,
       name: character.name,
       animal: character.animal,
-      team: "kuma",
+      team: character.team ?? "system",
       states: {},
     };
     for (const s of STATES) {

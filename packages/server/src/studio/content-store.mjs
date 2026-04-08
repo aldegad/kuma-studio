@@ -3,8 +3,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 import { resolveProjectStateDir } from "../state-home.mjs";
 
-const ALLOWED_TYPES = new Set(["text", "image", "video"]);
+const ALLOWED_TYPES = new Set(["text", "image", "video", "research-result"]);
 const ALLOWED_STATUSES = new Set(["draft", "ready", "posted", "hold"]);
+const ALLOWED_POST_STATUSES = new Set(["draft", "preview", "approved", "ready"]);
+const ALLOWED_THREAD_FORMATS = new Set(["thread", "single"]);
 
 function now() {
   return new Date().toISOString();
@@ -16,6 +18,18 @@ function createId() {
 
 function normalizeOptionalString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [...new Set(
+    value
+      .map((entry) => normalizeOptionalString(entry))
+      .filter((entry) => typeof entry === "string"),
+  )];
 }
 
 function normalizeScheduledFor(value) {
@@ -35,6 +49,15 @@ function normalizeScheduledFor(value) {
   return iso.toISOString();
 }
 
+function normalizeOptionalNumber(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric * 1000) / 1000 : null;
+}
+
 function normalizeAssignee(value) {
   if (value == null || value === "") {
     return null;
@@ -45,6 +68,89 @@ function normalizeAssignee(value) {
   }
 
   return value.trim() || null;
+}
+
+function normalizeResearchBreakdown(value, fallback = null) {
+  const source = value && typeof value === "object" ? value : fallback && typeof fallback === "object" ? fallback : null;
+  if (!source) {
+    return null;
+  }
+
+  return {
+    novelty: normalizeOptionalNumber(source.novelty) ?? 0,
+    feasibility: normalizeOptionalNumber(source.feasibility) ?? 0,
+    engagement: normalizeOptionalNumber(source.engagement) ?? 0,
+    recency: normalizeOptionalNumber(source.recency) ?? 0,
+  };
+}
+
+function resolveSourceTrendId(candidate, base) {
+  if (Object.prototype.hasOwnProperty.call(candidate, "sourceTrendId")) {
+    return normalizeOptionalString(candidate.sourceTrendId);
+  }
+
+  return normalizeOptionalString(base.sourceTrendId);
+}
+
+function resolveSourceLinks(candidate, base) {
+  if (Object.prototype.hasOwnProperty.call(candidate, "sourceLinks")) {
+    return normalizeStringArray(candidate.sourceLinks);
+  }
+
+  return normalizeStringArray(base.sourceLinks);
+}
+
+function normalizeThreadPost(post, fallback = {}) {
+  const candidate = post && typeof post === "object" ? post : {};
+  const base = fallback && typeof fallback === "object" ? fallback : {};
+  const bodyLinesSource = Object.prototype.hasOwnProperty.call(candidate, "bodyLines")
+    ? candidate.bodyLines
+    : base.bodyLines;
+
+  return {
+    hook:
+      typeof candidate.hook === "string"
+        ? candidate.hook.trim()
+        : typeof base.hook === "string"
+          ? base.hook
+          : "",
+    bodyLines: normalizeStringArray(bodyLinesSource).slice(0, 3),
+    cta:
+      typeof candidate.cta === "string"
+        ? candidate.cta.trim()
+        : typeof base.cta === "string"
+          ? base.cta
+          : "",
+    format: ALLOWED_THREAD_FORMATS.has(candidate.format)
+      ? candidate.format
+      : ALLOWED_THREAD_FORMATS.has(base.format)
+        ? base.format
+        : "single",
+  };
+}
+
+function resolveThreadPosts(candidate, base) {
+  const source = Object.prototype.hasOwnProperty.call(candidate, "threadPosts")
+    ? candidate.threadPosts
+    : base.threadPosts;
+
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source.map((post) => normalizeThreadPost(post, post));
+}
+
+function resolvePostStatus(candidate, base) {
+  if (Object.prototype.hasOwnProperty.call(candidate, "postStatus") && ALLOWED_POST_STATUSES.has(candidate.postStatus)) {
+    return candidate.postStatus;
+  }
+
+  if (ALLOWED_POST_STATUSES.has(base.postStatus)) {
+    return base.postStatus;
+  }
+
+  return "draft";
 }
 
 function normalizeItem(item, fallback = {}) {
@@ -100,6 +206,23 @@ function normalizeItem(item, fallback = {}) {
       Object.prototype.hasOwnProperty.call(candidate, "assignee")
         ? normalizeAssignee(candidate.assignee)
         : normalizeAssignee(base.assignee),
+    postStatus: resolvePostStatus(candidate, base),
+    threadPosts: resolveThreadPosts(candidate, base),
+    sourceTrendId: resolveSourceTrendId(candidate, base),
+    sourceLinks: resolveSourceLinks(candidate, base),
+    researchSuggestion:
+      Object.prototype.hasOwnProperty.call(candidate, "researchSuggestion")
+        ? candidate.researchSuggestion === true
+        : base.researchSuggestion === true,
+    researchScore:
+      Object.prototype.hasOwnProperty.call(candidate, "researchScore")
+        ? normalizeOptionalNumber(candidate.researchScore)
+        : normalizeOptionalNumber(base.researchScore),
+    researchBreakdown: normalizeResearchBreakdown(candidate.researchBreakdown, base.researchBreakdown),
+    experimentId:
+      Object.prototype.hasOwnProperty.call(candidate, "experimentId")
+        ? normalizeOptionalString(candidate.experimentId)
+        : normalizeOptionalString(base.experimentId),
     createdAt,
     updatedAt,
   };
@@ -148,10 +271,11 @@ export class ContentStore {
     return this.readAll().items.find((item) => item.id === normalizedId) ?? null;
   }
 
-  list(project = null, assignee = undefined) {
+  list(project = null, assignee = undefined, postStatus = undefined) {
     const normalizedProject = normalizeOptionalString(project);
     const normalizedAssignee =
       assignee === undefined ? undefined : assignee === null ? null : normalizeOptionalString(assignee);
+    const normalizedPostStatus = postStatus === undefined ? undefined : normalizeOptionalString(postStatus);
     const feed = this.readAll();
 
     return feed.items.filter((item) => {
@@ -159,16 +283,42 @@ export class ContentStore {
         return false;
       }
 
-      if (normalizedAssignee === undefined) {
+      if (normalizedAssignee === null && item.assignee != null) {
+        return false;
+      }
+
+      if (typeof normalizedAssignee === "string" && item.assignee !== normalizedAssignee) {
+        return false;
+      }
+
+      if (normalizedPostStatus === undefined) {
         return true;
       }
 
-      if (normalizedAssignee === null) {
-        return item.assignee == null;
-      }
-
-      return item.assignee === normalizedAssignee;
+      return item.postStatus === normalizedPostStatus;
     });
+  }
+
+  readBySourceTrendId(sourceTrendId) {
+    const normalizedSourceTrendId = normalizeOptionalString(sourceTrendId);
+    if (!normalizedSourceTrendId) {
+      return null;
+    }
+
+    return this.readAll().items.find(
+      (item) => item.sourceTrendId === normalizedSourceTrendId && item.type !== "research-result",
+    ) ?? null;
+  }
+
+  readByExperimentId(experimentId) {
+    const normalizedExperimentId = normalizeOptionalString(experimentId);
+    if (!normalizedExperimentId) {
+      return null;
+    }
+
+    return this.readAll().items.find(
+      (item) => item.experimentId === normalizedExperimentId && item.type === "research-result",
+    ) ?? null;
   }
 
   write(itemInput, fallback = {}) {
@@ -244,5 +394,7 @@ export function getContentConstants() {
   return {
     allowedTypes: [...ALLOWED_TYPES],
     allowedStatuses: [...ALLOWED_STATUSES],
+    allowedPostStatuses: [...ALLOWED_POST_STATUSES],
+    allowedThreadFormats: [...ALLOWED_THREAD_FORMATS],
   };
 }

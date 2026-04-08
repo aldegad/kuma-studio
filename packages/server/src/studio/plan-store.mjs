@@ -5,10 +5,22 @@
  * Optional commit linking: `<!-- commit:hash -->` after a checklist item.
  */
 
+import fs, { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
+
+const PLAN_STATUS_COLOR_BY_STATUS = {
+  active: "blue",
+  hold: "yellow",
+  blocked: "orange",
+  completed: "green",
+  failed: "red",
+};
+
+let cachedPlansDir = null;
+let cachedPlansSnapshot = null;
+let cachedPlansPromise = null;
 
 /**
  * Resolve the plans directory.
@@ -120,17 +132,68 @@ function parseChecklist(body = "") {
   return sections;
 }
 
-/** Read all plan documents and return a snapshot. */
-export async function readPlans() {
-  const plansDir = resolvePlansDir();
+export function normalizePlanStatus(rawStatus) {
+  const normalized = String(rawStatus ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/gu, "_");
 
+  switch (normalized) {
+    case "":
+    case "active":
+    case "in_progress":
+      return "active";
+    case "hold":
+    case "on_hold":
+    case "paused":
+      return "hold";
+    case "blocked":
+      return "blocked";
+    case "completed":
+    case "done":
+      return "completed";
+    case "failed":
+    case "error":
+      return "failed";
+    default:
+      return normalized;
+  }
+}
+
+export function getPlanStatusColor(status) {
+  return PLAN_STATUS_COLOR_BY_STATUS[normalizePlanStatus(status)] ?? "gray";
+}
+
+function normalizePlanId(filePath) {
+  if (filePath.endsWith("/index.md")) {
+    return filePath.slice(0, -"/index.md".length);
+  }
+
+  return filePath.replace(/\.md$/u, "");
+}
+
+function createEmptyPlansSnapshot() {
+  return { plans: [], totalItems: 0, checkedItems: 0, overallCompletionRate: 0 };
+}
+
+function syncCacheDirectory(plansDir) {
+  if (cachedPlansDir === plansDir) {
+    return;
+  }
+
+  cachedPlansDir = plansDir;
+  cachedPlansSnapshot = null;
+  cachedPlansPromise = null;
+}
+
+async function loadPlansFromDisk(plansDir) {
   if (!existsSync(plansDir)) {
-    return { plans: [], totalItems: 0, checkedItems: 0, overallCompletionRate: 0 };
+    return createEmptyPlansSnapshot();
   }
 
   const files = await readdir(plansDir, { recursive: true });
   const mdFiles = files
-    .filter((f) => f.endsWith(".md") && basename(f) !== "index.md")
+    .filter((f) => f.endsWith(".md") && f !== "index.md")
     .sort();
 
   const plans = [];
@@ -138,14 +201,15 @@ export async function readPlans() {
   let checkedItems = 0;
 
   for (const file of mdFiles) {
-    const planId = file.replace(/\.md$/u, "");
-    const slashIndex = file.indexOf("/");
-    const project = slashIndex > 0 ? file.slice(0, slashIndex) : null;
+    const planId = normalizePlanId(file);
+    const slashIndex = planId.indexOf("/");
+    const project = slashIndex > 0 ? planId.slice(0, slashIndex) : null;
 
     try {
       const content = await readFile(join(plansDir, file), "utf8");
       const { frontmatter, body, warnings } = parseFrontmatter(content);
       const sections = parseChecklist(body);
+      const status = normalizePlanStatus(frontmatter.status || "active");
 
       const planTotal = sections.reduce((sum, section) => sum + section.items.length, 0);
       const planChecked = sections.reduce(
@@ -157,7 +221,8 @@ export async function readPlans() {
         id: planId,
         project,
         title: frontmatter.title || planId,
-        status: frontmatter.status || "in_progress",
+        status,
+        statusColor: getPlanStatusColor(status),
         created: frontmatter.created || null,
         body: body.trim(),
         sections,
@@ -175,7 +240,8 @@ export async function readPlans() {
         id: planId,
         project,
         title: planId,
-        status: "error",
+        status: "failed",
+        statusColor: getPlanStatusColor("failed"),
         created: null,
         body: "",
         sections: [],
@@ -192,5 +258,104 @@ export async function readPlans() {
     totalItems,
     checkedItems,
     overallCompletionRate: totalItems > 0 ? (checkedItems / totalItems) * 100 : 0,
+  };
+}
+
+export function invalidatePlansCache() {
+  cachedPlansSnapshot = null;
+  cachedPlansPromise = null;
+}
+
+export async function refreshPlans() {
+  const plansDir = resolvePlansDir();
+  syncCacheDirectory(plansDir);
+
+  if (cachedPlansPromise) {
+    return cachedPlansPromise;
+  }
+
+  const loadPromise = loadPlansFromDisk(plansDir)
+    .then((snapshot) => {
+      cachedPlansSnapshot = snapshot;
+      return snapshot;
+    })
+    .finally(() => {
+      if (cachedPlansPromise === loadPromise) {
+        cachedPlansPromise = null;
+      }
+    });
+
+  cachedPlansPromise = loadPromise;
+  return loadPromise;
+}
+
+/** Read all plan documents and return a cached snapshot. */
+export async function readPlans() {
+  const plansDir = resolvePlansDir();
+  syncCacheDirectory(plansDir);
+
+  if (cachedPlansSnapshot) {
+    return cachedPlansSnapshot;
+  }
+
+  if (cachedPlansPromise) {
+    return cachedPlansPromise;
+  }
+
+  return refreshPlans();
+}
+
+/**
+ * Watch the plans directory recursively and refresh cached snapshots on markdown changes.
+ * @param {{ debounceMs?: number, onChange?: (snapshot: Awaited<ReturnType<typeof readPlans>>) => void | Promise<void>, onError?: (error: unknown) => void }} [options]
+ * @returns {() => void}
+ */
+export function watchPlans(options = {}) {
+  const { debounceMs = 500, onChange, onError } = options;
+  const plansDir = resolvePlansDir();
+  syncCacheDirectory(plansDir);
+
+  if (!existsSync(plansDir)) {
+    return () => {};
+  }
+
+  let debounceTimer = null;
+  let closed = false;
+  let watcher = null;
+
+  const scheduleRefresh = () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        const snapshot = await refreshPlans();
+        await onChange?.(snapshot);
+      } catch (error) {
+        onError?.(error);
+      }
+    }, debounceMs);
+  };
+
+  try {
+    watcher = fs.watch(plansDir, { recursive: true }, (_eventType, filename) => {
+      if (closed) {
+        return;
+      }
+
+      const relativeFile = typeof filename === "string" ? filename : "";
+      if (relativeFile && !relativeFile.endsWith(".md")) {
+        return;
+      }
+
+      scheduleRefresh();
+    });
+  } catch (error) {
+    onError?.(error);
+    return () => {};
+  }
+
+  return () => {
+    closed = true;
+    clearTimeout(debounceTimer);
+    watcher?.close();
   };
 }

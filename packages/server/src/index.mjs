@@ -2,7 +2,15 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { commandBrowserScreenshot, commandGetBrowserSession } from "./browser-cli.mjs";
+import {
+  commandBrowserListTabs,
+  commandBrowserScreenshot,
+  commandBrowserScreenshotDiff,
+  commandBrowserStudioSnapshot,
+  commandBrowserType,
+  commandBrowserWaitFor,
+  commandGetBrowserSession,
+} from "./browser-cli.mjs";
 import { commandRun } from "./playwright-runner.mjs";
 import { parseFlags, readNumber, readOptionalString, requireString } from "./cli-options.mjs";
 import { DEFAULT_PORT } from "./constants.mjs";
@@ -12,6 +20,8 @@ import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mj
 import { DevSelectionStore } from "./dev-selection-store.mjs";
 import { normalizeViewport } from "./scene-schema.mjs";
 import { SceneStore } from "./scene-store.mjs";
+import { maybeAutoIngestResult } from "./studio/vault-auto-ingest.mjs";
+import { ingestResultFile } from "./studio/vault-ingest.mjs";
 import { resolveAgentIdByDescriptor } from "./team-metadata.mjs";
 import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
 
@@ -27,14 +37,22 @@ Usage:
   kuma-studio get-job-card [--session-id session-01] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio get-extension-status [--root .]
   kuma-studio get-browser-session [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio browser-screenshot [--file /tmp/kuma-studio-screenshot.png] [--tab-id 123] [--url-contains "example.com"] [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio run [script.js] (--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-list-tabs [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-screenshot [--file /tmp/kuma-studio-screenshot.png] [--hide-overlay] [--tab-id 123 | --tab-index 1 | --url-contains "example.com"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-studio-snapshot [--file /tmp/kuma-studio-snapshot.png] [--hide-overlay] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-screenshot-diff --before /tmp/previous.png [--file /tmp/current.png] [--diff-file /tmp/diff.png] [--hide-overlay] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-wait-for --selector "#submit" [--state visible] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio browser-type --selector "#search" --text "hello" [--fill] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--delay-ms 50] [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio run [script.js] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio set-job-status --status in_progress --message "Write a short progress note" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url ${DEFAULT_DAEMON_URL}] [--root .]
   kuma-studio set-agent-status --status working|idle --from-stdin [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio put-scene --file ./scene.json [--root .]
   kuma-studio add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   kuma-studio move-node --id node-01 --x 120 --y 80 [--root .]
   kuma-studio remove-node --id node-01 [--root .]
+  kuma-studio vault-ingest [result-file] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--task-dir /tmp/kuma-tasks] [--vault-dir ~/.kuma/vault] [--dry-run]
+  kuma-studio wiki-ingest [result-file] ...                                   # temporary alias
+  kuma-studio vault-auto-ingest [result-file] [--signal task-done] [--task-dir /tmp/kuma-tasks] [--stamp-dir /tmp/kuma-vault-auto-ingest] [--vault-dir ~/.kuma/vault] [--dry-run]
   kuma-studio project-info [--root .]            # show current project hash and state dir
   kuma-studio list-projects                      # list all known project state directories
   kuma-studio dashboard                          # open http://localhost:${DEFAULT_PORT}/studio
@@ -426,6 +444,62 @@ function commandListProjects() {
   process.stdout.write(JSON.stringify(results, null, 2) + "\n");
 }
 
+async function commandVaultIngest(options, fileArg) {
+  if (options.help === true) {
+    printUsage();
+    return;
+  }
+
+  const resultFile = fileArg ?? readOptionalString(options, "result-file");
+  if (!resultFile) {
+    throw new Error("vault-ingest requires a result file path.");
+  }
+
+  const response = await ingestResultFile({
+    resultPath: resultFile,
+    vaultDir:
+      readOptionalString(options, "vault-dir") ??
+      readOptionalString(options, "wiki-dir") ??
+      undefined,
+    taskDir: readOptionalString(options, "task-dir") ?? undefined,
+    qaStatus: requireString(options, "qa-status"),
+    section: readOptionalString(options, "section") ?? undefined,
+    slug: readOptionalString(options, "slug") ?? undefined,
+    page: readOptionalString(options, "page") ?? undefined,
+    title: readOptionalString(options, "title") ?? undefined,
+    dryRun: options["dry-run"] === true,
+  });
+
+  process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+}
+
+async function commandVaultAutoIngest(options, fileArg) {
+  if (options.help === true) {
+    printUsage();
+    return;
+  }
+
+  const resultFile = fileArg ?? readOptionalString(options, "result-file");
+  if (!resultFile) {
+    throw new Error("vault-auto-ingest requires a result file path.");
+  }
+
+  const response = await maybeAutoIngestResult({
+    resultPath: resultFile,
+    signal: readOptionalString(options, "signal") ?? undefined,
+    taskDir: readOptionalString(options, "task-dir") ?? undefined,
+    stampDir: readOptionalString(options, "stamp-dir") ?? undefined,
+    vaultDir:
+      readOptionalString(options, "vault-dir") ??
+      readOptionalString(options, "wiki-dir") ??
+      undefined,
+    wikiDir: readOptionalString(options, "wiki-dir") ?? undefined,
+    dryRun: options["dry-run"] === true,
+  });
+
+  process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv;
 
@@ -456,8 +530,23 @@ export async function main(argv = process.argv.slice(2)) {
     case "get-browser-session":
       await commandGetBrowserSession(options);
       return;
+    case "browser-list-tabs":
+      await commandBrowserListTabs(options);
+      return;
     case "browser-screenshot":
       await commandBrowserScreenshot(options);
+      return;
+    case "browser-studio-snapshot":
+      await commandBrowserStudioSnapshot(options);
+      return;
+    case "browser-screenshot-diff":
+      await commandBrowserScreenshotDiff(options);
+      return;
+    case "browser-wait-for":
+      await commandBrowserWaitFor(options);
+      return;
+    case "browser-type":
+      await commandBrowserType(options);
       return;
     case "run":
       await commandRun(options, fileArg);
@@ -479,6 +568,13 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "remove-node":
       commandRemoveNode(options);
+      return;
+    case "vault-ingest":
+    case "wiki-ingest":
+      await commandVaultIngest(options, fileArg);
+      return;
+    case "vault-auto-ingest":
+      await commandVaultAutoIngest(options, fileArg);
       return;
     case "project-info":
       commandProjectInfo(options);

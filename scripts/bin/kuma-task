@@ -1,0 +1,112 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-task <멤버이름> "<지시>" [--project <프로젝트>] [--wait] [--no-qa]
+EOF
+}
+
+[ $# -ge 2 ] || {
+  usage >&2
+  exit 1
+}
+
+MEMBER_QUERY="$1"
+INSTRUCTION="$2"
+shift 2
+
+PROJECT="$KUMA_DEFAULT_PROJECT"
+WAIT_FOR_SIGNAL=0
+NO_QA=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT="${2:?project required}"
+      shift 2
+      ;;
+    --wait)
+      WAIT_FOR_SIGNAL=1
+      shift
+      ;;
+    --no-qa)
+      NO_QA=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+ensure_runtime_requirements
+mkdir -p "$KUMA_TASK_DIR" "$KUMA_RESULT_DIR"
+
+MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
+MEMBER_NAME="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
+MEMBER_ID="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.id);')"
+MEMBER_TYPE="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.type);')"
+
+SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$MEMBER_JSON")" || die "surface not found for $MEMBER_NAME in project '$PROJECT'"
+WORKER_SURFACE="$(printf '%s' "$SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+
+QA_SURFACE=""
+if [ "$NO_QA" != "1" ]; then
+  QA_MEMBER_JSON="$(resolve_member_json "$KUMA_DEFAULT_QA_MEMBER")" || die "qa member not found: $KUMA_DEFAULT_QA_MEMBER"
+  QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON")" || die "qa surface not found for $KUMA_DEFAULT_QA_MEMBER"
+  QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+fi
+
+TASK_TOKEN="$(default_task_token "$MEMBER_ID")"
+TASK_BASENAME="${PROJECT}-${TASK_TOKEN}"
+TASK_FILE="$KUMA_TASK_DIR/${TASK_BASENAME}.task.md"
+RESULT_FILE="$KUMA_RESULT_DIR/${TASK_BASENAME}.result.md"
+SIGNAL="${TASK_BASENAME}-done"
+INITIATOR_SURFACE="$(resolve_initiator_surface)"
+
+cat > "$TASK_FILE" <<EOF
+---
+id: ${TASK_TOKEN}
+project: ${PROJECT}
+initiator: ${INITIATOR_SURFACE}
+worker: ${WORKER_SURFACE}
+qa: ${QA_SURFACE:-null}
+signal: ${SIGNAL}
+result: ${RESULT_FILE}
+---
+# ${TASK_BASENAME}
+
+${INSTRUCTION}
+EOF
+
+if [ "$NO_QA" = "1" ]; then
+  PROMPT="Read ${TASK_FILE} and execute. 완료 후 result 파일 작성하고 cmux wait-for -S ${SIGNAL} 로 완료 신호 보낼 것."
+else
+  PROMPT="Read ${TASK_FILE} and execute. 완료 후 QA 라우팅 프로토콜 따를 것."
+fi
+
+cmux send --surface "$WORKER_SURFACE" "${PROMPT}"$'\n'
+if [ "$MEMBER_TYPE" = "codex" ]; then
+  cmux send-key --surface "$WORKER_SURFACE" Enter
+fi
+
+printf 'TASK_FILE: %s\n' "$TASK_FILE"
+printf 'RESULT_FILE: %s\n' "$RESULT_FILE"
+printf 'WORKER: %s (%s, %s)\n' "$MEMBER_NAME" "$WORKER_SURFACE" "$MEMBER_TYPE"
+if [ -n "$QA_SURFACE" ]; then
+  printf 'QA: %s (%s)\n' "$KUMA_DEFAULT_QA_MEMBER" "$QA_SURFACE"
+fi
+printf 'SIGNAL: %s\n' "$SIGNAL"
+
+if [ "$WAIT_FOR_SIGNAL" = "1" ]; then
+  "$KUMA_CMUX_DIR/kuma-cmux-wait.sh" "$SIGNAL" "$RESULT_FILE" --surface "$WORKER_SURFACE"
+fi

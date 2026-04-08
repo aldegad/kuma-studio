@@ -7,6 +7,8 @@ import { afterEach, assert, describe, it } from "vitest";
 
 import { ContentStore } from "./content-store.mjs";
 import { createContentRouteHandler } from "./content-routes.mjs";
+import { ExperimentStore } from "./experiment-store.mjs";
+import { TrendStore } from "./trend-store.mjs";
 
 function createRequest(method, url, body) {
   const payload = body == null ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -64,6 +66,7 @@ describe("content-routes", () => {
 
     const handler = createContentRouteHandler({
       contentStore: new ContentStore(root),
+      trendStore: new TrendStore(root),
       workspaceRoot: root,
     });
 
@@ -159,6 +162,7 @@ describe("content-routes", () => {
 
     const handler = createContentRouteHandler({
       contentStore: new ContentStore(root),
+      trendStore: new TrendStore(root),
       workspaceRoot: root,
     });
 
@@ -185,5 +189,131 @@ describe("content-routes", () => {
     );
 
     assert.strictEqual(listRes.statusCode, 400);
+  });
+
+  it("generates thread post previews and filters by postStatus", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-content-routes-"));
+    tempDirs.push(root);
+
+    const contentStore = new ContentStore(root);
+    const trendStore = new TrendStore(root);
+    const trend = trendStore.write({
+      feedUrl: "https://example.com/feed.xml",
+      articleUrl: "https://example.com/agents",
+      title: "Agent infra trend",
+      summary: "Summary",
+      publishedAt: "2026-04-08T09:00:00+09:00",
+      tags: ["agents", "infra"],
+      relevanceScore: 0.9,
+    });
+    const item = contentStore.write({
+      project: "kuma-studio",
+      type: "text",
+      title: "AI agents move from demos to orchestration stacks",
+      body: "Teams are shipping longer workflows instead of isolated prompts. The real bottleneck is latency across tools.",
+      assignee: null,
+      sourceTrendId: trend.id,
+      sourceLinks: ["https://example.com/agents"],
+    });
+    const handler = createContentRouteHandler({
+      contentStore,
+      trendStore,
+      workspaceRoot: root,
+    });
+
+    const generateRes = createResponse();
+    await handler(
+      createRequest("POST", `/studio/content/${item.id}/generate-post`, {}),
+      generateRes,
+      new URL(`http://localhost:4312/studio/content/${item.id}/generate-post`),
+    );
+
+    assert.strictEqual(generateRes.statusCode, 200);
+    assert.strictEqual(generateRes.json.postStatus, "preview");
+    assert.ok(Array.isArray(generateRes.json.threadPosts));
+    assert.ok(generateRes.json.threadPosts.length >= 1);
+    assert.ok(generateRes.json.threadPosts.at(-1)?.cta.includes("orchestration"));
+
+    const approveRes = createResponse();
+    await handler(
+      createRequest("PATCH", `/studio/content/${item.id}`, {
+        postStatus: "approved",
+        threadPosts: generateRes.json.threadPosts,
+      }),
+      approveRes,
+      new URL(`http://localhost:4312/studio/content/${item.id}`),
+    );
+
+    assert.strictEqual(approveRes.statusCode, 200);
+    assert.strictEqual(approveRes.json.postStatus, "approved");
+
+    const listRes = createResponse();
+    await handler(
+      createRequest("GET", "/studio/content?postStatus=approved"),
+      listRes,
+      new URL("http://localhost:4312/studio/content?postStatus=approved"),
+    );
+
+    assert.strictEqual(listRes.statusCode, 200);
+    assert.strictEqual(listRes.json.items.length, 1);
+    assert.strictEqual(listRes.json.items[0].id, item.id);
+  });
+
+  it("starts a linked research experiment from a content card", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-content-routes-"));
+    tempDirs.push(root);
+
+    const contentStore = new ContentStore(root);
+    const trendStore = new TrendStore(root);
+    const experimentStore = new ExperimentStore(root);
+    const trend = trendStore.write({
+      feedUrl: "https://example.com/feed.xml",
+      articleUrl: "https://example.com/agent-sdk",
+      title: "Agent SDK trend",
+      summary: "Research-worthy agent SDK update",
+      publishedAt: "2026-04-08T09:00:00+09:00",
+      tags: ["agents", "sdk"],
+      relevanceScore: 0.93,
+    });
+    const item = contentStore.write({
+      project: "kuma-studio",
+      type: "text",
+      title: "Agent SDK trend",
+      body: "Research-worthy agent SDK update",
+      assignee: null,
+      sourceTrendId: trend.id,
+      sourceLinks: ["https://example.com/agent-sdk"],
+      researchSuggestion: true,
+      researchScore: 0.84,
+    });
+
+    const handler = createContentRouteHandler({
+      contentStore,
+      trendStore,
+      experimentStore,
+      experimentPipeline: {
+        start(experiment) {
+          return {
+            branch: `exp/${experiment.id}`,
+            worktree: `/tmp/${experiment.id}`,
+          };
+        },
+      },
+      workspaceRoot: root,
+    });
+
+    const startRes = createResponse();
+    await handler(
+      createRequest("POST", `/studio/content/${item.id}/start-research`, {}),
+      startRes,
+      new URL(`http://localhost:4312/studio/content/${item.id}/start-research`),
+    );
+
+    assert.strictEqual(startRes.statusCode, 200);
+    assert.strictEqual(startRes.json.created, true);
+    assert.strictEqual(startRes.json.content.experimentId, startRes.json.experiment.id);
+    assert.strictEqual(startRes.json.experiment.status, "in-progress");
+    assert.strictEqual(startRes.json.experiment.sourceContentId, item.id);
+    assert.strictEqual(experimentStore.list().length, 1);
   });
 });

@@ -1,8 +1,4 @@
-import { readFileSync } from "node:fs";
-
-const TEAM_DATA = JSON.parse(
-  readFileSync(new URL("../../shared/team.json", import.meta.url), "utf8"),
-);
+import { TEAM_DATA } from "./team-schema.mjs";
 
 const TEAMS = Array.isArray(TEAM_DATA.teams) ? TEAM_DATA.teams : [];
 const MEMBERS = Array.isArray(TEAM_DATA.members) ? TEAM_DATA.members : [];
@@ -145,14 +141,24 @@ export function resolveAgentIdByDescriptor({ description, subagentType, model })
   const includesAny = (haystack, needles) =>
     needles.some((needle) => haystack.includes(needle));
 
-  // Find members by their role-based skills from team.json
-  const findMemberBySkillKeywords = (teamId, keywords) => {
+  const findMemberById = (memberId) => (MEMBERS_BY_ID.has(memberId) ? memberId : null);
+  const findMemberByRole = (teamId, roleIds) => {
     const teamMembers = MEMBERS_BY_TEAM_ID.get(teamId) ?? [];
     for (const member of teamMembers) {
       if (member.nodeType !== "worker") continue;
-      const skills = (member.skills ?? []).join(" ").toLowerCase();
-      const role = (member.role?.ko ?? "").toLowerCase();
-      if (keywords.some((kw) => skills.includes(kw) || role.includes(kw))) {
+      if (roleIds.includes(member.roleId)) {
+        return member.id;
+      }
+    }
+    return null;
+  };
+
+  const findMemberByCapability = (teamId, capabilityIds) => {
+    const teamMembers = MEMBERS_BY_TEAM_ID.get(teamId) ?? [];
+    for (const member of teamMembers) {
+      if (member.nodeType !== "worker") continue;
+      const capabilities = Array.isArray(member.capabilities) ? member.capabilities : [];
+      if (capabilityIds.some((capability) => capabilities.includes(capability))) {
         return member.id;
       }
     }
@@ -162,31 +168,43 @@ export function resolveAgentIdByDescriptor({ description, subagentType, model })
   if (sub === "codex") {
     // Review/critic → 새미
     if (includesAny(desc, ["review", "critic", "qa", "quality", "리뷰", "검토", "품질", "비평"])) {
-      return findMemberBySkillKeywords("dev", ["리뷰", "보안", "품질", "비평"]) ?? "saemi";
+      return findMemberByRole("dev", ["review"])
+        ?? findMemberByCapability("dev", ["review", "security", "quality"])
+        ?? "saemi";
     }
 
-    // Code analysis → 다람이
+    // Code analysis → 다람이 (now in dev team)
     if (includesAny(desc, ["analysis", "analyze", "inspect", "explore", "trace", "investigate", "코드 분석", "분석", "구조", "의존성", "탐색", "조사"])) {
-      return findMemberBySkillKeywords("analytics", ["분석", "구조", "의존성"]) ?? "darami";
+      return findMemberById("darami")
+        ?? findMemberByRole("dev", ["developer"])
+        ?? "tookdaki";
     }
 
     // Default codex worker → 뚝딱이
-    return findMemberBySkillKeywords("dev", ["구현", "버그", "리팩토링"]) ?? "tookdaki";
+    return findMemberByRole("dev", ["developer"])
+      ?? findMemberByCapability("dev", ["code", "implementation", "debug"])
+      ?? "tookdaki";
   }
 
   if (mdl.includes("sonnet")) {
     // Research → find researcher in analytics team
     if (includesAny(desc, ["research", "search", "web", "market", "docs", "documentation", "리서치", "검색", "웹", "시장", "문서", "조사"])) {
-      return findMemberBySkillKeywords("analytics", ["검색", "리서치", "시장"]) ?? "buri";
+      return findMemberByRole("analytics", ["researcher"])
+        ?? findMemberByCapability("analytics", ["research", "web-search", "market-research"])
+        ?? "buri";
     }
 
     // Default sonnet → find QA/build member in dev team
-    return findMemberBySkillKeywords("dev", ["빌드", "배포", "디버깅"]) ?? "bamdori";
+    return findMemberByRole("dev", ["qa"])
+      ?? findMemberByCapability("dev", ["qa", "build", "deploy"])
+      ?? "bamdori";
   }
 
   if (mdl.includes("opus")) {
     // Opus model → find designer/publisher in dev team
-    return findMemberBySkillKeywords("dev", ["디자이너", "퍼블리셔", "html", "그래픽"]) ?? "koon";
+    return findMemberByRole("dev", ["ui"])
+      ?? findMemberByCapability("dev", ["design", "frontend", "graphics"])
+      ?? "koon";
   }
 
   return null;

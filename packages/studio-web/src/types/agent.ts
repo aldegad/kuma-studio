@@ -1,4 +1,4 @@
-import teamData from "../../../shared/team.json";
+import { teamData } from "../lib/team-schema";
 
 export type AgentState = "idle" | "working" | "thinking" | "completed" | "error";
 export type NodeType = "session" | "team" | "worker";
@@ -51,6 +51,28 @@ export interface TeamMetadataTeam {
 
 export interface TeamMetadataResponse {
   teams: TeamMetadataTeam[];
+}
+
+export interface TeamConfigMember {
+  id: string;
+  emoji: string;
+  role: string;
+  team: string;
+  nodeType: string;
+  type: string;
+  model: string;
+  options: string;
+  nameEn: string;
+  animalKo: string;
+  animalEn: string;
+  image: string;
+  skills: string[];
+  parentId: string | null;
+}
+
+export interface TeamConfigResponse {
+  members: Record<string, TeamConfigMember>;
+  defaults: Record<string, { model: string; options: string }>;
 }
 
 type SharedTeamMember = (typeof teamData.members)[number];
@@ -121,4 +143,27 @@ export function applyTeamMetadata(metadata: TeamMetadataResponse): Agent[] {
     }
   }
   return KUMA_TEAM;
+}
+
+const TEAM_NAME_KO_BY_ID = new Map(teamData.teams.map((t) => [t.id, t.name.ko] as const));
+
+export function teamConfigToAgents(config: TeamConfigResponse): Agent[] {
+  return Object.entries(config.members).map(([nameKo, m]) => ({
+    id: m.id,
+    name: m.nameEn || m.id,
+    nameKo,
+    animal: m.animalEn || "",
+    animalKo: m.animalKo || "",
+    role: "",
+    roleKo: m.role,
+    team: m.team,
+    teamKo: TEAM_NAME_KO_BY_ID.get(m.team) ?? m.team,
+    state: "idle" as AgentState,
+    nodeType: (m.nodeType || "worker") as NodeType,
+    parentId: m.parentId ?? undefined,
+    model: m.model,
+    emoji: m.emoji,
+    image: m.image || undefined,
+    skills: m.skills?.length ? (m.skills as AgentSkillId[]) : undefined,
+  }));
 }

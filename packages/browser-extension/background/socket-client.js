@@ -3,13 +3,14 @@ const {
 } = KumaPickerExtensionShared;
 
 const SOCKET_RECONNECT_BASE_DELAY_MS = 1_000;
-const SOCKET_RECONNECT_MAX_DELAY_MS = 10_000;
+const SOCKET_RECONNECT_MAX_DELAY_MS = 30_000;
 const SOCKET_PROBE_TIMEOUT_MS = 1_500;
 const MAX_QUEUED_SOCKET_MESSAGES = 200;
 
 let daemonSocket = null;
 let daemonSocketUrl = null;
 let daemonTransportUrl = null;
+let lastPresenceUpdate = null;
 let queuedPresenceUpdate = null;
 let queuedSocketMessages = [];
 let reconnectDelayMs = SOCKET_RECONNECT_BASE_DELAY_MS;
@@ -130,17 +131,26 @@ function flushQueuedSocketMessages() {
 }
 
 function flushQueuedPresenceUpdate() {
-  if (!queuedPresenceUpdate || !isDaemonSocketOpen() || !daemonSocketReady) {
+  const presenceUpdate = queuedPresenceUpdate ?? lastPresenceUpdate;
+  if (!presenceUpdate || !isDaemonSocketOpen() || !daemonSocketReady) {
     return;
   }
 
-  daemonSocket.send(JSON.stringify(queuedPresenceUpdate));
-  queuedPresenceUpdate = null;
+  try {
+    daemonSocket.send(JSON.stringify(presenceUpdate));
+    queuedPresenceUpdate = null;
+  } catch {
+    queuedPresenceUpdate = presenceUpdate;
+  }
 }
 
 function sendDaemonSocketMessage(payload) {
   if (!payload || typeof payload !== "object") {
     return false;
+  }
+
+  if (payload.type === "presence.update") {
+    lastPresenceUpdate = payload;
   }
 
   if (payload.type === "presence.update" && (!isDaemonSocketOpen() || !daemonSocketReady)) {
@@ -155,8 +165,20 @@ function sendDaemonSocketMessage(payload) {
     return false;
   }
 
-  daemonSocket.send(JSON.stringify(payload));
-  return true;
+  try {
+    daemonSocket.send(JSON.stringify(payload));
+    return true;
+  } catch {
+    if (payload.type === "presence.update") {
+      queuedPresenceUpdate = payload;
+      return false;
+    }
+
+    if (payload.type === "command.result" || payload.type === "command.error") {
+      queueSocketMessage(payload);
+    }
+    return false;
+  }
 }
 
 function scheduleDaemonSocketReconnect(daemonUrl) {
@@ -223,6 +245,7 @@ function openDaemonSocket(daemonUrl) {
   daemonSocketUrl = socketUrl;
 
   socket.addEventListener("open", () => {
+    clearDaemonReconnectTimer();
     reconnectDelayMs = SOCKET_RECONNECT_BASE_DELAY_MS;
     lastSocketStatus = "connected";
     daemonSocketReady = false;
@@ -251,8 +274,8 @@ function openDaemonSocket(daemonUrl) {
         switch (message?.type) {
           case "hello":
             daemonSocketReady = true;
-            flushQueuedSocketMessages();
             flushQueuedPresenceUpdate();
+            flushQueuedSocketMessages();
             return;
           case "ping":
             sendDaemonSocketMessage({
@@ -295,6 +318,7 @@ function openDaemonSocket(daemonUrl) {
     if (daemonSocket === socket) {
       daemonSocketReady = false;
       setSocketError("The Kuma Picker WebSocket bridge failed to initialize.", daemonUrl, "websocket:error");
+      scheduleDaemonSocketReconnect(daemonUrl);
       try {
         socket.close();
       } catch {

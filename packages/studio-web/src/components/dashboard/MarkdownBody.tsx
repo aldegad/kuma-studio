@@ -14,9 +14,9 @@ interface MarkdownBodyProps {
 
 function renderInline(text: string): ReactNode[] {
   const tokens: ReactNode[] = [];
-  // Process: bold, italic, inline code, links
+  // Process: bold, italic, inline code, images, links
   const regex =
-    /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`([^`]+)`)|\[([^\]]+)\]\(([^)]+)\)/g;
+    /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`([^`]+)`)|!\[([^\]]*)\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -50,18 +50,30 @@ function renderInline(text: string): ReactNode[] {
           {match[6]}
         </code>,
       );
-    } else if (match[7]) {
+    } else if (match[7] !== undefined && match[8]) {
+      // ![alt](url) — image
+      tokens.push(
+        <img
+          key={match.index}
+          src={match[8]}
+          alt={match[7]}
+          className="my-1 max-w-full rounded-lg border"
+          style={{ borderColor: "var(--card-border)", maxHeight: "320px" }}
+          loading="lazy"
+        />,
+      );
+    } else if (match[9]) {
       // [text](url)
       tokens.push(
         <a
           key={match.index}
-          href={match[8]}
+          href={match[10]}
           className="underline underline-offset-2 transition-colors hover:opacity-80"
           style={{ color: "var(--t-accent, #6366f1)" }}
           target="_blank"
           rel="noopener noreferrer"
         >
-          {match[7]}
+          {match[9]}
         </a>,
       );
     }
@@ -104,7 +116,7 @@ function parseTable(lines: string[]): { headers: string[]; rows: string[][] } | 
 /* ─── block-level parser ─── */
 
 interface Block {
-  type: "heading" | "table" | "codeblock" | "blockquote" | "list" | "hr" | "paragraph";
+  type: "heading" | "table" | "codeblock" | "blockquote" | "list" | "checklist" | "hr" | "image" | "paragraph";
   level?: number; // heading level
   lang?: string; // code block language
   lines: string[];
@@ -207,8 +219,20 @@ function parseBlocks(content: string): Block[] {
       continue;
     }
 
-    // Checklist items → skip (rendered by the checklist renderer)
+    // Checklist items
     if (/^\s*[-*]\s+\[[ xX]\]/.test(line)) {
+      const checkLines: string[] = [];
+      while (i < rawLines.length && /^\s*[-*]\s+\[[ xX]\]/.test(rawLines[i])) {
+        checkLines.push(rawLines[i]);
+        i++;
+      }
+      blocks.push({ type: "checklist", lines: checkLines });
+      continue;
+    }
+
+    // Standalone image: ![alt](url)
+    if (/^\s*!\[.*\]\(.+\)\s*$/.test(line)) {
+      blocks.push({ type: "image", lines: [line.trim()] });
       i++;
       continue;
     }
@@ -377,6 +401,58 @@ function ParagraphBlock({ lines }: { lines: string[] }) {
   );
 }
 
+function ImageBlock({ line }: { line: string }) {
+  const match = line.match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+  if (!match) return null;
+  const [, alt, src] = match;
+  return (
+    <div className="my-2">
+      <img
+        src={src}
+        alt={alt}
+        className="max-w-full rounded-lg border"
+        style={{ borderColor: "var(--card-border)", maxHeight: "400px" }}
+        loading="lazy"
+      />
+      {alt && (
+        <p className="mt-1 text-[10px] italic" style={{ color: "var(--t-faint)" }}>{alt}</p>
+      )}
+    </div>
+  );
+}
+
+function ChecklistBlock({ lines }: { lines: string[] }) {
+  return (
+    <ul className="my-1.5 space-y-1 text-[12px] leading-relaxed">
+      {lines.map((line, i) => {
+        const checked = /^\s*[-*]\s+\[[xX]\]/.test(line);
+        const text = line.replace(/^\s*[-*]\s+\[[ xX]\]\s*/, "");
+        return (
+          <li key={i} className="flex items-start gap-2">
+            <span
+              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                checked
+                  ? "border-emerald-400/80 bg-emerald-500 text-white"
+                  : ""
+              }`}
+              style={checked ? undefined : { borderColor: "var(--card-border)", background: "var(--input-bg)" }}
+            >
+              {checked && (
+                <svg viewBox="0 0 16 16" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3.5 8.5l3 3 6-7" />
+                </svg>
+              )}
+            </span>
+            <span style={{ color: checked ? "var(--t-muted)" : "var(--t-secondary)", textDecoration: checked ? "line-through" : "none" }}>
+              {renderInline(text)}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /* ─── main component ─── */
 
 export function MarkdownBody({ content }: MarkdownBodyProps) {
@@ -400,6 +476,10 @@ export function MarkdownBody({ content }: MarkdownBodyProps) {
             return <BlockquoteBlock key={i} lines={block.lines} />;
           case "list":
             return <ListBlock key={i} lines={block.lines} ordered={block.ordered ?? false} />;
+          case "checklist":
+            return <ChecklistBlock key={i} lines={block.lines} />;
+          case "image":
+            return <ImageBlock key={i} line={block.lines[0]} />;
           case "hr":
             return (
               <hr

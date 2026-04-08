@@ -1,6 +1,6 @@
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import { useTeamStatusStore } from "../../stores/use-team-status-store";
-import { KUMA_TEAM } from "../../types/agent";
+import { useTeamConfigStore } from "../../stores/use-team-config-store";
 
 interface WhiteboardProps {
   position?: { x: number; y: number };
@@ -19,6 +19,7 @@ function truncate(text: string, max: number): string {
 }
 
 export function Whiteboard({ position }: WhiteboardProps) {
+  const teamMembers = useTeamConfigStore((s) => s.members);
   const memberStatus = useTeamStatusStore((s) => s.memberStatus);
   const commitCount = useDashboardStore((s) => s.gitActivity.totalCommitsToday);
 
@@ -29,7 +30,7 @@ export function Whiteboard({ position }: WhiteboardProps) {
   const thinkingMembers: { id: string; emoji: string; name: string; task: string }[] = [];
   let idleCount = 0;
 
-  for (const agent of KUMA_TEAM) {
+  for (const agent of teamMembers) {
     const status = memberStatus.get(agent.id);
     const state = status?.state ?? "idle";
     const task = getTaskText(agent.id, memberStatus);
@@ -130,7 +131,7 @@ export function Whiteboard({ position }: WhiteboardProps) {
       >
         <div className="flex items-center gap-2">
           <span className="text-[9px] font-bold" style={{ color: "var(--t-faint)" }}>
-            {KUMA_TEAM.length}명
+            {teamMembers.length}명
           </span>
           {activeMembers.length > 0 && (
             <span className="text-[9px] font-bold" style={{ color: "rgb(22, 163, 74)" }}>

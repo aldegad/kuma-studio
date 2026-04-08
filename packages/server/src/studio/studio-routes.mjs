@@ -3,17 +3,24 @@
  * and provides REST API endpoints for stats and office layout state.
  */
 
-import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { homedir } from "node:os";
 import { resolve, join, extname, basename, relative, isAbsolute } from "node:path";
+import { withCmuxEnv } from "../cmux-env.mjs";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { readPlans } from "./plan-store.mjs";
 import { listClaudePlans, deleteClaudePlan } from "./claude-plans-store.mjs";
 import { filterTeamStatusSnapshot, toStudioTeamStatusSnapshot } from "./team-status-store.mjs";
 import { createContentRouteHandler } from "./content-routes.mjs";
+import { getMembersById } from "../team-metadata.mjs";
 import { createExperimentRouteHandler } from "./experiment-routes.mjs";
+import { createTrendRouteHandler } from "./trend-routes.mjs";
+import { resolveMemoImagesDir } from "./memo-store.mjs";
+import { readExtensionsCatalog } from "./extensions-catalog.mjs";
+import { isNightModeEnabled, setNightModeEnabled } from "./nightmode-store.mjs";
+import { syncVaultSkills } from "./vault-skill-sync.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -157,11 +164,28 @@ const fsAllowedRoots = [
   fsWorkspaceRoot,
   resolve(join(homedir(), ".claude")),
   resolve(join(homedir(), ".codex")),
+  resolve(join(homedir(), ".kuma", "vault")),
+  resolve(join(homedir(), ".kuma", "wiki")),
 ];
+const DEFAULT_SURFACE_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
+const DEFAULT_CMUX_SPAWN_SCRIPT = join(homedir(), ".kuma", "cmux", "kuma-cmux-spawn.sh");
+const DEFAULT_CMUX_KILL_SCRIPT = join(homedir(), ".kuma", "cmux", "kuma-cmux-kill.sh");
 
 function isAllowedPath(candidatePath) {
   const resolved = resolve(candidatePath);
   return fsAllowedRoots.some((root) => resolved.startsWith(root));
+}
+
+function buildLegacyWikiRedirect(pathname, search = "") {
+  if (pathname === "/studio/wiki") {
+    return `/studio/vault${search}`;
+  }
+
+  if (pathname.startsWith("/studio/wiki/")) {
+    return `/studio/vault/${pathname.slice("/studio/wiki/".length)}${search}`;
+  }
+
+  return null;
 }
 
 async function buildFsTree(dirPath, maxDepth, currentDepth) {
@@ -215,6 +239,174 @@ async function buildFsTree(dirPath, maxDepth, currentDepth) {
   return node;
 }
 
+function readSurfaceRegistry(registryPath = DEFAULT_SURFACE_REGISTRY_PATH) {
+  try {
+    return JSON.parse(readFileSync(registryPath, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeSurfaceRegistry(registry, registryPath = DEFAULT_SURFACE_REGISTRY_PATH) {
+  writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+}
+
+function buildRegistryLabel(name, emoji = "") {
+  return emoji ? `${emoji} ${name}` : name;
+}
+
+function resolveRegistryMemberContext(registry, memberName, emoji = "") {
+  const canonicalLabel = buildRegistryLabel(memberName, emoji);
+  const labels = [canonicalLabel, memberName];
+
+  for (const [project, entries] of Object.entries(registry ?? {})) {
+    for (const label of labels) {
+      const surface = entries?.[label];
+      if (typeof surface === "string" && surface) {
+        return {
+          project,
+          label,
+          surface,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function updateRegistryMemberSurface(registry, project, memberName, emoji, surface) {
+  const next = { ...(registry ?? {}) };
+  const canonicalLabel = buildRegistryLabel(memberName, emoji);
+
+  for (const [projectId, entries] of Object.entries(next)) {
+    if (!entries || typeof entries !== "object") {
+      continue;
+    }
+    delete entries[memberName];
+    delete entries[canonicalLabel];
+    if (Object.keys(entries).length === 0) {
+      delete next[projectId];
+    }
+  }
+
+  next[project] = {
+    ...(next[project] ?? {}),
+    [canonicalLabel]: surface,
+  };
+
+  return next;
+}
+
+function resolveWorkspaceForSurface(surface) {
+  if (!/^surface:\d+$/u.test(surface)) {
+    return null;
+  }
+
+  try {
+    const escaped = surface.replace(/'/gu, "'\\''");
+    const output = execSync(
+      `cmux tree 2>&1 | awk -v target='${escaped}' '{ if (match($0, /workspace:[0-9]+/)) { current_ws = substr($0, RSTART, RLENGTH) } if (index($0, target) > 0) { print current_ws; exit } }'`,
+      withCmuxEnv({ encoding: "utf8" }),
+    ).trim();
+
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+function resolvePaneForSurface(surface) {
+  if (!/^surface:\d+$/u.test(surface)) {
+    return null;
+  }
+
+  try {
+    const escaped = surface.replace(/'/gu, "'\\''");
+    const output = execSync(
+      `cmux tree 2>&1 | grep -B5 '${escaped}' | grep -oE 'pane:[0-9]+' | tail -1`,
+      withCmuxEnv({ encoding: "utf8" }),
+    ).trim();
+
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+function findMemberStatus(snapshot, memberName) {
+  for (const project of Object.values(snapshot?.projects ?? {})) {
+    for (const member of project?.members ?? []) {
+      if (member?.name === memberName) {
+        return member.status ?? null;
+      }
+    }
+  }
+
+  return null;
+}
+
+function createTeamConfigRuntime() {
+  return {
+    resolveMemberContext(memberName, emoji) {
+      return resolveRegistryMemberContext(readSurfaceRegistry(), memberName, emoji);
+    },
+    respawnMember({ memberName, memberConfig, project, currentSurface, workspaceRoot }) {
+      const spawnArgs = [
+        buildRegistryLabel(memberName, memberConfig?.emoji),
+        memberConfig?.type ?? "",
+        workspaceRoot,
+        project,
+      ];
+
+      if (currentSurface) {
+        const workspace = resolveWorkspaceForSurface(currentSurface);
+        const pane = resolvePaneForSurface(currentSurface);
+        if (workspace) {
+          spawnArgs.push("--workspace", workspace);
+        }
+        if (pane) {
+          spawnArgs.push("--pane", pane);
+        }
+      }
+
+      const output = execFileSync(
+        DEFAULT_CMUX_SPAWN_SCRIPT,
+        spawnArgs,
+        withCmuxEnv({
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            KUMA_SKIP_AGENT_STATE_NOTIFY: "1",
+          },
+        }),
+      ).trim();
+      const nextSurface = output.match(/surface:\d+/u)?.[0] ?? output;
+      if (!/^surface:\d+$/u.test(nextSurface)) {
+        throw new Error(`Failed to respawn ${memberName}: ${output || "missing surface id"}`);
+      }
+
+      if (currentSurface) {
+        execFileSync(DEFAULT_CMUX_KILL_SCRIPT, [currentSurface], withCmuxEnv({ encoding: "utf8" }));
+      }
+
+      const nextRegistry = updateRegistryMemberSurface(
+        readSurfaceRegistry(),
+        project,
+        memberName,
+        memberConfig?.emoji ?? "",
+        nextSurface,
+      );
+      writeSurfaceRegistry(nextRegistry);
+
+      return {
+        project,
+        surface: nextSurface,
+      };
+    },
+  };
+}
+
 /**
  * @param {object} options
  * @param {string} options.staticDir
@@ -222,21 +414,44 @@ async function buildFsTree(dirPath, maxDepth, currentDepth) {
  * @param {import("../scene-store.mjs").SceneStore} options.sceneStore
  * @param {import("./team-status-store.mjs").TeamStatusStore} [options.teamStatusStore]
  * @param {import("./content-store.mjs").ContentStore} [options.contentStore]
+ * @param {import("./trend-store.mjs").TrendStore} [options.trendStore]
  * @param {import("./experiment-store.mjs").ExperimentStore} [options.experimentStore]
  * @param {ReturnType<import("./experiment-pipeline.mjs").createExperimentPipeline>} [options.experimentPipeline]
+ * @param {import("./memo-store.mjs").MemoStore} [options.memoStore]
+ * @param {import("./team-config-store.mjs").TeamConfigStore} [options.teamConfigStore]
+ * @param {import("./studio-ws-events.mjs").StudioWsEvents} [options.studioWsEvents]
+ * @param {(options?: { vaultDir?: string }) => Promise<object>} [options.vaultSkillSyncFn]
+ * @param {{ resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null, respawnMember?: (input: { memberName: string, memberConfig: object, project: string, currentSurface?: string | null, workspaceRoot: string }) => { project: string, surface: string } | Promise<{ project: string, surface: string }> }} [options.teamConfigRuntime]
  * @param {string} [options.workspaceRoot]
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
-export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager, teamStatusStore, contentStore, experimentStore, experimentPipeline, workspaceRoot }) {
+export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, agentStateManager, teamStatusStore, contentStore, trendStore, experimentStore, experimentPipeline, memoStore, teamConfigStore, studioWsEvents, agentHistoryStore, vaultSkillSyncFn, teamConfigRuntime, workspaceRoot }) {
   const staticRoot = resolve(staticDir);
   const staticRootReal = existsSync(staticRoot) ? realpathSync(staticRoot) : staticRoot;
-  const handleContentRoute = createContentRouteHandler({ contentStore, workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")) });
-  const handleExperimentRoute = createExperimentRouteHandler({ experimentStore, pipeline: experimentPipeline });
+  const handleContentRoute = createContentRouteHandler({
+    contentStore,
+    trendStore,
+    experimentStore,
+    experimentPipeline,
+    workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")),
+  });
+  const handleTrendRoute = createTrendRouteHandler({ trendStore, contentStore, experimentStore, experimentPipeline });
+  const handleExperimentRoute = createExperimentRouteHandler({
+    experimentStore,
+    pipeline: experimentPipeline,
+    contentStore,
+    trendStore,
+  });
+  const configRuntime = teamConfigRuntime ?? createTeamConfigRuntime();
 
   return async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
     if (await handleContentRoute(req, res, url)) {
+      return true;
+    }
+
+    if (await handleTrendRoute(req, res, url)) {
       return true;
     }
 
@@ -270,6 +485,141 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       return true;
     }
 
+    // Agent work history
+    const agentHistoryMatch = url.pathname.match(/^\/studio\/agent-history\/(.+)$/);
+    if (agentHistoryMatch && req.method === "GET") {
+      if (!agentHistoryStore) {
+        sendJson(res, 200, { history: [] });
+        return true;
+      }
+      const agentId = decodeURIComponent(agentHistoryMatch[1]);
+      sendJson(res, 200, { history: agentHistoryStore.getHistory(agentId) });
+      return true;
+    }
+
+    if (url.pathname === "/studio/team-config" && req.method === "GET") {
+      if (!teamConfigStore) {
+        sendJson(res, 503, { error: "Team config store is not available." });
+        return true;
+      }
+
+      const config = teamConfigStore.getConfig();
+      const fullMembers = getMembersById();
+      const enriched = {};
+      for (const [name, member] of Object.entries(config.members)) {
+        const full = fullMembers.get(member.id);
+        enriched[name] = {
+          ...member,
+          nameEn: full?.name?.en ?? "",
+          animalKo: full?.animal?.ko ?? "",
+          animalEn: full?.animal?.en ?? "",
+          image: full?.image ?? "",
+          skills: full?.skills ?? [],
+          parentId: full?.parentId ?? null,
+        };
+      }
+      sendJson(res, 200, { ...config, members: enriched });
+      return true;
+    }
+
+    const teamConfigMatch = url.pathname.match(/^\/studio\/team-config\/([^/]+)$/u);
+    if (teamConfigMatch && req.method === "PATCH") {
+      if (!teamConfigStore) {
+        sendJson(res, 503, { error: "Team config store is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid team-config payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      const memberRef = decodeURIComponent(teamConfigMatch[1]);
+      const currentEntry = teamConfigStore.getMember(memberRef);
+      if (!currentEntry) {
+        sendJson(res, 404, { error: "Unknown team member." });
+        return true;
+      }
+
+      const hasPatch =
+        typeof body?.type === "string" ||
+        typeof body?.model === "string" ||
+        typeof body?.options === "string";
+      if (!hasPatch) {
+        sendJson(res, 400, { error: "Missing team-config changes." });
+        return true;
+      }
+
+      if (typeof body?.type === "string" && body.type !== "claude" && body.type !== "codex") {
+        sendJson(res, 400, { error: "type must be claude or codex." });
+        return true;
+      }
+
+      const memberName = currentEntry.key;
+      const memberStatus = findMemberStatus(teamStatusStore?.getSnapshot() ?? { projects: {} }, memberName);
+      if (memberStatus === "working" && body?.force !== true) {
+        sendJson(res, 409, {
+          error: "Member is busy.",
+          requiresForce: true,
+          member: memberName,
+          status: memberStatus,
+          warning: `${memberName} is currently working. Retry with { "force": true } to continue.`,
+        });
+        return true;
+      }
+
+      const previousConfig = currentEntry.config;
+      const updatedEntry = teamConfigStore.updateMember(memberRef, {
+        type: typeof body?.type === "string" ? body.type : undefined,
+        model: typeof body?.model === "string" ? body.model : undefined,
+        options: typeof body?.options === "string" ? body.options : undefined,
+      });
+
+      if (!updatedEntry) {
+        sendJson(res, 404, { error: "Unknown team member." });
+        return true;
+      }
+
+      const memberContext = configRuntime.resolveMemberContext?.(memberName, updatedEntry.member.emoji) ?? null;
+      const project =
+        (typeof body?.project === "string" && body.project.trim()) ||
+        memberContext?.project ||
+        (updatedEntry.member.team === "system" ? "system" : "kuma-studio");
+
+      try {
+        const respawned = await configRuntime.respawnMember({
+          memberName,
+          memberConfig: updatedEntry.member,
+          project,
+          currentSurface: memberContext?.surface ?? null,
+          workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")),
+        });
+
+        const payload = {
+          member: memberName,
+          config: updatedEntry.member,
+          project: respawned.project,
+          surface: respawned.surface,
+          forced: body?.force === true,
+        };
+        studioWsEvents?.broadcastTeamConfigChanged(payload);
+        sendJson(res, 200, payload);
+      } catch (error) {
+        teamConfigStore.saveConfig(previousConfig);
+        sendJson(res, 500, {
+          error: "Failed to respawn member with the updated team config.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
     if (url.pathname === "/studio/daily-report" && req.method === "GET") {
       sendJson(res, 200, statsStore.getDailyReport());
       return true;
@@ -285,6 +635,11 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       return true;
     }
 
+    if (url.pathname === "/studio/extensions-catalog" && req.method === "GET") {
+      sendJson(res, 200, await readExtensionsCatalog());
+      return true;
+    }
+
     if (url.pathname === "/studio/plans" && req.method === "GET") {
       try {
         sendJson(res, 200, await readPlans());
@@ -293,6 +648,197 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
           error: "Failed to read plans.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/nightmode" && req.method === "GET") {
+      sendJson(res, 200, { enabled: isNightModeEnabled() });
+      return true;
+    }
+
+    if (url.pathname === "/studio/nightmode" && req.method === "POST") {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid nightmode payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      if (typeof body?.enabled !== "boolean") {
+        sendJson(res, 400, { error: "enabled must be a boolean." });
+        return true;
+      }
+
+      try {
+        await setNightModeEnabled(body.enabled);
+        studioWsEvents?.broadcastNightMode(body.enabled);
+        sendJson(res, 200, { enabled: body.enabled });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to update nightmode.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    const legacyWikiLocation = buildLegacyWikiRedirect(url.pathname, url.search);
+    if (legacyWikiLocation) {
+      res.writeHead(307, { Location: legacyWikiLocation });
+      res.end();
+      return true;
+    }
+
+    if (url.pathname === "/studio/memos" && req.method === "GET") {
+      if (!memoStore) {
+        sendJson(res, 503, { error: "Memo store is not available." });
+        return true;
+      }
+
+      try {
+        sendJson(res, 200, {
+          memos: await memoStore.listMemos(),
+        });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read memos.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/vault" && req.method === "GET") {
+      if (!memoStore) {
+        sendJson(res, 503, { error: "Memo store is not available." });
+        return true;
+      }
+
+      try {
+        sendJson(res, 200, {
+          memos: await memoStore.list(),
+          inbox: await memoStore.listInbox(),
+        });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read vault entries.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/vault/sync-skills" && req.method === "POST") {
+      try {
+        const syncResult = await (vaultSkillSyncFn ?? syncVaultSkills)({
+          vaultDir: memoStore?.getVaultDir?.(),
+        });
+        sendJson(res, 200, syncResult);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to sync skill documents into the vault.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/vault/inbox" && req.method === "POST") {
+      if (!memoStore) {
+        sendJson(res, 503, { error: "Memo store is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid memo payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      const text = typeof body?.text === "string" ? body.text.trim() : "";
+      if (!text) {
+        sendJson(res, 400, { error: "Missing inbox text." });
+        return true;
+      }
+
+      try {
+        const memo = await memoStore.addInbox({
+          title: typeof body?.title === "string" ? body.title : "Inbox",
+          text,
+        });
+        sendJson(res, 201, memo);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to create inbox entry.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if ((url.pathname === "/studio/vault" || url.pathname === "/studio/memos") && req.method === "POST") {
+      if (!memoStore) {
+        sendJson(res, 503, { error: "Memo store is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid memo payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      const title = typeof body?.title === "string" ? body.title.trim() : "";
+      if (!title) {
+        sendJson(res, 400, { error: "Missing title." });
+        return true;
+      }
+
+      try {
+        const memo = await memoStore.add({
+          title,
+          text: typeof body?.text === "string" ? body.text : "",
+          images: Array.isArray(body?.images) ? body.images : [],
+        });
+        sendJson(res, 201, memo);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to create memo.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if ((url.pathname.startsWith("/studio/vault/") || url.pathname.startsWith("/studio/memos/")) && req.method === "DELETE") {
+      if (!memoStore) {
+        sendJson(res, 503, { error: "Memo store is not available." });
+        return true;
+      }
+
+      const memoId = url.pathname.startsWith("/studio/vault/")
+        ? decodeURIComponent(url.pathname.slice("/studio/vault/".length))
+        : decodeURIComponent(url.pathname.slice("/studio/memos/".length));
+      const result = await memoStore.delete(memoId);
+      if (result.success) {
+        sendJson(res, 200, { success: true });
+      } else {
+        sendJson(res, result.status || 500, { error: result.error });
       }
       return true;
     }
@@ -404,6 +950,85 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
         status: agentStateManager.getState(agentId),
         task: agentStateManager.getTask(agentId),
       });
+      return true;
+    }
+
+    // ------------------------------------------------------------------
+    // Nightmode flag
+    // ------------------------------------------------------------------
+
+    const NIGHTMODE_FLAG = "/tmp/kuma-nightmode.flag";
+
+    if (url.pathname === "/studio/nightmode" && req.method === "GET") {
+      const enabled = existsSync(NIGHTMODE_FLAG);
+      sendJson(res, 200, { enabled });
+      return true;
+    }
+
+    if (url.pathname === "/studio/nightmode" && req.method === "POST") {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch {
+        sendJson(res, 400, { error: "Invalid JSON body." });
+        return true;
+      }
+      const enabled = body?.enabled === true;
+      try {
+        if (enabled) {
+          writeFileSync(NIGHTMODE_FLAG, new Date().toISOString(), "utf-8");
+        } else if (existsSync(NIGHTMODE_FLAG)) {
+          const { unlinkSync } = await import("node:fs");
+          unlinkSync(NIGHTMODE_FLAG);
+        }
+      } catch {
+        // ignore flag write errors
+      }
+      if (studioWsEvents) {
+        studioWsEvents.broadcastNightMode(enabled);
+      }
+      sendJson(res, 200, { enabled });
+      return true;
+    }
+
+    // ------------------------------------------------------------------
+    // Git status for IDE explorer
+    // ------------------------------------------------------------------
+
+    if (url.pathname === "/studio/git/status" && req.method === "GET") {
+      const root = url.searchParams.get("root") || workspaceRoot || fsWorkspaceRoot;
+      const resolvedRoot = resolve(root);
+      if (!isAllowedPath(resolvedRoot)) {
+        sendJson(res, 403, { error: "Path outside allowed directories." });
+        return true;
+      }
+
+      try {
+        const output = execSync("git status --porcelain -u", {
+          cwd: resolvedRoot,
+          encoding: "utf8",
+          timeout: 5000,
+          maxBuffer: 1024 * 1024,
+        });
+
+        const files = {};
+        for (const line of output.split("\n")) {
+          if (!line.trim()) continue;
+          const code = line.slice(0, 2).trim();
+          const filePath = line.slice(3).trim();
+          // Map git status codes to simple labels
+          let status = "modified";
+          if (code === "??" || code === "A") status = "added";
+          else if (code === "D") status = "deleted";
+          else if (code === "R") status = "renamed";
+          files[filePath] = status;
+        }
+
+        sendJson(res, 200, { root: resolvedRoot, files });
+      } catch {
+        // Not a git repo or git not available
+        sendJson(res, 200, { root: resolvedRoot, files: {} });
+      }
       return true;
     }
 
@@ -555,6 +1180,34 @@ export function createStudioRouteHandler({ staticDir, statsStore, sceneStore, ag
       } catch (error) {
         sendJson(res, 500, { error: "Failed to delete skill.", details: error instanceof Error ? error.message : "Unknown error" });
       }
+      return true;
+    }
+
+    if (url.pathname.startsWith("/studio/memo-images/")) {
+      const imageName = basename(decodeURIComponent(url.pathname.split("/studio/memo-images/")[1] ?? ""));
+      const resolvedPath = memoStore?.findImagePath?.(imageName);
+      const imageDir = memoStore?.getImagesDir?.() ?? resolveMemoImagesDir();
+      const fullPath = resolvedPath ?? resolve(join(imageDir, imageName));
+
+      try {
+        if (imageName && existsSync(fullPath) && statSync(fullPath).isFile()) {
+          const ext = extname(fullPath);
+          const mime = MIME_TYPES[ext] ?? "application/octet-stream";
+          const content = readFileSync(fullPath);
+          res.writeHead(200, { "Content-Type": mime });
+          res.end(content);
+          return true;
+        }
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read memo image.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      res.writeHead(404);
+      res.end("Not Found");
       return true;
     }
 
