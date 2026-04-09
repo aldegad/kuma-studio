@@ -1,4 +1,4 @@
-# Claude Workflow
+# Codex Workflow
 
 - `npm run server:reload` is the one standard way to start or restart the daemon server on port 4312.
 - `npm run server:start` exists as the raw non-reloading entrypoint for scripts, but human/operator workflows should use `server:reload`.

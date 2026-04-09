@@ -37,18 +37,19 @@
 
 | 팀 | 이름 | 역할 | 이모지 |
 |----|------|------|--------|
-| 총괄 | 쿠마 | 총괄 리더 | bear |
+| 시스템 | 쿠마 | 총괄 리더 | bear |
+| 시스템 | 쭈니 | CoS / Bash 러너 | bee |
 | 분석팀 | 루미 | 팀장 | fox |
-| 분석팀 | 다람이 | SNS/마케팅 분석 | chipmunk |
-| 분석팀 | 부리 | 시장분석 | eagle |
+| 분석팀 | 부리 | 리서치 | owl |
 | 개발팀 | 하울 | 오퍼레이터 | wolf |
 | 개발팀 | 뚝딱이 | 개발자 | beaver |
-| 개발팀 | 새미 | 비평가 | parrot |
-| 개발팀 | 밤돌이 | QA | hedgehog |
+| 개발팀 | 다람이 | 개발자 | squirrel |
+| 개발팀 | 새미 | 비평가 | eagle |
+| 개발팀 | 쿤 | 퍼블리셔 | raccoon |
+| 개발팀 | 밤토리 | QA | hedgehog |
+| 개발팀 | 콩콩이 | 콘텐츠/SNS | rabbit |
 | 전략팀 | 노을이 | 디렉터 | deer |
-| 전략팀 | 콩콩이 | 콘텐츠/SNS | rabbit |
-| 전략팀 | 뭉치 | UX/그로스 | cat |
-| 전략팀 | 쭈니 | 비즈니스 | hamster |
+| 전략팀 | 뭉치 | UX/그로스 | hamster |
 
 ---
 
@@ -152,7 +153,7 @@
    -> 프로젝트 디렉토리에 설정 파일 생성
    -> 기존 kuma-picker 설정 있으면 자동 감지 & 마이그레이션 제안
 
-2. npx kuma-studio serve
+2. npm run server:reload
    -> 데몬 서버 시작 (kuma-pickerd 호환, 포트 4312)
    -> 브라우저에서 http://localhost:4312/studio 자동 오픈
 
@@ -220,7 +221,7 @@
 
 | kuma-picker 명령 | kuma-studio 대응 | 비고 |
 |-----------------|-----------------|------|
-| `kuma-pickerd:serve` | `kuma-studio serve` | 동일 포트 4312 |
+| `kuma-pickerd:serve` | `npm run server:reload` | 동일 포트 4312 |
 | `kuma-pickerd:get-selection` | `kuma-studio get-selection` | 데이터 형식 동일 |
 | `kuma-pickerd:get-job-card` | `kuma-studio get-job-card` | 데이터 형식 동일 |
 | `kuma-pickerd:run` | `kuma-studio run` | Playwright API 동일 |
@@ -356,11 +357,11 @@
 | M0-2 | packages/browser-extension: 기존 코드 그대로 복사 | 뚝딱이 |
 | M0-3 | packages/server: kuma-pickerd 서버 코드 포팅 | 뚝딱이 |
 | M0-4 | packages/server: CLI 명령어 호환 (serve, get-selection 등) | 뚝딱이 |
-| M0-5 | 스모크 테스트: 기존 kuma-picker와 동일 동작 확인 | 밤돌이 |
+| M0-5 | 스모크 테스트: 기존 kuma-picker와 동일 동작 확인 | 밤토리 |
 | M0-6 | packages/studio-web: Vite + React 프로젝트 초기화 | 뚝딱이 |
 
 **완료 기준:**
-- `npm run kuma-studio:serve`로 서버 시작 가능
+- `npm run server:reload`로 서버 시작 가능
 - 기존 브라우저 확장이 kuma-studio 서버에 연결 가능
 - 기존 CLI 명령어 모두 정상 동작
 - `http://localhost:4312/studio`에서 빈 React 앱 표시
@@ -378,7 +379,7 @@
 | M1-5 | SQLite 통계 저장소 초기 구현 | 뚝딱이 |
 | M1-6 | 에이스 판별 위젯 (가장 많은 작업 완료, 가장 효율적) | 뚝딱이 |
 | M1-7 | 대시보드 레이아웃 & 스타일링 (Tailwind) | 뭉치 |
-| M1-8 | 실시간 업데이트 테스트 | 밤돌이 |
+| M1-8 | 실시간 업데이트 테스트 | 밤토리 |
 
 **완료 기준:**
 - 대시보드에서 실시간으로 job card 상태 변화 표시
@@ -400,7 +401,7 @@
 | M2-6 | 에이전트 작업 상태 -> 캐릭터 상태 매핑 로직 | 뚝딱이 |
 | M2-7 | 기본 가구/인테리어 에셋 생성 (책상, 의자, 화이트보드) | 콩콩이+이미지gen |
 | M2-8 | 사무실 씬에 Job Card 연동 (화이트보드에 카드 표시) | 뚝딱이 |
-| M2-9 | 통합 테스트 (대시보드 + 사무실 + 브라우저 확장) | 밤돌이 |
+| M2-9 | 통합 테스트 (대시보드 + 사무실 + 브라우저 확장) | 밤토리 |
 
 **완료 기준:**
 - 사무실 화면에서 쿠마팀 캐릭터가 표시됨
@@ -421,7 +422,7 @@
 | M3-5 | 온보딩 튜토리얼 (첫 실행 가이드) | 뭉치 |
 | M3-6 | README, 문서, 설치 가이드 작성 | 콩콩이 |
 | M3-7 | 론칭 콘텐츠 제작 (GIF, 영상, 블로그) | 콩콩이 |
-| M3-8 | 전체 QA & 버그 수정 | 밤돌이 |
+| M3-8 | 전체 QA & 버그 수정 | 밤토리 |
 | M3-9 | npm 패키지 퍼블리싱 준비 | 뚝딱이 |
 
 **완료 기준:**
@@ -684,7 +685,7 @@ interface OfficeFurniture {
 ```json
 {
   "scripts": {
-    "kuma-studio:serve": "node ./packages/server/src/cli.mjs serve",
+    "server:reload": "bash ./scripts/server-reload.sh",
     "kuma-studio:get-selection": "node ./packages/server/src/cli.mjs get-selection",
     "kuma-studio:get-job-card": "node ./packages/server/src/cli.mjs get-job-card",
     "kuma-studio:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status",
