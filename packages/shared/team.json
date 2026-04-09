@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "SINGLE SOURCE OF TRUTH — 쿠마 스튜디오 전체 팀/멤버 스키마. 팀 배치, 역할, 모델, effort, capabilities는 이 파일만 수정한다.",
+  "$comment": "SINGLE SOURCE OF TRUTH — 쿠마 스튜디오 전체 팀/멤버 스키마. 팀 배치, 역할, spawnType/spawnModel/spawnOptions, capabilities는 이 파일만 수정한다.",
   "teams": {
     "system": {
       "name": "시스템",
@@ -8,7 +8,10 @@
       "skill": "/kuma",
       "leadId": null,
       "office": {
-        "origin": { "x": 830, "y": 100 },
+        "origin": {
+          "x": 830,
+          "y": 100
+        },
         "cols": 2,
         "hasSofa": true,
         "zoneColor": "rgba(217, 119, 6, 0.04)"
@@ -21,15 +24,24 @@
           "emoji": "🐻",
           "team": "system",
           "role": "orchestrator",
-          "roleLabel": { "ko": "총괄 리더", "en": "Leader" },
+          "roleLabel": {
+            "ko": "총괄 리더",
+            "en": "Leader"
+          },
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
-          "engine": "claude",
-          "model": "claude-opus-4-6",
-          "effort": "high",
-          "capabilities": ["orchestration", "write", "team-routing"],
-          "skills": ["kuma", "dev-team", "analytics-team", "strategy-team"],
+          "capabilities": [
+            "orchestration",
+            "write",
+            "team-routing"
+          ],
+          "skills": [
+            "kuma",
+            "dev-team",
+            "analytics-team",
+            "strategy-team"
+          ],
           "nodeType": "session",
           "parentId": null,
           "parallel": false,
@@ -45,16 +57,23 @@
           "emoji": "🦌",
           "team": "system",
           "role": "vault-manager",
-          "roleLabel": { "ko": "Vault 큐레이터. 지식 관리·정리·동기화", "en": "Vault Curator. Knowledge management, curation, sync" },
+          "roleLabel": {
+            "ko": "Vault 큐레이터. 지식 관리·정리·동기화",
+            "en": "Vault Curator. Knowledge management, curation, sync"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
-          "engine": "codex",
-          "model": "gpt-5.4-mini",
-          "effort": "high",
-          "serviceTier": "fast",
-          "capabilities": ["vault", "knowledge-management", "curation", "sync"],
-          "skills": ["kuma-vault", "codex-autoresearch:reason"],
+          "capabilities": [
+            "vault",
+            "knowledge-management",
+            "curation",
+            "sync"
+          ],
+          "skills": [
+            "kuma-vault",
+            "codex-autoresearch:reason"
+          ],
           "nodeType": "worker",
           "parentId": "kuma",
           "parallel": false,
@@ -71,16 +90,22 @@
           "emoji": "🐝",
           "team": "system",
           "role": "ops",
-          "roleLabel": { "ko": "CoS. Bash 실행 전담, cmux 워커 관리", "en": "CoS. Bash execution, cmux worker management" },
+          "roleLabel": {
+            "ko": "CoS. Bash 실행 전담, cmux 워커 관리",
+            "en": "CoS. Bash execution, cmux worker management"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
-          "engine": "codex",
-          "model": "gpt-5.4-mini",
-          "effort": "high",
-          "serviceTier": "fast",
-          "capabilities": ["bash", "cmux", "ops"],
-          "skills": ["codex-autoresearch:predict", "codex-autoresearch:reason"],
+          "capabilities": [
+            "bash",
+            "cmux",
+            "ops"
+          ],
+          "skills": [
+            "codex-autoresearch:predict",
+            "codex-autoresearch:reason"
+          ],
           "nodeType": "worker",
           "parentId": "kuma",
           "parallel": false,
@@ -98,7 +123,10 @@
       "skill": "/dev-team",
       "leadId": "howl",
       "office": {
-        "origin": { "x": 200, "y": 580 },
+        "origin": {
+          "x": 200,
+          "y": 580
+        },
         "cols": 3,
         "hasSofa": true,
         "zoneColor": "rgba(59, 130, 246, 0.05)"
@@ -111,16 +139,21 @@
           "emoji": "🐺",
           "team": "dev",
           "role": "orchestrator",
-          "roleLabel": { "ko": "PM. 작업 분해, 디스패치, 결과 취합", "en": "Operator. Task decomposition, dispatch, aggregation" },
+          "roleLabel": {
+            "ko": "PM. 작업 분해, 디스패치, 결과 취합",
+            "en": "Operator. Task decomposition, dispatch, aggregation"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["orchestration", "dispatch", "aggregation"],
-          "skills": ["dev-team"],
+          "capabilities": [
+            "orchestration",
+            "dispatch",
+            "aggregation"
+          ],
+          "skills": [
+            "dev-team"
+          ],
           "nodeType": "team",
           "parentId": "kuma",
           "parallel": false,
@@ -136,16 +169,22 @@
           "emoji": "🦫",
           "team": "dev",
           "role": "developer",
-          "roleLabel": { "ko": "구현. 코드 구현, 버그 수정, 리팩토링", "en": "Developer. Implementation, bug fixes, refactoring" },
+          "roleLabel": {
+            "ko": "구현. 코드 구현, 버그 수정, 리팩토링",
+            "en": "Developer. Implementation, bug fixes, refactoring"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["code", "implementation", "debug"],
-          "skills": ["codex-autoresearch:fix", "codex-autoresearch:debug"],
+          "capabilities": [
+            "code",
+            "implementation",
+            "debug"
+          ],
+          "skills": [
+            "codex-autoresearch:fix",
+            "codex-autoresearch:debug"
+          ],
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
@@ -161,16 +200,22 @@
           "emoji": "🐿️",
           "team": "dev",
           "role": "developer",
-          "roleLabel": { "ko": "개발자. 기능 구현, 버그 수정, 리팩토링", "en": "Developer. Feature implementation, bug fixes, refactoring" },
+          "roleLabel": {
+            "ko": "개발자. 기능 구현, 버그 수정, 리팩토링",
+            "en": "Developer. Feature implementation, bug fixes, refactoring"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["code", "implementation", "debug"],
-          "skills": ["codex-autoresearch:fix", "codex-autoresearch:debug"],
+          "capabilities": [
+            "code",
+            "implementation",
+            "debug"
+          ],
+          "skills": [
+            "codex-autoresearch:fix",
+            "codex-autoresearch:debug"
+          ],
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
@@ -185,16 +230,23 @@
           "emoji": "🦅",
           "team": "dev",
           "role": "review",
-          "roleLabel": { "ko": "비평가/리뷰어", "en": "Critic / Reviewer" },
+          "roleLabel": {
+            "ko": "비평가/리뷰어",
+            "en": "Critic / Reviewer"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["review", "security", "quality"],
-          "skills": ["security-threat-intel", "gateproof-full-security-check", "codex-autoresearch:security"],
+          "capabilities": [
+            "review",
+            "security",
+            "quality"
+          ],
+          "skills": [
+            "security-threat-intel",
+            "gateproof-full-security-check",
+            "codex-autoresearch:security"
+          ],
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
@@ -210,15 +262,23 @@
           "emoji": "🦝",
           "team": "dev",
           "role": "ui",
-          "roleLabel": { "ko": "퍼블리셔/디자이너. HTML/CSS/그래픽", "en": "Publisher / Designer. HTML/CSS/Graphics" },
+          "roleLabel": {
+            "ko": "퍼블리셔/디자이너. HTML/CSS/그래픽",
+            "en": "Publisher / Designer. HTML/CSS/Graphics"
+          },
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
-          "engine": "claude",
-          "model": "claude-opus-4-6",
-          "effort": "high",
-          "capabilities": ["design", "frontend", "graphics"],
-          "skills": ["frontend-design", "nano-banana", "imagegen"],
+          "capabilities": [
+            "design",
+            "frontend",
+            "graphics"
+          ],
+          "skills": [
+            "frontend-design",
+            "nano-banana",
+            "imagegen"
+          ],
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
@@ -234,16 +294,22 @@
           "emoji": "🦔",
           "team": "dev",
           "role": "qa",
-          "roleLabel": { "ko": "빌드/배포/화면검증. 코드 수정 X", "en": "QA. Build, deploy, screen verification. No code edits" },
+          "roleLabel": {
+            "ko": "빌드/배포/화면검증. 코드 수정 X",
+            "en": "QA. Build, deploy, screen verification. No code edits"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4-mini",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["qa", "build", "deploy"],
-          "skills": ["kuma-picker", "codex-autoresearch:ship"],
+          "capabilities": [
+            "qa",
+            "build",
+            "deploy"
+          ],
+          "skills": [
+            "kuma-picker",
+            "codex-autoresearch:ship"
+          ],
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": false,
@@ -259,15 +325,22 @@
           "emoji": "🐰",
           "team": "dev",
           "role": "content",
-          "roleLabel": { "ko": "콘텐츠/SNS", "en": "Content / SNS" },
+          "roleLabel": {
+            "ko": "콘텐츠/SNS",
+            "en": "Content / SNS"
+          },
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
-          "engine": "claude",
-          "model": "claude-opus-4-6",
-          "effort": "high",
-          "capabilities": ["content", "sns", "campaign"],
-          "skills": ["codex-autoresearch:ship", "nano-banana"],
+          "capabilities": [
+            "content",
+            "sns",
+            "campaign"
+          ],
+          "skills": [
+            "codex-autoresearch:ship",
+            "nano-banana"
+          ],
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
@@ -281,10 +354,15 @@
       "name": "전략분석팀",
       "nameEn": "Strategy Analytics Team",
       "skill": "/analytics-team",
-      "skillAliases": ["/strategy-team"],
+      "skillAliases": [
+        "/strategy-team"
+      ],
       "leadId": "buri",
       "office": {
-        "origin": { "x": 1050, "y": 920 },
+        "origin": {
+          "x": 1050,
+          "y": 920
+        },
         "cols": 4,
         "hasSofa": true,
         "zoneColor": "rgba(234, 88, 12, 0.06)"
@@ -297,16 +375,26 @@
           "emoji": "🦉",
           "team": "strategy-analytics",
           "role": "leader",
-          "roleLabel": { "ko": "리더. 전략/분석 스카우트 오케스트레이션과 합성", "en": "Leader. Strategy/analytics scout orchestration and synthesis" },
+          "roleLabel": {
+            "ko": "리더. 전략/분석 스카우트 오케스트레이션과 합성",
+            "en": "Leader. Strategy/analytics scout orchestration and synthesis"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["research", "web-search", "market-research", "aggregation", "strategy"],
-          "skills": ["analytics-team", "strategy-team", "codex-autoresearch", "codex-autoresearch:security"],
+          "capabilities": [
+            "research",
+            "web-search",
+            "market-research",
+            "aggregation",
+            "strategy"
+          ],
+          "skills": [
+            "analytics-team",
+            "strategy-team",
+            "codex-autoresearch",
+            "codex-autoresearch:security"
+          ],
           "nodeType": "team",
           "parentId": "kuma",
           "parallel": false,
@@ -322,16 +410,21 @@
           "emoji": "🦊",
           "team": "strategy-analytics",
           "role": "scout",
-          "roleLabel": { "ko": "Ant / Scout. 질문 분해, 탐색 계획, 초벌 취합", "en": "Ant / Scout. Question decomposition, scout planning, first-pass aggregation" },
+          "roleLabel": {
+            "ko": "Ant / Scout. 질문 분해, 탐색 계획, 초벌 취합",
+            "en": "Ant / Scout. Question decomposition, scout planning, first-pass aggregation"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4-mini",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["orchestration", "research-planning", "aggregation"],
-          "skills": ["analytics-team"],
+          "capabilities": [
+            "orchestration",
+            "research-planning",
+            "aggregation"
+          ],
+          "skills": [
+            "analytics-team"
+          ],
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
@@ -347,16 +440,26 @@
           "emoji": "🐹",
           "team": "strategy-analytics",
           "role": "scout",
-          "roleLabel": { "ko": "Ant / Scout. 전략 시나리오, UX·그로스, 방향 정리", "en": "Ant / Scout. Strategy scenarios, UX/growth, direction setting" },
+          "roleLabel": {
+            "ko": "Ant / Scout. 전략 시나리오, UX·그로스, 방향 정리",
+            "en": "Ant / Scout. Strategy scenarios, UX/growth, direction setting"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
-          "engine": "codex",
-          "model": "gpt-5.4-mini",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["strategy", "ux", "growth", "analysis", "planning"],
-          "skills": ["strategy-team", "codex-autoresearch:scenario", "codex-autoresearch:predict", "codex-autoresearch:plan"],
+          "capabilities": [
+            "strategy",
+            "ux",
+            "growth",
+            "analysis",
+            "planning"
+          ],
+          "skills": [
+            "strategy-team",
+            "codex-autoresearch:scenario",
+            "codex-autoresearch:predict",
+            "codex-autoresearch:plan"
+          ],
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
@@ -374,16 +477,24 @@
           "team": "strategy-analytics",
           "role": "research-scout",
           "description": "fast research scout 날다람쥐. 웹 검색 쿼리 생성 + URL 수집 + 초벌 요약 + source 비교 전담",
-          "roleLabel": { "ko": "Research scout. 웹 검색 쿼리 생성, URL 수집, 초벌 요약, source 비교", "en": "Fast research scout. Query generation, URL collection, first-pass summary, source comparison" },
+          "roleLabel": {
+            "ko": "Research scout. 웹 검색 쿼리 생성, URL 수집, 초벌 요약, source 비교",
+            "en": "Fast research scout. Query generation, URL collection, first-pass summary, source comparison"
+          },
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=\"xhigh\" -c service_tier=fast",
-          "engine": "codex",
-          "model": "gpt-5.4-mini",
-          "effort": "xhigh",
-          "serviceTier": "fast",
-          "capabilities": ["research", "web-search", "source-comparison", "scouting"],
-          "skills": ["analytics-team", "codex-autoresearch", "codex-autoresearch:reason"],
+          "capabilities": [
+            "research",
+            "web-search",
+            "source-comparison",
+            "scouting"
+          ],
+          "skills": [
+            "analytics-team",
+            "codex-autoresearch",
+            "codex-autoresearch:reason"
+          ],
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
@@ -403,7 +514,10 @@
       "deprecated": true,
       "aliasFor": "strategy-analytics",
       "office": {
-        "origin": { "x": 1350, "y": 580 },
+        "origin": {
+          "x": 1350,
+          "y": 580
+        },
         "cols": 2,
         "hasSofa": true,
         "zoneColor": "rgba(249, 115, 22, 0.05)"
@@ -418,7 +532,10 @@
       "deprecated": true,
       "aliasFor": "strategy-analytics",
       "office": {
-        "origin": { "x": 750, "y": 1250 },
+        "origin": {
+          "x": 750,
+          "y": 1250
+        },
         "cols": 3,
         "hasSofa": true,
         "zoneColor": "rgba(34, 197, 94, 0.05)"
