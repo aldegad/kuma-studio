@@ -16,6 +16,7 @@ const ENGINE_BADGE: Record<EngineType, { label: string; color: string }> = {
 
 function getEngineType(agent: Agent | undefined): EngineType {
   if (!agent) return "unknown";
+  if (agent.engine === "claude" || agent.engine === "codex") return agent.engine;
   const model = agent.model ?? "";
   if (model.startsWith("claude")) return "claude";
   if (model.startsWith("gpt") || model.startsWith("o1") || model.startsWith("o3") || model.startsWith("o4")) return "codex";

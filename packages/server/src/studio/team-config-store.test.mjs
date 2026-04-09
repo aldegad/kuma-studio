@@ -42,6 +42,7 @@ describe("team-config-store", () => {
     assert.strictEqual(config.members["쿠마"].type, "claude");
     assert.strictEqual(config.members["뚝딱이"].type, "codex");
     assert.match(config.members["뚝딱이"].options, /model_reasoning_effort="xhigh"/u);
+    assert.match(config.members["노을이"].options, /model_reasoning_effort="high"/u);
     assert.strictEqual(config.members["밤토리"].model, "gpt-5.4-mini");
     assert.strictEqual(config.defaults.codex.model, "gpt-5.4");
     assert.match(config.defaults.codex.options, /model_reasoning_effort="xhigh"/u);
@@ -132,10 +133,6 @@ describe("team-config-store", () => {
       spawnType: "codex",
       spawnModel: "gpt-5.4-mini",
       spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
-      engine: "codex",
-      model: "gpt-5.4-mini",
-      effort: "xhigh",
-      serviceTier: "fast",
     });
 
     const diff = diffTeamConfig(previousSchema, nextSchema);
@@ -186,8 +183,8 @@ describe("team-config-store", () => {
     const store = new TeamConfigStore(configPath);
     const schemaA = store.readTeamSchema();
     const schemaB = JSON.parse(JSON.stringify(schemaA));
-    schemaA.teams.dev.members.find((member) => member.id === "howl").effort = "high";
-    schemaB.teams.dev.members.find((member) => member.id === "howl").effort = "medium";
+    schemaA.teams.dev.members.find((member) => member.id === "howl").spawnOptions = '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="high"';
+    schemaB.teams.dev.members.find((member) => member.id === "howl").spawnOptions = '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="medium"';
 
     let changeCount = 0;
     let latestPayload = null;
@@ -210,7 +207,7 @@ describe("team-config-store", () => {
 
       assert.strictEqual(changeCount, 1);
       assert.deepStrictEqual(latestPayload.diff.updated, ["howl"]);
-      assert.strictEqual(latestPayload.currentMembers.howl.effort, "medium");
+      assert.match(latestPayload.currentMembers.howl.spawnOptions, /model_reasoning_effort="medium"/u);
     } finally {
       watcher.close();
     }

@@ -38,7 +38,10 @@ export function Character({ character, isDragging = false, isSelected = false, s
     liveModelInfo.effort,
     liveModelInfo.speed,
   ].filter(Boolean).join(" · ") || null : null;
-  const displayModel = liveModel ?? formatModelDetail(model);
+  const displayModel = liveModel ?? formatModelDetail(model, {
+    effort: teamMember?.effort,
+    speed: teamMember?.serviceTier,
+  });
 
   const shouldFloat = !isDragging && (character.state === "idle" || character.state === "completed");
   const isActive = character.state === "working" || character.state === "thinking";

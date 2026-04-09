@@ -30,10 +30,6 @@ interface RawTeamMember {
   spawnType?: string;
   spawnModel?: string;
   spawnOptions?: string;
-  engine?: string;
-  model?: string;
-  effort?: string;
-  serviceTier?: string;
   capabilities?: string[];
   skills?: string[];
   nodeType?: string;
@@ -73,9 +69,6 @@ export interface FlatTeamMember {
   emoji: string;
   model: string;
   engine: string;
-  spawnType: string;
-  spawnModel: string;
-  spawnOptions: string;
   effort: string | null;
   serviceTier: string | null;
   team: string;
@@ -91,6 +84,15 @@ export interface FlatTeamMember {
 }
 
 const teamSchema = rawTeamSchema as RawTeamSchema;
+const DEFAULT_MODELS = {
+  claude: "claude-opus-4-6",
+  codex: "gpt-5.4",
+} as const;
+const DEFAULT_OPTIONS = {
+  claude: "--dangerously-skip-permissions",
+  codex: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+} as const;
+const VALID_CODEX_REASONING_LEVELS = new Set(["low", "medium", "high", "xhigh"]);
 
 function normalizeTeamName(teamId: string, team: RawTeamDefinition): TeamName {
   const ko = typeof team.name === "string" && team.name.trim() ? team.name : teamId;
@@ -112,10 +114,59 @@ function normalizeEngine(member: RawTeamMember): string {
   if (member.spawnType === "claude" || member.spawnType === "codex") {
     return member.spawnType;
   }
-  if (member.engine === "claude" || member.engine === "codex") {
-    return member.engine;
+  return String(member.spawnModel ?? "").startsWith("gpt-") ? "codex" : "claude";
+}
+
+function normalizeModel(member: RawTeamMember, engine: string): string {
+  if (typeof member.spawnModel === "string" && member.spawnModel.trim()) {
+    return member.spawnModel;
   }
-  return String(member.spawnModel ?? member.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+
+  return DEFAULT_MODELS[engine as keyof typeof DEFAULT_MODELS] ?? DEFAULT_MODELS.claude;
+}
+
+function normalizeOptions(member: RawTeamMember, engine: string): string {
+  const raw = typeof member.spawnOptions === "string" && member.spawnOptions.trim()
+    ? member.spawnOptions
+    : DEFAULT_OPTIONS[engine as keyof typeof DEFAULT_OPTIONS] ?? DEFAULT_OPTIONS.claude;
+  return raw.trim();
+}
+
+function readCodexOption(options: string, settingNames: string[]): string {
+  const normalized = String(options ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  for (const settingName of settingNames) {
+    const pattern = new RegExp(
+      `(?:^|\\s)-c\\s+${settingName}=(?:"([^"]*)"|'([^']*)'|(\\S+))`,
+      "u",
+    );
+    const match = normalized.match(pattern);
+    if (match) {
+      return String(match[1] ?? match[2] ?? match[3] ?? "");
+    }
+  }
+
+  return "";
+}
+
+function deriveEffort(engine: string, options: string): string | null {
+  if (engine !== "codex") {
+    return null;
+  }
+
+  const reasoning = readCodexOption(options, ["model_reasoning_effort", "reasoning_effort"]).toLowerCase();
+  return VALID_CODEX_REASONING_LEVELS.has(reasoning) ? reasoning : null;
+}
+
+function deriveServiceTier(engine: string, options: string): string | null {
+  if (engine !== "codex") {
+    return null;
+  }
+
+  return readCodexOption(options, ["service_tier"]) || null;
 }
 
 function normalizeOfficePoint(point?: RawTeamOffice["origin"]): OfficePoint {
@@ -137,6 +188,10 @@ function normalizeOffice(team: RawTeamDefinition): FlatTeamOffice {
 }
 
 function normalizeTeamMember(teamId: string, member: RawTeamMember): FlatTeamMember {
+  const engine = normalizeEngine(member);
+  const model = normalizeModel(member, engine);
+  const options = normalizeOptions(member, engine);
+
   return {
     id: member.id,
     name: {
@@ -148,17 +203,10 @@ function normalizeTeamMember(teamId: string, member: RawTeamMember): FlatTeamMem
       en: typeof member.animalEn === "string" ? member.animalEn : "",
     },
     emoji: typeof member.emoji === "string" ? member.emoji : "",
-    model: typeof member.spawnModel === "string" && member.spawnModel
-      ? member.spawnModel
-      : typeof member.model === "string" ? member.model : "",
-    engine: normalizeEngine(member),
-    spawnType: member.spawnType === "claude" || member.spawnType === "codex" ? member.spawnType : normalizeEngine(member),
-    spawnModel: typeof member.spawnModel === "string" && member.spawnModel
-      ? member.spawnModel
-      : typeof member.model === "string" ? member.model : "",
-    spawnOptions: typeof member.spawnOptions === "string" ? member.spawnOptions : "",
-    effort: typeof member.effort === "string" ? member.effort : null,
-    serviceTier: typeof member.serviceTier === "string" ? member.serviceTier : null,
+    model,
+    engine,
+    effort: deriveEffort(engine, options),
+    serviceTier: deriveServiceTier(engine, options),
     team: typeof member.team === "string" && member.team ? member.team : teamId,
     nodeType: typeof member.nodeType === "string" ? member.nodeType : "worker",
     parentId: typeof member.parentId === "string" ? member.parentId : member.parentId === null ? null : null,
