@@ -527,39 +527,6 @@ export function sceneToLayout(scene: OfficeScene): OfficeLayoutSnapshot {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Animal fallbacks (used by office-capture.ts)
-// ---------------------------------------------------------------------------
-
-function createAnimalFallback(animal: string, used: Set<string>): string {
-  const normalized = animal.trim().toLowerCase();
-  for (let length = 1; length <= normalized.length; length += 1) {
-    const candidate = normalized.slice(0, length);
-    const fallback = candidate[0].toUpperCase() + candidate.slice(1);
-    if (!used.has(fallback)) {
-      used.add(fallback);
-      return fallback;
-    }
-  }
-  let suffix = 2;
-  while (true) {
-    const fallback = `${normalized[0].toUpperCase()}${suffix}`;
-    if (!used.has(fallback)) {
-      used.add(fallback);
-      return fallback;
-    }
-    suffix += 1;
-  }
-}
-
-export const ANIMAL_FALLBACKS: Record<string, string> = (() => {
-  const used = new Set<string>();
-  const animals = Array.from(new Set(OFFICE_TEAM_MEMBERS.map((member) => member.animal.en)));
-  return Object.fromEntries(
-    animals.map((animal) => [animal, createAnimalFallback(animal, used)]),
-  );
-})();
-
 /** Sofa team label lookup (for rendering labels on sofa furniture) */
 export const SOFA_TEAM_LABELS: Record<string, string> = Object.fromEntries(
   teamData.teams

@@ -4,11 +4,13 @@ set -euo pipefail
 KUMA_HOME_DIR="${KUMA_HOME_DIR:-$HOME/.kuma}"
 KUMA_CMUX_DIR="${KUMA_CMUX_DIR:-$KUMA_HOME_DIR/cmux}"
 KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$KUMA_HOME_DIR/team.json}"
+KUMA_PROJECTS_PATH="${KUMA_PROJECTS_PATH:-$KUMA_HOME_DIR/projects.json}"
 KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 KUMA_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
 KUMA_RESULT_DIR="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
 KUMA_DEFAULT_PROJECT="${KUMA_DEFAULT_PROJECT:-kuma-studio}"
 KUMA_DEFAULT_QA_MEMBER="${KUMA_DEFAULT_QA_MEMBER:-밤토리}"
+KUMA_WAIT_POLL_INTERVAL="${KUMA_WAIT_POLL_INTERVAL:-5}"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -53,6 +55,233 @@ resolve_initiator_surface() {
   printf 'surface:1\n'
 }
 
+ensure_json_object_file() {
+  local path="${1:?json path required}"
+  if [ ! -f "$path" ]; then
+    mkdir -p "$(dirname "$path")"
+    printf '{}\n' > "$path"
+  fi
+}
+
+ensure_project_registry() {
+  ensure_json_object_file "$KUMA_PROJECTS_PATH"
+}
+
+ensure_surface_registry() {
+  ensure_json_object_file "$KUMA_SURFACES_PATH"
+}
+
+resolve_project_dir() {
+  local project="${1:?project required}"
+
+  node --input-type=module - "$KUMA_PROJECTS_PATH" "$project" <<'NODE'
+import { existsSync, readFileSync } from "node:fs";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
+
+const [, , projectsPath, project] = process.argv;
+if (!existsSync(projectsPath)) {
+  process.exit(1);
+}
+
+const projects = JSON.parse(readFileSync(projectsPath, "utf8"));
+const raw = projects?.[project];
+if (typeof raw !== "string" || !raw.trim()) {
+  process.exit(1);
+}
+
+let normalized = resolve(raw);
+try {
+  normalized = realpathSync(normalized);
+} catch {
+  // Keep resolved path when the directory does not exist yet.
+}
+
+process.stdout.write(`${normalized}\n`);
+NODE
+}
+
+resolve_project_from_dir() {
+  local dir="${1:?directory required}"
+
+  node --input-type=module - "$KUMA_PROJECTS_PATH" "$dir" <<'NODE'
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { resolve, sep } from "node:path";
+
+const [, , projectsPath, rawDir] = process.argv;
+if (!existsSync(projectsPath)) {
+  process.exit(1);
+}
+
+const projects = JSON.parse(readFileSync(projectsPath, "utf8"));
+let target = resolve(rawDir);
+try {
+  target = realpathSync(target);
+} catch {
+  // Leave resolved path as-is when the directory does not exist yet.
+}
+
+let best = null;
+for (const [projectId, projectDir] of Object.entries(projects ?? {})) {
+  if (typeof projectDir !== "string" || !projectDir.trim()) {
+    continue;
+  }
+
+  let normalizedDir = resolve(projectDir);
+  try {
+    normalizedDir = realpathSync(normalizedDir);
+  } catch {
+    // Leave resolved path as-is when the directory does not exist yet.
+  }
+
+  if (target === normalizedDir || target.startsWith(`${normalizedDir}${sep}`)) {
+    if (!best || normalizedDir.length > best.dir.length) {
+      best = { id: projectId, dir: normalizedDir };
+    }
+  }
+}
+
+if (!best) {
+  process.exit(1);
+}
+
+process.stdout.write(`${best.id}\n`);
+NODE
+}
+
+save_project_mapping() {
+  local project="${1:?project required}"
+  local dir="${2:?directory required}"
+
+  node --input-type=module - "$KUMA_PROJECTS_PATH" "$project" "$dir" <<'NODE'
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+
+const [, , projectsPath, projectId, rawDir] = process.argv;
+mkdirSync(dirname(projectsPath), { recursive: true });
+
+let projects = {};
+if (existsSync(projectsPath)) {
+  projects = JSON.parse(readFileSync(projectsPath, "utf8"));
+}
+
+let normalizedDir = resolve(rawDir);
+try {
+  normalizedDir = realpathSync(normalizedDir);
+} catch {
+  // Leave resolved path as-is when the directory does not exist yet.
+}
+
+projects[projectId] = normalizedDir;
+writeFileSync(projectsPath, `${JSON.stringify(projects, null, 2)}\n`, "utf8");
+process.stdout.write(`${normalizedDir}\n`);
+NODE
+}
+
+member_display_label_from_json() {
+  local member_json="${1:?member json required}"
+
+  printf '%s' "$member_json" | node -e '
+    const fs = require("node:fs");
+    const member = JSON.parse(fs.readFileSync(0, "utf8"));
+    const label = `${member.emoji || ""} ${member.displayName || member.id || ""}`.trim();
+    process.stdout.write(`${label}\n`);
+  '
+}
+
+register_surface_label() {
+  local project="${1:?project required}"
+  local label="${2:?label required}"
+  local surface="${3:?surface required}"
+
+  node --input-type=module - "$KUMA_SURFACES_PATH" "$project" "$label" "$surface" <<'NODE'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
+const [, , registryPath, projectId, label, surface] = process.argv;
+mkdirSync(dirname(registryPath), { recursive: true });
+
+let registry = {};
+if (existsSync(registryPath)) {
+  registry = JSON.parse(readFileSync(registryPath, "utf8"));
+}
+
+const projectEntries = registry[projectId] && typeof registry[projectId] === "object"
+  ? registry[projectId]
+  : {};
+projectEntries[label] = surface;
+registry[projectId] = projectEntries;
+
+writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+NODE
+}
+
+remove_surface_from_registry() {
+  local surface="${1:?surface required}"
+  local project="${2:-}"
+
+  node --input-type=module - "$KUMA_SURFACES_PATH" "$surface" "$project" <<'NODE'
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+
+const [, , registryPath, surface, projectFilter] = process.argv;
+if (!existsSync(registryPath)) {
+  process.exit(0);
+}
+
+const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+const projectIds = projectFilter ? [projectFilter] : Object.keys(registry ?? {});
+
+for (const projectId of projectIds) {
+  const projectEntries = registry?.[projectId];
+  if (!projectEntries || typeof projectEntries !== "object") {
+    continue;
+  }
+
+  for (const [label, value] of Object.entries(projectEntries)) {
+    if (String(value ?? "") === surface) {
+      delete projectEntries[label];
+    }
+  }
+
+  if (Object.keys(projectEntries).length === 0) {
+    delete registry[projectId];
+  } else {
+    registry[projectId] = projectEntries;
+  }
+}
+
+writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
+NODE
+}
+
+resolve_project_anchor_surface() {
+  local project="${1:?project required}"
+
+  node --input-type=module - "$KUMA_SURFACES_PATH" "$project" <<'NODE'
+import { existsSync, readFileSync } from "node:fs";
+
+const [, , registryPath, projectId] = process.argv;
+if (!existsSync(registryPath)) {
+  process.exit(1);
+}
+
+const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+const projectEntries = registry?.[projectId];
+if (!projectEntries || typeof projectEntries !== "object") {
+  process.exit(1);
+}
+
+for (const surface of Object.values(projectEntries)) {
+  if (typeof surface === "string" && surface.trim()) {
+    process.stdout.write(`${surface}\n`);
+    process.exit(0);
+  }
+}
+
+process.exit(1);
+NODE
+}
+
 resolve_member_json() {
   local query="${1:?member query required}"
 
@@ -75,6 +304,7 @@ const members = Object.entries(config.teams ?? {}).flatMap(([teamId, team]) =>
         emoji: String(member?.emoji ?? ""),
         type: spawnType,
         team: String(member?.team ?? teamId ?? ""),
+        defaultQa: typeof member?.defaultQa === "string" ? member.defaultQa : "",
       };
     })
     : [],
@@ -360,4 +590,72 @@ NODE
 default_task_token() {
   local member_id="${1:?member id required}"
   printf '%s-%s\n' "$member_id" "$(date +%Y%m%d-%H%M%S)"
+}
+
+diagnose_surface_timeout() {
+  local surface="${1:?surface required}"
+  local output status_json status preview
+
+  if output="$("$KUMA_CMUX_DIR/kuma-cmux-read.sh" "$surface" 2>&1)"; then
+    status_json="$(classify_surface_output_json "$output")"
+    status="$(printf '%s' "$status_json" | node -e 'const fs=require("node:fs"); const data=JSON.parse(fs.readFileSync(0,"utf8")); console.log(data.status);')"
+    preview="$(printf '%s' "$status_json" | node -e 'const fs=require("node:fs"); const data=JSON.parse(fs.readFileSync(0,"utf8")); console.log((data.preview || "").replace(/\t/g, " ").replace(/\r?\n/g, " ").trim());')"
+    printf 'WAIT_TIMEOUT_DIAG: surface=%s status=%s preview=%s\n' "$surface" "$status" "$preview" >&2
+    return 0
+  fi
+
+  printf 'WAIT_TIMEOUT_DIAG: surface=%s status=dead preview=%s\n' \
+    "$surface" \
+    "$(printf '%s' "$output" | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g' | sed 's/^ //; s/ $//')" >&2
+}
+
+wait_for_signal_with_diagnostics() {
+  local signal="${1:?signal required}"
+  local result_file="${2:-}"
+  local surface="${3:-}"
+  local timeout="${4:-900}"
+  local output rc
+
+  set +e
+  output="$("$KUMA_CMUX_DIR/kuma-cmux-wait.sh" "$signal" "$result_file" --surface "$surface" --timeout "$timeout" 2>&1)"
+  rc=$?
+  set -e
+
+  if [ -n "$output" ]; then
+    printf '%s\n' "$output"
+  fi
+
+  if [ "$rc" -eq 0 ]; then
+    return 0
+  fi
+
+  if printf '%s\n' "$output" | grep -q 'SIGNAL_TIMEOUT:'; then
+    [ -n "$surface" ] && diagnose_surface_timeout "$surface"
+    return 2
+  fi
+
+  return "$rc"
+}
+
+poll_result_file_with_diagnostics() {
+  local result_file="${1:?result file required}"
+  local surface="${2:-}"
+  local timeout="${3:-900}"
+  local elapsed=0
+  local interval="$KUMA_WAIT_POLL_INTERVAL"
+
+  while [ "$elapsed" -lt "$timeout" ]; do
+    if [ -f "$result_file" ]; then
+      printf 'RESULT_FILE: %s\n' "$result_file"
+      cat "$result_file"
+      return 0
+    fi
+
+    sleep "$interval"
+    elapsed=$((elapsed + interval))
+  done
+
+  printf 'RESULT_POLL_TIMEOUT: %s (timeout=%ss)\n' "$result_file" "$timeout" >&2
+  [ -n "$surface" ] && diagnose_surface_timeout "$surface"
+  return 2
 }

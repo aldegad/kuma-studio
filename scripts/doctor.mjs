@@ -53,11 +53,22 @@ async function main() {
   }
 
   // Check skills
-  const skills = ["kuma", "dev-team", "analytics-team", "strategy-team"];
+  const skills = [
+    { id: "kuma", candidates: ["kuma"] },
+    { id: "dev-team", candidates: ["dev-team"] },
+    { id: "strategy-analytics-team", candidates: ["strategy-analytics-team", "analytics-team", "strategy-team"] },
+    { id: "tmux-ops", candidates: ["tmux-ops"] },
+  ];
   for (const skill of skills) {
-    const ok = existsSync(join(CLAUDE_DIR, "skills", skill, "skill.md"));
-    allOk = check(`Skill: ${skill}`, ok) && allOk;
+    const resolvedSkill = skill.candidates.find((candidate) =>
+      existsSync(join(CLAUDE_DIR, "skills", candidate, "skill.md")),
+    );
+    const ok = Boolean(resolvedSkill);
+    allOk = check(`Skill: ${skill.id}`, ok) && allOk;
     if (!ok) process.stdout.write("    Run: node scripts/install.mjs\n");
+    if (ok && resolvedSkill !== skill.id) {
+      process.stdout.write(`    Using legacy alias: ${resolvedSkill} (deprecated, canonical: ${skill.id})\n`);
+    }
   }
 
   // Check state directory and team metadata

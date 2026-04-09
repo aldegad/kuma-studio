@@ -4,9 +4,11 @@ import {
   buildTeamStatusSnapshot,
   classifySurfaceStatus,
   filterTeamStatusSnapshot,
+  isRetryableCmuxSocketFailure,
   mapSurfaceStatusToStudioState,
   parseModelInfo,
   parseRegistryLabel,
+  readSurfaceWithHealing,
   toStudioTeamStatusSnapshot,
   withImplicitRegistryMembers,
 } from "./team-status-store.mjs";
@@ -96,6 +98,18 @@ describe("team-status-store", () => {
       classifySurfaceStatus("작업 결과 정리 완료\n1% until auto-compact"),
       "idle",
     );
+    assert.strictEqual(
+      classifySurfaceStatus('작업 결과 정리 완료\n8% until auto-compact · /model opus[1m]'),
+      "idle",
+    );
+    assert.strictEqual(
+      classifySurfaceStatus("완료\n✻ Cogitated for 1m 5s\n❯\n~53k uncached · /clear to start…"),
+      "idle",
+    );
+    assert.strictEqual(
+      classifySurfaceStatus("⚠ MCP startup incomplete\n(failed: mcp-arena)\n› Implement {feature}\ngpt-5.4-mini xhigh …"),
+      "idle",
+    );
   });
 
   it("classifies prompt and footer-only output as idle", () => {
@@ -117,11 +131,138 @@ describe("team-status-store", () => {
     );
   });
 
+  it("treats Claude thinking-only spinners plus bypass footers as idle", () => {
+    const sample = [
+      "… +19 lines (ctrl+o to expand)",
+      "✻ Scurrying… (thinking with high effort)",
+      "⏵⏵ bypa · permissions on   1 shell · esc…",
+    ].join("\n");
+
+    assert.strictEqual(classifySurfaceStatus(sample), "idle");
+
+    const snapshot = toStudioTeamStatusSnapshot(
+      {
+        projects: {
+          system: {
+            members: [
+              {
+                name: "쿠마",
+                emoji: "🐻",
+                role: "",
+                surface: "surface:1",
+                status: "idle",
+                lastOutput: sample,
+              },
+            ],
+          },
+        },
+      },
+      "2026-04-08T00:00:00.000Z",
+    );
+
+    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, []);
+    assert.strictEqual(snapshot.projects[0].members[0].task, null);
+  });
+
+  it("treats the live kuma whisking prompt sample as idle with no bubble fallback", () => {
+    const sample = [
+      "← discord · kimsuhong3759: 그래 노을이 모델",
+      "왜 Gpt 5.4 xhigh fast 로 보이냐? 쭈니도. …",
+      "* Whisking… (thinking with high effort)",
+      "❯",
+      "⏵⏵ bypa · permissions on   1 shell · esc…",
+      "6% until auto-compact · /model opus[1m]",
+    ].join("\n");
+
+    assert.strictEqual(classifySurfaceStatus(sample), "idle");
+
+    const snapshot = toStudioTeamStatusSnapshot(
+      {
+        projects: {
+          system: {
+            members: [
+              {
+                name: "쿠마",
+                emoji: "🐻",
+                role: "",
+                surface: "surface:1",
+                status: "idle",
+                lastOutput: sample,
+              },
+            ],
+          },
+        },
+      },
+      "2026-04-08T00:00:00.000Z",
+    );
+
+    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, []);
+    assert.strictEqual(snapshot.projects[0].members[0].task, null);
+  });
+
   it("classifies cmux failures as dead", () => {
     assert.strictEqual(
       classifySurfaceStatus("Error: invalid_params: Surface is not a terminal"),
       "dead",
     );
+  });
+
+  it("detects retryable cmux socket transport failures", () => {
+    assert.strictEqual(isRetryableCmuxSocketFailure("Error: Failed to write to socket"), true);
+    assert.strictEqual(isRetryableCmuxSocketFailure("connect ECONNREFUSED /tmp/cmux.sock"), true);
+    assert.strictEqual(
+      isRetryableCmuxSocketFailure("Error: invalid_params: Surface is not a terminal"),
+      false,
+    );
+  });
+
+  it("retries socket failures with strict cmux env and reports a healed read", async () => {
+    const calls = [];
+    const result = await readSurfaceWithHealing(
+      "surface:7",
+      async (_surface, options = {}) => {
+        calls.push(options.strictCmuxEnv === true);
+        if (calls.length === 1) {
+          return { ok: false, output: "Error: Failed to write to socket" };
+        }
+
+        return { ok: true, output: "❯" };
+      },
+      {
+        retryDelaysMs: [0],
+      },
+    );
+
+    assert.deepEqual(calls, [false, true]);
+    assert.deepEqual(result, {
+      ok: true,
+      output: "❯",
+      healed: true,
+      strictCmuxEnvUsed: true,
+    });
+  });
+
+  it("starts in strict cmux env when the caller has already entered heal mode", async () => {
+    const calls = [];
+    const result = await readSurfaceWithHealing(
+      "surface:7",
+      async (_surface, options = {}) => {
+        calls.push(options.strictCmuxEnv === true);
+        return { ok: true, output: "❯" };
+      },
+      {
+        strictFirst: true,
+        retryDelaysMs: [0],
+      },
+    );
+
+    assert.deepEqual(calls, [true]);
+    assert.deepEqual(result, {
+      ok: true,
+      output: "❯",
+      healed: false,
+      strictCmuxEnvUsed: true,
+    });
   });
 
   it("builds a project snapshot with metadata and fallback labels", () => {
@@ -332,6 +473,22 @@ describe("team-status-store", () => {
                 status: "idle",
                 lastOutput: "Draft ready\n1% until auto-compact",
               },
+              {
+                name: "노을이",
+                emoji: "🦌",
+                role: "",
+                surface: "surface:26",
+                status: "idle",
+                lastOutput: "⚠ MCP startup incomplete\n(failed: mcp-arena)\n› Implement {feature}\ngpt-5.4-mini xhigh …",
+              },
+              {
+                name: "쿤",
+                emoji: "🦝",
+                role: "",
+                surface: "surface:16",
+                status: "idle",
+                lastOutput: "완료\n✻ Cogitated for 1m 5s\n❯\n~53k uncached · /clear to start…",
+              },
             ],
           },
         },
@@ -378,6 +535,45 @@ describe("team-status-store", () => {
     assert.strictEqual(snapshot.projects[0].members[0].task, "• Working (34s • esc to interr…)");
     assert.deepEqual(snapshot.projects[0].members[1].lastOutputLines, ["• Creating branch…"]);
     assert.strictEqual(snapshot.projects[0].members[1].task, "• Creating branch…");
+  });
+
+  it("keeps Claude tool activity as working even when a prompt and bypass footer are visible", () => {
+    const output = [
+      "⏺ Bash(npm test -- packages/server/src/studio/team-status-store.test.mjs 2>&1 | tail -8)",
+      "✻ Scurrying… (thinking with high effort)",
+      "❯",
+      "⏵⏵ bypa · permissions on   1 shell · esc…",
+    ].join("\n");
+
+    assert.strictEqual(classifySurfaceStatus(output), "working");
+
+    const snapshot = toStudioTeamStatusSnapshot(
+      {
+        projects: {
+          system: {
+            members: [
+              {
+                name: "쿠마",
+                emoji: "🐻",
+                role: "",
+                surface: "surface:1",
+                status: "working",
+                lastOutput: output,
+              },
+            ],
+          },
+        },
+      },
+      "2026-04-08T00:00:00.000Z",
+    );
+
+    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, [
+      "⏺ Bash(npm test -- packages/server/src/studio/team-status-store.test.mjs 2>&1 | tail -8)",
+    ]);
+    assert.strictEqual(
+      snapshot.projects[0].members[0].task,
+      "⏺ Bash(npm test -- packages/server/src/studio/team-status-store.test.mjs 2>&1 | tail -8)",
+    );
   });
 
   it("treats the actual jjooni surface footer pattern as idle", () => {
@@ -465,6 +661,11 @@ describe("team-status-store", () => {
   it("parses Codex model footer without speed or context", () => {
     const info = parseModelInfo("gpt-5.4 high\nesc to interrupt\n❯");
     assert.deepEqual(info, { model: "gpt-5.4", effort: "high", speed: null, contextRemaining: null });
+  });
+
+  it("parses truncated Codex mini footer into the canonical model name", () => {
+    const info = parseModelInfo("gpt-5.4-min… xhigh fast · 100% left\n❯");
+    assert.deepEqual(info, { model: "gpt-5.4-mini", effort: "xhigh", speed: "fast", contextRemaining: 100 });
   });
 
   it("parses Claude /model command with context bracket", () => {

@@ -49,26 +49,6 @@ function createResponse() {
 }
 
 describe("studio-routes vault", () => {
-  it("redirects legacy /studio/wiki paths to /studio/vault", async () => {
-    const handler = createStudioRouteHandler({
-      staticDir: process.cwd(),
-      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
-      sceneStore: {},
-    });
-
-    const res = createResponse();
-    await handler(
-      createRequest("POST", "/studio/wiki/inbox", {
-        title: "원문",
-        text: "raw payload",
-      }),
-      res,
-    );
-
-    assert.strictEqual(res.statusCode, 307);
-    assert.strictEqual(res.headers.Location, "/studio/vault/inbox");
-  });
-
   it("uses addInbox for /studio/vault/inbox", async () => {
     const calls = [];
     const handler = createStudioRouteHandler({
@@ -148,17 +128,14 @@ describe("studio-routes vault", () => {
     assert.strictEqual(res.json.created, 2);
   });
 
-  it("/studio/memos returns only legacy memos without inbox", async () => {
+  it("/studio/memos returns canonical vault memos without inbox", async () => {
     const handler = createStudioRouteHandler({
       staticDir: process.cwd(),
       statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
       sceneStore: {},
       memoStore: {
         async list() {
-          return [{ id: "doc.md", title: "Doc", images: [], createdAt: "2026-04-07T00:00:00.000Z" }];
-        },
-        async listMemos() {
-          return [{ id: "legacy/memo.md", title: "Memo", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "legacy-memo" }];
+          return [{ id: "doc.md", title: "Doc", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "vault" }];
         },
         async listInbox() {
           return [{ id: "inbox/raw.md", title: "Raw", images: [], createdAt: "2026-04-07T00:00:00.000Z" }];
@@ -173,8 +150,8 @@ describe("studio-routes vault", () => {
     );
 
     assert.strictEqual(res.statusCode, 200);
-    assert.strictEqual(res.json.memos[0].id, "legacy/memo.md");
-    assert.strictEqual(res.json.memos[0].source, "legacy-memo");
+    assert.strictEqual(res.json.memos[0].id, "doc.md");
+    assert.strictEqual(res.json.memos[0].source, "vault");
     assert.strictEqual(res.json.inbox, undefined);
   });
 });

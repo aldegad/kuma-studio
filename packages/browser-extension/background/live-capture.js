@@ -400,25 +400,9 @@ async function handleStudioLiveCaptureStarted(message = {}, sender = {}) {
     };
   }
 
-  try {
-    await sendMessageToLiveCaptureOffscreen({
-      type: "kuma-picker:live-capture-start",
-      recordingId: studioSession.id,
-      streamId,
-      captureKind: studioSession.captureKind,
-      canRequestAudioTrack: message?.canRequestAudioTrack === true,
-      fps: studioSession.fps,
-      layoutPlan: message?.layoutPlan && typeof message.layoutPlan === "object" ? message.layoutPlan : null,
-    });
-  } catch (error) {
-    return {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
-
   state.activeSession = {
     ...studioSession,
+    mode: "studio-local",
     status: "recording",
     startedAt: typeof message?.startedAt === "string" && message.startedAt ? message.startedAt : studioSession.startedAt,
   };
@@ -427,6 +411,64 @@ async function handleStudioLiveCaptureStarted(message = {}, sender = {}) {
   return {
     ok: true,
     ...serializeLiveCaptureState(),
+  };
+}
+
+function abortStudioLiveCapture(message = {}, sender = {}) {
+  const state = getLiveCaptureStateStore();
+  const studioId = typeof message?.studioId === "string" ? message.studioId.trim() : "";
+  const session = state.activeSession;
+  if (!session || !studioId || session.id !== studioId || session.mode !== "studio-local") {
+    return {
+      ok: true,
+      ignored: true,
+    };
+  }
+
+  if (sender.tab?.id && sender.tab.id !== session.studioTabId) {
+    return {
+      ok: false,
+      error: "Only the matching Capture Studio tab can abort this recording start.",
+    };
+  }
+
+  state.activeSession = null;
+  return {
+    ok: true,
+    aborted: true,
+  };
+}
+
+async function stopStudioLocalCapture(session) {
+  let response = null;
+  try {
+    response = await chrome.runtime.sendMessage({
+      target: "capture-studio",
+      type: "kuma-picker:studio-stop-local-live-capture",
+      studioId: session.id,
+    });
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : String(error));
+  }
+
+  if (!response?.ok) {
+    throw new Error(response?.error || "Capture Studio could not stop the local recording.");
+  }
+
+  return {
+    ok: true,
+    message: response.message || "Live capture saved.",
+    active: false,
+    recording: {
+      id: session.id,
+      filename: session.filename,
+      startedAt: session.startedAt,
+      stoppedAt: typeof response?.stoppedAt === "string" && response.stoppedAt ? response.stoppedAt : new Date().toISOString(),
+      fps: session.fps,
+      bytes: Number.isFinite(response?.bytes) ? Math.max(0, Math.round(response.bytes)) : 0,
+      mimeType: typeof response?.mimeType === "string" && response.mimeType ? response.mimeType : "video/webm",
+    },
+    downloadId: Number.isInteger(response?.downloadId) ? response.downloadId : null,
   };
 }
 
@@ -612,6 +654,15 @@ async function stopLiveCapture() {
   const session = state.activeSession;
   if (!session) {
     throw new Error("No live capture is currently active.");
+  }
+
+  if (session.mode === "studio-local") {
+    session.status = "stopping";
+    try {
+      return await stopStudioLocalCapture(session);
+    } finally {
+      state.activeSession = null;
+    }
   }
 
   session.status = "stopping";

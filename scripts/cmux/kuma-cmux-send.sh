@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage: kuma-cmux-send.sh <surface> <prompt> [--workspace <workspace-id>] [--dry-run]
-# Sends prompt to a cmux surface, presses Enter, and verifies delivery.
+# Sends prompt to a cmux surface, presses Enter, verifies delivery, and logs dispatches.
 # Retries Enter up to 3 times if the text is still sitting at the prompt.
 set -euo pipefail
 
@@ -17,6 +17,7 @@ shift 2
 
 WORKSPACE=""
 DRY_RUN=0
+KUMA_SEND_LOG_PATH="${KUMA_SEND_LOG_PATH:-/tmp/kuma-send.log}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -51,6 +52,27 @@ resolve_workspace() {
   '
 }
 
+log_send() {
+  local phase="${1:?phase required}"
+  local payload="${2:-}"
+  local normalized
+
+  normalized="${payload//$'\r'/}"
+  normalized="${normalized//$'\n'/\\n}"
+  if [ ${#normalized} -gt 220 ]; then
+    normalized="${normalized:0:220}..."
+  fi
+
+  mkdir -p "$(dirname "$KUMA_SEND_LOG_PATH")" 2>/dev/null || true
+  printf '%s\t%s\tsurface=%s\tworkspace=%s\tpayload=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$phase" \
+    "$SURFACE" \
+    "${WORKSPACE:-auto}" \
+    "$normalized" \
+    >> "$KUMA_SEND_LOG_PATH" 2>/dev/null || true
+}
+
 if [ -z "$WORKSPACE" ]; then
   WORKSPACE="$(resolve_workspace "$SURFACE")"
 fi
@@ -66,6 +88,7 @@ READ_ARGS+=(--surface "$SURFACE" --lines 12)
 
 if [ "$DRY_RUN" = "1" ]; then
   cmux read-screen "${READ_ARGS[@]}" > /dev/null
+  log_send "dry-run" "$PROMPT"
   echo "DRY_RUN_OK $SURFACE${WORKSPACE:+ $WORKSPACE}"
   exit 0
 fi
@@ -79,6 +102,7 @@ fi
 
 # Send the text WITHOUT trailing newline (Codex/Claude use bracketed paste;
 # a \n inside pasted text is treated as a literal newline, not Enter).
+log_send "dispatch" "$PROMPT"
 cmux send "${SEND_ARGS[@]}" "$PROMPT"
 sleep 1
 
@@ -96,17 +120,26 @@ read_input_view() {
 
 prompt_still_pending() {
   local view="$1"
+  local line
+  local line_index=0
+  local last_prompt_index=0
+  local target_prompt_index=0
 
   # Detect prompt lines from Claude Code (❯ ›), Codex (>), and shell ($).
-  printf '%s\n' "$view" | awk -v check="$CHECK" '
-    /^[[:space:]]*[❯›>$]/ {
-      last_prompt = NR
-      if (index($0, check)) {
-        target_prompt = NR
-      }
-    }
-    END { exit(target_prompt > 0 && target_prompt == last_prompt ? 0 : 1) }
-  '
+  # Keep this in bash so Unicode prompt glyph handling does not depend on awk locale quirks.
+  while IFS= read -r line; do
+    line_index=$((line_index + 1))
+    case "$line" in
+      ([[:space:]]*'❯'*|[[:space:]]*'›'*|[[:space:]]*'>'*|[[:space:]]*'$'*)
+        last_prompt_index=$line_index
+        if [ -n "$CHECK" ] && printf '%s\n' "$line" | grep -F -- "$CHECK" > /dev/null; then
+          target_prompt_index=$line_index
+        fi
+        ;;
+    esac
+  done <<< "$view"
+
+  [ "$target_prompt_index" -gt 0 ] && [ "$target_prompt_index" -eq "$last_prompt_index" ]
 }
 
 # Verify delivery — retry Enter if text is still at prompt
@@ -117,15 +150,18 @@ for i in $(seq 1 $MAX_RETRIES); do
 
   if prompt_still_pending "$INPUT_VIEW"; then
     echo "RETRY $i: Enter not registered, retrying..." >&2
+    log_send "retry-enter" "$INPUT_VIEW"
     cmux send-key "${SEND_ARGS[@]}" Enter
   else
     DELIVERED=true
+    log_send "delivered" "$INPUT_VIEW"
     break
   fi
 done
 
 if [ "$DELIVERED" != true ]; then
   echo "ERROR: Prompt delivery failed after $MAX_RETRIES retries" >&2
+  log_send "failed" "${INPUT_VIEW:-}"
   printf '%s\n' "$INPUT_VIEW" >&2
   exit 1
 fi

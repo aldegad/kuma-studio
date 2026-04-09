@@ -4,14 +4,34 @@ KUMA_STUDIO="$(cd "$(dirname "$0")/.." && pwd)"
 errors=0
 
 # 스킬 심링크 확인
-for skill in kuma dev-team analytics-team strategy-team tmux-ops; do
+required_skill_specs=(
+  "kuma:kuma"
+  "dev-team:dev-team"
+  "analytics-team:analytics-team"
+  "strategy-team:strategy-team"
+  "tmux-ops:tmux-ops"
+)
+for spec in "${required_skill_specs[@]}"; do
+  skill="${spec%%:*}"
+  source_skill="${spec#*:}"
   link="$HOME/.claude/skills/$skill"
-  target="$KUMA_STUDIO/.claude/skills/$skill"
+  target="$KUMA_STUDIO/.claude/skills/$source_skill"
   if [ "$(readlink "$link" 2>/dev/null)" != "$target" ]; then
     echo "❌ skill/$skill: 심링크 불일치"
     errors=$((errors + 1))
   fi
 done
+
+strategy_analytics_link="$HOME/.claude/skills/strategy-analytics-team"
+strategy_analytics_target="$KUMA_STUDIO/.claude/skills/analytics-team"
+if [ -L "$strategy_analytics_link" ]; then
+  if [ "$(readlink "$strategy_analytics_link" 2>/dev/null)" != "$strategy_analytics_target" ]; then
+    echo "❌ skill/strategy-analytics-team: 심링크 불일치"
+    errors=$((errors + 1))
+  fi
+else
+  echo "⚠️ skill/strategy-analytics-team: 미설치 (legacy analytics-team / strategy-team alias 허용)"
+fi
 
 # 훅 심링크 확인
 for hook in "$KUMA_STUDIO"/scripts/hooks/*.sh; do
@@ -29,6 +49,25 @@ for script in "$KUMA_STUDIO"/scripts/cmux/*.sh; do
   link="$HOME/.kuma/cmux/$name"
   if [ "$(readlink "$link" 2>/dev/null)" != "$script" ]; then
     echo "❌ cmux/$name: 심링크 불일치"
+    errors=$((errors + 1))
+  fi
+done
+
+for link in "$HOME"/.kuma/cmux/*.sh; do
+  [ -e "$link" ] || [ -L "$link" ] || continue
+  name=$(basename "$link")
+  target="$(readlink "$link" 2>/dev/null || true)"
+  expected="$KUMA_STUDIO/scripts/cmux/$name"
+  legacy="$KUMA_STUDIO/cmux/$name"
+
+  if [ "$target" = "$legacy" ]; then
+    echo "❌ cmux/$name: 레거시 repo-root cmux 경로를 가리킴"
+    errors=$((errors + 1))
+    continue
+  fi
+
+  if [ ! -f "$expected" ]; then
+    echo "❌ cmux/$name: stale symlink (repo에 해당 스크립트 없음)"
     errors=$((errors + 1))
   fi
 done

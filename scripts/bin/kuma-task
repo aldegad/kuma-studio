@@ -7,8 +7,18 @@ source "$SCRIPT_DIR/kuma-cli-common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: kuma-task <멤버이름> "<지시>" [--project <프로젝트>] [--wait] [--no-qa]
+Usage: kuma-task <멤버이름> "<지시>" [--project <프로젝트>] [--qa <멤버|self|kuma-direct>] [--trust-worker] [--wait] [--timeout <sec>] [--poll]
+
+Options:
+  --qa <멤버>        QA 담당 멤버 override. 우선순위는 --qa > member.defaultQa > KUMA_DEFAULT_QA_MEMBER > 밤토리
+  --trust-worker     밤토리 QA를 생략하고 qa: worker-self-report 로 기록
+  --no-qa            deprecated alias for --trust-worker
 EOF
+}
+
+[ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] && {
+  usage
+  exit 0
 }
 
 [ $# -ge 2 ] || {
@@ -22,7 +32,11 @@ shift 2
 
 PROJECT="$KUMA_DEFAULT_PROJECT"
 WAIT_FOR_SIGNAL=0
-NO_QA=0
+WAIT_TIMEOUT=900
+WAIT_MODE="signal"
+TRUST_WORKER=0
+USED_DEPRECATED_NO_QA=0
+QA_MEMBER_QUERY=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -30,12 +44,31 @@ while [ $# -gt 0 ]; do
       PROJECT="${2:?project required}"
       shift 2
       ;;
+    --qa)
+      QA_MEMBER_QUERY="${2:?qa member required}"
+      shift 2
+      ;;
+    --trust-worker)
+      TRUST_WORKER=1
+      shift
+      ;;
     --wait)
       WAIT_FOR_SIGNAL=1
       shift
       ;;
+    --timeout)
+      WAIT_TIMEOUT="${2:?timeout seconds required}"
+      WAIT_FOR_SIGNAL=1
+      shift 2
+      ;;
+    --poll)
+      WAIT_FOR_SIGNAL=1
+      WAIT_MODE="poll"
+      shift
+      ;;
     --no-qa)
-      NO_QA=1
+      TRUST_WORKER=1
+      USED_DEPRECATED_NO_QA=1
       shift
       ;;
     -h|--help)
@@ -48,22 +81,67 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+if [ "$TRUST_WORKER" = "1" ] && [ -n "$QA_MEMBER_QUERY" ]; then
+  die "--qa and --trust-worker cannot be used together"
+fi
+
+if [ "$USED_DEPRECATED_NO_QA" = "1" ]; then
+  printf '%s\n' "--no-qa is deprecated, use --trust-worker instead. This will still route through vault-auto-ingest." >&2
+fi
+
 ensure_runtime_requirements
+require_file "$KUMA_CMUX_DIR/kuma-cmux-send.sh"
 mkdir -p "$KUMA_TASK_DIR" "$KUMA_RESULT_DIR"
 
 MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
 MEMBER_NAME="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
 MEMBER_ID="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.id);')"
 MEMBER_TYPE="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.type);')"
+MEMBER_DEFAULT_QA="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.defaultQa || "");')"
 
 SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$MEMBER_JSON")" || die "surface not found for $MEMBER_NAME in project '$PROJECT'"
 WORKER_SURFACE="$(printf '%s' "$SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
 
 QA_SURFACE=""
-if [ "$NO_QA" != "1" ]; then
-  QA_MEMBER_JSON="$(resolve_member_json "$KUMA_DEFAULT_QA_MEMBER")" || die "qa member not found: $KUMA_DEFAULT_QA_MEMBER"
-  QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON")" || die "qa surface not found for $KUMA_DEFAULT_QA_MEMBER"
-  QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+QA_LABEL=""
+QA_FRONTMATTER=""
+QA_MODE="member"
+QA_TARGET_QUERY=""
+if [ "$TRUST_WORKER" = "1" ]; then
+  QA_MODE="self"
+  QA_LABEL="worker-self-report"
+  QA_FRONTMATTER="worker-self-report"
+else
+  if [ -n "$QA_MEMBER_QUERY" ]; then
+    QA_TARGET_QUERY="$QA_MEMBER_QUERY"
+  elif [ -n "$MEMBER_DEFAULT_QA" ]; then
+    QA_TARGET_QUERY="$MEMBER_DEFAULT_QA"
+  elif [ -n "$KUMA_DEFAULT_QA_MEMBER" ]; then
+    QA_TARGET_QUERY="$KUMA_DEFAULT_QA_MEMBER"
+  else
+    QA_TARGET_QUERY="밤토리"
+  fi
+
+  case "$QA_TARGET_QUERY" in
+    self)
+      QA_MODE="self"
+      QA_LABEL="worker-self-report"
+      QA_FRONTMATTER="worker-self-report"
+      ;;
+    kuma-direct)
+      QA_MODE="kuma-direct"
+      QA_LABEL="kuma-direct"
+      QA_FRONTMATTER="kuma-direct"
+      ;;
+    *)
+      QA_MEMBER_JSON="$(resolve_member_json "$QA_TARGET_QUERY")" || die "qa member not found: $QA_TARGET_QUERY"
+      QA_LABEL="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
+      QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON")" || die "qa surface not found for $QA_TARGET_QUERY"
+      QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+      QA_LABEL="${QA_LABEL:-$QA_TARGET_QUERY}"
+      QA_FRONTMATTER="$QA_SURFACE"
+      ;;
+  esac
 fi
 
 TASK_TOKEN="$(default_task_token "$MEMBER_ID")"
@@ -79,7 +157,7 @@ id: ${TASK_TOKEN}
 project: ${PROJECT}
 initiator: ${INITIATOR_SURFACE}
 worker: ${WORKER_SURFACE}
-qa: ${QA_SURFACE:-null}
+qa: ${QA_FRONTMATTER}
 signal: ${SIGNAL}
 result: ${RESULT_FILE}
 ---
@@ -88,25 +166,32 @@ result: ${RESULT_FILE}
 ${INSTRUCTION}
 EOF
 
-if [ "$NO_QA" = "1" ]; then
-  PROMPT="Read ${TASK_FILE} and execute. 완료 후 result 파일 작성하고 cmux wait-for -S ${SIGNAL} 로 완료 신호 보낼 것."
+if [ "$QA_MODE" = "self" ]; then
+  PROMPT="Read ${TASK_FILE} and execute. Worker trust mode: qa is worker-self-report, so skip Bamdori handoff. 완료 후 result 파일에 'trusted: worker-self-report' 표시를 남기고 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것."
+elif [ "$QA_MODE" = "kuma-direct" ]; then
+  PROMPT="Read ${TASK_FILE} and execute. 완료 후 result 파일 작성 후 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것. 쿠마가 직접 리뷰함."
 else
   PROMPT="Read ${TASK_FILE} and execute. 완료 후 QA 라우팅 프로토콜 따를 것."
 fi
 
-cmux send --surface "$WORKER_SURFACE" "${PROMPT}"$'\n'
-if [ "$MEMBER_TYPE" = "codex" ]; then
-  cmux send-key --surface "$WORKER_SURFACE" Enter
-fi
+"$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$WORKER_SURFACE" "$PROMPT"
 
 printf 'TASK_FILE: %s\n' "$TASK_FILE"
 printf 'RESULT_FILE: %s\n' "$RESULT_FILE"
 printf 'WORKER: %s (%s, %s)\n' "$MEMBER_NAME" "$WORKER_SURFACE" "$MEMBER_TYPE"
-if [ -n "$QA_SURFACE" ]; then
-  printf 'QA: %s (%s)\n' "$KUMA_DEFAULT_QA_MEMBER" "$QA_SURFACE"
+if [ "$QA_MODE" = "self" ]; then
+  printf 'QA: %s (trusted)\n' "$QA_LABEL"
+elif [ "$QA_MODE" = "kuma-direct" ]; then
+  printf 'QA: %s (쿠마 직접 리뷰)\n' "$QA_LABEL"
+elif [ -n "$QA_SURFACE" ]; then
+  printf 'QA: %s (%s)\n' "$QA_LABEL" "$QA_SURFACE"
 fi
 printf 'SIGNAL: %s\n' "$SIGNAL"
 
 if [ "$WAIT_FOR_SIGNAL" = "1" ]; then
-  "$KUMA_CMUX_DIR/kuma-cmux-wait.sh" "$SIGNAL" "$RESULT_FILE" --surface "$WORKER_SURFACE"
+  if [ "$WAIT_MODE" = "poll" ]; then
+    poll_result_file_with_diagnostics "$RESULT_FILE" "$WORKER_SURFACE" "$WAIT_TIMEOUT"
+  else
+    wait_for_signal_with_diagnostics "$SIGNAL" "$RESULT_FILE" "$WORKER_SURFACE" "$WAIT_TIMEOUT"
+  fi
 fi

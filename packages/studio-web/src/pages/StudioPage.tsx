@@ -290,10 +290,12 @@ export function StudioPage() {
           {visibleCharacters.map((character) => {
             const status = memberStatus.get(character.id);
             const isActive = character.state === "working" || character.state === "thinking";
-            const taskText = isActive && status?.task ? status.task : undefined;
+            const speechLines = isActive && status?.lastOutputLines && status.lastOutputLines.length > 0
+              ? status.lastOutputLines
+              : undefined;
             return (
             <Character key={character.id} character={character} isDragging={dragState?.kind === "character" && dragState.id === character.id} isSelected={selectedCharId === character.id}
-              speechBubble={taskText}
+              speechBubbleLines={speechLines}
               onClick={(event) => { event.stopPropagation(); setSelectedCharId((prev) => prev === character.id ? null : character.id); }}
               onDoubleClick={(event) => { event.stopPropagation(); const container = containerRef.current; if (!container) return; const focusZoom = 1.2; setZoom((_z) => focusZoom); /* setPanX/Y handled by zoom setter would need direct — simplified via inline */ }}
               onDragStart={(event) => { event.preventDefault(); event.stopPropagation(); const r = event.currentTarget.getBoundingClientRect(); setDragState({ kind: "character", id: character.id, offsetX: (event.clientX - r.left) / zoom - event.currentTarget.offsetWidth / 2, offsetY: (event.clientY - r.top) / zoom - event.currentTarget.offsetHeight / 2 }); }} />

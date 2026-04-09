@@ -16,7 +16,6 @@
     "server:start": "node ./packages/server/src/cli.mjs serve --root .",
     "server:reload": "bash ./scripts/server-reload.sh",
     "kuma-studio": "node ./packages/server/src/cli.mjs",
-    "kuma-studio:serve": "npm run server:reload",
     "kuma-studio:get-selection": "node ./packages/server/src/cli.mjs get-selection",
     "kuma-studio:get-job-card": "node ./packages/server/src/cli.mjs get-job-card",
     "kuma-studio:get-extension-status": "node ./packages/server/src/cli.mjs get-extension-status",

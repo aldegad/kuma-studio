@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -6,7 +6,7 @@ import { Readable } from "node:stream";
 import { afterEach, assert, describe, it } from "vitest";
 
 import { TeamConfigStore } from "./team-config-store.mjs";
-import { createStudioRouteHandler } from "./studio-routes.mjs";
+import { createStudioRouteHandler, createTeamConfigRuntime } from "./studio-routes.mjs";
 
 function createRequest(method, url, body) {
   const payload = body == null ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -164,5 +164,66 @@ describe("studio-routes team-config", () => {
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.json.members["쿠마"].id, "kuma");
     assert.strictEqual(res.json.members["뚝딱이"].type, "codex");
+  });
+
+  it("queues working member respawns and persists queue plus log files", () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-runtime-"));
+    tempDirs.push(root);
+
+    const queuePath = join(root, "queue", "respawns.json");
+    const logPath = join(root, "logs", "team-watcher.log");
+    const runtime = createTeamConfigRuntime({
+      teamStatusStore: {
+        getSnapshot() {
+          return {
+            projects: {
+              system: {
+                members: [
+                  {
+                    name: "쿠마",
+                    status: "working",
+                  },
+                ],
+              },
+            },
+          };
+        },
+      },
+      queuePath,
+      logPath,
+      queuePollMs: 0,
+    });
+
+    try {
+      const result = runtime.respawnMember({
+        memberName: "쿠마",
+        memberConfig: {
+          id: "kuma",
+          emoji: "🐻",
+          team: "system",
+          type: "codex",
+        },
+        project: "system",
+        currentSurface: "surface:1",
+        workspaceRoot: root,
+      });
+
+      assert.deepStrictEqual(result, {
+        project: "system",
+        surface: "surface:1",
+        queued: true,
+      });
+      assert.strictEqual(existsSync(queuePath), true);
+      assert.strictEqual(existsSync(logPath), true);
+
+      const queue = JSON.parse(readFileSync(queuePath, "utf8"));
+      assert.strictEqual(queue.kuma.memberName, "쿠마");
+      assert.strictEqual(queue.kuma.currentSurface, "surface:1");
+
+      const log = readFileSync(logPath, "utf8");
+      assert.match(log, /RESPAWN_QUEUED: member=쿠마 surface=surface:1 status=working/u);
+    } finally {
+      runtime.close();
+    }
   });
 });

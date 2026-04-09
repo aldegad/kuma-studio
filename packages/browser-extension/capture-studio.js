@@ -84,9 +84,25 @@ let stopping = false;
 let renderLoopId = null;
 let outputPreviewModalOpen = false;
 let storedStudioPreferences = KumaPickerExtensionLiveCaptureSettings.createDefaultStudioSettings();
+let localRecordingSession = null;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
+}
+
+function createDeferred() {
+  let resolvePromise = null;
+  let rejectPromise = null;
+  const promise = new Promise((resolve, reject) => {
+    resolvePromise = resolve;
+    rejectPromise = reject;
+  });
+
+  return {
+    promise,
+    resolve: resolvePromise,
+    reject: rejectPromise,
+  };
 }
 
 function getCompositionLabel() {
@@ -218,6 +234,122 @@ function setStatus(line, meta = "") {
   statusLineElement.textContent = line;
   statusMetaElement.textContent = meta;
   statusMetaElement.classList.toggle("is-hidden", !meta);
+}
+
+function cleanupLocalRecordingSession(session) {
+  if (!session) {
+    return;
+  }
+
+  try {
+    session.composedStream?.getTracks?.().forEach((track) => track.stop());
+  } catch {}
+
+  try {
+    session.canvasStream?.getTracks?.().forEach((track) => track.stop());
+  } catch {}
+
+  if (localRecordingSession === session) {
+    localRecordingSession = null;
+  }
+}
+
+async function finalizeLocalRecordingSession(session) {
+  if (!session) {
+    throw new Error("No local recording session is active.");
+  }
+
+  try {
+    const rawBlob = new Blob(session.chunks, {
+      type: session.recorder.mimeType || session.mimeType || "video/webm",
+    });
+    const finalBlob = await KumaPickerExtensionRecordingMedia.finalizeRecordedBlob(rawBlob, {
+      durationMs: Date.now() - session.startedAtMs,
+      mimeType: rawBlob.type || session.recorder.mimeType || session.mimeType || "video/webm",
+    });
+    const downloadUrl = URL.createObjectURL(finalBlob);
+    const downloadId = await chrome.downloads.download({
+      url: downloadUrl,
+      filename: studioContext?.filename || "kuma-picker-live-capture.webm",
+      saveAs: false,
+      conflictAction: "uniquify",
+    });
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(downloadUrl);
+    }, 60_000);
+
+    return {
+      ok: true,
+      message: "Live capture saved.",
+      stoppedAt: new Date().toISOString(),
+      bytes: finalBlob.size,
+      mimeType: finalBlob.type || session.recorder.mimeType || session.mimeType || "video/webm",
+      downloadId,
+    };
+  } finally {
+    cleanupLocalRecordingSession(session);
+  }
+}
+
+async function startLocalStudioRecorder() {
+  if (!recordingPlan || !recordingActive) {
+    throw new Error("Capture Studio needs an active recording plan before recording can start.");
+  }
+  if (localRecordingSession) {
+    throw new Error("Capture Studio is already recording.");
+  }
+
+  renderRecordingFrame();
+  const canvasStream = recordingCanvas.captureStream(Number.isFinite(studioContext?.fps) ? studioContext.fps : DEFAULT_FPS);
+  const audioTracks = sourceStream?.getAudioTracks?.().map((track) => track.clone()) ?? [];
+  const composedStream = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+  const mimeType = KumaPickerExtensionRecordingMedia.selectSupportedMimeType({
+    includeAudio: composedStream.getAudioTracks().length > 0,
+  });
+  if (!mimeType) {
+    canvasStream.getTracks().forEach((track) => track.stop());
+    audioTracks.forEach((track) => track.stop());
+    throw new Error("This Chrome build does not support Kuma Picker's WebM recording profile.");
+  }
+
+  const recorder = new MediaRecorder(composedStream, { mimeType });
+  const finish = createDeferred();
+  const session = {
+    recorder,
+    canvasStream,
+    composedStream,
+    mimeType,
+    chunks: [],
+    startedAtMs: Date.now(),
+    finish,
+  };
+
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data && event.data.size > 0) {
+      session.chunks.push(event.data);
+    }
+  });
+
+  recorder.addEventListener("stop", () => {
+    void finalizeLocalRecordingSession(session).then(finish.resolve, finish.reject);
+  });
+
+  recorder.start(1_000);
+  localRecordingSession = session;
+}
+
+async function stopLocalStudioRecording() {
+  const session = localRecordingSession;
+  if (!session) {
+    throw new Error("No local Capture Studio recording is active.");
+  }
+
+  if (session.recorder.state !== "inactive") {
+    session.recorder.stop();
+  }
+
+  return session.finish.promise;
 }
 
 function updateButtonState() {
@@ -1046,6 +1178,18 @@ async function startRecording() {
       : "Recording the current frame.",
   );
   ensureRenderLoop();
+  try {
+    await startLocalStudioRecorder();
+  } catch (error) {
+    recordingActive = false;
+    stopping = false;
+    updateButtonState();
+    await chrome.runtime.sendMessage({
+      type: "kuma-picker:studio-live-capture-abort",
+      studioId: studioContext.id,
+    }).catch(() => null);
+    throw error;
+  }
 }
 
 function requestStopRecordingFromStudio() {
@@ -1245,6 +1389,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "kuma-picker:studio-stop-local-live-capture") {
+    if (!studioContext || message?.studioId !== studioContext.id) {
+      sendResponse({
+        ok: false,
+        error: "Capture Studio stop request does not match the active studio session.",
+      });
+      return false;
+    }
+
+    void (async () => {
+      try {
+        const result = await stopLocalStudioRecording();
+        recordingActive = false;
+        stopping = false;
+        updateButtonState();
+        setStatus("Recording saved", "Saved to Downloads.");
+        window.setTimeout(() => window.close(), 700);
+        sendResponse(result);
+      } catch (error) {
+        recordingActive = false;
+        stopping = false;
+        updateButtonState();
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+
+    return true;
+  }
+
   sendResponse({ ok: false, error: `Unsupported Capture Studio message: ${String(message?.type)}` });
   return false;
 });
@@ -1252,6 +1428,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 window.addEventListener("beforeunload", () => {
   stopRenderLoop();
   stopSourceStream();
+  cleanupLocalRecordingSession(localRecordingSession);
 });
 
 clearCompositePreview();

@@ -27,21 +27,81 @@ import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-stat
 import { getGitActivity, startGitActivityPolling, stopGitActivityPolling } from "./studio/git-activity-store.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
 import { TeamStatusStore, toStudioTeamStatusSnapshot } from "./studio/team-status-store.mjs";
-import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
+import { createStudioRouteHandler, createTeamConfigRuntime } from "./studio/studio-routes.mjs";
 import { ContentStore } from "./studio/content-store.mjs";
 import { ExperimentStore } from "./studio/experiment-store.mjs";
 import { TrendStore } from "./studio/trend-store.mjs";
 import { createExperimentPipeline } from "./studio/experiment-pipeline.mjs";
 import { MemoStore } from "./studio/memo-store.mjs";
-import { TeamConfigStore } from "./studio/team-config-store.mjs";
+import { TeamConfigStore, watchTeamConfig } from "./studio/team-config-store.mjs";
 import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
 import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
+const STUDIO_DEV_HMR_CLIENT_PATH = "/__vite_ws";
+const STUDIO_DEV_HMR_UPGRADE_PATH = "/studio/__vite_ws";
 
-export function createServer({ host, port, root }) {
+function appendTeamWatcherLog(message) {
+  fs.mkdirSync(dirname(TEAM_WATCHER_LOG_PATH), { recursive: true });
+  fs.appendFileSync(TEAM_WATCHER_LOG_PATH, `${new Date().toISOString()} ${message}\n`, "utf8");
+}
+
+function createConnectMiddlewareDelegate(middlewares) {
+  return async (req, res) => await new Promise((resolve, reject) => {
+    const originalUrl = req.url ?? "/";
+    let settled = false;
+
+    const cleanup = () => {
+      req.url = originalUrl;
+      res.off?.("finish", onFinish);
+      res.off?.("close", onClose);
+    };
+
+    const finish = (handled) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      resolve(handled);
+    };
+
+    const fail = (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    const onFinish = () => finish(true);
+    const onClose = () => {
+      if (res.writableEnded || res.destroyed) {
+        finish(true);
+      }
+    };
+
+    res.once("finish", onFinish);
+    res.once("close", onClose);
+
+    middlewares(req, res, (error) => {
+      if (error) {
+        fail(error);
+        return;
+      }
+
+      finish(Boolean(res.writableEnded || res.headersSent));
+    });
+  });
+}
+
+export async function createServer({ host, port, root }) {
   const broker = new SceneEventBroker();
   const studioWsEvents = new StudioWsEvents();
   const studioSocketClients = new Set();
@@ -70,6 +130,12 @@ export function createServer({ host, port, root }) {
   const memoStore = new MemoStore(resolve(root));
   const teamConfigStore = new TeamConfigStore();
   teamConfigStore.ensure();
+  const workspaceRoot = resolve(root);
+  const teamConfigRuntime = createTeamConfigRuntime({
+    teamStatusStore,
+    teamConfigStore,
+    logPath: TEAM_WATCHER_LOG_PATH,
+  });
 
   // Register agent hierarchy from team.json — session → team → worker
   const AGENT_HIERARCHY = getAgentHierarchy();
@@ -93,24 +159,12 @@ export function createServer({ host, port, root }) {
   });
   teamStatusStore.start();
 
-  // Studio web static files path
   const studioStaticDir = resolve(__dirname, "../../studio-web/dist");
-  const handleStudioRoute = createStudioRouteHandler({
-    staticDir: studioStaticDir,
-    statsStore,
-    sceneStore: store,
-    agentStateManager,
-    teamStatusStore,
-    contentStore,
-    trendStore,
-    experimentStore,
-    experimentPipeline,
-    memoStore,
-    teamConfigStore,
-    studioWsEvents,
-    agentHistoryStore,
-    workspaceRoot: resolve(root),
-  });
+  const studioAppRoot = resolve(__dirname, "../../studio-web");
+  const isProduction = process.env.NODE_ENV === "production";
+  let studioViteServer = null;
+  let studioDevDelegate = null;
+  let handleStudioRoute = async () => false;
   startGitActivityPolling((activity) => {
     broadcastStudioEvent("git-activity-update", { activity });
   });
@@ -145,6 +199,71 @@ export function createServer({ host, port, root }) {
     },
   });
   void readPlans();
+
+  const teamConfigWatcher = watchTeamConfig({
+    debounceMs: 500,
+    async onChange({ changedIds, diff, previousMembers, currentMembers }) {
+      appendTeamWatcherLog(
+        `TEAM_CONFIG_CHANGED: added=[${diff.added.join(",")}] removed=[${diff.removed.join(",")}] updated=[${diff.updated.join(",")}]`,
+      );
+
+      for (const memberId of diff.removed) {
+        const previousMember = previousMembers[memberId];
+        if (!previousMember) {
+          continue;
+        }
+
+        try {
+          teamConfigRuntime.removeMemberSurface({
+            memberName: previousMember.name,
+            emoji: previousMember.emoji,
+          });
+        } catch (error) {
+          appendTeamWatcherLog(
+            `TEAM_CONFIG_REMOVE_ERROR: member=${previousMember.name} details=${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        }
+      }
+
+      for (const memberId of [...diff.added, ...diff.updated]) {
+        const currentMember = currentMembers[memberId];
+        if (!currentMember) {
+          continue;
+        }
+
+        const memberContext = teamConfigRuntime.resolveMemberContext(currentMember.name, currentMember.emoji);
+        const project = currentMember.team === "system"
+          ? "system"
+          : (memberContext?.project ?? "kuma-studio");
+
+        try {
+          teamConfigRuntime.respawnMember({
+            memberName: currentMember.name,
+            memberConfig: currentMember,
+            project,
+            currentSurface: memberContext?.surface ?? null,
+            workspaceRoot,
+          });
+        } catch (error) {
+          appendTeamWatcherLog(
+            `TEAM_CONFIG_RESPAWN_ERROR: member=${currentMember.name} details=${error instanceof Error ? error.message : "unknown error"}`,
+          );
+        }
+      }
+
+      studioWsEvents.broadcastTeamConfigChanged({
+        source: "watcher",
+        changedIds,
+        diff,
+      });
+    },
+    onError(error) {
+      const details = error instanceof Error ? error.message : "unknown error";
+      console.error("watchTeamConfig failed:", details);
+      appendTeamWatcherLog(`TEAM_CONFIG_WATCH_ERROR: ${details}`);
+    },
+  });
+  console.log("watchTeamConfig registered");
 
   const socketServer = new WebSocketServer({ noServer: true });
   const socketStates = new Map();
@@ -657,8 +776,51 @@ export function createServer({ host, port, root }) {
     sendJson(response, 404, { error: "Not found" });
   });
 
+  if (!isProduction) {
+    const { createServer: createViteServer } = await import("vite");
+    studioViteServer = await createViteServer({
+      root: studioAppRoot,
+      appType: "spa",
+      clearScreen: false,
+      server: {
+        middlewareMode: true,
+        hmr: {
+          server,
+          protocol: "ws",
+          host,
+          clientPort: port,
+          path: STUDIO_DEV_HMR_CLIENT_PATH,
+        },
+      },
+    });
+    studioDevDelegate = createConnectMiddlewareDelegate(studioViteServer.middlewares);
+  }
+
+  handleStudioRoute = createStudioRouteHandler({
+    staticDir: studioStaticDir,
+    statsStore,
+    sceneStore: store,
+    agentStateManager,
+    teamStatusStore,
+    contentStore,
+    trendStore,
+    experimentStore,
+    experimentPipeline,
+    memoStore,
+    teamConfigStore,
+    studioWsEvents,
+    agentHistoryStore,
+    workspaceRoot,
+    teamConfigRuntime,
+    studioDevDelegate,
+  });
+
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${host}:${port}`}`);
+
+    if (!isProduction && url.pathname === STUDIO_DEV_HMR_UPGRADE_PATH) {
+      return;
+    }
 
     // Studio WebSocket endpoint for dashboard/office clients
     if (url.pathname === "/studio/ws") {
@@ -724,6 +886,7 @@ export function createServer({ host, port, root }) {
   server.on("close", () => {
     stopWatching();
     stopWatchingPlans();
+    teamConfigWatcher.close();
     if (extensionWatcher) {
       extensionWatcher.close();
     }
@@ -734,6 +897,8 @@ export function createServer({ host, port, root }) {
     socketServer.close();
     statsStore.close();
     teamStatusStore.close();
+    teamConfigRuntime.close?.();
+    void studioViteServer?.close();
   });
 
   return { server, store };

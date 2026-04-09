@@ -23,6 +23,10 @@ REPO_ROOT="${KUMA_REPO_ROOT:-$(find_repo_root || pwd)}"
 AUTO_INGEST_ENABLED="${KUMA_AUTO_VAULT_INGEST:-1}"
 AUTO_INGEST_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
 AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-/tmp/kuma-vault-auto-ingest}"
+KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+KUMA_CMUX_SEND_SCRIPT="${KUMA_CMUX_SEND_SCRIPT:-$HOME/.kuma/cmux/kuma-cmux-send.sh}"
+AUTO_NOEURI_TRIGGER_ENABLED="${KUMA_AUTO_NOEURI_TRIGGER:-1}"
+KUMA_RESULT_DIR_PATH="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
 
 SIGNAL="${1:?signal name required}"
 shift
@@ -30,16 +34,10 @@ shift
 RESULT_FILE=""
 SURFACE=""
 TIMEOUT=120
-LEGACY_TIMEOUT=""
 MAX_RETRIES=2
 
 if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
   RESULT_FILE="$1"
-  shift
-fi
-
-if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
-  LEGACY_TIMEOUT="$1"
   shift
 fi
 
@@ -60,17 +58,214 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -n "$LEGACY_TIMEOUT" ] && [ "$TIMEOUT" = "120" ]; then
-  TIMEOUT="$LEGACY_TIMEOUT"
-fi
-
-SIGNAL_DIR="/tmp/kuma-signals"
+SIGNAL_DIR="${KUMA_SIGNAL_DIR:-/tmp/kuma-signals}"
+AUTO_INGEST_STATUS=""
 
 signal_file_exists() {
   [ -f "$SIGNAL_DIR/$SIGNAL" ]
 }
 
+extract_auto_ingest_status() {
+  local payload="${1:-}"
+
+  printf '%s' "$payload" | node -e '
+const fs = require("node:fs");
+const raw = fs.readFileSync(0, "utf8").trim();
+if (!raw) process.exit(1);
+const data = JSON.parse(raw);
+if (typeof data.status === "string" && data.status.trim()) {
+  process.stdout.write(data.status.trim());
+}
+' 2>/dev/null || true
+}
+
+resolve_task_metadata_json() {
+  node --input-type=module - "$AUTO_INGEST_TASK_DIR" "$RESULT_FILE" "$SIGNAL" <<'NODE'
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const [, , taskDir, rawResultPath, signal] = process.argv;
+
+function normalize(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseFrontmatter(contents) {
+  const lines = contents.split(/\r?\n/u);
+  if (lines[0] !== "---") {
+    return null;
+  }
+
+  const data = {};
+  for (let index = 1; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "---") {
+      return data;
+    }
+    const separator = line.indexOf(":");
+    if (separator === -1) {
+      continue;
+    }
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    data[key] = value === "null" ? "" : value;
+  }
+
+  return null;
+}
+
+if (!existsSync(taskDir)) {
+  process.exit(1);
+}
+
+const resultPath = normalize(rawResultPath) ? resolve(rawResultPath) : "";
+const files = readdirSync(taskDir)
+  .filter((entry) => entry.endsWith(".task.md"))
+  .sort();
+
+for (const entry of files) {
+  const taskFile = join(taskDir, entry);
+  const parsed = parseFrontmatter(readFileSync(taskFile, "utf8"));
+  if (!parsed) {
+    continue;
+  }
+
+  const taskResult = normalize(parsed.result);
+  const taskSignal = normalize(parsed.signal);
+  const resultMatches = resultPath && taskResult && resolve(taskResult) === resultPath;
+  const signalMatches = signal && taskSignal === signal;
+  if (!resultMatches && !signalMatches) {
+    continue;
+  }
+
+  process.stdout.write(JSON.stringify({
+    taskFile,
+    id: normalize(parsed.id),
+    plan: normalize(parsed.plan),
+    result: taskResult,
+    signal: taskSignal,
+  }));
+  process.exit(0);
+}
+
+process.exit(1);
+NODE
+}
+
+resolve_noeuri_surface() {
+  node --input-type=module - "$KUMA_SURFACES_PATH" <<'NODE'
+import { existsSync, readFileSync } from "node:fs";
+
+const [, , surfacesPath] = process.argv;
+if (!existsSync(surfacesPath)) {
+  process.exit(1);
+}
+
+const surfaces = JSON.parse(readFileSync(surfacesPath, "utf8"));
+const surface = typeof surfaces?.system?.["🦌 노을이"] === "string"
+  ? surfaces.system["🦌 노을이"].trim()
+  : "";
+
+if (!surface) {
+  process.exit(1);
+}
+
+process.stdout.write(surface);
+NODE
+}
+
+json_field() {
+  local json="${1:-}"
+  local field="${2:?field required}"
+
+  printf '%s' "$json" | node -e '
+const fs = require("node:fs");
+const field = process.argv[process.argv.length - 1];
+const raw = fs.readFileSync(0, "utf8").trim();
+if (!raw) process.exit(1);
+let value = JSON.parse(raw);
+for (const segment of field.split(".")) {
+  if (!segment) continue;
+  if (value == null || typeof value !== "object" || !(segment in value)) {
+    process.exit(1);
+  }
+  value = value[segment];
+}
+if (typeof value === "string" && value.trim()) {
+  process.stdout.write(value.trim());
+}
+' "$field" 2>/dev/null || true
+}
+
+dispatch_noeuri_trigger() {
+  [ "$AUTO_NOEURI_TRIGGER_ENABLED" != "0" ] || return 0
+  [ "$AUTO_INGEST_STATUS" = "ingested" ] || return 0
+
+  local task_json task_file task_id plan_path noeuri_surface noeuri_signal prompt noeuri_skill_path
+
+  task_json="$(resolve_task_metadata_json 2>/dev/null || true)"
+  if [ -z "$task_json" ]; then
+    printf 'NOEURI_TRIGGER_FAILED: missing-task-metadata (signal=%s result=%s)\n' "$SIGNAL" "$RESULT_FILE" >&2
+    return 0
+  fi
+
+  task_file="$(json_field "$task_json" taskFile)"
+  task_id="$(json_field "$task_json" id)"
+  plan_path="$(json_field "$task_json" plan)"
+  noeuri_surface="$(resolve_noeuri_surface 2>/dev/null || true)"
+  if [ -z "$task_id" ] || [ -z "$noeuri_surface" ]; then
+    printf 'NOEURI_TRIGGER_FAILED: missing-task-id-or-surface (task=%s surface=%s)\n' "$task_id" "$noeuri_surface" >&2
+    return 0
+  fi
+
+  if [ ! -x "$KUMA_CMUX_SEND_SCRIPT" ]; then
+    printf 'NOEURI_TRIGGER_FAILED: send-script-not-executable (%s)\n' "$KUMA_CMUX_SEND_SCRIPT" >&2
+    return 0
+  fi
+
+  noeuri_signal="noeuri-auto-${task_id}-done"
+  noeuri_skill_path="${REPO_ROOT}/.claude/skills/noeuri/skill.md"
+  prompt="Read ${RESULT_FILE}. task: ${task_id}. plan: ${plan_path:-none}. task-file: ${task_file}. Follow ${noeuri_skill_path} audit protocol. 완료 시 result 파일은 /tmp/kuma-results/noeuri-audit-${task_id}.result.md, signal 은 /tmp/kuma-signals/${noeuri_signal}."
+
+  if ! "$KUMA_CMUX_SEND_SCRIPT" "$noeuri_surface" "$prompt" > /dev/null 2>&1; then
+    printf 'NOEURI_TRIGGER_FAILED: dispatch-error (surface=%s task=%s)\n' "$noeuri_surface" "$task_id" >&2
+    return 0
+  fi
+
+  printf 'NOEURI_TRIGGER: surface=%s task=%s plan=%s signal=%s\n' "$noeuri_surface" "$task_id" "${plan_path:-none}" "$noeuri_signal" >&2
+}
+
+resolve_noeuri_audit_result_path() {
+  local signal_name="${1:-}"
+  local task_id=""
+
+  case "$signal_name" in
+    noeuri-auto-*-done)
+      task_id="${signal_name#noeuri-auto-}"
+      task_id="${task_id%-done}"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  [ -n "$task_id" ] || return 1
+  printf '%s/noeuri-audit-%s.result.md\n' "$KUMA_RESULT_DIR_PATH" "$task_id"
+}
+
+emit_noeuri_audit_report() {
+  local audit_result_path=""
+
+  audit_result_path="$(resolve_noeuri_audit_result_path "$SIGNAL" 2>/dev/null || true)"
+  [ -n "$audit_result_path" ] || return 0
+  [ -f "$audit_result_path" ] || return 0
+
+  printf 'NOEURI_AUDIT_REPORT: file=%s\n' "$audit_result_path" >&2
+  sed 's/^/NOEURI_AUDIT_REPORT: /' "$audit_result_path" >&2
+}
+
 auto_ingest_result() {
+  AUTO_INGEST_STATUS=""
   [ "$AUTO_INGEST_ENABLED" != "0" ] || return 0
   [ -n "$RESULT_FILE" ] || return 0
   [ -f "$RESULT_FILE" ] || return 0
@@ -96,6 +291,8 @@ auto_ingest_result() {
     return 1
   fi
 
+  AUTO_INGEST_STATUS="$(extract_auto_ingest_status "$output")"
+
   if [ -n "$output" ]; then
     printf 'AUTO_INGEST: %s\n' "$output" >&2
   fi
@@ -111,11 +308,10 @@ print_result() {
 }
 
 finish_success() {
-  if ! auto_ingest_result; then
-    print_result
-    exit 1
-  fi
+  auto_ingest_result || true
 
+  dispatch_noeuri_trigger
+  emit_noeuri_audit_report
   print_result
   exit 0
 }
