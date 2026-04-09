@@ -99,13 +99,18 @@ export function getModelDefaults(model: string | undefined): { effort: string | 
 }
 
 /** Full model detail: "Claude Opus 4.6 · high" or "GPT-5.4 · xhigh · fast" */
-export function formatModelDetail(model: string | undefined): string | null {
+export function formatModelDetail(
+  model: string | undefined,
+  runtime?: { effort?: string | null; speed?: string | null },
+): string | null {
   const name = formatModelName(model);
   if (!name) return null;
   const defaults = getModelDefaults(model);
+  const effort = runtime?.effort ?? defaults.effort;
+  const speed = runtime?.speed ?? defaults.speed;
   const parts = [name];
-  if (defaults.effort) parts.push(defaults.effort);
-  if (defaults.speed) parts.push(defaults.speed);
+  if (effort) parts.push(effort);
+  if (speed) parts.push(speed);
   return parts.join(" · ");
 }
 

@@ -20,8 +20,8 @@ export function CharacterTooltip({ character }: CharacterTooltipProps) {
   const displayModel = liveModel ?? formatModelName(member.model) ?? member.model;
   const badgeModel = liveModelInfo?.model ?? member.model;
   const modelDefaults = getModelDefaults(member.model);
-  const effectiveEffort = liveModelInfo?.effort ?? modelDefaults.effort;
-  const effectiveSpeed = liveModelInfo?.speed ?? modelDefaults.speed;
+  const effectiveEffort = liveModelInfo?.effort ?? member.effort ?? modelDefaults.effort;
+  const effectiveSpeed = liveModelInfo?.speed ?? member.serviceTier ?? modelDefaults.speed;
   const effort = formatEffort(effectiveEffort);
   const effortCls = effortColorClass(effectiveEffort);
   const contextPct = liveModelInfo?.contextRemaining;

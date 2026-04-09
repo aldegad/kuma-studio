@@ -295,9 +295,7 @@ const members = Object.entries(config.teams ?? {}).flatMap(([teamId, team]) =>
     ? team.members.map((member) => {
       const spawnType = typeof member?.spawnType === "string" && member.spawnType
         ? member.spawnType
-        : typeof member?.engine === "string" && member.engine
-          ? member.engine
-          : String(member?.spawnModel ?? member?.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+        : String(member?.spawnModel ?? "").startsWith("gpt-") ? "codex" : "claude";
       return {
         displayName: String(member?.name ?? member?.id ?? ""),
         id: String(member?.id ?? ""),
@@ -424,9 +422,7 @@ const membersByName = new Map(
       ? team.members.map((member) => {
         const spawnType = typeof member?.spawnType === "string" && member.spawnType
           ? member.spawnType
-          : typeof member?.engine === "string" && member.engine
-            ? member.engine
-            : String(member?.spawnModel ?? member?.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+          : String(member?.spawnModel ?? "").startsWith("gpt-") ? "codex" : "claude";
         const displayName = String(member?.name ?? member?.id ?? "");
         return [displayName, {
           displayName,

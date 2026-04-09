@@ -30,6 +30,9 @@ export interface Agent {
   nodeType?: NodeType;
   parentId?: string;
   model?: string;
+  engine?: string;
+  effort?: string | null;
+  serviceTier?: string | null;
   emoji?: string;
   image?: string;
   skills?: AgentSkillId[];
@@ -78,9 +81,42 @@ export interface TeamConfigResponse {
 type SharedTeamMember = (typeof teamData.members)[number];
 
 const TEAM_NAME_BY_ID = new Map(teamData.teams.map((team) => [team.id, team.name] as const));
+const VALID_CODEX_REASONING_LEVELS = new Set(["low", "medium", "high", "xhigh"]);
 
 // team.json is the single source of truth — skills array contains only valid IDs
 const AGENT_SKILL_IDS = new Set<string>(teamData.members.flatMap((m) => m.skills));
+
+function readCodexOption(options: string, settingNames: string[]): string {
+  const normalized = String(options ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  for (const settingName of settingNames) {
+    const pattern = new RegExp(
+      `(?:^|\\s)-c\\s+${settingName}=(?:"([^"]*)"|'([^']*)'|(\\S+))`,
+      "u",
+    );
+    const match = normalized.match(pattern);
+    if (match) {
+      return String(match[1] ?? match[2] ?? match[3] ?? "");
+    }
+  }
+
+  return "";
+}
+
+function deriveRuntimeDetails(type: string | undefined, options: string) {
+  if (type !== "codex") {
+    return { effort: null, serviceTier: null };
+  }
+
+  const reasoning = readCodexOption(options, ["model_reasoning_effort", "reasoning_effort"]).toLowerCase();
+  return {
+    effort: VALID_CODEX_REASONING_LEVELS.has(reasoning) ? reasoning : null,
+    serviceTier: readCodexOption(options, ["service_tier"]) || null,
+  };
+}
 
 function toNodeType(nodeType: SharedTeamMember["nodeType"]): NodeType {
   if (nodeType === "session" || nodeType === "team" || nodeType === "worker") {
@@ -116,6 +152,9 @@ function mapTeamMemberToAgent(member: SharedTeamMember): Agent {
     nodeType: toNodeType(member.nodeType),
     parentId: member.parentId ?? undefined,
     model: member.model,
+    engine: member.engine,
+    effort: member.effort,
+    serviceTier: member.serviceTier,
     emoji: member.emoji,
     image: member.image,
     skills: toAgentSkills(member.skills),
@@ -148,22 +187,29 @@ export function applyTeamMetadata(metadata: TeamMetadataResponse): Agent[] {
 const TEAM_NAME_KO_BY_ID = new Map(teamData.teams.map((t) => [t.id, t.name.ko] as const));
 
 export function teamConfigToAgents(config: TeamConfigResponse): Agent[] {
-  return Object.entries(config.members).map(([nameKo, m]) => ({
-    id: m.id,
-    name: m.nameEn || m.id,
-    nameKo,
-    animal: m.animalEn || "",
-    animalKo: m.animalKo || "",
-    role: "",
-    roleKo: m.role,
-    team: m.team,
-    teamKo: TEAM_NAME_KO_BY_ID.get(m.team) ?? m.team,
-    state: "idle" as AgentState,
-    nodeType: (m.nodeType || "worker") as NodeType,
-    parentId: m.parentId ?? undefined,
-    model: m.model,
-    emoji: m.emoji,
-    image: m.image || undefined,
-    skills: m.skills?.length ? (m.skills as AgentSkillId[]) : undefined,
-  }));
+  return Object.entries(config.members).map(([nameKo, m]) => {
+    const runtime = deriveRuntimeDetails(m.type, m.options);
+
+    return {
+      id: m.id,
+      name: m.nameEn || m.id,
+      nameKo,
+      animal: m.animalEn || "",
+      animalKo: m.animalKo || "",
+      role: "",
+      roleKo: m.role,
+      team: m.team,
+      teamKo: TEAM_NAME_KO_BY_ID.get(m.team) ?? m.team,
+      state: "idle" as AgentState,
+      nodeType: (m.nodeType || "worker") as NodeType,
+      parentId: m.parentId ?? undefined,
+      model: m.model,
+      engine: m.type,
+      effort: runtime.effort,
+      serviceTier: runtime.serviceTier,
+      emoji: m.emoji,
+      image: m.image || undefined,
+      skills: m.skills?.length ? (m.skills as AgentSkillId[]) : undefined,
+    };
+  });
 }

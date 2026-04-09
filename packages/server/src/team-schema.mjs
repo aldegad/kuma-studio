@@ -3,6 +3,15 @@ import { readFileSync } from "node:fs";
 const rawTeamSchema = JSON.parse(
   readFileSync(new URL("../../shared/team.json", import.meta.url), "utf8"),
 );
+const DEFAULT_MODELS = {
+  claude: "claude-opus-4-6",
+  codex: "gpt-5.4",
+};
+const DEFAULT_OPTIONS = {
+  claude: "--dangerously-skip-permissions",
+  codex: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+};
+const VALID_CODEX_REASONING_LEVELS = new Set(["low", "medium", "high", "xhigh"]);
 
 function normalizeTeamName(teamId, team) {
   const ko = typeof team?.name === "string" && team.name.trim() ? team.name : teamId;
@@ -24,10 +33,59 @@ function normalizeEngine(member) {
   if (member?.spawnType === "claude" || member?.spawnType === "codex") {
     return member.spawnType;
   }
-  if (member?.engine === "claude" || member?.engine === "codex") {
-    return member.engine;
+  return String(member?.spawnModel ?? "").startsWith("gpt-") ? "codex" : "claude";
+}
+
+function normalizeModel(member, engine) {
+  if (typeof member?.spawnModel === "string" && member.spawnModel.trim()) {
+    return member.spawnModel;
   }
-  return String(member?.spawnModel ?? member?.model ?? "").startsWith("gpt-") ? "codex" : "claude";
+
+  return DEFAULT_MODELS[engine] ?? DEFAULT_MODELS.claude;
+}
+
+function normalizeOptions(member, engine) {
+  const raw = typeof member?.spawnOptions === "string" && member.spawnOptions.trim()
+    ? member.spawnOptions
+    : DEFAULT_OPTIONS[engine] ?? DEFAULT_OPTIONS.claude;
+  return raw.trim();
+}
+
+function readCodexOption(options, settingNames) {
+  const normalized = String(options ?? "").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  for (const settingName of settingNames) {
+    const pattern = new RegExp(
+      `(?:^|\\s)-c\\s+${settingName}=(?:"([^"]*)"|'([^']*)'|(\\S+))`,
+      "u",
+    );
+    const match = normalized.match(pattern);
+    if (match) {
+      return String(match[1] ?? match[2] ?? match[3] ?? "");
+    }
+  }
+
+  return "";
+}
+
+function deriveEffort(engine, options) {
+  if (engine !== "codex") {
+    return null;
+  }
+
+  const reasoning = readCodexOption(options, ["model_reasoning_effort", "reasoning_effort"]).toLowerCase();
+  return VALID_CODEX_REASONING_LEVELS.has(reasoning) ? reasoning : null;
+}
+
+function deriveServiceTier(engine, options) {
+  if (engine !== "codex") {
+    return null;
+  }
+
+  return readCodexOption(options, ["service_tier"]) || null;
 }
 
 function normalizeOffice(team) {
@@ -45,6 +103,10 @@ function normalizeOffice(team) {
 }
 
 function normalizeTeamMember(teamId, member) {
+  const engine = normalizeEngine(member);
+  const model = normalizeModel(member, engine);
+  const options = normalizeOptions(member, engine);
+
   return {
     id: member.id,
     name: {
@@ -56,17 +118,10 @@ function normalizeTeamMember(teamId, member) {
       en: typeof member?.animalEn === "string" ? member.animalEn : "",
     },
     emoji: typeof member?.emoji === "string" ? member.emoji : "",
-    model: typeof member?.spawnModel === "string" && member.spawnModel
-      ? member.spawnModel
-      : typeof member?.model === "string" ? member.model : "",
-    engine: normalizeEngine(member),
-    spawnType: member?.spawnType === "claude" || member?.spawnType === "codex" ? member.spawnType : normalizeEngine(member),
-    spawnModel: typeof member?.spawnModel === "string" && member.spawnModel
-      ? member.spawnModel
-      : typeof member?.model === "string" ? member.model : "",
-    spawnOptions: typeof member?.spawnOptions === "string" ? member.spawnOptions : "",
-    effort: typeof member?.effort === "string" ? member.effort : null,
-    serviceTier: typeof member?.serviceTier === "string" ? member.serviceTier : null,
+    model,
+    engine,
+    effort: deriveEffort(engine, options),
+    serviceTier: deriveServiceTier(engine, options),
     team: typeof member?.team === "string" && member.team ? member.team : teamId,
     nodeType: typeof member?.nodeType === "string" ? member.nodeType : "worker",
     parentId: typeof member?.parentId === "string" ? member.parentId : member?.parentId === null ? null : null,

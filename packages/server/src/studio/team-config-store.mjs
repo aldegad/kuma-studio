@@ -6,18 +6,16 @@ export const DEFAULT_TEAM_JSON_PATH = `${homedir()}/.kuma/team.json`;
 
 const BUNDLED_TEAM_SCHEMA_PATH = new URL("../../../shared/team.json", import.meta.url);
 const TEAM_CONFIG_DIFF_FIELDS = [
-  "model",
-  "effort",
-  "serviceTier",
   "spawnType",
   "spawnModel",
   "spawnOptions",
-  "engine",
 ];
 
 const CODEX_BASE_OPTIONS = "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast";
 const CODEX_REASONING_OPTION = '-c model_reasoning_effort="xhigh"';
-const CODEX_REASONING_OPTION_PATTERN = /(?:^|\s)-c\s+(?:model_)?reasoning_effort=(?:"[^"]*"|'[^']*'|\S+)/gu;
+const VALID_CODEX_REASONING_LEVELS = new Set(["low", "medium", "high", "xhigh"]);
+const CODEX_REASONING_OPTION_PATTERN = /(?:^|\s)-c\s+(?:model_)?reasoning_effort=(?:"[^"]*"|'[^']*'|\S+)/u;
+const CODEX_SERVICE_TIER_PATTERN = /(?:^|\s)-c\s+service_tier=(?:"[^"]*"|'[^']*'|\S+)/u;
 
 const DEFAULTS = {
   claude: {
@@ -34,16 +32,60 @@ function normalizeWhitespace(value) {
   return String(value ?? "").trim().replace(/\s+/gu, " ");
 }
 
-function normalizeCodexOptions(options) {
-  const withoutReasoning = normalizeWhitespace(
-    String(options ?? "").replace(CODEX_REASONING_OPTION_PATTERN, " "),
-  );
-
-  if (!withoutReasoning) {
-    return DEFAULTS.codex.options;
+function readCodexOption(options, settingNames) {
+  const normalized = normalizeWhitespace(options);
+  if (!normalized) {
+    return "";
   }
 
-  return normalizeWhitespace(`${withoutReasoning} ${CODEX_REASONING_OPTION}`);
+  for (const settingName of settingNames) {
+    const pattern = new RegExp(
+      `(?:^|\\s)-c\\s+${settingName}=(?:"([^"]*)"|'([^']*)'|(\\S+))`,
+      "u",
+    );
+    const match = normalized.match(pattern);
+    if (match) {
+      return String(match[1] ?? match[2] ?? match[3] ?? "");
+    }
+  }
+
+  return "";
+}
+
+function stripCodexOptions(options, patterns) {
+  return patterns.reduce(
+    (result, pattern) => normalizeWhitespace(result.replace(pattern, " ")),
+    String(options ?? ""),
+  );
+}
+
+function appendCodexOption(options, setting, value, { quote = false } = {}) {
+  const renderedValue = quote ? `"${value}"` : value;
+  return normalizeWhitespace(`${options} -c ${setting}=${renderedValue}`);
+}
+
+function normalizeCodexOptions(options, fallbackOptions = DEFAULTS.codex.options) {
+  const fallback = normalizeWhitespace(fallbackOptions) || DEFAULTS.codex.options;
+  const normalizedInput = normalizeWhitespace(options);
+  const reasoningFromInput = readCodexOption(normalizedInput, ["model_reasoning_effort", "reasoning_effort"]);
+  const fallbackReasoning = readCodexOption(fallback, ["model_reasoning_effort", "reasoning_effort"]) || "xhigh";
+  const reasoning = VALID_CODEX_REASONING_LEVELS.has(reasoningFromInput)
+    ? reasoningFromInput
+    : fallbackReasoning;
+  const serviceTier = readCodexOption(normalizedInput, ["service_tier"])
+    || readCodexOption(fallback, ["service_tier"])
+    || "fast";
+  const baseOptions = stripCodexOptions(
+    normalizedInput || fallback,
+    [CODEX_REASONING_OPTION_PATTERN, CODEX_SERVICE_TIER_PATTERN],
+  );
+
+  return appendCodexOption(
+    appendCodexOption(baseOptions, "service_tier", serviceTier),
+    "model_reasoning_effort",
+    reasoning,
+    { quote: true },
+  );
 }
 
 function normalizeConfigDefaults(rawDefaults) {
@@ -63,11 +105,7 @@ function normalizeConfigDefaults(rawDefaults) {
   return defaults;
 }
 
-function inferMemberType(model, engine) {
-  if (engine === "claude" || engine === "codex") {
-    return engine;
-  }
-
+function inferMemberType(model) {
   return String(model ?? "").toLowerCase().startsWith("gpt-") ? "codex" : "claude";
 }
 
@@ -76,7 +114,7 @@ function normalizeType(type, fallback) {
     return type;
   }
 
-  return inferMemberType(fallback?.model, fallback?.engine);
+  return inferMemberType(fallback?.model);
 }
 
 function cloneJson(value) {
@@ -115,16 +153,13 @@ function buildMemberConfig(teamId, member, defaults) {
   const fallback = {
     model: typeof member?.spawnModel === "string" && member.spawnModel
       ? member.spawnModel
-      : typeof member?.model === "string" ? member.model : "",
-    engine: typeof member?.spawnType === "string" && member.spawnType
-      ? member.spawnType
-      : typeof member?.engine === "string" && member.engine ? member.engine : "",
+      : "",
   };
   const type = normalizeType(member?.spawnType, fallback);
   const defaultForType = defaults[type] ?? DEFAULTS[type];
   const model = typeof member?.spawnModel === "string" && member.spawnModel
     ? member.spawnModel
-    : typeof member?.model === "string" && member.model ? member.model : defaultForType.model;
+    : defaultForType.model;
   const rawOptions = typeof member?.spawnOptions === "string" && member.spawnOptions
     ? member.spawnOptions
     : defaultForType.options;
@@ -168,7 +203,6 @@ function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}
     model: typeof currentValue?.model === "string" && currentValue.model
       ? currentValue.model
       : fallbackMember.model ?? "",
-    engine: typeof currentValue?.type === "string" ? currentValue.type : fallbackMember.type,
   };
   const type = normalizeType(currentValue?.type ?? fallbackMember.type, base);
   const defaultForType = defaults[type] ?? DEFAULTS[type];
@@ -288,13 +322,9 @@ function snapshotTeamSchemaMembers(teamSchema) {
         name: typeof member?.name === "string" ? member.name : "",
         emoji: typeof member?.emoji === "string" ? member.emoji : "",
         team: typeof member?.team === "string" && member.team ? member.team : teamId,
-        model: normalizeComparableValue(member?.model),
-        effort: normalizeComparableValue(member?.effort),
-        serviceTier: normalizeComparableValue(member?.serviceTier),
         spawnType: normalizeComparableValue(member?.spawnType),
         spawnModel: normalizeComparableValue(member?.spawnModel),
         spawnOptions: normalizeComparableValue(member?.spawnOptions),
-        engine: normalizeComparableValue(member?.engine),
       };
     }
   }

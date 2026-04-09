@@ -40,7 +40,7 @@ team_config_get_member_json() {
     | .key as $teamId
     | (.value.members // [])[]
     | select(.name == $name)
-    | (.spawnType // .engine // (if ((.spawnModel // .model // "") | startswith("gpt-")) then "codex" else "claude" end)) as $type
+    | (.spawnType // (if ((.spawnModel // "") | startswith("gpt-")) then "codex" else "claude" end)) as $type
     | {
         id: (.id // ""),
         name: (.name // ""),
@@ -49,10 +49,8 @@ team_config_get_member_json() {
         team: (.team // $teamId),
         nodeType: (.nodeType // "worker"),
         type: $type,
-        model: (.spawnModel // .model // (if $type == "codex" then $defaultCodexModel else $defaultClaudeModel end)),
-        options: (.spawnOptions // (if $type == "codex" then $defaultCodexOptions else $defaultClaudeOptions end)),
-        effort: (.effort // "medium"),
-        serviceTier: (.serviceTier // "")
+        model: (.spawnModel // (if $type == "codex" then $defaultCodexModel else $defaultClaudeModel end)),
+        options: (.spawnOptions // (if $type == "codex" then $defaultCodexOptions else $defaultClaudeOptions end))
       }
     ' "$KUMA_TEAM_JSON_PATH"
 }
@@ -95,21 +93,14 @@ codex_options_have_setting() {
 
 ensure_codex_runtime_settings() {
   local options="${1:-}"
-  local effort="${2:-medium}"
-  local service_tier="${3:-}"
-
-  if [ -z "$options" ] && [ -n "$service_tier" ]; then
-    options="--dangerously-bypass-approvals-and-sandbox -c service_tier=$service_tier"
-  else
-    options="$(normalize_codex_options "$options")"
-  fi
+  options="$(normalize_codex_options "$options")"
 
   if ! codex_options_have_setting "$options" "model_reasoning_effort"; then
-    options="$options -c model_reasoning_effort=\"$effort\""
+    options="$options -c model_reasoning_effort=\"medium\""
   fi
 
-  if [ -n "$service_tier" ] && ! codex_options_have_setting "$options" "service_tier"; then
-    options="$options -c service_tier=$service_tier"
+  if ! codex_options_have_setting "$options" "service_tier"; then
+    options="$options -c service_tier=fast"
   fi
 
   printf '%s\n' "$options"
@@ -119,7 +110,7 @@ build_member_command() {
   local raw_name="$1"
   local explicit_type="${2:-}"
   local dir="$3"
-  local name type model options effort service_tier
+  local name type model options
 
   name="$(normalize_member_name "$raw_name")"
   require_team_config
@@ -127,19 +118,15 @@ build_member_command() {
   type="$explicit_type"
   model=""
   options=""
-  effort="medium"
-  service_tier=""
 
   if team_config_member_exists "$name"; then
     type="$(team_config_get_member_field "$name" type)"
     model="$(team_config_get_member_field "$name" model)"
     options="$(team_config_get_member_field "$name" options)"
-    effort="$(team_config_get_member_field "$name" effort)"
-    service_tier="$(team_config_get_member_field "$name" serviceTier)"
   fi
 
   if [ "$type" = "codex" ]; then
-    options="$(ensure_codex_runtime_settings "$options" "$effort" "$service_tier")"
+    options="$(ensure_codex_runtime_settings "$options")"
   fi
 
   case "$type" in
