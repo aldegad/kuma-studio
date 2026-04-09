@@ -41,6 +41,7 @@ const ACTIVE_TEAM_SKILL_IDS = Array.from(TEAM_BY_SKILL_ID.keys()).filter((skillI
   const team = TEAM_BY_SKILL_ID.get(skillId);
   return typeof team?.pm === "string" && team.pm.length > 0;
 });
+const STRATEGY_ANALYTICS_TEAM_IDS = ["strategy-analytics", "analytics", "strategy"];
 
 function normalizeSkillId(skill) {
   return typeof skill === "string" ? skill.replace(/^\//u, "").trim() : "";
@@ -165,6 +166,26 @@ export function resolveAgentIdByDescriptor({ description, subagentType, model })
     return null;
   };
 
+  const findMemberByRoleAcrossTeams = (teamIds, roleIds) => {
+    for (const teamId of teamIds) {
+      const memberId = findMemberByRole(teamId, roleIds);
+      if (memberId) {
+        return memberId;
+      }
+    }
+    return null;
+  };
+
+  const findMemberByCapabilityAcrossTeams = (teamIds, capabilityIds) => {
+    for (const teamId of teamIds) {
+      const memberId = findMemberByCapability(teamId, capabilityIds);
+      if (memberId) {
+        return memberId;
+      }
+    }
+    return null;
+  };
+
   if (sub === "codex") {
     // Review/critic → 새미
     if (includesAny(desc, ["review", "critic", "qa", "quality", "리뷰", "검토", "품질", "비평"])) {
@@ -187,10 +208,10 @@ export function resolveAgentIdByDescriptor({ description, subagentType, model })
   }
 
   if (mdl.includes("sonnet")) {
-    // Research → find researcher in analytics team
+    // Research → find researcher in strategy-analytics team first, then legacy aliases
     if (includesAny(desc, ["research", "search", "web", "market", "docs", "documentation", "리서치", "검색", "웹", "시장", "문서", "조사"])) {
-      return findMemberByRole("analytics", ["researcher"])
-        ?? findMemberByCapability("analytics", ["research", "web-search", "market-research"])
+      return findMemberByRoleAcrossTeams(STRATEGY_ANALYTICS_TEAM_IDS, ["researcher"])
+        ?? findMemberByCapabilityAcrossTeams(STRATEGY_ANALYTICS_TEAM_IDS, ["research", "web-search", "market-research"])
         ?? "buri";
     }
 

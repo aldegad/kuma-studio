@@ -96,4 +96,42 @@ describe("cmux-env", () => {
     assert.ok(!("CMUX_SOCKET" in env));
     assert.ok(!("CMUX_SOCKET_PATH" in env));
   });
+
+  it("strips all non-stable cmux env in strict mode", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-cmux-env-"));
+    tempDirs.push(root);
+
+    const preferredSocketPath = join(root, "preferred.sock");
+    servers.push(await createUnixSocket(preferredSocketPath));
+
+    const env = buildCmuxEnv(
+      {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        CMUX_SOCKET: preferredSocketPath,
+        CMUX_SOCKET_PATH: preferredSocketPath,
+        CMUX_SOCKET_PASSWORD: "secret",
+        CMUX_PANEL_ID: "panel-1",
+        CMUX_SURFACE_ID: "surface-1",
+        CMUX_TAB_ID: "tab-1",
+        CMUX_WORKSPACE_ID: "workspace-1",
+        CMUX_PORT: "9130",
+        CMUX_BUNDLE_ID: "com.cmuxterm.app",
+      },
+      {
+        preferredSocketPath,
+        strict: true,
+      },
+    );
+
+    assert.strictEqual(env.CMUX_SOCKET, preferredSocketPath);
+    assert.strictEqual(env.CMUX_SOCKET_PATH, preferredSocketPath);
+    assert.strictEqual(env.CMUX_SOCKET_PASSWORD, "secret");
+    assert.ok(!("CMUX_PANEL_ID" in env));
+    assert.ok(!("CMUX_SURFACE_ID" in env));
+    assert.ok(!("CMUX_TAB_ID" in env));
+    assert.ok(!("CMUX_WORKSPACE_ID" in env));
+    assert.ok(!("CMUX_PORT" in env));
+    assert.ok(!("CMUX_BUNDLE_ID" in env));
+  });
 });

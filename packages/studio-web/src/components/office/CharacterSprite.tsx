@@ -27,24 +27,15 @@ type AnimalSpriteData = {
   fallback: string;
 };
 
-const LEGACY_ANIMAL_ALIASES: Record<string, string> = {
-  chipmunk: "squirrel",
-  parrot: "eagle",
-  cat: "raccoon",
-};
-
 const PREFERRED_ANIMAL_ORDER = [
   "bear",
   "fox",
-  "chipmunk",
   "eagle",
   "wolf",
   "beaver",
-  "parrot",
   "hedgehog",
   "deer",
   "rabbit",
-  "cat",
   "hamster",
   "raccoon",
   "squirrel",
@@ -68,7 +59,7 @@ const memberAnimalData = (flatTeamMembers as TeamMemberSpriteData[]).reduce<Reco
   return acc;
 }, {});
 
-const resolvedAnimalData = buildResolvedAnimalData(memberAnimalData, PREFERRED_ANIMAL_ORDER, LEGACY_ANIMAL_ALIASES);
+const resolvedAnimalData = buildResolvedAnimalData(memberAnimalData, PREFERRED_ANIMAL_ORDER);
 
 /** Emoji-based fallback sprites until real assets are generated */
 const animalEmoji: Record<string, string> = Object.fromEntries(
@@ -173,7 +164,6 @@ function getAnimalFallback(animal: string): string {
 function buildResolvedAnimalData(
   animals: Record<string, Pick<AnimalSpriteData, "emoji" | "codePoint">>,
   preferredOrder: string[],
-  aliases: Record<string, string>,
 ): Record<string, AnimalSpriteData> {
   const orderedAnimals = [
     ...preferredOrder,
@@ -183,8 +173,7 @@ function buildResolvedAnimalData(
   const animalsByInitial: Record<string, string[]> = {};
 
   for (const animal of orderedAnimals) {
-    const sourceAnimal = aliases[animal] ?? animal;
-    const source = animals[sourceAnimal];
+    const source = animals[animal];
 
     if (!source) {
       continue;

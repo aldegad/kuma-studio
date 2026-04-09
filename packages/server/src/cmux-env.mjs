@@ -16,6 +16,11 @@ const VOLATILE_CMUX_ENV_KEYS = [
   "CMUX_TAB_ID",
   "CMUX_WORKSPACE_ID",
 ];
+const STABLE_CMUX_ENV_KEYS = new Set([
+  "CMUX_SOCKET",
+  "CMUX_SOCKET_PATH",
+  "CMUX_SOCKET_PASSWORD",
+]);
 
 function isUsableSocketPath(candidatePath) {
   if (typeof candidatePath !== "string" || candidatePath.trim().length === 0) {
@@ -46,9 +51,18 @@ export function resolveCmuxSocketPath(baseEnv = process.env, options = {}) {
 
 export function buildCmuxEnv(baseEnv = process.env, options = {}) {
   const env = { ...baseEnv };
+  const strict = options.strict === true;
 
-  for (const key of VOLATILE_CMUX_ENV_KEYS) {
-    delete env[key];
+  if (strict) {
+    for (const key of Object.keys(env)) {
+      if (key.startsWith("CMUX_") && !STABLE_CMUX_ENV_KEYS.has(key)) {
+        delete env[key];
+      }
+    }
+  } else {
+    for (const key of VOLATILE_CMUX_ENV_KEYS) {
+      delete env[key];
+    }
   }
 
   const socketPath = resolveCmuxSocketPath(baseEnv, options);

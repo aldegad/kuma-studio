@@ -181,46 +181,18 @@ function titleFromPath(filePath) {
 
 /**
  * Resolve the vault directory.
- * Priority: KUMA_VAULT_DIR > KUMA_WIKI_DIR > ~/.kuma/vault
+ * Priority: KUMA_VAULT_DIR > ~/.kuma/vault
  */
 export function resolveVaultDir() {
   if (process.env.KUMA_VAULT_DIR) {
     return resolve(process.env.KUMA_VAULT_DIR);
   }
 
-  if (process.env.KUMA_WIKI_DIR) {
-    return resolve(process.env.KUMA_WIKI_DIR);
-  }
-
   return resolve(homedir(), ".kuma", "vault");
-}
-
-/**
- * Resolve the legacy memo directory.
- * Priority: KUMA_MEMOS_DIR > ~/.kuma/memos
- */
-export function resolveLegacyMemosDir() {
-  if (process.env.KUMA_MEMOS_DIR) {
-    return resolve(process.env.KUMA_MEMOS_DIR);
-  }
-
-  return resolve(homedir(), ".kuma", "memos");
-}
-
-export function resolveMemosDir() {
-  return resolveLegacyMemosDir();
 }
 
 export function resolveVaultImagesDir() {
   return join(resolveVaultDir(), "images");
-}
-
-export function resolveMemoImagesDir() {
-  return resolveVaultImagesDir();
-}
-
-export function resolveLegacyMemoImagesDir() {
-  return join(resolveLegacyMemosDir(), "images");
 }
 
 async function walkFiles(dir, {
@@ -272,24 +244,8 @@ export class MemoStore {
     return resolveVaultDir();
   }
 
-  getMemoDir() {
-    return this.getVaultDir();
-  }
-
-  getLegacyMemoDir() {
-    return resolveLegacyMemosDir();
-  }
-
   getInboxDir() {
-    return join(this.getMemoDir(), "inbox");
-  }
-
-  getImagesDir() {
-    return resolveVaultImagesDir();
-  }
-
-  getLegacyImagesDir() {
-    return resolveLegacyMemoImagesDir();
+    return join(this.getVaultDir(), "inbox");
   }
 
   async #ensureReady() {
@@ -318,35 +274,14 @@ export class MemoStore {
     }
   }
 
-  async #mirrorLegacyImagesIntoVault() {
-    const legacyImagesDir = this.getLegacyImagesDir();
-    const vaultImagesDir = this.getImagesDir();
-    if (!existsSync(legacyImagesDir)) {
-      return;
-    }
-
-    const imageNames = await readdir(legacyImagesDir);
-    for (const imageName of imageNames) {
-      const sourcePath = join(legacyImagesDir, imageName);
-      const targetPath = join(vaultImagesDir, imageName);
-      if (!existsSync(targetPath)) {
-        await copyFile(sourcePath, targetPath);
-      }
-    }
-  }
-
   async #ensureSeedData() {
     const vaultDir = this.getVaultDir();
     const inboxDir = this.getInboxDir();
-    const vaultImagesDir = this.getImagesDir();
-    const legacyMemoDir = this.getLegacyMemoDir();
-    const legacyImagesDir = this.getLegacyImagesDir();
+    const vaultImagesDir = resolveVaultImagesDir();
 
     await mkdir(vaultDir, { recursive: true });
     await mkdir(inboxDir, { recursive: true });
     await mkdir(vaultImagesDir, { recursive: true });
-    await mkdir(legacyMemoDir, { recursive: true });
-    await mkdir(legacyImagesDir, { recursive: true });
 
     for (const dirName of VAULT_SCAFFOLD_DIRS) {
       await mkdir(join(vaultDir, dirName), { recursive: true });
@@ -360,11 +295,9 @@ export class MemoStore {
     }
 
     await this.#copySeedImagesInto(vaultImagesDir);
-    await this.#copySeedImagesInto(legacyImagesDir);
-    await this.#mirrorLegacyImagesIntoVault();
 
     for (const memo of SEED_MEMOS) {
-      const memoPath = join(legacyMemoDir, `${memo.id}.md`);
+      const memoPath = join(vaultDir, `${memo.id}.md`);
       if (!existsSync(memoPath)) {
         await writeFile(memoPath, toMemoMarkdown(memo), "utf8");
       }
@@ -430,24 +363,6 @@ export class MemoStore {
     return entries;
   }
 
-  async #readLegacyEntries() {
-    const legacyMemoDir = this.getLegacyMemoDir();
-    const files = await walkFiles(legacyMemoDir, {
-      recursive: false,
-      allowedExtensions: new Set([".md"]),
-    });
-
-    const entries = [];
-    for (const file of files) {
-      entries.push(await this.#readEntryFile(file, legacyMemoDir, {
-        source: "legacy-memo",
-        section: "vault",
-        prefix: "legacy/",
-      }));
-    }
-    return entries;
-  }
-
   async #readInboxEntries() {
     const inboxDir = this.getInboxDir();
     const files = await walkFiles(inboxDir, {
@@ -457,7 +372,7 @@ export class MemoStore {
 
     const entries = [];
     for (const file of files) {
-      entries.push(await this.#readEntryFile(file, this.getMemoDir(), {
+      entries.push(await this.#readEntryFile(file, this.getVaultDir(), {
         source: "vault",
         section: "inbox",
       }));
@@ -467,16 +382,7 @@ export class MemoStore {
 
   async list() {
     await this.#ensureReady();
-    const [vaultEntries, legacyEntries] = await Promise.all([
-      this.#readVaultEntries(),
-      this.#readLegacyEntries(),
-    ]);
-    return sortMemosDesc([...vaultEntries, ...legacyEntries]);
-  }
-
-  async listMemos() {
-    await this.#ensureReady();
-    return sortMemosDesc(await this.#readLegacyEntries());
+    return sortMemosDesc(await this.#readVaultEntries());
   }
 
   async listInbox() {
@@ -498,7 +404,7 @@ export class MemoStore {
       createdAt,
     };
 
-    await writeFile(join(this.getMemoDir(), fileName), toMemoMarkdown(memo), "utf8");
+    await writeFile(join(this.getVaultDir(), fileName), toMemoMarkdown(memo), "utf8");
 
     return {
       id: fileName,
@@ -545,14 +451,9 @@ export class MemoStore {
       return null;
     }
 
-    if (sanitizedId.startsWith("legacy/")) {
-      const relativeLegacyPath = sanitizedId.slice("legacy/".length);
-      const targetPath = resolve(this.getLegacyMemoDir(), normalize(relativeLegacyPath));
-      return targetPath.startsWith(this.getLegacyMemoDir()) ? targetPath : null;
-    }
-
-    const targetPath = resolve(this.getMemoDir(), normalize(sanitizedId));
-    return targetPath.startsWith(this.getMemoDir()) ? targetPath : null;
+    const vaultDir = this.getVaultDir();
+    const targetPath = resolve(vaultDir, normalize(sanitizedId));
+    return targetPath.startsWith(vaultDir) ? targetPath : null;
   }
 
   async delete(id) {
@@ -587,14 +488,9 @@ export class MemoStore {
       return null;
     }
 
-    const vaultImagePath = join(this.getImagesDir(), safeName);
+    const vaultImagePath = join(resolveVaultImagesDir(), safeName);
     if (existsSync(vaultImagePath)) {
       return vaultImagePath;
-    }
-
-    const legacyImagePath = join(this.getLegacyImagesDir(), safeName);
-    if (existsSync(legacyImagePath)) {
-      return legacyImagePath;
     }
 
     return null;

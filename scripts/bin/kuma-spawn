@@ -1,0 +1,83 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-spawn <멤버이름> [--project <프로젝트>] [--dir <디렉토리>]
+EOF
+}
+
+[ $# -ge 1 ] || {
+  usage >&2
+  exit 1
+}
+
+MEMBER_QUERY="$1"
+shift
+
+PROJECT=""
+DIR=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT="${2:?project required}"
+      shift 2
+      ;;
+    --dir)
+      DIR="${2:?directory required}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+ensure_runtime_requirements
+ensure_project_registry
+ensure_surface_registry
+
+MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
+MEMBER_NAME="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
+LABEL="$(member_display_label_from_json "$MEMBER_JSON")"
+
+if [ -z "$DIR" ] && [ -n "$PROJECT" ]; then
+  DIR="$(resolve_project_dir "$PROJECT" || true)"
+fi
+
+if [ -z "$DIR" ]; then
+  DIR="$(pwd)"
+fi
+
+if [ -z "$PROJECT" ]; then
+  PROJECT="$(resolve_project_from_dir "$DIR" || true)"
+fi
+
+[ -n "$PROJECT" ] || die "project is required when current directory is not registered in $KUMA_PROJECTS_PATH"
+
+if [ -z "$DIR" ]; then
+  DIR="$(resolve_project_dir "$PROJECT" || pwd)"
+fi
+
+SPAWN_ARGS=("$MEMBER_NAME" "" "$DIR" "$PROJECT")
+ANCHOR_SURFACE="$(resolve_project_anchor_surface "$PROJECT" || true)"
+if [ -n "$ANCHOR_SURFACE" ]; then
+  SPAWN_ARGS+=(--surface "$ANCHOR_SURFACE")
+fi
+
+SURFACE="$("$KUMA_CMUX_DIR/kuma-cmux-spawn.sh" "${SPAWN_ARGS[@]}")"
+register_surface_label "$PROJECT" "$LABEL" "$SURFACE"
+
+printf 'MEMBER: %s\n' "$LABEL"
+printf 'PROJECT: %s\n' "$PROJECT"
+printf 'DIR: %s\n' "$DIR"
+printf 'SURFACE: %s\n' "$SURFACE"

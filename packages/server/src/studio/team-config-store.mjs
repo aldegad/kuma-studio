@@ -1,11 +1,19 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { homedir } from "node:os";
 
 export const DEFAULT_TEAM_JSON_PATH = `${homedir()}/.kuma/team.json`;
-export const DEFAULT_TEAM_CONFIG_PATH = DEFAULT_TEAM_JSON_PATH;
 
 const BUNDLED_TEAM_SCHEMA_PATH = new URL("../../../shared/team.json", import.meta.url);
+const TEAM_CONFIG_DIFF_FIELDS = [
+  "model",
+  "effort",
+  "serviceTier",
+  "spawnType",
+  "spawnModel",
+  "spawnOptions",
+  "engine",
+];
 
 const CODEX_BASE_OPTIONS = "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast";
 const CODEX_REASONING_OPTION = '-c model_reasoning_effort="xhigh"';
@@ -77,6 +85,18 @@ function cloneJson(value) {
 
 function readJsonFile(path) {
   return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function normalizeComparableValue(value) {
+  if (typeof value === "string") {
+    return normalizeWhitespace(value);
+  }
+
+  if (value == null) {
+    return "";
+  }
+
+  return value;
 }
 
 function createDefaultTeamSchema() {
@@ -251,6 +271,133 @@ function resolveMemberAddress(teamSchema, memberRef) {
   }
 
   return null;
+}
+
+function snapshotTeamSchemaMembers(teamSchema) {
+  const members = {};
+
+  for (const [teamId, team] of Object.entries(teamSchema?.teams ?? {})) {
+    for (const member of Array.isArray(team?.members) ? team.members : []) {
+      const memberId = typeof member?.id === "string" ? member.id.trim() : "";
+      if (!memberId) {
+        continue;
+      }
+
+      members[memberId] = {
+        id: memberId,
+        name: typeof member?.name === "string" ? member.name : "",
+        emoji: typeof member?.emoji === "string" ? member.emoji : "",
+        team: typeof member?.team === "string" && member.team ? member.team : teamId,
+        model: normalizeComparableValue(member?.model),
+        effort: normalizeComparableValue(member?.effort),
+        serviceTier: normalizeComparableValue(member?.serviceTier),
+        spawnType: normalizeComparableValue(member?.spawnType),
+        spawnModel: normalizeComparableValue(member?.spawnModel),
+        spawnOptions: normalizeComparableValue(member?.spawnOptions),
+        engine: normalizeComparableValue(member?.engine),
+      };
+    }
+  }
+
+  return members;
+}
+
+export function diffTeamConfig(prevTeamSchema, nextTeamSchema) {
+  const previousMembers = snapshotTeamSchemaMembers(prevTeamSchema);
+  const nextMembers = snapshotTeamSchemaMembers(nextTeamSchema);
+  const previousIds = new Set(Object.keys(previousMembers));
+  const nextIds = new Set(Object.keys(nextMembers));
+
+  const added = Array.from(nextIds)
+    .filter((id) => !previousIds.has(id))
+    .sort((left, right) => left.localeCompare(right));
+  const removed = Array.from(previousIds)
+    .filter((id) => !nextIds.has(id))
+    .sort((left, right) => left.localeCompare(right));
+  const updated = Array.from(nextIds)
+    .filter((id) => previousIds.has(id))
+    .filter((id) =>
+      TEAM_CONFIG_DIFF_FIELDS.some(
+        (field) => previousMembers[id]?.[field] !== nextMembers[id]?.[field],
+      )
+    )
+    .sort((left, right) => left.localeCompare(right));
+
+  return { added, removed, updated };
+}
+
+/**
+ * Watch the live team.json file and emit debounced member diffs when it changes.
+ * @param {{ configPath?: string, debounceMs?: number, onChange?: (payload: { configPath: string, changedIds: string[], diff: ReturnType<typeof diffTeamConfig>, previousMembers: Record<string, object>, currentMembers: Record<string, object>, previousConfig: object, nextConfig: object }) => void | Promise<void>, onError?: (error: unknown) => void }} [options]
+ * @returns {{ close(): void }}
+ */
+export function watchTeamConfig(options = {}) {
+  const {
+    configPath = DEFAULT_TEAM_JSON_PATH,
+    debounceMs = 500,
+    onChange,
+    onError,
+  } = options;
+
+  if (!existsSync(configPath)) {
+    return { close() {} };
+  }
+
+  let previousConfig = readJsonFile(configPath);
+  let debounceTimer = null;
+  let closed = false;
+  let watcher = null;
+
+  const scheduleRefresh = () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        const previousSnapshot = previousConfig;
+        const nextConfig = readJsonFile(configPath);
+        const diff = diffTeamConfig(previousSnapshot, nextConfig);
+        const changedIds = [...diff.added, ...diff.removed, ...diff.updated];
+        const previousMembers = snapshotTeamSchemaMembers(previousSnapshot);
+        const currentMembers = snapshotTeamSchemaMembers(nextConfig);
+        previousConfig = nextConfig;
+
+        if (changedIds.length === 0) {
+          return;
+        }
+
+        await onChange?.({
+          configPath,
+          changedIds,
+          diff,
+          previousMembers,
+          currentMembers,
+          previousConfig: previousSnapshot,
+          nextConfig,
+        });
+      } catch (error) {
+        onError?.(error);
+      }
+    }, debounceMs);
+  };
+
+  try {
+    watcher = fs.watch(configPath, { persistent: true }, () => {
+      if (closed) {
+        return;
+      }
+      scheduleRefresh();
+    });
+  } catch (error) {
+    onError?.(error);
+    return { close() {} };
+  }
+
+  return {
+    close() {
+      closed = true;
+      clearTimeout(debounceTimer);
+      watcher?.close();
+    },
+  };
 }
 
 export function createDefaultTeamConfig() {

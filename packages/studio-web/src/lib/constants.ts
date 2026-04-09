@@ -77,7 +77,11 @@ export function formatModelName(model: string | undefined): string | null {
   if (!model) return null;
   if (model.includes("opus")) return "Claude Opus 4.6";
   if (model.includes("sonnet")) return "Claude Sonnet 4.6";
-  if (model.startsWith("gpt-5")) return "GPT-5.4";
+  if (model.startsWith("gpt-5")) {
+    if (model.includes("mini")) return "GPT-5.4 mini";
+    if (model.includes("nano")) return "GPT-5.4 nano";
+    return "GPT-5.4";
+  }
   if (model.includes("o4-mini")) return "o4-mini";
   return model;
 }

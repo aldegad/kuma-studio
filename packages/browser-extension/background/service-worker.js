@@ -5,7 +5,7 @@
    probeCurrentPageReadiness, handlePageHeartbeat, ensureRuntimeObserver,
    handleStartInspect, handleInspectPicked, handleRecordingFinished,
    serializeLiveCaptureState, openLiveCaptureStudio, getLiveCaptureStudioContext,
-   handleStudioLiveCaptureStarted, prepareLiveCapture, discardPreparedLiveCapture,
+   handleStudioLiveCaptureStarted, abortStudioLiveCapture, prepareLiveCapture, discardPreparedLiveCapture,
    startLiveCapture, stopLiveCapture, handleLiveCaptureFinished,
    writeJobCardUpdate, deleteJobCard, handleInspectFailure */
 
@@ -149,6 +149,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         case "kuma-picker:studio-live-capture-started":
           sendResponse(await handleStudioLiveCaptureStarted(message, sender));
+          return;
+        case "kuma-picker:studio-live-capture-abort":
+          sendResponse(abortStudioLiveCapture(message, sender));
           return;
         case "kuma-picker:prepare-live-capture":
           sendResponse(await prepareLiveCapture(message));

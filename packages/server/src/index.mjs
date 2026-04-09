@@ -196,11 +196,11 @@ function resolveAgentIdFromDescriptor(payload) {
   return agentId;
 }
 
-function commandServe(options) {
+async function commandServe(options) {
   const host = typeof options.host === "string" ? options.host : "127.0.0.1";
   const port = readNumber(options, "port", DEFAULT_PORT);
   const root = typeof options.root === "string" ? options.root : ".";
-  const { server, store } = createServer({ host, port, root });
+  const { server, store } = await createServer({ host, port, root });
 
   server.listen(port, host, () => {
     process.stdout.write(`kuma-studio listening on http://${host}:${port}\n`);
@@ -430,17 +430,6 @@ function commandListProjects() {
     }
   }
 
-  // Also include the legacy global state if scene.json exists at root level
-  const globalScenePath = resolve(stateHome, "scene.json");
-  if (existsSync(globalScenePath)) {
-    results.unshift({
-      hash: "(global)",
-      stateDir: stateHome,
-      hasScene: true,
-      projectRoot: null,
-    });
-  }
-
   process.stdout.write(JSON.stringify(results, null, 2) + "\n");
 }
 
@@ -513,7 +502,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   switch (command) {
     case "serve":
-      commandServe(options);
+      await commandServe(options);
       return;
     case "get-scene":
       commandGetScene(options);

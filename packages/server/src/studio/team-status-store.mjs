@@ -8,22 +8,36 @@ const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
 const DEFAULT_SURFACE_POLL_MS = 5_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
+const CMUX_SOCKET_HEAL_RETRY_DELAYS_MS = [0, 150];
 const PROMPT_LINE_PATTERN = /^(?:❯|>|›)\s*$/u;
 const CODEX_SUGGESTION_LINE_PATTERN = /^›\s+\S/u;
 const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
 const SURFACE_SPINNER_PATTERN = /^[✻✶✳✢·]\s*/u;
 const COMPLETED_SURFACE_PATTERN =
-  /^[✻✶✳✢·]\s*(?:baked|brewed|cooked|toasted|charred|churned|saut(?:e|é)ed)\s+for\b/iu;
+  /^[✻✶✳✢·]\s*(?:baked|brewed|cooked|toasted|charred|churned|saut(?:e|é)ed|cogitated)\s+for\b/iu;
 const WORKING_SURFACE_PATTERNS = [
   /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading|creating|cultivating)\b.*(?:\.\.\.|…)?$/iu,
   /^•\s*(?:working|creating|cultivating)\b.*$/iu,
   /^•\s*thinking(?:\.\.\.|…)?$/iu,
   /\brunning(?:\.\.\.|…)/iu,
 ];
+const THINKING_ONLY_SURFACE_PATTERNS = [
+  /^[*✻✶✳✢·]\s*(?:scurrying|cogitating|brewing|whisking|cogitated|brewed|whisked|worked)\b.*$/iu,
+];
+const ACTIVE_TOOL_WORK_LINE_PATTERNS = [
+  /^(?:[⏺●•]\s*)?(?:bash|read|edit)\(/iu,
+];
 const STATUS_BAR_LINE_PATTERNS = [
   /⏵⏵\s*bypass(?:\s+permissions?)?(?: on\b.*)?/iu,
+  /⏵⏵.*bypa\s*·.*permissions.*$/iu,
   /\bnow using extra usage\b/iu,
   /\bextra credit\b/iu,
+];
+const IGNORED_SURFACE_LINE_PATTERNS = [
+  /^\s*⏵⏵.*bypass permissions/iu,
+  /^\s*⏵⏵.*bypa\s*·.*permissions/iu,
+  /^\s*\d+\s*shell\b.*(?:esc|↓)/iu,
+  /^\s*…\s*\+\d+\s*lines\b/iu,
 ];
 const SURFACE_HINT_PATTERNS = [
   /^bypass(?:\s+permissions?)?\b/iu,
@@ -44,10 +58,13 @@ const SURFACE_HINT_PATTERNS = [
   /^[─━═─]{3,}$/u,
 ];
 const IDLE_PROMPT_HINT_PATTERNS = [
-  /^gpt-[\w.-]+(?:\s+.*)?$/iu,
+  /^~?\d+(?:\.\d+)?k uncached\b.*\/clear to start(?:\s+fresh|…)?$/iu,
+  /^gpt-[\w.-]+(?:…)?(?:\s+.*)?$/iu,
   /^new task\?\s*\/clear to save \d+(?:\.\d+)?k tokens$/iu,
-  /^\d+(?:\.\d+)?%\s+until auto-compact$/iu,
+  /^\d+(?:\.\d+)?%\s+until auto-compact\b.*$/iu,
 ];
+const RETRYABLE_CMUX_SOCKET_FAILURE_PATTERN =
+  /(?:failed to (?:write|read) to socket|failed to connect to socket|socket (?:closed|error|hang up)|broken pipe|\b(?:econnrefused|econnreset|epipe)\b)/iu;
 
 /**
  * @typedef {"idle" | "working" | "dead"} TeamSurfaceStatus
@@ -202,6 +219,85 @@ export function classifySurfaceStatus(output) {
   return "idle";
 }
 
+export function isRetryableCmuxSocketFailure(candidate) {
+  const normalized = String(candidate ?? "").trim();
+  return normalized.length > 0 && RETRYABLE_CMUX_SOCKET_FAILURE_PATTERN.test(normalized);
+}
+
+function waitForDelay(delayMs) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+/**
+ * @param {string} surface
+ * @param {(surface: string, options?: { strictCmuxEnv?: boolean }) => Promise<{ ok: boolean, output: string }>} readSurface
+ * @param {{ strictFirst?: boolean, retryDelaysMs?: number[] }} [options]
+ * @returns {Promise<{ ok: boolean, output: string, healed: boolean, strictCmuxEnvUsed: boolean }>}
+ */
+export async function readSurfaceWithHealing(surface, readSurface, options = {}) {
+  const retryDelaysMs = Array.isArray(options.retryDelaysMs)
+    ? options.retryDelaysMs.filter((delay) => Number.isFinite(delay) && delay >= 0)
+    : CMUX_SOCKET_HEAL_RETRY_DELAYS_MS;
+  const strictFirst = options.strictFirst === true;
+  const attempts = [
+    { strictCmuxEnv: strictFirst, delayMs: 0 },
+    ...retryDelaysMs.map((delayMs) => ({
+      strictCmuxEnv: true,
+      delayMs,
+    })),
+  ];
+
+  /** @type {{ ok: boolean, output: string, healed: boolean, strictCmuxEnvUsed: boolean } | null} */
+  let lastResult = null;
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    if (attempt.delayMs > 0) {
+      await waitForDelay(attempt.delayMs);
+    }
+
+    try {
+      const result = await readSurface(surface, {
+        strictCmuxEnv: attempt.strictCmuxEnv,
+      });
+      const normalizedResult = {
+        ok: result?.ok === true,
+        output: String(result?.output ?? ""),
+        healed: index > 0,
+        strictCmuxEnvUsed: attempt.strictCmuxEnv,
+      };
+
+      if (normalizedResult.ok || !isRetryableCmuxSocketFailure(normalizedResult.output)) {
+        return normalizedResult;
+      }
+
+      lastResult = normalizedResult;
+    } catch (error) {
+      const normalizedError = {
+        ok: false,
+        output: error instanceof Error ? error.message : String(error),
+        healed: index > 0,
+        strictCmuxEnvUsed: attempt.strictCmuxEnv,
+      };
+
+      if (!isRetryableCmuxSocketFailure(normalizedError.output)) {
+        return normalizedError;
+      }
+
+      lastResult = normalizedError;
+    }
+  }
+
+  return lastResult ?? {
+    ok: false,
+    output: "Error: cmux read-screen failed without a result",
+    healed: false,
+    strictCmuxEnvUsed: strictFirst,
+  };
+}
+
 /**
  * @param {Record<string, Record<string, string>>} registry
  * @param {Map<string, { status: TeamSurfaceStatus, lastOutput: string }>} surfaceStates
@@ -278,6 +374,11 @@ function isCodexSuggestionLine(line) {
   return CODEX_SUGGESTION_LINE_PATTERN.test(trimmed);
 }
 
+function isThinkingOnlySurfaceLine(line) {
+  const trimmed = stripStatusBarText(String(line ?? "").trim());
+  return THINKING_ONLY_SURFACE_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
 function isIdlePromptHintLine(line) {
   const trimmed = stripStatusBarText(String(line ?? "").trim());
   return IDLE_PROMPT_HINT_PATTERNS.some((pattern) => pattern.test(trimmed));
@@ -300,7 +401,15 @@ function hasActiveWorkingSurfaceSignal(lines) {
       return false;
     }
 
+    if (isThinkingOnlySurfaceLine(line)) {
+      return false;
+    }
+
     if (WORKING_SURFACE_PATTERNS.some((pattern) => pattern.test(line))) {
+      return true;
+    }
+
+    if (ACTIVE_TOOL_WORK_LINE_PATTERNS.some((pattern) => pattern.test(line))) {
       return true;
     }
 
@@ -314,7 +423,15 @@ function isIgnoredSurfaceLine(line) {
     return false;
   }
 
+  if (IGNORED_SURFACE_LINE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+    return true;
+  }
+
   if (BOX_DRAWING_PATTERN.test(trimmed)) {
+    return true;
+  }
+
+  if (isThinkingOnlySurfaceLine(trimmed)) {
     return true;
   }
 
@@ -401,11 +518,10 @@ function getLastOutputLines(output) {
 
   const meaningfulLines = getMeaningfulOutputLines(output);
   if (meaningfulLines.length > 0) {
-    return meaningfulLines.slice(-3);
+    return meaningfulLines.slice(-5);
   }
 
-  const promptLines = getOutputLines(output).filter((line) => isPromptLine(line));
-  return promptLines.slice(-1);
+  return [];
 }
 
 function deriveTaskFromOutput(status, lastOutputLines) {
@@ -441,11 +557,11 @@ export function parseModelInfo(output) {
 
   for (const line of lines) {
     // Codex pattern: "gpt-5.4 high fast"
-    const codexMatch = line.match(/(gpt-[\w.-]+)\s+(low|medium|high|xhigh)(?:\s+(fast))?/iu);
+    const codexMatch = line.match(/(gpt-[\w.-]+(?:…)?)(?:\s+(low|medium|high|xhigh)(?:\s+(fast))?)?/iu);
     if (codexMatch) {
-      model = codexMatch[1].toLowerCase();
-      effort = codexMatch[2].toLowerCase();
-      speed = codexMatch[3]?.toLowerCase() ?? null;
+      model = normalizeCodexModelName(codexMatch[1]);
+      effort = codexMatch[2]?.toLowerCase() ?? effort;
+      speed = codexMatch[3]?.toLowerCase() ?? speed;
     }
 
     // Context pattern: "46% left"
@@ -472,6 +588,17 @@ export function parseModelInfo(output) {
   }
 
   return { model, effort, speed, contextRemaining };
+}
+
+function normalizeCodexModelName(model) {
+  const normalized = String(model ?? "").toLowerCase();
+  if (normalized.startsWith("gpt-5.4-min")) {
+    return "gpt-5.4-mini";
+  }
+  if (normalized.startsWith("gpt-5.4-nan")) {
+    return "gpt-5.4-nano";
+  }
+  return normalized.replace(/…$/u, "");
 }
 
 /**
@@ -533,7 +660,7 @@ async function defaultReadRegistry(registryPath) {
   return /** @type {Record<string, Record<string, string>>} */ (parsed);
 }
 
-async function defaultReadSurface(surface) {
+async function defaultReadSurface(surface, options = {}) {
   return new Promise((resolve) => {
     execFile(
       "cmux",
@@ -541,6 +668,8 @@ async function defaultReadSurface(surface) {
       withCmuxEnv({
         encoding: "utf8",
         timeout: SURFACE_READ_TIMEOUT_MS,
+      }, {
+        strict: options.strictCmuxEnv === true,
       }),
       (error, stdout = "", stderr = "") => {
         const output = `${stdout}${stderr}`.trim();
@@ -608,6 +737,7 @@ export class TeamStatusStore {
   #surfaceTimer = null;
   #refreshingRegistry = false;
   #pollingSurfaces = false;
+  #preferStrictCmuxEnv = false;
 
   /**
    * @param {{
@@ -615,7 +745,7 @@ export class TeamStatusStore {
    *   registryRefreshMs?: number,
    *   surfacePollMs?: number,
    *   readRegistryFn?: (registryPath: string) => Promise<Record<string, Record<string, string>>>,
-   *   readSurfaceFn?: (surface: string) => Promise<{ ok: boolean, output: string }>,
+   *   readSurfaceFn?: (surface: string, options?: { strictCmuxEnv?: boolean }) => Promise<{ ok: boolean, output: string }>,
    * }} [options]
    */
   constructor(options = {}) {
@@ -723,25 +853,8 @@ export class TeamStatusStore {
     try {
       const results = await Promise.all(
         surfaces.map(async (surface) => {
-          try {
-            const result = await this.#readSurface(surface);
-            const output = String(result?.output ?? "").trim();
-            return {
-              surface,
-              state: {
-                status: result?.ok ? classifySurfaceStatus(output) : "dead",
-                lastOutput: output,
-              },
-            };
-          } catch (error) {
-            return {
-              surface,
-              state: {
-                status: "dead",
-                lastOutput: error instanceof Error ? error.message : String(error),
-              },
-            };
-          }
+          const state = await this.#readSurfaceState(surface);
+          return { surface, state };
         }),
       );
 
@@ -804,19 +917,23 @@ export class TeamStatusStore {
         continue;
       }
 
-      try {
-        const result = await this.#readSurface(member.surface);
-        const output = String(result?.output ?? "").trim();
-        this.#surfaceStates.set(member.surface, {
-          status: result?.ok ? classifySurfaceStatus(output) : "dead",
-          lastOutput: output,
-        });
-      } catch (error) {
-        this.#surfaceStates.set(member.surface, {
-          status: "dead",
-          lastOutput: error instanceof Error ? error.message : String(error),
-        });
-      }
+      const state = await this.#readSurfaceState(member.surface);
+      this.#surfaceStates.set(member.surface, state);
     }
+  }
+
+  async #readSurfaceState(surface) {
+    const result = await readSurfaceWithHealing(surface, this.#readSurface, {
+      strictFirst: this.#preferStrictCmuxEnv,
+    });
+    if (result.strictCmuxEnvUsed) {
+      this.#preferStrictCmuxEnv = true;
+    }
+
+    const output = String(result?.output ?? "").trim();
+    return {
+      status: result?.ok ? classifySurfaceStatus(output) : "dead",
+      lastOutput: output,
+    };
   }
 }

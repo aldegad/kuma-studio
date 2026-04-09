@@ -3,7 +3,7 @@
 # --workspace: 기존 워크스페이스에 right split으로 배치 (bootstrap용)
 # 생략 시: 새 워크스페이스(탭) 생성 (추가 프로젝트용)
 # Layout: 팀 리더/워커 탭 수는 `team.json`에서 동적으로 계산
-#         시스템 팀은 공용 surface를 유지하고, 프로젝트 워커는 dev/analytics/strategy만 배치
+#         시스템 팀은 공용 surface를 유지하고, 프로젝트 워커는 dev/strategy-analytics를 배치
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,17 +53,27 @@ get_pane() {
 # 헬퍼: surface에 세션 시작 + 등록 + 타이틀
 start_session() {
   local SURFACE="$1" NAME="$2" WORKSPACE="$3"
-  local SEND_ARGS=(--workspace "$WORKSPACE" --surface "$SURFACE")
   local TITLE COMMAND
   TITLE="$(member_display_label "$NAME")"
   COMMAND="$(build_member_command "$NAME" "" "$DIR")"
 
-  cmux send "${SEND_ARGS[@]}" "$COMMAND" > /dev/null
-  cmux send-key "${SEND_ARGS[@]}" Enter > /dev/null
+  "$SCRIPT_DIR/kuma-cmux-send.sh" "$SURFACE" "$COMMAND" --workspace "$WORKSPACE" > /dev/null
 
   cmux tab-action --action rename --workspace "$WORKSPACE" --surface "$SURFACE" --title "$TITLE" > /dev/null 2>&1
   "$SCRIPT_DIR/kuma-cmux-register.sh" "$PROJECT" "$TITLE" "$SURFACE" || true
   echo "✓ $TITLE — $SURFACE" >&2
+}
+
+resolve_strategy_analytics_team() {
+  local candidate
+  for candidate in strategy-analytics analytics strategy; do
+    if [ -n "$(list_team_members "$candidate" | head -1)" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  printf '%s\n' "strategy-analytics"
 }
 
 # --- 워크스페이스 확보 ---
@@ -110,37 +120,22 @@ while IFS= read -r NAME; do
   start_session "$S" "$NAME" "$WS_ID"
 done < <(list_team_members dev worker)
 
-# --- 분석팀 pane (right split) ---
+# --- 전략분석팀 pane (right split) ---
+STRATEGY_ANALYTICS_TEAM="$(resolve_strategy_analytics_team)"
 R2=$(cmux new-split right --surface "$FIRST_S" --workspace "$WS_ID" 2>&1)
-ANA_S=$(echo "$R2" | grep -oE 'surface:[0-9]+')
-ANA_P=$(get_pane "$ANA_S")
+STRAT_S=$(echo "$R2" | grep -oE 'surface:[0-9]+')
+STRAT_P=$(get_pane "$STRAT_S")
 sleep 1
-ANA_LEAD="$(list_team_members analytics team | head -1)"
-start_session "$ANA_S" "$ANA_LEAD" "$WS_ID"
+STRAT_LEAD="$(list_team_members "$STRATEGY_ANALYTICS_TEAM" team | head -1)"
+start_session "$STRAT_S" "$STRAT_LEAD" "$WS_ID"
 
 while IFS= read -r NAME; do
   [ -n "$NAME" ] || continue
-  R=$(cmux new-surface --pane "$ANA_P" --workspace "$WS_ID" 2>&1)
+  R=$(cmux new-surface --pane "$STRAT_P" --workspace "$WS_ID" 2>&1)
   S=$(echo "$R" | grep -oE 'surface:[0-9]+')
   sleep 1
   start_session "$S" "$NAME" "$WS_ID"
-done < <(list_team_members analytics worker)
-
-# --- 전략팀 pane (down split from 분석팀) ---
-R3=$(cmux new-split down --surface "$ANA_S" --workspace "$WS_ID" 2>&1)
-STR_S=$(echo "$R3" | grep -oE 'surface:[0-9]+')
-STR_P=$(get_pane "$STR_S")
-sleep 1
-STR_LEAD="$(list_team_members strategy team | head -1)"
-start_session "$STR_S" "$STR_LEAD" "$WS_ID"
-
-while IFS= read -r NAME; do
-  [ -n "$NAME" ] || continue
-  R=$(cmux new-surface --pane "$STR_P" --workspace "$WS_ID" 2>&1)
-  S=$(echo "$R" | grep -oE 'surface:[0-9]+')
-  sleep 1
-  start_session "$S" "$NAME" "$WS_ID"
-done < <(list_team_members strategy worker)
+done < <(list_team_members "$STRATEGY_ANALYTICS_TEAM" worker)
 
 echo ""
 echo "전팀 준비 완료. (워크스페이스: $WS_ID)"

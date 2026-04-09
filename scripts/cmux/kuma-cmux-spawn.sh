@@ -62,16 +62,12 @@ fi
 
 sleep 1
 
-# Build send args — cross-workspace
-SEND_ARGS=()
-if [ -n "$WORKSPACE" ]; then
-  SEND_ARGS+=(--workspace "$WORKSPACE")
-fi
-SEND_ARGS+=(--surface "$SURFACE")
-
 COMMAND="$(build_member_command "$NAME" "$TYPE" "$DIR")"
-cmux send "${SEND_ARGS[@]}" "$COMMAND" > /dev/null
-cmux send-key "${SEND_ARGS[@]}" Enter > /dev/null
+SEND_SCRIPT_ARGS=("$SURFACE" "$COMMAND")
+if [ -n "$WORKSPACE" ]; then
+  SEND_SCRIPT_ARGS+=(--workspace "$WORKSPACE")
+fi
+"$SCRIPT_DIR/kuma-cmux-send.sh" "${SEND_SCRIPT_ARGS[@]}" > /dev/null
 
 # Tab title (이모지+이름)
 TITLE="$(member_display_label "$NORMALIZED_NAME")"

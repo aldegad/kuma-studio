@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-project-init <project> <dir>
+EOF
+}
+
+[ $# -ge 2 ] || {
+  usage >&2
+  exit 1
+}
+
+PROJECT="${1:?project required}"
+DIR="${2:?directory required}"
+
+ensure_runtime_requirements
+ensure_project_registry
+mkdir -p "$DIR"
+
+NORMALIZED_DIR="$(save_project_mapping "$PROJECT" "$DIR")"
+"$KUMA_CMUX_DIR/kuma-cmux-project-init.sh" "$PROJECT" "$NORMALIZED_DIR"
+
+printf 'PROJECT: %s\n' "$PROJECT"
+printf 'DIR: %s\n' "$NORMALIZED_DIR"

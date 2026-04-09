@@ -35,7 +35,14 @@ const KUMA_TEAM_JSON_PATH = join(KUMA_DIR, "team.json");
 const STATE_DIR = join(HOME, ".kuma-picker");
 const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.json");
 
-const SKILLS = ["kuma", "dev-team", "analytics-team", "strategy-team"];
+const SKILLS = [
+  { id: "kuma", source: "kuma" },
+  { id: "dev-team", source: "dev-team" },
+  { id: "strategy-analytics-team", source: "analytics-team" },
+  { id: "analytics-team", source: "analytics-team" },
+  { id: "strategy-team", source: "strategy-team" },
+  { id: "tmux-ops", source: "tmux-ops" },
+];
 const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const summary = [];
 
@@ -132,8 +139,8 @@ async function installSkills() {
   await ensureDirWithSummary(CLAUDE_SKILLS_DIR);
 
   for (const skill of SKILLS) {
-    const srcFile = resolve(ROOT, ".claude", "skills", skill, "skill.md");
-    const destDir = resolve(CLAUDE_SKILLS_DIR, skill);
+    const srcFile = resolve(ROOT, ".claude", "skills", skill.source, "skill.md");
+    const destDir = resolve(CLAUDE_SKILLS_DIR, skill.id);
     const destFile = resolve(destDir, "skill.md");
 
     if (!(await pathExists(srcFile))) {
@@ -146,10 +153,10 @@ async function installSkills() {
 
     const result = await copyFileIfChanged(srcFile, destFile);
     if (result === "copied") {
-      log(`${skill} → ${summarizePath(destFile)}`);
+      log(`${skill.id} → ${summarizePath(destFile)}`);
       addSummary("copied", `Copied ${summarizePath(srcFile)} → ${summarizePath(destFile)}`);
     } else if (result === "updated") {
-      log(`Updated ${skill} → ${summarizePath(destFile)}`);
+      log(`Updated ${skill.id} → ${summarizePath(destFile)}`);
       addSummary("updated", `Updated ${summarizePath(destFile)} from ${summarizePath(srcFile)}`);
     } else {
       log(`${summarizePath(destFile)} already up to date`);

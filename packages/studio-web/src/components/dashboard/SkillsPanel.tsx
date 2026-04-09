@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   deleteStudioSkill,
   fetchExtensionsCatalog,
@@ -6,8 +7,27 @@ import {
   fetchStudioSkills,
   writeStudioFile,
 } from "../../lib/api";
-import type { ExtensionsCatalogEcosystem, StudioSkillEntry } from "../../types/extensions";
-import { MarkdownBody } from "./MarkdownBody";
+import type {
+  ExtensionsCatalogCategory,
+  ExtensionsCatalogEcosystem,
+  StudioSkillEntry,
+} from "../../types/extensions";
+import { ExtensionDetailModal, type ExtensionDetailKind } from "./ExtensionDetailModal";
+
+type DetailTarget =
+  | { kind: "skill"; skill: StudioSkillEntry }
+  | {
+      kind: "catalog";
+      ecosystem: ExtensionsCatalogEcosystem;
+      category: ExtensionsCatalogCategory;
+    }
+  | { kind: "plugin"; name: string };
+
+const SECTION_COLORS: Record<string, { dot: string; glow: string }> = {
+  skills:   { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)" },
+  plugins:  { dot: "#eab308", glow: "rgba(234, 179, 8, 0.4)" },
+  catalog:  { dot: "#22c55e", glow: "rgba(34, 197, 94, 0.4)" },
+};
 
 function summarizeCatalog(ecosystems: ExtensionsCatalogEcosystem[]) {
   const available = ecosystems.filter((ecosystem) => ecosystem.available);
@@ -15,7 +35,6 @@ function summarizeCatalog(ecosystems: ExtensionsCatalogEcosystem[]) {
     (total, ecosystem) => total + ecosystem.categories.length,
     0,
   );
-
   return {
     ecosystemCount: available.length,
     categoryCount,
@@ -29,12 +48,18 @@ export function SkillsPanel() {
   const [collapsed, setCollapsed] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedSkill, setExpandedSkill] = useState<string | null>(null);
-  const [fullScreenSkill, setFullScreenSkill] = useState<StudioSkillEntry | null>(null);
-  const [editingSkill, setEditingSkill] = useState<string | null>(null);
+
+  // Section expand/collapse (match PlanPanel project-group pattern)
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    () => new Set(["skills"]),
+  );
+
+  // Detail modal state (single modal for any kind)
+  const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
+  const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,9 +72,7 @@ export function SkillsPanel() {
         fetchExtensionsCatalog(),
       ]);
 
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       const nextErrors: string[] = [];
 
@@ -90,58 +113,66 @@ export function SkillsPanel() {
     [ecosystems],
   );
 
-  const handleDeleteSkill = async (skill: StudioSkillEntry) => {
-    if (!window.confirm(`"${skill.name}" 스킬을 삭제할까요?`)) {
+  // Keep detail target in sync if the underlying skill list changes.
+  useEffect(() => {
+    if (!detailTarget || detailTarget.kind !== "skill") return;
+    const next = skills.find((entry) => entry.name === detailTarget.skill.name);
+    if (!next) {
+      setDetailTarget(null);
+      setEditing(false);
       return;
     }
-
-    setDeleting(skill.name);
-    try {
-      await deleteStudioSkill(skill.name);
-      setSkills((current) => current.filter((entry) => entry.name !== skill.name));
-      if (expandedSkill === skill.name) {
-        setExpandedSkill(null);
-      }
-      if (fullScreenSkill?.name === skill.name) {
-        setFullScreenSkill(null);
-        setEditingSkill(null);
-      }
-    } catch (deleteError) {
-      setError(
-        deleteError instanceof Error
-          ? deleteError.message
-          : "스킬 삭제에 실패했습니다.",
-      );
-    } finally {
-      setDeleting(null);
+    if (next !== detailTarget.skill) {
+      setDetailTarget({ kind: "skill", skill: next });
     }
-  };
+  }, [skills, detailTarget]);
 
-  const handleEditSkill = (skill: StudioSkillEntry) => {
-    setFullScreenSkill(skill);
-    setEditingSkill(skill.name);
-    setEditContent(skill.content);
-  };
+  function toggleSection(key: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
 
-  const handleSaveSkill = async () => {
-    if (!fullScreenSkill) {
-      return;
+  function openDetail(target: DetailTarget) {
+    setDetailTarget(target);
+    setEditing(false);
+    if (target.kind === "skill") {
+      setEditContent(target.skill.content);
     }
+  }
 
+  function closeDetail() {
+    setDetailTarget(null);
+    setEditing(false);
+  }
+
+  function toggleEditMode() {
+    if (!detailTarget || detailTarget.kind !== "skill") return;
+    if (editing) {
+      setEditing(false);
+    } else {
+      setEditContent(detailTarget.skill.content);
+      setEditing(true);
+    }
+  }
+
+  async function handleSaveSkill() {
+    if (!detailTarget || detailTarget.kind !== "skill") return;
+    const target = detailTarget.skill;
     setSaving(true);
     try {
-      await writeStudioFile(fullScreenSkill.path, editContent);
-      const updatedSkill = {
-        ...fullScreenSkill,
-        content: editContent,
-      };
+      await writeStudioFile(target.path, editContent);
+      const updatedSkill = { ...target, content: editContent };
       setSkills((current) =>
         current.map((skill) =>
-          skill.name === fullScreenSkill.name ? updatedSkill : skill,
+          skill.name === target.name ? updatedSkill : skill,
         ),
       );
-      setFullScreenSkill(updatedSkill);
-      setEditingSkill(null);
+      setDetailTarget({ kind: "skill", skill: updatedSkill });
+      setEditing(false);
       setError(null);
     } catch (saveError) {
       setError(
@@ -150,28 +181,94 @@ export function SkillsPanel() {
     } finally {
       setSaving(false);
     }
-  };
+  }
+
+  async function handleDeleteSkill() {
+    if (!detailTarget || detailTarget.kind !== "skill") return;
+    const target = detailTarget.skill;
+    if (!window.confirm(`"${target.name}" 스킬을 삭제할까요?`)) return;
+
+    setDeleting(true);
+    try {
+      await deleteStudioSkill(target.name);
+      setSkills((current) => current.filter((entry) => entry.name !== target.name));
+      closeDetail();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error ? deleteError.message : "스킬 삭제에 실패했습니다.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const panelHeadingId = "extensions-panel-title";
+  const availableEcosystems = useMemo(
+    () => ecosystems.filter((ecosystem) => ecosystem.available),
+    [ecosystems],
+  );
+
+  // Build detail modal props from the current target.
+  const modalProps = (() => {
+    if (!detailTarget) return null;
+    if (detailTarget.kind === "skill") {
+      return {
+        kind: "skill" as ExtensionDetailKind,
+        title: detailTarget.skill.name,
+        subtitle: detailTarget.skill.path,
+        body: detailTarget.skill.content,
+        editable: true,
+      };
+    }
+    if (detailTarget.kind === "catalog") {
+      return {
+        kind: "catalog" as ExtensionDetailKind,
+        title: detailTarget.category.label,
+        subtitle: `${detailTarget.ecosystem.label} · ${detailTarget.ecosystem.sourcePath}`,
+        body: detailTarget.category.markdown,
+        editable: false,
+      };
+    }
+    return {
+      kind: "plugin" as ExtensionDetailKind,
+      title: detailTarget.name,
+      subtitle: "Claude plugin",
+      body: `\`${detailTarget.name}\` 플러그인이 활성화되어 있습니다.`,
+      editable: false,
+    };
+  })();
 
   return (
     <>
       <section
-        aria-labelledby="extensions-panel-title"
+        aria-labelledby={panelHeadingId}
         className="overflow-hidden rounded-2xl border shadow-lg backdrop-blur-md"
-        style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)", color: "var(--t-primary)" }}
+        style={{
+          background: "var(--panel-bg)",
+          borderColor: "var(--panel-border)",
+          color: "var(--t-primary)",
+        }}
       >
         <button
           type="button"
           onClick={() => setCollapsed((value) => !value)}
           className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors"
-          onMouseEnter={(event) => { event.currentTarget.style.background = "var(--panel-hover)"; }}
-          onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.background = "var(--panel-hover)";
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.background = "transparent";
+          }}
         >
           <span
-            id="extensions-panel-title"
+            id={panelHeadingId}
             className="text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--t-muted)" }}
           >
-            확장 (Extensions)
+            확장 (Extensions){" "}
+            {skills.length + plugins.length + catalogSummary.categoryCount > 0
+              ? `(${skills.length}·${plugins.length}·${catalogSummary.categoryCount})`
+              : ""}
           </span>
           <span className="text-[10px]" style={{ color: "var(--t-faint)" }}>
             {collapsed ? "▼" : "▲"}
@@ -179,31 +276,16 @@ export function SkillsPanel() {
         </button>
 
         {!collapsed && (
-          <div className="space-y-3 px-3 pb-3 overflow-y-auto" style={{ maxHeight: "calc(100vh - 8rem)" }}>
-            <div
-              className="rounded-xl border px-3 py-2"
-              style={{ background: "var(--card-bg)", borderColor: "var(--card-border)" }}
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-semibold" style={{ color: "var(--t-primary)" }}>
-                  라이브 연결
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>
-                  {skills.length}개 스킬
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>
-                  {plugins.length}개 플러그인
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>
-                  {catalogSummary.ecosystemCount}개 생태계
-                </span>
-                <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>
-                  {catalogSummary.categoryCount}개 카테고리
-                </span>
-              </div>
-              <p className="mt-1 text-[10px] leading-relaxed" style={{ color: "var(--t-faint)" }}>
-                Claude Code 실시간 스킬/플러그인 연결을 직접 확인하고, 아래에서 Claude Code와 Codex CLI 카탈로그를 함께 볼 수 있습니다.
-              </p>
+          <div className="space-y-1.5 px-3 pb-3">
+            {/* Summary header */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>
+                라이브 연결
+              </span>
+              <span className="text-[10px] font-mono" style={{ color: "var(--t-faint)" }}>
+                {skills.length} 스킬 · {plugins.length} 플러그인 · {catalogSummary.ecosystemCount}{" "}
+                생태계
+              </span>
             </div>
 
             {loading && (
@@ -213,266 +295,277 @@ export function SkillsPanel() {
             )}
 
             {error && (
-              <p className="text-[10px]" style={{ color: "var(--toast-error-text)" }} role="status" aria-live="polite">
+              <p
+                className="text-[10px]"
+                style={{ color: "var(--toast-error-text)" }}
+                role="status"
+                aria-live="polite"
+              >
                 {error}
               </p>
             )}
 
-            <div className="space-y-2">
-              <p className="px-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--t-muted)" }}>
-                Claude Live Skills
-              </p>
-              {skills.length === 0 ? (
-                <p className="rounded-lg border px-3 py-2 text-[10px]" style={{ background: "var(--card-bg)", borderColor: "var(--border-subtle)", color: "var(--t-faint)" }}>
-                  연결된 스킬이 없습니다.
-                </p>
-              ) : (
-                <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
-                  {skills.map((skill) => (
-                    <div
-                      key={skill.name}
-                      className="rounded-xl border"
-                      style={{ background: "var(--card-bg)", borderColor: "var(--card-border)" }}
-                    >
-                      <div className="flex items-start justify-between gap-2 px-3 py-2">
-                        <div className="min-w-0 flex-1">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedSkill((current) => (current === skill.name ? null : skill.name))}
-                            className="min-w-0 flex-1 text-left"
-                          >
-                            <p className="truncate text-[11px] font-semibold" style={{ color: "var(--t-primary)" }}>
-                              {skill.name}
-                            </p>
-                            <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--t-muted)" }}>
-                              {skill.description || skill.file}
-                            </p>
-                          </button>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2 text-[9px]" style={{ color: "var(--t-faint)" }}>
-                          <button
-                            type="button"
-                            onClick={() => handleEditSkill(skill)}
-                          >
-                            편집
-                          </button>
-                          <button
-                            type="button"
-                            disabled={deleting === skill.name}
-                            onClick={() => {
-                              if (deleting !== skill.name) {
-                                void handleDeleteSkill(skill);
+            {/* Sections */}
+            <div
+              className="mt-1.5 space-y-0.5 border-t pt-1.5"
+              style={{ borderColor: "var(--border-subtle)" }}
+            >
+              {/* Skills section */}
+              <SectionHeader
+                sectionKey="skills"
+                label="Live Skills"
+                count={skills.length}
+                color={SECTION_COLORS.skills}
+                expanded={expandedSections.has("skills")}
+                onToggle={() => toggleSection("skills")}
+              />
+              {expandedSections.has("skills") && (
+                <SectionBody>
+                  {skills.length === 0 ? (
+                    <EmptyRow label="연결된 스킬이 없습니다." />
+                  ) : (
+                    skills.map((skill) => (
+                      <ExtensionRow
+                        key={skill.name}
+                        color={SECTION_COLORS.skills}
+                        title={skill.name}
+                        meta={skill.description || skill.file}
+                        onOpen={() => openDetail({ kind: "skill", skill })}
+                      />
+                    ))
+                  )}
+                </SectionBody>
+              )}
+
+              {/* Plugins section */}
+              <SectionHeader
+                sectionKey="plugins"
+                label="Claude Plugins"
+                count={plugins.length}
+                color={SECTION_COLORS.plugins}
+                expanded={expandedSections.has("plugins")}
+                onToggle={() => toggleSection("plugins")}
+              />
+              {expandedSections.has("plugins") && (
+                <SectionBody>
+                  {plugins.length === 0 ? (
+                    <EmptyRow label="활성 플러그인이 없습니다." />
+                  ) : (
+                    plugins.map((plugin) => (
+                      <ExtensionRow
+                        key={plugin}
+                        color={SECTION_COLORS.plugins}
+                        title={plugin}
+                        meta="plugin"
+                        onOpen={() => openDetail({ kind: "plugin", name: plugin })}
+                      />
+                    ))
+                  )}
+                </SectionBody>
+              )}
+
+              {/* Catalog sections: one per ecosystem */}
+              {availableEcosystems.length === 0 && ecosystems.length === 0 && !loading && (
+                <EmptyRow label="연결된 카탈로그가 없습니다." />
+              )}
+
+              {availableEcosystems.map((ecosystem) => {
+                const sectionKey = `catalog:${ecosystem.id}`;
+                return (
+                  <div key={sectionKey}>
+                    <SectionHeader
+                      sectionKey={sectionKey}
+                      label={ecosystem.label}
+                      count={ecosystem.categories.length}
+                      subtitle={ecosystem.sourcePath}
+                      color={SECTION_COLORS.catalog}
+                      expanded={expandedSections.has(sectionKey)}
+                      onToggle={() => toggleSection(sectionKey)}
+                    />
+                    {expandedSections.has(sectionKey) && (
+                      <SectionBody>
+                        {ecosystem.categories.length === 0 ? (
+                          <EmptyRow label="섹션이 없습니다." />
+                        ) : (
+                          ecosystem.categories.map((category) => (
+                            <ExtensionRow
+                              key={`${ecosystem.id}-${category.id}`}
+                              color={SECTION_COLORS.catalog}
+                              title={category.label}
+                              meta={ecosystem.label}
+                              onOpen={() =>
+                                openDetail({ kind: "catalog", ecosystem, category })
                               }
-                            }}
-                          >
-                            {deleting === skill.name ? "삭제 중" : "삭제"}
-                          </button>
-                          <span>{expandedSkill === skill.name ? "▲" : "▼"}</span>
-                        </div>
-                      </div>
-
-                      {expandedSkill === skill.name && (
-                        <div
-                          className="border-t px-3 pb-3 pt-2"
-                          style={{ borderColor: "var(--border-subtle)" }}
-                        >
-                          <div className="mb-2 flex items-center justify-between gap-2">
-                            <code className="text-[9px]" style={{ color: "var(--t-faint)" }}>
-                              {skill.path}
-                            </code>
-                            <button
-                              type="button"
-                              onClick={() => setFullScreenSkill(skill)}
-                              className="text-[9px] font-medium"
-                              style={{ color: "var(--t-muted)" }}
-                            >
-                              전체 보기
-                            </button>
-                          </div>
-                          <div className="max-h-48 overflow-y-auto text-[11px]">
-                            <MarkdownBody content={skill.content} />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <p className="px-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--t-muted)" }}>
-                Claude Plugins
-              </p>
-              {plugins.length === 0 ? (
-                <p className="rounded-lg border px-3 py-2 text-[10px]" style={{ background: "var(--card-bg)", borderColor: "var(--border-subtle)", color: "var(--t-faint)" }}>
-                  활성 플러그인이 없습니다.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5 px-1">
-                  {plugins.map((plugin) => (
-                    <span
-                      key={plugin}
-                      className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                      style={{ background: "var(--badge-bg)", color: "var(--badge-text)" }}
-                    >
-                      {plugin}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <p className="px-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--t-muted)" }}>
-                Ecosystem Catalog
-              </p>
-              {ecosystems.length === 0 ? (
-                <p className="rounded-lg border px-3 py-2 text-[10px]" style={{ background: "var(--card-bg)", borderColor: "var(--border-subtle)", color: "var(--t-faint)" }}>
-                  연결된 카탈로그가 없습니다.
-                </p>
-              ) : (
-                <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-                  {ecosystems.map((ecosystem) => (
-                    <details
-                      key={ecosystem.id}
-                      open={ecosystem.available}
-                      className="rounded-xl border"
-                      style={{ background: "var(--card-bg)", borderColor: "var(--card-border)" }}
-                    >
-                      <summary className="cursor-pointer list-none px-3 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="text-[11px] font-semibold" style={{ color: "var(--t-primary)" }}>
-                              {ecosystem.label}
-                            </p>
-                            <p className="truncate text-[9px]" style={{ color: "var(--t-faint)" }}>
-                              {ecosystem.sourcePath}
-                            </p>
-                          </div>
-                          <span className="text-[9px]" style={{ color: "var(--t-muted)" }}>
-                            {ecosystem.categories.length}개 섹션
-                          </span>
-                        </div>
-                      </summary>
-
-                      <div
-                        className="space-y-2 border-t px-3 pb-3 pt-2"
-                        style={{ borderColor: "var(--border-subtle)" }}
-                      >
-                        {!ecosystem.available && (
-                          <p className="text-[10px]" style={{ color: "var(--t-faint)" }}>
-                            카탈로그 원본을 아직 읽지 못했습니다.
-                          </p>
+                            />
+                          ))
                         )}
-                        {ecosystem.categories.map((category) => (
-                          <details
-                            key={`${ecosystem.id}-${category.id}`}
-                            className="rounded-lg border"
-                            style={{ background: "var(--panel-bg)", borderColor: "var(--border-subtle)" }}
-                          >
-                            <summary className="cursor-pointer list-none px-3 py-2 text-[10px] font-semibold" style={{ color: "var(--t-secondary)" }}>
-                              {category.label}
-                            </summary>
-                            <div className="border-t px-3 pb-3 pt-2 text-[11px]" style={{ borderColor: "var(--border-subtle)" }}>
-                              <MarkdownBody content={category.markdown} />
-                            </div>
-                          </details>
-                        ))}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              )}
+                      </SectionBody>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
       </section>
 
-      {fullScreenSkill && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
-          onClick={() => {
-            setFullScreenSkill(null);
-            setEditingSkill(null);
-          }}
-        >
-          <div
-            className="mx-4 max-h-[80vh] w-full max-w-3xl overflow-y-auto rounded-2xl p-6 shadow-2xl"
-            style={{ background: "var(--panel-bg-strong)" }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="truncate text-sm font-bold" style={{ color: "var(--t-primary)" }}>
-                  {fullScreenSkill.name}
-                </h2>
-                <code className="text-[10px]" style={{ color: "var(--t-faint)" }}>
-                  {fullScreenSkill.path}
-                </code>
-              </div>
-              <div className="flex items-center gap-3">
-                {editingSkill !== fullScreenSkill.name && (
-                  <button
-                    type="button"
-                    onClick={() => handleEditSkill(fullScreenSkill)}
-                    className="text-[11px] font-medium"
-                    style={{ color: "var(--color-kuma-orange)" }}
-                  >
-                    편집
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFullScreenSkill(null);
-                    setEditingSkill(null);
-                  }}
-                  className="text-sm"
-                  style={{ color: "var(--t-faint)" }}
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {editingSkill === fullScreenSkill.name ? (
-              <div className="space-y-3">
-                <textarea
-                  value={editContent}
-                  onChange={(event) => setEditContent(event.target.value)}
-                  className="min-h-[320px] w-full resize-y rounded-lg border p-3 font-mono text-[11px] leading-relaxed outline-none"
-                  style={{ background: "var(--input-bg)", borderColor: "var(--input-border)", color: "var(--t-primary)" }}
-                  spellCheck={false}
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingSkill(null)}
-                    className="rounded-lg px-3 py-1.5 text-[11px] font-medium"
-                    style={{ color: "var(--t-muted)" }}
-                  >
-                    취소
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveSkill()}
-                    disabled={saving}
-                    className="rounded-lg px-4 py-1.5 text-[11px] font-bold text-white transition-colors disabled:opacity-50"
-                    style={{ background: "var(--btn-solid-bg)" }}
-                  >
-                    {saving ? "저장 중..." : "저장"}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="text-[11px]">
-                <MarkdownBody content={fullScreenSkill.content} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {modalProps &&
+        createPortal(
+          <ExtensionDetailModal
+            isOpen={true}
+            onClose={closeDetail}
+            kind={modalProps.kind}
+            title={modalProps.title}
+            subtitle={modalProps.subtitle}
+            body={modalProps.body}
+            editable={modalProps.editable}
+            editing={editing}
+            saving={saving}
+            editContent={editContent}
+            onEditToggle={toggleEditMode}
+            onEditChange={setEditContent}
+            onSave={() => void handleSaveSkill()}
+            onDelete={modalProps.editable ? () => void handleDeleteSkill() : undefined}
+            deleting={deleting}
+          />,
+          document.body,
+        )}
     </>
+  );
+}
+
+interface SectionHeaderProps {
+  sectionKey: string;
+  label: string;
+  count: number;
+  subtitle?: string;
+  color: { dot: string; glow: string };
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+function SectionHeader({
+  label,
+  count,
+  subtitle,
+  color,
+  expanded,
+  onToggle,
+}: SectionHeaderProps) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center gap-1.5 rounded px-1 py-1 text-left transition-colors"
+      onMouseEnter={(event) => {
+        event.currentTarget.style.background = "var(--panel-hover)";
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.background = "transparent";
+      }}
+    >
+      <span className="text-[9px] shrink-0" style={{ color: "var(--t-faint)" }}>
+        {expanded ? "▾" : "▸"}
+      </span>
+      <span
+        className="shrink-0 rounded-full"
+        style={{
+          width: 6,
+          height: 6,
+          backgroundColor: color.dot,
+          boxShadow: `0 0 6px ${color.glow}`,
+        }}
+      />
+      <span
+        className="flex-1 truncate text-[10px] font-bold"
+        style={{ color: "var(--t-secondary)" }}
+      >
+        {label}
+      </span>
+      {subtitle && (
+        <span
+          className="max-w-[8rem] truncate text-[8px] font-mono"
+          style={{ color: "var(--t-faint)" }}
+          title={subtitle}
+        >
+          {subtitle}
+        </span>
+      )}
+      <span className="text-[8px] font-mono shrink-0" style={{ color: "var(--t-faint)" }}>
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function SectionBody({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="ml-3 space-y-px border-l pl-2"
+      style={{ borderColor: "var(--border-subtle)" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+interface ExtensionRowProps {
+  color: { dot: string; glow: string };
+  title: string;
+  meta?: string;
+  onOpen: () => void;
+}
+
+function ExtensionRow({ color, title, meta, onOpen }: ExtensionRowProps) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors"
+      style={{ background: `linear-gradient(90deg, ${color.dot}08 0%, transparent 40%)` }}
+      onMouseEnter={(event) => {
+        event.currentTarget.style.background = `linear-gradient(90deg, ${color.dot}18 0%, var(--panel-hover) 40%)`;
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.background = `linear-gradient(90deg, ${color.dot}08 0%, transparent 40%)`;
+      }}
+    >
+      <span
+        className="shrink-0 rounded-full"
+        style={{
+          width: 5,
+          height: 5,
+          backgroundColor: color.dot,
+          boxShadow: `0 0 5px ${color.glow}`,
+        }}
+      />
+      <span
+        className="flex-1 truncate text-[9px] font-semibold"
+        style={{ color: "var(--t-primary)" }}
+        title={title}
+      >
+        {title}
+      </span>
+      {meta && (
+        <span
+          className="max-w-[10rem] truncate text-[8px]"
+          style={{ color: "var(--t-faint)" }}
+          title={meta}
+        >
+          {meta}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function EmptyRow({ label }: { label: string }) {
+  return (
+    <div
+      className="ml-3 rounded px-2 py-1 text-[9px]"
+      style={{ color: "var(--t-faint)" }}
+    >
+      {label}
+    </div>
   );
 }

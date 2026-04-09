@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execGitSync } from "./git-command.mjs";
 
 const TREND_FEEDS = [
   "https://hnrss.org/newest?q=AI",
@@ -49,7 +49,7 @@ async function readFeedHeadlines(url) {
 function readRecentGitLog(workspaceRoot, project) {
   try {
     const projectPath = workspaceRoot;
-    const raw = execSync("git log --oneline -8 --no-color", {
+    const raw = execGitSync("git log --oneline -8 --no-color", {
       cwd: projectPath,
       encoding: "utf8",
       timeout: 4000,

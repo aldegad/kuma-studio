@@ -11,13 +11,18 @@ interface CharacterProps {
   character: OfficeCharacter;
   isDragging?: boolean;
   isSelected?: boolean;
-  speechBubble?: string;
+  speechBubbleLines?: string[];
   onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   onDragStart?: (event: MouseEvent<HTMLDivElement>) => void;
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
-export function Character({ character, isDragging = false, isSelected = false, speechBubble, onClick, onDragStart, onDoubleClick }: CharacterProps) {
+const SPEECH_BUBBLE_MAX_LINES = 5;
+
+export function Character({ character, isDragging = false, isSelected = false, speechBubbleLines, onClick, onDragStart, onDoubleClick }: CharacterProps) {
+  const visibleSpeechLines = speechBubbleLines?.slice(0, SPEECH_BUBBLE_MAX_LINES) ?? [];
+  const hasSpeechBubble = visibleSpeechLines.length > 0;
+  const hasMoreSpeechLines = (speechBubbleLines?.length ?? 0) > SPEECH_BUBBLE_MAX_LINES;
   const [hovered, setHovered] = useState(false);
   const randomEmote = useRandomEmote(character.id, character.state === "idle");
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
@@ -61,7 +66,7 @@ export function Character({ character, isDragging = false, isSelected = false, s
       {/* Card wrapper — relative so dot and emote/speech can escape overflow-hidden */}
       <div className="relative">
         {/* Random emote bubble — absolute so it doesn't push card down */}
-        {randomEmote && !speechBubble && (
+        {randomEmote && !hasSpeechBubble && (
           <div
             className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 animate-fade-in pointer-events-none"
             data-kuma-agent-overlay="emote"
@@ -72,13 +77,26 @@ export function Character({ character, isDragging = false, isSelected = false, s
           </div>
         )}
 
-        {/* Speech bubble — absolute so it doesn't push card down */}
-        {speechBubble && (
+        {/* Speech bubble — absolute so it doesn't push card down. Up to 5 lines of recent worker output. */}
+        {hasSpeechBubble && (
           <div
-            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 max-w-32 rounded-lg bg-white/95 border border-stone-200 px-2 py-1 shadow-sm z-10"
+            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-[18rem] max-w-[min(18rem,60vw)] rounded-lg bg-white/95 border border-stone-200 px-2 py-1.5 shadow-md z-10"
             data-kuma-agent-overlay="speech"
           >
-            <p className="text-[8px] text-stone-600 leading-tight truncate">{speechBubble}</p>
+            <div className="space-y-0.5">
+              {visibleSpeechLines.map((line, i) => (
+                <p
+                  key={i}
+                  className="text-[8px] text-stone-600 leading-snug font-mono truncate"
+                  title={line}
+                >
+                  {line}
+                </p>
+              ))}
+              {hasMoreSpeechLines && (
+                <p className="text-[8px] text-stone-400 leading-snug text-right">…</p>
+              )}
+            </div>
             <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white/95 border-r border-b border-stone-200 rotate-45" />
           </div>
         )}

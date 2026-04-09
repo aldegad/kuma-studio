@@ -7,8 +7,18 @@ echo "🐻 쿠마 스튜디오 설정: $KUMA_STUDIO"
 
 # 1. 스킬 심링크
 mkdir -p ~/.claude/skills
-for skill in kuma dev-team analytics-team strategy-team tmux-ops; do
-  target="$KUMA_STUDIO/.claude/skills/$skill"
+skill_specs=(
+  "kuma:kuma"
+  "dev-team:dev-team"
+  "strategy-analytics-team:analytics-team"
+  "analytics-team:analytics-team"
+  "strategy-team:strategy-team"
+  "tmux-ops:tmux-ops"
+)
+for spec in "${skill_specs[@]}"; do
+  skill="${spec%%:*}"
+  source_skill="${spec#*:}"
+  target="$KUMA_STUDIO/.claude/skills/$source_skill"
   link="$HOME/.claude/skills/$skill"
   [ -L "$link" ] && rm "$link"
   ln -sf "$target" "$link"
@@ -33,6 +43,23 @@ for script in "$KUMA_STUDIO"/scripts/cmux/*.sh; do
   [ -L "$link" ] && rm "$link"
   ln -sf "$script" "$link"
   echo "  ✓ cmux: $name"
+done
+
+for link in "$HOME"/.kuma/cmux/*.sh; do
+  [ -e "$link" ] || [ -L "$link" ] || continue
+  target="$(readlink "$link" 2>/dev/null || true)"
+  case "$target" in
+    "$KUMA_STUDIO"/cmux/*)
+      rm -f "$link"
+      echo "  ✓ cmux cleanup: $(basename "$link")"
+      ;;
+    "$KUMA_STUDIO"/scripts/cmux/*)
+      if [ ! -f "$target" ]; then
+        rm -f "$link"
+        echo "  ✓ cmux cleanup: $(basename "$link")"
+      fi
+      ;;
+  esac
 done
 
 # 4. 프로젝트 맵 (없으면 복사, 있으면 스킵)

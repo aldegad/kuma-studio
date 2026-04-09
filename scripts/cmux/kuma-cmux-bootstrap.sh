@@ -63,8 +63,10 @@ else
     exit 1
   fi
 
-  cmux send --workspace "$CURRENT_WS" --surface "$JOONI_S" "cd \"$WORKSPACE_DIR\" && KUMA_ROLE=worker codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c service_tier=fast -c model_reasoning_effort=\"xhigh\"" > /dev/null
-  cmux send-key --workspace "$CURRENT_WS" --surface "$JOONI_S" Enter > /dev/null
+  "$SCRIPT_DIR/kuma-cmux-send.sh" "$JOONI_S" \
+    "cd \"$WORKSPACE_DIR\" && KUMA_ROLE=worker codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c service_tier=fast -c model_reasoning_effort=\"xhigh\"" \
+    --workspace "$CURRENT_WS" \
+    > /dev/null
   cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$JOONI_S" --title "🐝 쭈니" > /dev/null 2>&1 || true
   "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "쭈니" "$JOONI_S" 2>/dev/null || true
   echo "✓ 쭈니 상주 탭 준비 완료 ($JOONI_S)"
@@ -94,8 +96,7 @@ else
       STALE_PID=$(lsof -i :4312 -t 2>/dev/null)
       [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
       echo "→ 쿠마 서버 시작 중..."
-      cmux send --surface "$INFRA_S" "cd \"$KUMA_STUDIO_DIR\" && npm run server:reload"
-      cmux send-key --surface "$INFRA_S" Enter
+      "$SCRIPT_DIR/kuma-cmux-send.sh" "$INFRA_S" "cd \"$KUMA_STUDIO_DIR\" && npm run server:reload" > /dev/null
       cmux tab-action --action rename --surface "$INFRA_S" --title "kuma-server" > /dev/null 2>&1
       "$SCRIPT_DIR/kuma-cmux-register.sh" "kuma-studio" "server" "$INFRA_S" 2>/dev/null || true
 
@@ -122,8 +123,7 @@ else
       echo "→ 스튜디오 프론트 시작 중..."
       FR=$(cmux new-surface --pane "$INFRA_P" 2>&1)
       FRONT_S=$(echo "$FR" | grep -oE 'surface:[0-9]+')
-      cmux send --surface "$FRONT_S" "cd \"$KUMA_STUDIO_DIR\" && npm run dev:studio"
-      cmux send-key --surface "$FRONT_S" Enter
+      "$SCRIPT_DIR/kuma-cmux-send.sh" "$FRONT_S" "cd \"$KUMA_STUDIO_DIR\" && npm run dev:studio" > /dev/null
       cmux tab-action --action rename --surface "$FRONT_S" --title "kuma-frontend" > /dev/null 2>&1
       "$SCRIPT_DIR/kuma-cmux-register.sh" "kuma-studio" "frontend" "$FRONT_S" 2>/dev/null || true
 
