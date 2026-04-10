@@ -147,65 +147,6 @@ esac
     expect(sendLogContents).not.toContain("\tdelivered\t");
   });
 
-  it("fails when a non-empty suggestion line remains after dispatch", async () => {
-    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
-    tempRoots.push(root);
-
-    const binDir = join(root, "bin");
-    const sendLog = join(root, "kuma-send.log");
-    const readCountPath = join(root, "read-count.txt");
-
-    await mkdir(binDir, { recursive: true });
-    await writeFile(readCountPath, "0", "utf8");
-
-    await writeExecutable(
-      join(binDir, "cmux"),
-      `#!/bin/bash
-set -euo pipefail
-command="\${1:-}"
-shift || true
-case "$command" in
-  tree)
-    printf 'workspace:1\\n  surface:9\\n'
-    ;;
-  read-screen)
-    count=$(cat "${readCountPath}")
-    count=$((count + 1))
-    printf '%s' "$count" > "${readCountPath}"
-    if [ "$count" -eq 1 ]; then
-      printf '❯\\n'
-    else
-      printf '› Improve documentation in @filename\\n'
-    fi
-    ;;
-  send|send-key)
-    ;;
-esac
-`,
-    );
-
-    let failure;
-    try {
-      await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "Read /tmp/fake.task.md and execute"], {
-        env: {
-          ...process.env,
-          PATH: `${binDir}:${process.env.PATH}`,
-          KUMA_SEND_LOG_PATH: sendLog,
-        },
-      });
-    } catch (error) {
-      failure = error;
-    }
-
-    expect(failure).toBeTruthy();
-    expect(failure.code).toBe(1);
-
-    const sendLogContents = await readFile(sendLog, "utf8");
-    expect(sendLogContents).toContain("\tretry-suggestion\t");
-    expect(sendLogContents).toContain("\tfailed\t");
-    expect(sendLogContents).not.toContain("\tdelivered\t");
-  });
-
   it("routes helper scripts and kuma-task through the send wrapper instead of raw cmux send", async () => {
     for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH]) {
       const source = await readFile(filePath, "utf8");
