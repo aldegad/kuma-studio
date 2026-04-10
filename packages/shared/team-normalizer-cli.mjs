@@ -33,7 +33,7 @@ function loadNormalizedTeamData(configPath) {
 
 /**
  * @param {ReturnType<typeof normalizeAllTeams>["members"][number] | null | undefined} member
- * @returns {Record<string, string>}
+ * @returns {Record<string, unknown>}
  */
 function toShellMember(member) {
   return {
@@ -44,6 +44,7 @@ function toShellMember(member) {
     team: member?.team ?? "",
     nodeType: member?.nodeType ?? "",
     defaultQa: member?.defaultQa ?? "",
+    vaultDomains: Array.isArray(member?.vaultDomains) ? member.vaultDomains : [],
     defaultSurface: member?.defaultSurface ?? "",
     modelCatalogId: member?.modelCatalogId ?? "",
     type: member?.engine ?? "",

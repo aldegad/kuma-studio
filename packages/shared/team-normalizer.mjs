@@ -323,6 +323,7 @@ export function normalizeTeam(teamId, team) {
  *   image: string,
  *   defaultSurface: string | null,
  *   defaultQa: string | null,
+ *   vaultDomains: string[],
  * }}
  */
 export function normalizeTeamMember(teamId, member, modelCatalogById = new Map()) {
@@ -364,6 +365,12 @@ export function normalizeTeamMember(teamId, member, modelCatalogById = new Map()
     defaultQa: typeof member?.defaultQa === "string" && member.defaultQa.trim()
       ? member.defaultQa.trim()
       : null,
+    vaultDomains: Array.isArray(member?.vaultDomains)
+      ? member.vaultDomains
+        .filter((value) => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean)
+      : [],
   };
 }
 

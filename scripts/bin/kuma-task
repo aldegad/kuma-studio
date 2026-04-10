@@ -20,6 +20,162 @@ Options:
 EOF
 }
 
+resolve_vault_prompt_prefix() {
+  local instruction="${1:-}"
+  local member_json="${2-}"
+  local vault_dir="$KUMA_HOME_DIR/vault"
+
+  if [ -z "$member_json" ]; then
+    member_json='{}'
+  fi
+
+  KUMA_VAULT_MEMBER_JSON="$member_json" node --input-type=module - "$vault_dir" "$instruction" <<'NODE'
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
+
+const [, , vaultDir, instructionRaw = ""] = process.argv;
+const domainsDir = join(vaultDir, "domains");
+const indexPath = join(vaultDir, "index.md");
+const instruction = String(instructionRaw || "").toLowerCase();
+
+let member = {};
+try {
+  const memberJsonRaw = process.env.KUMA_VAULT_MEMBER_JSON || "{}";
+  member = JSON.parse(memberJsonRaw || "{}");
+} catch {
+  member = {};
+}
+
+const manualKeywordMap = {
+  analytics: ["analytics", "분석", "usage", "insight", "통계", "리포트", "report"],
+  careers: ["career", "careers", "resume", "cv", "이력서", "경력", "포트폴리오"],
+  "content-pipeline": ["콘텐츠", "content", "카드뉴스", "video", "영상", "tts", "remotion"],
+  "image-generation": ["이미지", "image", "캐릭터", "design", "디자인", "branding", "브랜딩", "illustration", "일러스트", "mascot", "마스코트"],
+  "kuma-picker": ["picker", "selection", "브라우저 선택", "선택 요소", "dom"],
+  "kuma-vault": ["vault", "지식", "memory", "wiki"],
+  security: ["보안", "security", "kisa", "owasp", "asvs", "ssdf", "threat", "intel", "credential", "infostealer"],
+  "team-system": ["team.json", "team json", "팀 시스템", "worker", "워커", "surface", "qa", "normalizer", "classifier", "bootstrap"],
+};
+
+function normalize(value) {
+  return String(value || "").toLowerCase();
+}
+
+function tokenize(value) {
+  return Array.from(new Set(
+    normalize(value)
+      .split(/[^a-z0-9가-힣]+/u)
+      .map((token) => token.trim())
+      .filter((token) => token.length >= 2),
+  ));
+}
+
+function parseDomainIndex(path) {
+  if (!existsSync(path)) {
+    return [];
+  }
+
+  const lines = readFileSync(path, "utf8").split(/\r?\n/u);
+  const domains = [];
+  let inDomains = false;
+
+  for (const line of lines) {
+    if (/^##\s+Domains\b/u.test(line)) {
+      inDomains = true;
+      continue;
+    }
+    if (inDomains && /^##\s+/u.test(line)) {
+      break;
+    }
+    if (!inDomains) {
+      continue;
+    }
+
+    const match = line.match(/^- \[([^\]]+)\]\(([^)]+)\)\s*(?:—|-)\s*(.*)$/u);
+    if (!match) {
+      continue;
+    }
+
+    const [, title, relativePath, description] = match;
+    domains.push({
+      slug: basename(relativePath, ".md"),
+      title,
+      description,
+      paths: [relativePath],
+    });
+  }
+
+  return domains;
+}
+
+function getExplicitVaultDomains(rawMember) {
+  if (!Array.isArray(rawMember?.vaultDomains)) {
+    return [];
+  }
+  return rawMember.vaultDomains
+    .filter((value) => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+const parsedDomains = parseDomainIndex(indexPath);
+const explicitDomains = getExplicitVaultDomains(member);
+
+const rankedDomains = parsedDomains
+  .map((domain, index) => {
+    let score = 0;
+    const keywords = new Set([
+      ...tokenize(domain.slug),
+      ...tokenize(domain.title),
+      ...(manualKeywordMap[domain.slug] || []).map((value) => normalize(value)),
+    ]);
+
+    for (const keyword of keywords) {
+      if (!keyword || !instruction.includes(keyword)) {
+        continue;
+      }
+      score += keyword.length >= 5 ? 3 : 2;
+    }
+
+    return {
+      ...domain,
+      index,
+      score,
+    };
+  })
+  .filter((domain) => domain.score > 0)
+  .sort((left, right) => right.score - left.score || left.index - right.index || left.slug.localeCompare(right.slug));
+
+const selected = [];
+const seen = new Set();
+
+function tryAdd(slug) {
+  if (!slug || seen.has(slug) || selected.length >= 3) {
+    return;
+  }
+  if (!existsSync(join(domainsDir, `${slug}.md`))) {
+    return;
+  }
+  seen.add(slug);
+  selected.push(slug);
+}
+
+for (const slug of explicitDomains) {
+  tryAdd(slug);
+}
+
+for (const domain of rankedDomains) {
+  tryAdd(domain.slug);
+}
+
+if (selected.length > 0) {
+  process.stdout.write(
+    `${selected.map((slug) => `Read ~/.kuma/vault/domains/${slug}.md 를 먼저 읽고 참고한 뒤 작업을 시작할 것.`).join("\n")}\n`,
+  );
+}
+NODE
+}
+
 [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] && {
   usage
   exit 0
@@ -232,12 +388,19 @@ if [ "$MEMBER_NODE_TYPE" = "team" ]; then
 - 순서: 플랜 작성 → 워커 분배 → 워커 QA 통과 → 결과 수합 → 시그널 발신."
 fi
 
+VAULT_PROMPT_PREFIX="$(resolve_vault_prompt_prefix "$INSTRUCTION" "$MEMBER_JSON")"
+
 if [ "$QA_MODE" = "self" ]; then
   PROMPT="Read ${TASK_FILE} and execute. Worker trust mode: qa is worker-self-report, so skip Bamdori handoff. 완료 후 result 파일에 'trusted: worker-self-report' 표시를 남기고 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것.${ORCHESTRATOR_FOOTER}"
 elif [ "$QA_MODE" = "kuma-direct" ]; then
   PROMPT="Read ${TASK_FILE} and execute. 완료 후 result 파일 작성 후 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것. 쿠마가 직접 리뷰함.${ORCHESTRATOR_FOOTER}"
 else
   PROMPT="Read ${TASK_FILE} and execute. 완료 후 QA 라우팅 프로토콜 따를 것.${ORCHESTRATOR_FOOTER}"
+fi
+
+if [ -n "$VAULT_PROMPT_PREFIX" ]; then
+  PROMPT="${VAULT_PROMPT_PREFIX}
+${PROMPT}"
 fi
 
 "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$WORKER_SURFACE" "$PROMPT"

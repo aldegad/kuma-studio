@@ -219,6 +219,38 @@ describe("shared team normalizer", () => {
     expect(JSON.parse(stdout)).toEqual(direct);
   });
 
+  it("preserves member vaultDomains through the normalizer and CLI member query bridge", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const rawTeamConfig = {
+      teams: {
+        dev: {
+          name: "개발팀",
+          members: [
+            {
+              id: "tookdaki",
+              name: "뚝딱이",
+              team: "dev",
+              spawnType: "codex",
+              vaultDomains: ["analytics", " image-generation ", "", 42],
+            },
+          ],
+        },
+      },
+    };
+    const teamPath = await writeTeamConfig(root, rawTeamConfig);
+    const direct = normalizeAllTeams(rawTeamConfig);
+
+    expect(direct.members[0]?.vaultDomains).toEqual(["analytics", "image-generation"]);
+
+    const { stdout } = await execFile("node", [TEAM_NORMALIZER_CLI_PATH, "resolve-member-query", teamPath, "뚝딱이"]);
+    expect(JSON.parse(stdout)).toMatchObject({
+      id: "tookdaki",
+      vaultDomains: ["analytics", "image-generation"],
+    });
+  });
+
   it("lists bootstrap system members in configured surface order through the shell helper", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);

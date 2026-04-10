@@ -62,6 +62,7 @@ export interface NormalizedTeamMember {
   image: string;
   defaultSurface: string | null;
   defaultQa: string | null;
+  vaultDomains: string[];
 }
 
 export interface NormalizedTeamData {
