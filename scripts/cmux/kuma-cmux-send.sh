@@ -208,10 +208,6 @@ for i in $(seq 1 $MAX_RETRIES); do
     DELIVERED=true
     log_send "delivered-working" "$INPUT_VIEW"
     break
-  elif blocking_suggestion_visible "$INPUT_VIEW"; then
-    echo "RETRY $i: suggestion still visible after send, retrying..." >&2
-    log_send "retry-suggestion" "$INPUT_VIEW"
-    cmux send-key "${SEND_ARGS[@]}" Enter
   elif prompt_still_pending "$INPUT_VIEW"; then
     echo "RETRY $i: Enter not registered, retrying..." >&2
     log_send "retry-enter" "$INPUT_VIEW"
