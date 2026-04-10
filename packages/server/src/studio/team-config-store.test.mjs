@@ -46,6 +46,10 @@ describe("team-config-store", () => {
     assert.strictEqual(config.members["밤토리"].model, "gpt-5.4-mini");
     assert.strictEqual(config.defaults.codex.model, "gpt-5.4");
     assert.match(config.defaults.codex.options, /model_reasoning_effort="xhigh"/u);
+    assert.strictEqual(config.modelCatalog.length, 7);
+    assert.strictEqual(config.members["쿠마"].modelCatalogId, "claude-opus-4-6-high");
+    assert.strictEqual(raw.modelCatalog.length, 7);
+    assert.strictEqual(raw.teams.system.members.find((member) => member.name === "쿠마")?.modelCatalogId, "claude-opus-4-6-high");
     assert.strictEqual(raw.teams.system.members.find((member) => member.name === "쿠마")?.spawnType, "claude");
     assert.strictEqual(raw.teams.dev.members.find((member) => member.name === "뚝딱이")?.spawnType, "codex");
   });
@@ -140,6 +144,23 @@ describe("team-config-store", () => {
     assert.deepStrictEqual(diff.added, ["newbie"]);
     assert.deepStrictEqual(diff.removed, ["darami"]);
     assert.deepStrictEqual(diff.updated, ["howl"]);
+  });
+
+  it("diffTeamConfig treats modelCatalogId-only changes as member updates", () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-"));
+    tempDirs.push(root);
+
+    const configPath = join(root, "team.json");
+    const store = new TeamConfigStore(configPath);
+    const previousSchema = store.readTeamSchema();
+    const nextSchema = JSON.parse(JSON.stringify(previousSchema));
+
+    nextSchema.teams.system.members.find((member) => member.id === "kuma").modelCatalogId = "claude-opus-4-6-max";
+
+    const diff = diffTeamConfig(previousSchema, nextSchema);
+    assert.deepStrictEqual(diff.added, []);
+    assert.deepStrictEqual(diff.removed, []);
+    assert.deepStrictEqual(diff.updated, ["kuma"]);
   });
 
   it("watchTeamConfig emits changed ids and snapshots after file updates", async () => {

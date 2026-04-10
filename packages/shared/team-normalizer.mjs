@@ -1,5 +1,7 @@
 // @ts-check
 
+import { normalizeModelCatalog } from "./model-catalog.mjs";
+
 export const DEFAULT_MODELS = Object.freeze({
   claude: "claude-opus-4-6",
   codex: "gpt-5.4",
@@ -21,6 +23,34 @@ const CODEX_SERVICE_TIER_PATTERN = /(?:^|\s)-c\s+service_tier=(?:"[^"]*"|'[^']*'
  */
 export function normalizeWhitespace(value) {
   return String(value ?? "").trim().replace(/\s+/gu, " ");
+}
+
+/**
+ * @param {{ type?: "claude" | "codex", effort?: string, serviceTier?: string, options?: string }} entry
+ * @returns {string}
+ */
+function buildOptionsFromCatalogEntry(entry) {
+  if (entry?.type !== "codex") {
+    return normalizeWhitespace(entry?.options) || DEFAULT_OPTIONS.claude;
+  }
+
+  let options = normalizeWhitespace(entry?.options) || "--dangerously-bypass-approvals-and-sandbox";
+  const serviceTier = normalizeWhitespace(entry?.serviceTier).toLowerCase();
+  const effort = normalizeWhitespace(entry?.effort).toLowerCase();
+
+  if (serviceTier) {
+    options = appendCodexOption(stripCodexOptions(options, [CODEX_SERVICE_TIER_PATTERN]), "service_tier", serviceTier);
+  }
+  if (VALID_CODEX_REASONING_LEVELS.has(effort)) {
+    options = appendCodexOption(
+      stripCodexOptions(options, [CODEX_REASONING_OPTION_PATTERN]),
+      "model_reasoning_effort",
+      effort,
+      { quote: true },
+    );
+  }
+
+  return normalizeCodexOptions(options, DEFAULT_OPTIONS.codex);
 }
 
 /**
@@ -128,11 +158,15 @@ export function normalizeRoleLabel(member) {
 
 /**
  * @param {any} member
+ * @param {{ type?: "claude" | "codex" } | null} [catalogEntry]
  * @returns {"claude" | "codex"}
  */
-export function normalizeEngine(member) {
+export function normalizeEngine(member, catalogEntry = null) {
   if (member?.spawnType === "claude" || member?.spawnType === "codex") {
     return member.spawnType;
+  }
+  if (catalogEntry?.type === "claude" || catalogEntry?.type === "codex") {
+    return catalogEntry.type;
   }
   return String(member?.spawnModel ?? "").startsWith("gpt-") ? "codex" : "claude";
 }
@@ -140,9 +174,14 @@ export function normalizeEngine(member) {
 /**
  * @param {any} member
  * @param {"claude" | "codex"} engine
+ * @param {{ model?: string } | null} [catalogEntry]
  * @returns {string}
  */
-export function normalizeModel(member, engine) {
+export function normalizeModel(member, engine, catalogEntry = null) {
+  if (typeof catalogEntry?.model === "string" && catalogEntry.model.trim()) {
+    return catalogEntry.model.trim();
+  }
+
   if (typeof member?.spawnModel === "string" && member.spawnModel.trim()) {
     return member.spawnModel.trim();
   }
@@ -153,9 +192,14 @@ export function normalizeModel(member, engine) {
 /**
  * @param {any} member
  * @param {"claude" | "codex"} engine
+ * @param {{ type?: "claude" | "codex", effort?: string, serviceTier?: string, options?: string } | null} [catalogEntry]
  * @returns {string}
  */
-export function normalizeOptions(member, engine) {
+export function normalizeOptions(member, engine, catalogEntry = null) {
+  if (catalogEntry) {
+    return buildOptionsFromCatalogEntry(catalogEntry);
+  }
+
   const raw = typeof member?.spawnOptions === "string" && member.spawnOptions.trim()
     ? member.spawnOptions
     : DEFAULT_OPTIONS[engine] ?? DEFAULT_OPTIONS.claude;
@@ -256,12 +300,14 @@ export function normalizeTeam(teamId, team) {
 /**
  * @param {string} teamId
  * @param {any} member
+ * @param {Map<string, import("./model-catalog.mjs").ModelCatalogEntry>} [modelCatalogById]
  * @returns {{
  *   id: string,
  *   name: { ko: string, en: string },
  *   animal: { ko: string, en: string },
  *   emoji: string,
  *   model: string,
+ *   modelCatalogId: string | null,
  *   engine: "claude" | "codex",
  *   options: string,
  *   effort: string | null,
@@ -279,10 +325,12 @@ export function normalizeTeam(teamId, team) {
  *   defaultQa: string | null,
  * }}
  */
-export function normalizeTeamMember(teamId, member) {
-  const engine = normalizeEngine(member);
-  const model = normalizeModel(member, engine);
-  const options = normalizeOptions(member, engine);
+export function normalizeTeamMember(teamId, member, modelCatalogById = new Map()) {
+  const modelCatalogId = normalizeWhitespace(member?.modelCatalogId);
+  const catalogEntry = modelCatalogId ? modelCatalogById.get(modelCatalogId) ?? null : null;
+  const engine = normalizeEngine(member, catalogEntry);
+  const model = normalizeModel(member, engine, catalogEntry);
+  const options = normalizeOptions(member, engine, catalogEntry);
 
   return {
     id: typeof member?.id === "string" ? member.id : "",
@@ -296,6 +344,7 @@ export function normalizeTeamMember(teamId, member) {
     },
     emoji: typeof member?.emoji === "string" ? member.emoji : "",
     model,
+    modelCatalogId: modelCatalogId || null,
     engine,
     options,
     effort: deriveEffort(engine, options),
@@ -324,19 +373,22 @@ export function normalizeTeamMember(teamId, member) {
  *   teams: ReturnType<typeof normalizeTeam>[],
  *   members: ReturnType<typeof normalizeTeamMember>[],
  *   allTeams: ReturnType<typeof normalizeTeam>[],
+ *   modelCatalog: import("./model-catalog.mjs").ModelCatalogEntry[],
  * }}
  */
 export function normalizeAllTeams(rawTeamJson) {
+  const modelCatalog = normalizeModelCatalog(rawTeamJson?.modelCatalog);
+  const modelCatalogById = new Map(modelCatalog.map((entry) => [entry.id, entry]));
   const teamEntries = Object.entries(rawTeamJson?.teams ?? {});
   const allTeams = teamEntries.map(([teamId, team]) => normalizeTeam(teamId, team));
   const teams = allTeams.filter((team) => !isDeprecatedTeam(team));
   const members = teamEntries.flatMap(([teamId, team]) =>
     Array.isArray(team?.members)
-      ? team.members.map((member) => normalizeTeamMember(teamId, member))
+      ? team.members.map((member) => normalizeTeamMember(teamId, member, modelCatalogById))
       : [],
   );
 
-  return { teams, members, allTeams };
+  return { teams, members, allTeams, modelCatalog };
 }
 
 /**
@@ -438,5 +490,31 @@ export function listBootstrapSystemMembers(data) {
 export function listProjectSpawnMembers(data) {
   return data.members
     .filter((member) => member.team !== "system")
+    .map((member) => member.name.ko);
+}
+
+/**
+ * @param {{ teams: ReturnType<typeof normalizeTeam>[] }} data
+ * @returns {string[]}
+ */
+export function listProjectSpawnTeams(data) {
+  return data.teams
+    .filter((team) => team.id !== "system")
+    .map((team) => team.id);
+}
+
+/**
+ * @param {{ members: ReturnType<typeof normalizeTeamMember>[] }} data
+ * @param {string} teamId
+ * @param {string} [nodeType]
+ * @returns {string[]}
+ */
+export function listTeamMembers(data, teamId, nodeType = "") {
+  const normalizedTeamId = normalizeWhitespace(teamId);
+  const normalizedNodeType = normalizeWhitespace(nodeType);
+
+  return data.members
+    .filter((member) => member.team === normalizedTeamId)
+    .filter((member) => !normalizedNodeType || member.nodeType === normalizedNodeType)
     .map((member) => member.name.ko);
 }

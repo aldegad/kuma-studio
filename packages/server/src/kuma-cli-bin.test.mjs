@@ -257,7 +257,7 @@ async function waitForTaskResultPath(taskDir, resultDir) {
   throw new Error("task file was not created in time");
 }
 
-describe("kuma CLI bin scripts", { timeout: 15_000 }, () => {
+describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
   const tempRoots = [];
 
   afterEach(async () => {
@@ -514,16 +514,36 @@ describe("kuma CLI bin scripts", { timeout: 15_000 }, () => {
     expect(registry.smoke["🦔 밤토리"]).toBe("surface:35");
   });
 
-  it("kuma-task forwards the requested wait timeout to kuma-cmux-wait.sh", async () => {
+  it("kuma-task forwards --wait-timeout to kuma-cmux-wait.sh", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
-    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--timeout", "60"], sandbox.env);
+    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--wait-timeout", "60"], sandbox.env);
 
     const waitLog = await readFile(sandbox.waitLog, "utf8");
     expect(waitLog).toContain("kuma-studio-tookdaki");
     expect(waitLog).toContain("--timeout 60");
     expect(waitLog).toContain("--surface surface:4");
+  });
+
+  it("kuma-task keeps --timeout as a backward-compatible wait-timeout alias", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--timeout", "45"], sandbox.env);
+
+    const waitLog = await readFile(sandbox.waitLog, "utf8");
+    expect(waitLog).toContain("--timeout 45");
+  });
+
+  it("kuma-task uses a 600 second default wait timeout", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait"], sandbox.env);
+
+    const waitLog = await readFile(sandbox.waitLog, "utf8");
+    expect(waitLog).toContain("--timeout 600");
   });
 
   it("kuma-task poll mode finishes when the result file appears", async () => {

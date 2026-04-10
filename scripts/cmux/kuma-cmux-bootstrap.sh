@@ -8,7 +8,6 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KUMA_STUDIO_DIR="/workspace/kuma-studio"
 WORKSPACE_DIR="/workspace"
-REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 
 source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
 require_team_config
@@ -25,26 +24,12 @@ surface_alive() {
   cmux read-screen --surface "$surface" --lines 1 > /dev/null 2>&1
 }
 
-lookup_registered_surface() {
-  local project="$1"
-  local label="$2"
-  local name="$3"
-
-  jq -r \
-    --arg project "$project" \
-    --arg label "$label" \
-    --arg name "$name" \
-    '.[$project][$label] // .[$project][$name] // empty' \
-    "$REGISTRY" 2>/dev/null || echo ""
-}
-
 resolve_bootstrap_surface() {
   local name="$1"
-  local title="$2"
-  local default_surface="$3"
+  local default_surface="$2"
   local existing_surface=""
 
-  existing_surface="$(lookup_registered_surface "system" "$title" "$name")"
+  existing_surface="$(resolve_registered_member_surface "system" "$name" 2>/dev/null || true)"
   if surface_alive "$existing_surface"; then
     printf '%s\n' "$existing_surface"
     return 0
@@ -72,7 +57,7 @@ ensure_system_member_surface() {
     return 0
   fi
 
-  surface="$(resolve_bootstrap_surface "$name" "$title" "$default_surface" 2>/dev/null || true)"
+  surface="$(resolve_bootstrap_surface "$name" "$default_surface" 2>/dev/null || true)"
   if [ -n "$surface" ]; then
     cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$surface" --title "$title" > /dev/null 2>&1 || true
     "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "$title" "$surface" 2>/dev/null || true

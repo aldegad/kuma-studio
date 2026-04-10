@@ -2,6 +2,7 @@ import { teamData } from "../lib/team-schema";
 
 export type AgentState = "idle" | "working" | "thinking" | "completed" | "error";
 export type NodeType = "session" | "team" | "worker";
+export type ModelType = "claude" | "codex";
 export type TeamSkillId = "kuma" | "dev-team" | "analytics-team" | "strategy-team";
 export type InstalledSkillId =
   | "codex-autoresearch"
@@ -30,6 +31,7 @@ export interface Agent {
   nodeType?: NodeType;
   parentId?: string;
   model?: string;
+  modelCatalogId?: string;
   engine?: string;
   effort?: string | null;
   serviceTier?: string | null;
@@ -56,6 +58,16 @@ export interface TeamMetadataResponse {
   teams: TeamMetadataTeam[];
 }
 
+export interface ModelCatalogEntry {
+  id: string;
+  type: ModelType;
+  model: string;
+  label: string;
+  effort?: "low" | "medium" | "high" | "xhigh";
+  serviceTier?: "default" | "fast";
+  options?: string;
+}
+
 export interface TeamConfigMember {
   id: string;
   emoji: string;
@@ -64,6 +76,7 @@ export interface TeamConfigMember {
   nodeType: string;
   type: string;
   model: string;
+  modelCatalogId: string;
   options: string;
   nameEn: string;
   animalKo: string;
@@ -73,9 +86,16 @@ export interface TeamConfigMember {
   parentId: string | null;
 }
 
+export interface TeamConfigDefault {
+  model: string;
+  options: string;
+  modelCatalogId: string;
+}
+
 export interface TeamConfigResponse {
   members: Record<string, TeamConfigMember>;
-  defaults: Record<string, { model: string; options: string }>;
+  defaults: Record<string, TeamConfigDefault>;
+  modelCatalog: ModelCatalogEntry[];
 }
 
 type SharedTeamMember = (typeof teamData.members)[number];
@@ -152,6 +172,7 @@ function mapTeamMemberToAgent(member: SharedTeamMember): Agent {
     nodeType: toNodeType(member.nodeType),
     parentId: member.parentId ?? undefined,
     model: member.model,
+    modelCatalogId: member.modelCatalogId ?? undefined,
     engine: member.engine,
     effort: member.effort,
     serviceTier: member.serviceTier,
@@ -204,6 +225,7 @@ export function teamConfigToAgents(config: TeamConfigResponse): Agent[] {
       nodeType: (m.nodeType || "worker") as NodeType,
       parentId: m.parentId ?? undefined,
       model: m.model,
+      modelCatalogId: m.modelCatalogId || undefined,
       engine: m.type,
       effort: runtime.effort,
       serviceTier: runtime.serviceTier,

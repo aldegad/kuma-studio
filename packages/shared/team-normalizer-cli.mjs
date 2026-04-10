@@ -8,7 +8,9 @@ import {
   findMemberByDisplayName,
   findMemberByQuery,
   listBootstrapSystemMembers,
+  listProjectSpawnTeams,
   listProjectSpawnMembers,
+  listTeamMembers,
   normalizeAllTeams,
   normalizeWhitespace,
 } from "./team-normalizer.mjs";
@@ -43,6 +45,7 @@ function toShellMember(member) {
     nodeType: member?.nodeType ?? "",
     defaultQa: member?.defaultQa ?? "",
     defaultSurface: member?.defaultSurface ?? "",
+    modelCatalogId: member?.modelCatalogId ?? "",
     type: member?.engine ?? "",
     model: member?.model ?? "",
     options: member?.options ?? "",
@@ -235,6 +238,16 @@ switch (command) {
   case "list-project-spawn-members": {
     const [configPath = ""] = args;
     writeLines(listProjectSpawnMembers(loadNormalizedTeamData(configPath)).join("\n"));
+    break;
+  }
+  case "list-project-spawn-teams": {
+    const [configPath = ""] = args;
+    writeLines(listProjectSpawnTeams(loadNormalizedTeamData(configPath)).join("\n"));
+    break;
+  }
+  case "list-team-members": {
+    const [configPath = "", teamId = "", nodeType = ""] = args;
+    writeLines(listTeamMembers(loadNormalizedTeamData(configPath), teamId, nodeType).join("\n"));
     break;
   }
   case "resolve-project-member-lines": {

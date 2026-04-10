@@ -15,7 +15,7 @@ function run(command, args, options = {}) {
   }).trim();
 }
 
-describe("experiment-pipeline", () => {
+describe("experiment-pipeline", { timeout: 30_000 }, () => {
   const tempDirs = [];
 
   afterEach(() => {

@@ -7,7 +7,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, assert, describe, it } from "vitest";
 
 import { TeamConfigStore, watchTeamConfig } from "./team-config-store.mjs";
-import { createStudioRouteHandler, createTeamConfigRuntime } from "./studio-routes.mjs";
+import { createStudioRouteHandler } from "./studio-routes.mjs";
+import { createTeamConfigRuntime } from "./team-config-runtime.mjs";
 import { createTeamConfigWatcherHandler } from "./team-config-watcher.mjs";
 import { buildTeamConfigSelfWriteHash, toCanonicalTeamConfigHashShape } from "./team-config-hash.mjs";
 

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { useTeamConfigStore } from "../../stores/use-team-config-store";
 import { getTeamGroups, useTeamStatusStore } from "../../stores/use-team-status-store";
-import type { AgentState } from "../../types/agent";
+import { formatModelDetail } from "../../lib/constants";
+import type { Agent, AgentState, ModelCatalogEntry } from "../../types/agent";
 
 interface SettingsPanelProps {
   isNight: boolean;
@@ -14,12 +15,6 @@ interface SettingsPanelProps {
   onToggleNightShift: () => void;
   className?: string;
 }
-
-const MODEL_OPTIONS = [
-  { label: "Claude Opus 4.6 · high", value: "claude-opus-4-6", type: "claude" as const },
-  { label: "Claude Sonnet 4.6 · high", value: "claude-sonnet-4-6", type: "claude" as const },
-  { label: "GPT-5.4 · xhigh · fast", value: "gpt-5.4", type: "codex" as const },
-];
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
   idle: {
@@ -51,6 +46,39 @@ const TEAM_ACCENTS: Record<string, { border: string; bg: string; text: string }>
 
 const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
 const BASE_URL = `http://${window.location.hostname}:${KUMA_PORT}`;
+
+function findMatchingModelOption(
+  member: Pick<Agent, "engine" | "model" | "modelCatalogId" | "effort" | "serviceTier">,
+  modelCatalog: readonly ModelCatalogEntry[],
+): ModelCatalogEntry | null {
+  if (member.modelCatalogId) {
+    const directMatch = modelCatalog.find((entry) => entry.id === member.modelCatalogId);
+    if (directMatch) {
+      return directMatch;
+    }
+  }
+
+  if (!member.model || (member.engine !== "claude" && member.engine !== "codex")) {
+    return null;
+  }
+
+  return modelCatalog.find(
+    (entry) =>
+      entry.type === member.engine
+      && entry.model === member.model
+      && (entry.effort ?? null) === (member.effort ?? null)
+      && (entry.serviceTier ?? null) === (member.serviceTier ?? null),
+  ) ?? modelCatalog.find(
+    (entry) => entry.type === member.engine && entry.model === member.model,
+  ) ?? null;
+}
+
+function getCurrentModelLabel(member: Pick<Agent, "model" | "effort" | "serviceTier">): string {
+  return formatModelDetail(member.model, {
+    effort: member.effort,
+    speed: member.serviceTier,
+  }) ?? member.model ?? "현재 모델";
+}
 
 function normalizeStatusTone(state: AgentState) {
   if (state === "working" || state === "thinking") {
@@ -89,12 +117,12 @@ export function SettingsPanel({
   const [forceConfirm, setForceConfirm] = useState<{
     memberId: string;
     memberName: string;
-    model: string;
-    type: "claude" | "codex";
+    selection: ModelCatalogEntry;
   } | null>(null);
 
   const fetchTeamConfigFromStore = useTeamConfigStore((s) => s.fetch);
   const teamMembers = useTeamConfigStore((s) => s.members);
+  const modelCatalog = useTeamConfigStore((s) => s.modelCatalog);
   const teamConfigLoaded = useTeamConfigStore((s) => s.loaded);
   const projects = useTeamStatusStore((s) => s.projects);
   const activeProjectId = useTeamStatusStore((s) => s.activeProjectId);
@@ -138,8 +166,7 @@ export function SettingsPanel({
   const changeModel = useCallback(async (
     memberId: string,
     memberName: string,
-    model: string,
-    type: "claude" | "codex",
+    selection: ModelCatalogEntry,
     force = false,
   ) => {
     setChangingMember(memberId);
@@ -149,12 +176,17 @@ export function SettingsPanel({
       const res = await fetch(`${BASE_URL}/studio/team-config/${encodeURIComponent(memberId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, type, force }),
+        body: JSON.stringify({
+          type: selection.type,
+          model: selection.model,
+          modelCatalogId: selection.id,
+          force,
+        }),
       });
       const payload = await res.json().catch(() => null);
 
       if (res.status === 409) {
-        setForceConfirm({ memberId, memberName, model, type });
+        setForceConfirm({ memberId, memberName, selection });
         return;
       }
 
@@ -290,7 +322,8 @@ export function SettingsPanel({
                           <div className="space-y-1.5">
                             {group.members.map((member) => {
                               const statusTone = normalizeStatusTone(member.status.state);
-                              const selectValue = member.model ?? "";
+                              const selectedOption = findMatchingModelOption(member, modelCatalog);
+                              const selectValue = selectedOption?.id ?? member.modelCatalogId ?? member.model ?? "";
 
                               return (
                                 <div
@@ -337,19 +370,19 @@ export function SettingsPanel({
                                       value={selectValue}
                                       disabled={changingMember === member.id}
                                       onChange={(event) => {
-                                        const next = MODEL_OPTIONS.find((option) => option.value === event.target.value);
+                                        const next = modelCatalog.find((option) => option.id === event.target.value);
                                         if (next) {
-                                          void changeModel(member.id, member.nameKo, next.value, next.type);
+                                          void changeModel(member.id, member.nameKo, next);
                                         }
                                       }}
                                     >
-                                      {MODEL_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value}>
+                                      {modelCatalog.map((option) => (
+                                        <option key={option.id} value={option.id}>
                                           {option.label}
                                         </option>
                                       ))}
-                                      {!MODEL_OPTIONS.some((option) => option.value === selectValue) && selectValue && (
-                                        <option value={selectValue}>{selectValue}</option>
+                                      {!selectedOption && selectValue && (
+                                        <option value={selectValue}>{getCurrentModelLabel(member)}</option>
                                       )}
                                     </select>
                                   </div>
@@ -389,8 +422,7 @@ export function SettingsPanel({
             void changeModel(
               forceConfirm.memberId,
               forceConfirm.memberName,
-              forceConfirm.model,
-              forceConfirm.type,
+              forceConfirm.selection,
               true,
             );
           }

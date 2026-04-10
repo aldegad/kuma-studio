@@ -1,5 +1,4 @@
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
 
 import {
   classifySurfaceOutput,
@@ -8,10 +7,19 @@ import {
   isIgnoredSurfaceLine,
   isPromptLine,
 } from "../../../shared/surface-classifier.mjs";
+import {
+  buildRegistryLabel,
+  normalizeSurfaceRegistry,
+  parseRegistryLabel,
+  readSurfaceRegistryFile,
+  removeSurfacesFromRegistry,
+  writeSurfaceRegistryFile,
+} from "../../../shared/surface-registry.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
 import { getMembersById } from "../team-metadata.mjs";
 
 export { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
+export { parseRegistryLabel } from "../../../shared/surface-registry.mjs";
 
 const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
@@ -42,12 +50,6 @@ const IMPLICIT_REGISTRY_MEMBERS = Array.from(getMembersById().values())
     emoji: member.emoji,
     surface: member.defaultSurface,
   }));
-
-function formatRegistryLabel(name, emoji = "") {
-  const normalizedName = String(name ?? "").trim();
-  const normalizedEmoji = String(emoji ?? "").trim();
-  return normalizedEmoji && normalizedName ? `${normalizedEmoji} ${normalizedName}` : normalizedName;
-}
 
 function cloneRegistryProjects(registry) {
   return Object.fromEntries(
@@ -100,25 +102,11 @@ export function withImplicitRegistryMembers(registry) {
 
     next[member.project] = {
       ...(next[member.project] ?? {}),
-      [formatRegistryLabel(member.name, member.emoji)]: member.surface,
+      [buildRegistryLabel(member.name, member.emoji)]: member.surface,
     };
   }
 
   return next;
-}
-
-/**
- * Strip a leading emoji prefix such as "🦫 뚝딱이" down to the display name.
- * @param {string} label
- * @returns {{ name: string, emoji: string }}
- */
-export function parseRegistryLabel(label) {
-  const text = String(label ?? "").trim();
-  const emojiMatch = text.match(/^[\p{Extended_Pictographic}\uFE0F\s]+/u);
-  const emojiPrefix = emojiMatch?.[0] ?? "";
-  const name = text.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim() || text;
-  const emoji = emojiPrefix.replace(/\s+/gu, "").trim();
-  return { name, emoji };
 }
 
 export function isRetryableCmuxSocketFailure(candidate) {
@@ -267,59 +255,14 @@ async function readCmuxTreeWithHealing(readCmuxTree, options = {}) {
   };
 }
 
-function normalizeRegistry(registry) {
-  return Object.fromEntries(
-    Object.entries(registry ?? {}).flatMap(([projectName, projectMembers]) => {
-      if (!projectMembers || typeof projectMembers !== "object" || Array.isArray(projectMembers)) {
-        return [];
-      }
-
-      const normalizedMembers = Object.fromEntries(
-        Object.entries(projectMembers).flatMap(([label, surface]) => {
-          const normalizedSurface = typeof surface === "string" ? surface.trim() : "";
-          return normalizedSurface ? [[label, normalizedSurface]] : [];
-        }),
-      );
-
-      return Object.keys(normalizedMembers).length > 0 ? [[projectName, normalizedMembers]] : [];
-    }),
-  );
-}
-
 export function parseLiveSurfacesFromCmuxTree(output) {
   return Array.from(new Set(String(output ?? "").match(CMUX_TREE_SURFACE_PATTERN) ?? []));
-}
-
-function removeSurfacesFromRegistry(registry, surfacesToRemove) {
-  const removeSet = new Set(
-    Array.from(surfacesToRemove ?? [])
-      .map((surface) => String(surface ?? "").trim())
-      .filter(Boolean),
-  );
-
-  if (removeSet.size === 0) {
-    return normalizeRegistry(registry);
-  }
-
-  return Object.fromEntries(
-    Object.entries(normalizeRegistry(registry)).flatMap(([projectName, projectMembers]) => {
-      const nextProjectMembers = Object.fromEntries(
-        Object.entries(projectMembers).flatMap(([label, surface]) =>
-          removeSet.has(surface)
-            ? []
-            : [[label, surface]],
-        ),
-      );
-
-      return Object.keys(nextProjectMembers).length > 0 ? [[projectName, nextProjectMembers]] : [];
-    }),
-  );
 }
 
 export function reconcileRegistryWithCmuxTree(registry, cmuxTreeOutput) {
   const liveSurfaces = new Set(parseLiveSurfacesFromCmuxTree(cmuxTreeOutput));
   return Object.fromEntries(
-    Object.entries(normalizeRegistry(registry)).flatMap(([projectName, projectMembers]) => {
+    Object.entries(normalizeSurfaceRegistry(registry)).flatMap(([projectName, projectMembers]) => {
       const nextProjectMembers = Object.fromEntries(
         Object.entries(projectMembers).flatMap(([label, surface]) =>
           liveSurfaces.has(surface)
@@ -542,16 +485,11 @@ export function filterTeamStatusSnapshot(snapshot, projectId) {
 }
 
 async function defaultReadRegistry(registryPath) {
-  const raw = await readFile(registryPath, "utf8");
-  const parsed = JSON.parse(raw);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Registry root must be an object.");
-  }
-  return normalizeRegistry(/** @type {Record<string, Record<string, string>>} */ (parsed));
+  return readSurfaceRegistryFile(registryPath);
 }
 
 async function defaultWriteRegistry(registryPath, registry) {
-  await writeFile(registryPath, `${JSON.stringify(normalizeRegistry(registry), null, 2)}\n`, "utf8");
+  writeSurfaceRegistryFile(registryPath, registry);
 }
 
 async function defaultReadCmuxTree(options = {}) {
@@ -741,7 +679,7 @@ export class TeamStatusStore {
     this.#refreshingRegistry = true;
 
     try {
-      const rawRegistry = normalizeRegistry(await this.#readRegistry(this.#registryPath));
+      const rawRegistry = normalizeSurfaceRegistry(await this.#readRegistry(this.#registryPath));
       const reconciledRegistry = await this.#reconcileRegistryAgainstCmuxTree(rawRegistry);
       this.#setRegistry(reconciledRegistry);
       await this.#seedImplicitSurfaceStates(this.#registry);
@@ -833,7 +771,7 @@ export class TeamStatusStore {
   }
 
   #setRegistry(rawRegistry) {
-    this.#rawRegistry = normalizeRegistry(rawRegistry);
+    this.#rawRegistry = normalizeSurfaceRegistry(rawRegistry);
     this.#registry = withImplicitRegistryMembers(this.#rawRegistry);
     this.#pruneSurfaceStates();
   }
@@ -895,10 +833,10 @@ export class TeamStatusStore {
     }
 
     if (!treeResult.ok) {
-      return normalizeRegistry(rawRegistry);
+      return normalizeSurfaceRegistry(rawRegistry);
     }
 
-    const normalizedRegistry = normalizeRegistry(rawRegistry);
+    const normalizedRegistry = normalizeSurfaceRegistry(rawRegistry);
     const reconciledRegistry = reconcileRegistryWithCmuxTree(normalizedRegistry, treeResult.output);
     await this.#persistRegistryIfChanged(normalizedRegistry, reconciledRegistry);
     return reconciledRegistry;
@@ -929,8 +867,8 @@ export class TeamStatusStore {
   }
 
   async #persistRegistryIfChanged(previousRegistry, nextRegistry) {
-    const normalizedPrevious = normalizeRegistry(previousRegistry);
-    const normalizedNext = normalizeRegistry(nextRegistry);
+    const normalizedPrevious = normalizeSurfaceRegistry(previousRegistry);
+    const normalizedNext = normalizeSurfaceRegistry(nextRegistry);
     if (JSON.stringify(normalizedPrevious) === JSON.stringify(normalizedNext)) {
       return;
     }

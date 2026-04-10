@@ -35,6 +35,7 @@ KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 KUMA_USER_MEMO_DIR="${KUMA_USER_MEMO_DIR:-$HOME/.claude/projects/-Users-soohongkim-Documents-workspace/memory}"
 KUMA_DISABLE_VAULT_HOOK="${KUMA_DISABLE_VAULT_HOOK:-0}"
 KUMA_VAULT_LOCK_PATH="${KUMA_VAULT_LOCK_PATH:-$KUMA_VAULT_DIR/.lock}"
+KUMA_WAIT_POLL_INTERVAL="${KUMA_WAIT_POLL_INTERVAL:-5}"
 
 VAULT_HOOK_WARNED_KEYS=$'\n'
 
@@ -50,9 +51,64 @@ QA_REJECT_RECORDED=0
 
 SIGNAL_DIR="${KUMA_SIGNAL_DIR:-/tmp/kuma-signals}"
 AUTO_INGEST_STATUS=""
+WAIT_REFERENCE_TIMESTAMP_MS="0"
 
 signal_file_exists() {
   [ -f "$SIGNAL_DIR/$SIGNAL" ]
+}
+
+path_mtime_ms() {
+  local path="${1:?path required}"
+
+  node -e '
+const fs = require("node:fs");
+const path = process.argv[1];
+if (!path || !fs.existsSync(path)) {
+  process.exit(1);
+}
+process.stdout.write(`${Math.floor(fs.statSync(path).mtimeMs)}\n`);
+' "$path"
+}
+
+resolve_wait_reference_timestamp_ms() {
+  local task_json=""
+  local task_file=""
+
+  task_json="$(current_task_metadata_json)"
+  task_file="$(json_field "$task_json" taskFile)"
+  if [ -n "$task_file" ] && [ -f "$task_file" ]; then
+    path_mtime_ms "$task_file"
+    return 0
+  fi
+
+  printf '0\n'
+}
+
+initialize_signal_wait_reference() {
+  WAIT_REFERENCE_TIMESTAMP_MS="$(resolve_wait_reference_timestamp_ms 2>/dev/null || printf '0\n')"
+}
+
+signal_file_is_fresh() {
+  local signal_path="$SIGNAL_DIR/$SIGNAL"
+
+  [ -f "$signal_path" ] || return 1
+
+  case "${WAIT_REFERENCE_TIMESTAMP_MS:-0}" in
+    ""|0)
+      return 0
+      ;;
+  esac
+
+  node -e '
+const fs = require("node:fs");
+const signalPath = process.argv[1];
+const referenceTimestampMs = Number(process.argv[2] || 0);
+if (!signalPath || !fs.existsSync(signalPath)) {
+  process.exit(1);
+}
+const signalTimestampMs = Math.floor(fs.statSync(signalPath).mtimeMs);
+process.exit(signalTimestampMs >= referenceTimestampMs ? 0 : 1);
+' "$signal_path" "$WAIT_REFERENCE_TIMESTAMP_MS"
 }
 
 extract_auto_ingest_status() {
@@ -1183,25 +1239,26 @@ EOF
 wait_once() {
   local timeout="$1"
   local elapsed=0
-  local interval=5
+  local interval="${KUMA_WAIT_POLL_INTERVAL:-5}"
 
   observe_result_state
 
-  # Check file-based signal first (worker may have written it before wait started)
-  if signal_file_exists; then
+  # Exact signal-file polling is the canonical receiver path. We ignore stale
+  # files that predate the current dispatch/task metadata and never rely on
+  # cmux wait-for here because native wait can false-positive on similar names.
+  if signal_file_is_fresh; then
     return 0
   fi
 
-  # Poll: try cmux native wait in short intervals, check signal file between each
   while [ "$elapsed" -lt "$timeout" ]; do
     local remaining=$((timeout - elapsed))
     local wait_time=$((interval < remaining ? interval : remaining))
 
-    if cmux wait-for "$SIGNAL" --timeout "$wait_time"; then
-      return 0
+    if [ "$wait_time" -gt 0 ]; then
+      sleep "$wait_time"
     fi
 
-    if signal_file_exists; then
+    if signal_file_is_fresh; then
       return 0
     fi
 
@@ -1218,7 +1275,7 @@ liveness_check_after_timeout() {
   local preview=""
   local normalized_preview=""
 
-  if signal_file_exists; then
+  if signal_file_is_fresh; then
     return 0
   fi
 
@@ -1227,7 +1284,7 @@ liveness_check_after_timeout() {
   preview="$(json_field "$status_json" preview)"
   normalized_preview="$(compact_preview "$preview")"
 
-  if signal_file_exists; then
+  if signal_file_is_fresh; then
     return 0
   fi
 
@@ -1343,6 +1400,8 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+initialize_signal_wait_reference
 
 if [ -z "$SURFACE" ]; then
   if wait_once "$TIMEOUT"; then
