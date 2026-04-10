@@ -154,7 +154,7 @@ export function StudioPage() {
         } else if (ev.kind === "agent-state-change") {
           const member = teamMembers.find((m) => m.id === ev.agentId);
           if (member) {
-            const stateMsg: Record<string, string> = { working: "작업 시작", thinking: "생각 중", completed: "작업 완료", error: "오류 발생", idle: "대기 상태" };
+            const stateMsg: Record<string, string> = { working: "작업 시작", thinking: "생각 중", completed: "작업 완료", error: "오류 발생", idle: "대기 상태", offline: "오프라인" };
             const eventType = ev.state === "error" ? "error" as const : ev.state === "completed" ? "task-complete" as const : ev.state === "working" ? "task-start" as const : "state-change" as const;
             useActivityStore.getState().push({ agentId: ev.agentId, agentName: member.nameKo, emoji: member.emoji ?? "", type: eventType, message: stateMsg[ev.state] ?? ev.state });
           }
@@ -218,7 +218,7 @@ export function StudioPage() {
     { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel /> },
     { id: "git-log", title: "커밋 로그", className: "w-72", content: <GitLogPanel /> },
     { id: "memo", title: "메모", className: "w-80", content: <MemoPanel /> },
-    { id: "content", title: "스레드 콘텐츠", className: "w-[min(36rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
+    { id: "content", title: "스레드 콘텐츠", className: "w-[min(56rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
     { id: "cmux", title: "cmux", className: "w-64", content: <CmuxPanel /> },
     { id: "activity-feed", title: "활동 로그", className: "w-72", content: <ActivityFeed />, hidden: activityCount === 0 },

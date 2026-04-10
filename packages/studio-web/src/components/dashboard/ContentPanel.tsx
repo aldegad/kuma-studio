@@ -16,6 +16,8 @@ const STATUS_META: Record<ThreadDocumentStatus, { label: string; accent: string 
   posted: { label: "Posted", accent: "#0ea5e9" },
 };
 
+const STATUS_CYCLE: ThreadDocumentStatus[] = ["draft", "approved", "posted"];
+
 type EditingField = "title" | "body" | null;
 type SavingField = EditingField | "status";
 
@@ -211,6 +213,22 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
     }
   };
 
+  const cycleStatus = async () => {
+    if (!selectedItem || savingField) return;
+    const currentIndex = STATUS_CYCLE.indexOf(selectedItem.status);
+    const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length];
+    setSavingField("status");
+    try {
+      const updated = await updateThreadDocument(selectedItem.id, { status: nextStatus });
+      replaceItem(updated);
+      setError(null);
+    } catch (statusError) {
+      setError(statusError instanceof Error ? statusError.message : "상태 변경에 실패했습니다.");
+    } finally {
+      setSavingField((current) => (current === "status" ? null : current));
+    }
+  };
+
   return (
     <section
       aria-labelledby="content-panel-title"
@@ -276,9 +294,9 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
             </div>
           ) : null}
 
-          <div className="grid min-h-[34rem] lg:grid-cols-[minmax(0,1fr),minmax(0,4fr)]">
+          <div className="grid min-h-[34rem] grid-cols-[minmax(0,1fr),minmax(0,4fr)]">
             <aside
-              className="border-t px-3 py-3 lg:border-r lg:border-t-0"
+              className="border-r px-3 py-3"
               style={{ borderColor: "var(--panel-border)" }}
             >
               <div
@@ -317,9 +335,14 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                             background: selected ? "color-mix(in srgb, var(--color-kuma-orange) 11%, transparent)" : "transparent",
                           }}
                         >
-                          <p className="truncate text-[14px] font-semibold leading-6">
-                            {item.title || item.fileName}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={statusPillStyle(item.status)}>
+                              {STATUS_META[item.status].label}
+                            </span>
+                            <p className="truncate text-[14px] font-semibold leading-6">
+                              {item.title || item.fileName}
+                            </p>
+                          </div>
                         </button>
                       );
                     })
@@ -328,7 +351,7 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
               </div>
             </aside>
 
-            <div className="border-t lg:border-t-0" style={{ borderColor: "var(--panel-border)" }}>
+            <div>
               {!selectedItem ? (
                 <div className="flex h-full min-h-[34rem] flex-col items-center justify-center px-6 py-12 text-center">
                   <p className="text-[18px] font-semibold">선택된 스레드가 없습니다.</p>
@@ -347,9 +370,17 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                         Detail
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full px-2 py-0.5 text-[12px] font-semibold" style={statusPillStyle(selectedItem.status)}>
-                          {STATUS_META[selectedItem.status].label}
-                        </span>
+                        <button
+                          type="button"
+                          data-panel-no-drag="true"
+                          onClick={() => void cycleStatus()}
+                          disabled={savingField === "status"}
+                          className="rounded-full px-2 py-0.5 text-[12px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
+                          style={{ ...statusPillStyle(selectedItem.status), cursor: "pointer" }}
+                          title="클릭하여 상태 변경"
+                        >
+                          {savingField === "status" ? "..." : STATUS_META[selectedItem.status].label}
+                        </button>
                         <span className="text-[12px]" style={{ color: "var(--t-secondary)" }}>
                           {selectedItem.fileName}
                         </span>

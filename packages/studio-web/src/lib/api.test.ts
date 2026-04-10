@@ -61,3 +61,36 @@ describe("memo api payload validation", () => {
     })).resolves.toEqual(payload);
   });
 });
+
+describe("team status api payload validation", () => {
+  it("preserves offline members from team-status payloads", async () => {
+    vi.resetModules();
+    const payload = {
+      projects: [
+        {
+          projectId: "kuma-studio",
+          projectName: "kuma-studio",
+          members: [
+            {
+              id: "tookdaki",
+              surface: "surface:18",
+              state: "offline",
+              lastOutputLines: [],
+              task: null,
+              modelInfo: null,
+              updatedAt: "2026-04-10T00:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => payload,
+    }));
+
+    const { fetchTeamStatus } = await import("./api");
+
+    await expect(fetchTeamStatus()).resolves.toEqual(payload);
+  });
+});

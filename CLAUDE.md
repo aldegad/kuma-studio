@@ -20,6 +20,11 @@
 - 이미 실행한 액션은 반드시 과거형으로 보고한다: "넣었어", "시켰어", "저장했어" (O) / "넣을게", "시킬게", "저장할게" (X)
 - 유저가 내가 뭘 했는지 인지하게 하는 게 목적. 이미 한 일을 미래형으로 말하면 안 한 것처럼 들린다.
 
+## 절대 금지 규칙
+- **Playwright 사용 금지.** 스크린샷은 반드시 쿠마피커(kuma-picker)로 찍는다. Playwright headless browser 절대 금지.
+- **fallback/backfill 패턴 절대 금지.** 실패하면 실패로 보고. 자동 재전달/auto-redispatch/다른 소스에서 보충 절대 금지. SSOT 하나만 사용.
+- **서버 포트는 4312.** 3000/3001 아님. 확인 없이 포트 추측 금지.
+
 ## Conventions
 
 - Server boot/restart is standardized on `npm run server:reload`.

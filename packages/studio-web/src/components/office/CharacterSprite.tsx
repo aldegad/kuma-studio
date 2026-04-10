@@ -78,6 +78,7 @@ const animalFallbackMap: Record<string, string> = Object.fromEntries(
 
 const stateAnimation: Record<string, string> = {
   idle: "",
+  offline: "",
   working: "animate-bounce",
   thinking: "animate-pulse",
   completed: "animate-ping-once",

@@ -88,7 +88,9 @@ function createFakeCmuxEnvironment(root, tempDirs) {
   const binDir = join(root, "bin");
   mkdirSync(binDir, { recursive: true });
   const logPath = join(root, "cmux.log");
+  const readCountPath = join(root, "read-count.txt");
   const cmuxPath = join(binDir, "cmux");
+  writeFileSync(readCountPath, "0", "utf8");
 
   writeExecutable(
     cmuxPath,
@@ -116,7 +118,14 @@ case "$cmd" in
   send|send-key)
     ;;
   read-screen)
-    printf 'worker output delivered\\n'
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '❯\\n'
+    else
+      printf 'worker output delivered\\n'
+    fi
     ;;
   tab-action)
     if [ "\${FAKE_CMUX_RENAME_FAIL:-0}" = "1" ]; then

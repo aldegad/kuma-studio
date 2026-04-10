@@ -347,7 +347,7 @@ describe("team-status-store", () => {
     });
   });
 
-  it("keeps system members idle with null surfaces when they are missing from the live registry", () => {
+  it("marks system members offline when they have no live surface", () => {
     const snapshot = toStudioTeamStatusSnapshot(
       new Map([["surface:7", { status: "working", lastOutput: "Working on API route" }]]),
       {
@@ -359,7 +359,7 @@ describe("team-status-store", () => {
     assert.deepEqual(getStudioProjectMember(snapshot, "system", "kuma"), {
       id: "kuma",
       surface: null,
-      state: "idle",
+      state: "offline",
       lastOutputLines: [],
       task: null,
       modelInfo: null,
@@ -452,7 +452,7 @@ describe("team-status-store", () => {
     assert.deepEqual(moongchi, {
       id: "moongchi",
       surface: null,
-      state: "idle",
+      state: "offline",
       lastOutputLines: [],
       task: null,
       modelInfo: null,
@@ -461,7 +461,7 @@ describe("team-status-store", () => {
     assert.deepEqual(shuksshuki, {
       id: "shuksshuki",
       surface: null,
-      state: "idle",
+      state: "offline",
       lastOutputLines: [],
       task: null,
       modelInfo: null,
@@ -470,7 +470,27 @@ describe("team-status-store", () => {
     assert.deepEqual(jjooni, {
       id: "jjooni",
       surface: null,
-      state: "idle",
+      state: "offline",
+      lastOutputLines: [],
+      task: null,
+      modelInfo: null,
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    });
+  });
+
+  it("marks roster members without a live surface state as offline", () => {
+    const snapshot = toStudioTeamStatusSnapshot(
+      new Map(),
+      {
+        updatedAt: "2026-04-10T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:18" } },
+      },
+    );
+
+    assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "tookdaki"), {
+      id: "tookdaki",
+      surface: "surface:18",
+      state: "offline",
       lastOutputLines: [],
       task: null,
       modelInfo: null,
