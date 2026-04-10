@@ -38,6 +38,7 @@ describe("team-status-store", () => {
     assert.deepEqual(parseRegistryLabel("🦫 뚝딱이"), {
       name: "뚝딱이",
       emoji: "🦫",
+      text: "🦫 뚝딱이",
     });
   });
 

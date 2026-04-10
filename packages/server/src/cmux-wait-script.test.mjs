@@ -1,6 +1,6 @@
 import { chmod, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { execFile as execFileCallback } from "node:child_process";
+import { execFile as execFileCallback, spawn } from "node:child_process";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
@@ -145,7 +145,6 @@ describe("cmux wait script", { timeout: 30000 }, () => {
     await mkdir(resultDir, { recursive: true });
     await mkdir(signalDir, { recursive: true });
 
-    await writeFile(join(signalDir, signalName), "done\n", "utf8");
     await writeFile(
       resultPath,
       `# phase8\n\n- result body\n`,
@@ -165,6 +164,7 @@ plan: ${planPath}
 `,
       "utf8",
     );
+    await writeFile(join(signalDir, signalName), "done\n", "utf8");
     await writeFile(
       surfacesPath,
       `${JSON.stringify({
@@ -214,6 +214,99 @@ printf '\\n' >> "${sendLog}"
     await expect(readFile(sendLog, "utf8")).rejects.toThrow();
   });
 
+  it("waits for the exact fresh signal file and ignores stale or similar matches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-wait-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const taskDir = join(root, "tasks");
+    const resultDir = join(root, "results");
+    const signalDir = join(root, "signals");
+    const resultPath = join(resultDir, "fresh.result.md");
+    const taskPath = join(taskDir, "fresh.task.md");
+    const signalName = "kuma-studio-howl-20260410-164947-done";
+    const similarSignalName = "kuma-studio-howl-20260410-164423-done";
+
+    await mkdir(binDir, { recursive: true });
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+    await mkdir(signalDir, { recursive: true });
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+if [ "$1" = "wait-for" ]; then
+  echo "false positive native wait" >&2
+  exit 0
+fi
+exit 0
+`,
+    );
+
+    await writeFile(join(signalDir, similarSignalName), "done\n", "utf8");
+    await writeFile(join(signalDir, signalName), "stale\n", "utf8");
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+
+    await writeFile(
+      taskPath,
+      `---
+id: howl-20260410-164947
+project: kuma-studio
+worker: surface:3
+qa: worker-self-report
+signal: ${signalName}
+result: ${resultPath}
+---
+# fresh-task
+
+Wait for an exact signal file
+`,
+      "utf8",
+    );
+
+    const child = spawn("bash", [WAIT_SCRIPT_PATH, signalName, resultPath, "--timeout", "4"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_AUTO_VAULT_INGEST: "0",
+        KUMA_AUTO_NOEURI_TRIGGER: "0",
+        KUMA_SIGNAL_DIR: signalDir,
+        KUMA_TASK_DIR: taskDir,
+        KUMA_WAIT_POLL_INTERVAL: "1",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1200));
+
+    expect(child.exitCode).toBeNull();
+    expect(stdout).not.toContain("SIGNAL_RECEIVED");
+    expect(stderr).not.toContain("false positive native wait");
+
+    await writeFile(resultPath, "# fresh result\nexact match only\n", "utf8");
+    await writeFile(join(signalDir, signalName), "done\n", "utf8");
+
+    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
+      child.on("error", rejectPromise);
+      child.on("close", resolvePromise);
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain(`SIGNAL_RECEIVED: ${signalName}`);
+    expect(stdout).toContain("exact match only");
+    expect(stderr).toBe("");
+  });
+
   it("dispatches a Noeuri follow-up and still exits 0 after successful auto ingest", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-cmux-wait-"));
     tempRoots.push(root);
@@ -233,7 +326,6 @@ printf '\\n' >> "${sendLog}"
     await mkdir(resultDir, { recursive: true });
     await mkdir(signalDir, { recursive: true });
 
-    await writeFile(join(signalDir, signalName), "done\n", "utf8");
     await writeFile(
       resultPath,
       `# phase4\n\n- result body\n`,
@@ -253,6 +345,7 @@ plan: ${planPath}
 `,
       "utf8",
     );
+    await writeFile(join(signalDir, signalName), "done\n", "utf8");
     await writeFile(
       surfacesPath,
       `${JSON.stringify({

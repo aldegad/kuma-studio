@@ -31,6 +31,7 @@ KUMA_WAIT_POLL_INTERVAL="${KUMA_WAIT_POLL_INTERVAL:-5}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
 KUMA_SURFACE_CLASSIFIER_CLI="${KUMA_SURFACE_CLASSIFIER_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-classifier-cli.mjs}"
+KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
 
 die() {
   printf 'ERROR: %s\n' "$*" >&2
@@ -209,97 +210,29 @@ member_display_label_from_json() {
   '
 }
 
+run_surface_registry_cli() {
+  [ -f "$KUMA_SURFACE_REGISTRY_CLI" ] || die "surface registry bridge not found: $KUMA_SURFACE_REGISTRY_CLI"
+  node "$KUMA_SURFACE_REGISTRY_CLI" "$@"
+}
+
 register_surface_label() {
   local project="${1:?project required}"
   local label="${2:?label required}"
   local surface="${3:?surface required}"
-
-  node --input-type=module - "$KUMA_SURFACES_PATH" "$project" "$label" "$surface" <<'NODE'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-
-const [, , registryPath, projectId, label, surface] = process.argv;
-mkdirSync(dirname(registryPath), { recursive: true });
-
-let registry = {};
-if (existsSync(registryPath)) {
-  registry = JSON.parse(readFileSync(registryPath, "utf8"));
-}
-
-const projectEntries = registry[projectId] && typeof registry[projectId] === "object"
-  ? registry[projectId]
-  : {};
-projectEntries[label] = surface;
-registry[projectId] = projectEntries;
-
-writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
-NODE
+  run_surface_registry_cli upsert-label-surface "$KUMA_SURFACES_PATH" "$project" "$label" "$surface" > /dev/null
 }
 
 remove_surface_from_registry() {
   local surface="${1:?surface required}"
   local project="${2:-}"
 
-  node --input-type=module - "$KUMA_SURFACES_PATH" "$surface" "$project" <<'NODE'
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-
-const [, , registryPath, surface, projectFilter] = process.argv;
-if (!existsSync(registryPath)) {
-  process.exit(0);
-}
-
-const registry = JSON.parse(readFileSync(registryPath, "utf8"));
-const projectIds = projectFilter ? [projectFilter] : Object.keys(registry ?? {});
-
-for (const projectId of projectIds) {
-  const projectEntries = registry?.[projectId];
-  if (!projectEntries || typeof projectEntries !== "object") {
-    continue;
-  }
-
-  for (const [label, value] of Object.entries(projectEntries)) {
-    if (String(value ?? "") === surface) {
-      delete projectEntries[label];
-    }
-  }
-
-  if (Object.keys(projectEntries).length === 0) {
-    delete registry[projectId];
-  } else {
-    registry[projectId] = projectEntries;
-  }
-}
-
-writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
-NODE
+  run_surface_registry_cli remove-surface "$KUMA_SURFACES_PATH" "$surface" "$project" > /dev/null
 }
 
 resolve_project_anchor_surface() {
   local project="${1:?project required}"
 
-  node --input-type=module - "$KUMA_SURFACES_PATH" "$project" <<'NODE'
-import { existsSync, readFileSync } from "node:fs";
-
-const [, , registryPath, projectId] = process.argv;
-if (!existsSync(registryPath)) {
-  process.exit(1);
-}
-
-const registry = JSON.parse(readFileSync(registryPath, "utf8"));
-const projectEntries = registry?.[projectId];
-if (!projectEntries || typeof projectEntries !== "object") {
-  process.exit(1);
-}
-
-for (const surface of Object.values(projectEntries)) {
-  if (typeof surface === "string" && surface.trim()) {
-    process.stdout.write(`${surface}\n`);
-    process.exit(0);
-  }
-}
-
-process.exit(1);
-NODE
+  run_surface_registry_cli resolve-project-anchor-surface "$KUMA_SURFACES_PATH" "$project"
 }
 
 resolve_member_json() {
@@ -312,59 +245,7 @@ resolve_surface_json() {
   local project="${1:?project required}"
   local member_json="${2:?member json required}"
 
-  node --input-type=module - "$KUMA_SURFACES_PATH" "$project" "$member_json" <<'NODE'
-import { readFileSync } from "node:fs";
-
-const [, , registryPath, requestedProject, rawMember] = process.argv;
-const registry = JSON.parse(readFileSync(registryPath, "utf8"));
-const member = JSON.parse(rawMember);
-
-const seen = new Set();
-const searchProjects = [
-  requestedProject,
-  member.team,
-  ...Object.keys(registry ?? {}),
-];
-
-function parseLabel(label) {
-  const text = String(label ?? "").trim();
-  const emojiMatch = text.match(/^[\p{Extended_Pictographic}\uFE0F\s]+/u);
-  const emoji = emojiMatch ? emojiMatch[0].replace(/\s+/gu, "").trim() : "";
-  const name = text.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim() || text;
-  return { text, name, emoji };
-}
-
-function matchesLabel(label) {
-  const parsed = parseLabel(label);
-  return (
-    parsed.name === member.displayName ||
-    parsed.text === member.displayName ||
-    parsed.text === `${member.emoji} ${member.displayName}`.trim() ||
-    parsed.emoji === member.emoji
-  );
-}
-
-for (const projectId of searchProjects) {
-  if (!projectId || seen.has(projectId)) {
-    continue;
-  }
-  seen.add(projectId);
-
-  const projectMembers = registry?.[projectId];
-  if (!projectMembers || typeof projectMembers !== "object") {
-    continue;
-  }
-
-  for (const [label, surface] of Object.entries(projectMembers)) {
-    if (matchesLabel(label)) {
-      process.stdout.write(`${JSON.stringify({ project: projectId, label, surface: String(surface) })}\n`);
-      process.exit(0);
-    }
-  }
-}
-
-process.exit(1);
-NODE
+  run_surface_registry_cli resolve-member-context "$KUMA_SURFACES_PATH" "$project" "$member_json"
 }
 
 resolve_project_member_lines() {

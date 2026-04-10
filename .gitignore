@@ -6,5 +6,8 @@ dist/
 .env.*
 !.env.example
 output/
+output/playwright/
 artifacts/
 .kuma/plans/
+.playwright-cli/
+tsconfig.tsbuildinfo

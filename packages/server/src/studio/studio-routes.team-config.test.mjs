@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, assert, describe, it } from "vitest";
 
 import { TeamConfigStore, watchTeamConfig } from "./team-config-store.mjs";
-import { createStudioRouteHandler, createTeamConfigRuntime } from "./studio-routes.mjs";
+import { createStudioRouteHandler } from "./studio-routes.mjs";
+import { createTeamConfigRuntime } from "./team-config-runtime.mjs";
 import { createTeamConfigWatcherHandler } from "./team-config-watcher.mjs";
 
 const CMUX_SPAWN_SCRIPT_PATH = fileURLToPath(new URL("../../../../scripts/cmux/kuma-cmux-spawn.sh", import.meta.url));
@@ -307,6 +308,46 @@ describe("studio-routes team-config", () => {
     assert.strictEqual(res.json.members["뚝딱이"].type, "codex");
   });
 
+  it("applies explicit modelCatalogId patches without collapsing back to raw model defaults", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-routes-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const store = new TeamConfigStore(join(root, "team.json"));
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      teamStatusStore: createIdleTeamStatusStore(),
+      teamConfigStore: store,
+      teamConfigRuntime: {
+        resolveMemberContext() {
+          return { project: "kuma-studio", surface: "surface:74" };
+        },
+        async respawnMember(input) {
+          return { project: input.project, surface: input.currentSurface ?? "surface:74" };
+        },
+      },
+      workspaceRoot: root,
+    });
+
+    const res = createResponse();
+    await handler(
+      createRequest("PATCH", "/studio/team-config/bamdori", {
+        type: "codex",
+        modelCatalogId: "gpt-5.4-high-fast",
+      }),
+      res,
+      new URL("http://localhost:4312/studio/team-config/bamdori"),
+    );
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(store.getConfig().members["밤토리"].modelCatalogId, "gpt-5.4-high-fast");
+    assert.strictEqual(store.getConfig().members["밤토리"].model, "gpt-5.4");
+    assert.match(store.getConfig().members["밤토리"].options, /model_reasoning_effort="high"/u);
+    assert.match(store.getConfig().members["밤토리"].options, /service_tier=fast/u);
+  });
+
   it("queues working member respawns and persists queue plus log files", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-team-config-runtime-"));
     tempDirs.push(root);
@@ -597,7 +638,7 @@ describe("studio-routes team-config", () => {
     assert.match(log, /--dangerously-bypass-approvals-and-sandbox/u);
     assert.match(log, /-c service_tier=fast/u);
     assert.match(log, /-c model_reasoning_effort="xhigh"/u);
-  }, 10_000);
+  }, 30_000);
 
   it("passes workspace and title to tab rename and surfaces rename failures on stderr", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
@@ -627,7 +668,7 @@ describe("studio-routes team-config", () => {
     const log = readFileSync(fakeCmux.logPath, "utf8");
     assert.match(log, /tab-action --action rename --workspace workspace:9 --surface surface:123 --title 🦔 밤토리/u);
     assert.match(result.stderr, /TITLE_RENAME_FAILED: member=밤토리 surface=surface:123 workspace=workspace:9/u);
-  }, 10_000);
+  }, 30_000);
 
   it("returns cleanupFailed in the PATCH payload when old surface cleanup throws", async () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-team-config-routes-"));

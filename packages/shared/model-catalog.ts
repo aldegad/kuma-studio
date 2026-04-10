@@ -22,6 +22,8 @@ export type ModelCatalogEntry = {
   effort?: "low" | "medium" | "high" | "xhigh";
   /** Service tier passed via CLI config — codex only */
   serviceTier?: "default" | "fast";
+  /** Canonical runtime options when an entry needs explicit CLI flags */
+  options?: string;
 };
 
 export const MODEL_CATALOG = runtimeModelCatalog as readonly ModelCatalogEntry[];

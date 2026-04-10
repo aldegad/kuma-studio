@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -18,19 +18,21 @@ async function writeTeamConfig(root, value) {
   return teamPath;
 }
 
-async function writeExecutable(path, content) {
-  await writeFile(path, content, "utf8");
-  await chmod(path, 0o755);
+async function writeRegistry(root, value) {
+  const registryPath = join(root, "surfaces.json");
+  await writeFile(registryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return registryPath;
 }
 
-async function runTeamConfigHelper(helperName, teamPath) {
+async function runTeamConfigHelper(helperName, teamPath, args = [], extraEnv = {}) {
   const { stdout } = await execFile(
     "bash",
-    ["-lc", 'source "$1"; "$2"', "bash", TEAM_CONFIG_SCRIPT_PATH, helperName],
+    ["-lc", 'source "$1"; shift; "$@"', "bash", TEAM_CONFIG_SCRIPT_PATH, helperName, ...args],
     {
       env: {
         ...process.env,
         KUMA_TEAM_JSON_PATH: teamPath,
+        ...extraEnv,
       },
     },
   );
@@ -120,6 +122,80 @@ describe("shared team normalizer", () => {
     ]);
   });
 
+  it("resolves member runtime settings from top-level modelCatalog references", () => {
+    const data = normalizeAllTeams({
+      modelCatalog: [
+        {
+          id: "gpt-5.4-mini-high-fast",
+          type: "codex",
+          model: "gpt-5.4-mini",
+          label: "GPT-5.4 mini · high · fast",
+          effort: "high",
+          serviceTier: "fast",
+        },
+        {
+          id: "claude-sonnet-4-6-high",
+          type: "claude",
+          model: "claude-sonnet-4-6",
+          label: "Claude Sonnet 4.6 · high",
+          options: "--dangerously-skip-permissions",
+        },
+      ],
+      teams: {
+        dev: {
+          members: [
+            {
+              id: "lumi",
+              name: "루미",
+              modelCatalogId: "gpt-5.4-mini-high-fast",
+              spawnType: "codex",
+              spawnModel: "gpt-5.4",
+              spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+            },
+            {
+              id: "koon",
+              name: "쿤",
+              modelCatalogId: "claude-sonnet-4-6-high",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(data.modelCatalog.map((entry) => entry.id)).toEqual([
+      "gpt-5.4-mini-high-fast",
+      "claude-sonnet-4-6-high",
+    ]);
+    expect(data.members.map((member) => ({
+      id: member.id,
+      modelCatalogId: member.modelCatalogId,
+      engine: member.engine,
+      model: member.model,
+      options: member.options,
+      effort: member.effort,
+      serviceTier: member.serviceTier,
+    }))).toEqual([
+      {
+        id: "lumi",
+        modelCatalogId: "gpt-5.4-mini-high-fast",
+        engine: "codex",
+        model: "gpt-5.4-mini",
+        options: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="high"',
+        effort: "high",
+        serviceTier: "fast",
+      },
+      {
+        id: "koon",
+        modelCatalogId: "claude-sonnet-4-6-high",
+        engine: "claude",
+        model: "claude-sonnet-4-6",
+        options: "--dangerously-skip-permissions",
+        effort: null,
+        serviceTier: null,
+      },
+    ]);
+  });
+
   it("CLI bridge normalize-file matches the direct JS normalizer", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
@@ -192,5 +268,82 @@ describe("shared team normalizer", () => {
 
     const members = await runTeamConfigHelper("list_project_spawn_members", teamPath);
     expect(members).toEqual(["하울", "뚝딱이"]);
+  });
+
+  it("lists active project teams in canonical order through the shell helper", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        system: {
+          members: [{ id: "kuma", name: "쿠마", team: "system", defaultSurface: "surface:1" }],
+        },
+        dev: {
+          members: [{ id: "howl", name: "하울", team: "dev" }],
+        },
+        "strategy-analytics": {
+          members: [{ id: "buri", name: "부리", team: "strategy-analytics" }],
+        },
+        analytics: {
+          deprecated: true,
+          aliasFor: "strategy-analytics",
+          members: [],
+        },
+      },
+    });
+
+    const teams = await runTeamConfigHelper("list_project_spawn_teams", teamPath);
+    expect(teams).toEqual(["dev", "strategy-analytics"]);
+  });
+
+  it("filters team members by node type through the shell helper", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            { id: "howl", name: "하울", team: "dev", nodeType: "team" },
+            { id: "tookdaki", name: "뚝딱이", team: "dev", nodeType: "worker" },
+            { id: "koon", name: "쿤", team: "dev", nodeType: "worker" },
+          ],
+        },
+      },
+    });
+
+    await expect(runTeamConfigHelper("list_team_members", teamPath, ["dev", "team"])).resolves.toEqual(["하울"]);
+    await expect(runTeamConfigHelper("list_team_members", teamPath, ["dev", "worker"])).resolves.toEqual(["뚝딱이", "쿤"]);
+  });
+
+  it("resolves a registered member surface through the shell helper", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            { id: "howl", name: "하울", emoji: "🐺", team: "dev", nodeType: "team" },
+            { id: "tookdaki", name: "뚝딱이", emoji: "🦫", team: "dev", nodeType: "worker" },
+          ],
+        },
+      },
+    });
+    const registryPath = await writeRegistry(root, {
+      smoke: {
+        "🐺 하울": "surface:31",
+        "🦫 뚝딱이": "surface:32",
+      },
+    });
+
+    const surfaces = await runTeamConfigHelper(
+      "resolve_registered_member_surface",
+      teamPath,
+      ["smoke", "하울"],
+      { KUMA_SURFACES_PATH: registryPath },
+    );
+    expect(surfaces).toEqual(["surface:31"]);
   });
 });

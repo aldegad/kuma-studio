@@ -16,8 +16,20 @@ describe("team-config-store model catalog", () => {
     }
   });
 
-  it("exposes the six shared catalog entries and direct id lookup", () => {
-    assert.strictEqual(MODEL_CATALOG.length, 6);
+  it("exposes the seven shared catalog entries in spec order and direct id lookup", () => {
+    assert.strictEqual(MODEL_CATALOG.length, 7);
+    assert.deepStrictEqual(
+      MODEL_CATALOG.map((entry) => entry.id),
+      [
+        "gpt-5.4-mini-high-fast",
+        "gpt-5.4-mini-xhigh-fast",
+        "gpt-5.4-xhigh-fast",
+        "gpt-5.4-high-fast",
+        "claude-opus-4-6-high",
+        "claude-opus-4-6-max",
+        "claude-sonnet-4-6-high",
+      ],
+    );
 
     const entry = getModelCatalogEntry("gpt-5.4-mini-xhigh-fast");
     assert.ok(entry);
@@ -25,6 +37,12 @@ describe("team-config-store model catalog", () => {
     assert.strictEqual(entry.model, "gpt-5.4-mini");
     assert.strictEqual(entry.effort, "xhigh");
     assert.strictEqual(entry.serviceTier, "fast");
+
+    const opusMax = getModelCatalogEntry("claude-opus-4-6-max");
+    assert.ok(opusMax);
+    assert.strictEqual(opusMax.type, "claude");
+    assert.strictEqual(opusMax.model, "claude-opus-4-6");
+    assert.strictEqual(opusMax.options, "--dangerously-skip-permissions");
   });
 
   it("resolves catalog ids to raw model and codex runtime options", () => {
@@ -88,7 +106,7 @@ describe("team-config-store model catalog", () => {
     const store = new TeamConfigStore(configPath);
     const config = store.getConfig();
 
-    assert.strictEqual(config.modelCatalog.length, 6);
+    assert.strictEqual(config.modelCatalog.length, 7);
     assert.strictEqual(config.members["뚝딱이"].model, "gpt-5.4-mini");
     assert.strictEqual(config.members["뚝딱이"].modelCatalogId, "gpt-5.4-mini-xhigh-fast");
     assert.match(config.members["뚝딱이"].options, /model_reasoning_effort="xhigh"/u);

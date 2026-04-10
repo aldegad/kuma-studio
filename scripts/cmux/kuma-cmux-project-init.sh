@@ -2,8 +2,8 @@
 # Usage: kuma-cmux-project-init.sh <project> <dir> [--workspace <ws-id>]
 # --workspace: 기존 워크스페이스에 right split으로 배치 (bootstrap용)
 # 생략 시: 새 워크스페이스(탭) 생성 (추가 프로젝트용)
-# Layout: 팀 리더/워커 탭 수는 `team.json`에서 동적으로 계산
-#         시스템 팀은 공용 surface를 유지하고, 프로젝트 워커는 dev/strategy-analytics를 배치
+# Layout: 팀 리더/워커 탭 수와 팀 컬럼 수는 `team.json` active non-system teams 기준으로 동적 계산
+#         시스템 팀은 공용 surface를 유지하고, 프로젝트 팀 컬럼은 canonical team order 그대로 배치
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,8 +32,7 @@ fi
 # 전원 살아있으면 스킵
 ALL_ALIVE=true
 for name in $(list_project_spawn_members); do
-  LABEL="$(member_display_label "$name")"
-  EXISTING=$(jq -r --arg p "$PROJECT" --arg n "$name" --arg l "$LABEL" '.[$p][$l] // .[$p][$n] // empty' "$REGISTRY" 2>/dev/null || echo "")
+  EXISTING="$(resolve_registered_member_surface "$PROJECT" "$name" 2>/dev/null || true)"
   if [ -z "$EXISTING" ] || ! cmux read-screen --surface "$EXISTING" --lines 1 > /dev/null 2>&1; then
     ALL_ALIVE=false
     break
@@ -64,16 +63,38 @@ start_session() {
   echo "✓ $TITLE — $SURFACE" >&2
 }
 
-resolve_strategy_analytics_team() {
-  local candidate
-  for candidate in strategy-analytics analytics strategy; do
-    if [ -n "$(list_team_members "$candidate" | head -1)" ]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
-  done
+start_team_column() {
+  local team_id="$1"
+  local lead_surface="$2"
+  local lead_pane="$3"
+  local team_lead=""
+  local worker_name=""
+  local result=""
+  local surface=""
 
-  printf '%s\n' "strategy-analytics"
+  team_lead="$(list_team_members "$team_id" team | head -1)"
+  if [ -z "$team_lead" ]; then
+    team_lead="$(list_team_members "$team_id" worker | head -1)"
+  fi
+
+  if [ -z "$team_lead" ]; then
+    echo "✗ team '$team_id' has no spawnable members"
+    exit 1
+  fi
+
+  start_session "$lead_surface" "$team_lead" "$WS_ID"
+
+  while IFS= read -r worker_name; do
+    [ -n "$worker_name" ] || continue
+    if [ "$worker_name" = "$team_lead" ]; then
+      continue
+    fi
+
+    result=$(cmux new-surface --pane "$lead_pane" --workspace "$WS_ID" 2>&1)
+    surface=$(echo "$result" | grep -oE 'surface:[0-9]+')
+    sleep 1
+    start_session "$surface" "$worker_name" "$WS_ID"
+  done < <(list_team_members "$team_id" worker)
 }
 
 # --- 워크스페이스 확보 ---
@@ -108,34 +129,33 @@ fi
 FIRST_P=$(get_pane "$FIRST_S")
 sleep 1
 
-# --- 개발팀 (첫 pane) ---
-DEV_LEAD="$(list_team_members dev team | head -1)"
-start_session "$FIRST_S" "$DEV_LEAD" "$WS_ID"
+PROJECT_TEAMS=()
+while IFS= read -r TEAM_ID; do
+  [ -n "$TEAM_ID" ] || continue
+  PROJECT_TEAMS+=("$TEAM_ID")
+done < <(list_project_spawn_teams)
 
-while IFS= read -r NAME; do
-  [ -n "$NAME" ] || continue
-  R=$(cmux new-surface --pane "$FIRST_P" --workspace "$WS_ID" 2>&1)
-  S=$(echo "$R" | grep -oE 'surface:[0-9]+')
-  sleep 1
-  start_session "$S" "$NAME" "$WS_ID"
-done < <(list_team_members dev worker)
+if [ "${#PROJECT_TEAMS[@]}" -eq 0 ]; then
+  echo "✗ active project teams not found in team.json"
+  exit 1
+fi
 
-# --- 전략분석팀 pane (right split) ---
-STRATEGY_ANALYTICS_TEAM="$(resolve_strategy_analytics_team)"
-R2=$(cmux new-split right --surface "$FIRST_S" --workspace "$WS_ID" 2>&1)
-STRAT_S=$(echo "$R2" | grep -oE 'surface:[0-9]+')
-STRAT_P=$(get_pane "$STRAT_S")
-sleep 1
-STRAT_LEAD="$(list_team_members "$STRATEGY_ANALYTICS_TEAM" team | head -1)"
-start_session "$STRAT_S" "$STRAT_LEAD" "$WS_ID"
+# --- 프로젝트 팀 컬럼들 (canonical team order) ---
+CURRENT_TEAM_SURFACE="$FIRST_S"
+CURRENT_TEAM_PANE="$FIRST_P"
 
-while IFS= read -r NAME; do
-  [ -n "$NAME" ] || continue
-  R=$(cmux new-surface --pane "$STRAT_P" --workspace "$WS_ID" 2>&1)
-  S=$(echo "$R" | grep -oE 'surface:[0-9]+')
-  sleep 1
-  start_session "$S" "$NAME" "$WS_ID"
-done < <(list_team_members "$STRATEGY_ANALYTICS_TEAM" worker)
+for INDEX in "${!PROJECT_TEAMS[@]}"; do
+  TEAM_ID="${PROJECT_TEAMS[$INDEX]}"
+
+  if [ "$INDEX" -gt 0 ]; then
+    SPLIT_RESULT=$(cmux new-split right --surface "$CURRENT_TEAM_SURFACE" --workspace "$WS_ID" 2>&1)
+    CURRENT_TEAM_SURFACE=$(echo "$SPLIT_RESULT" | grep -oE 'surface:[0-9]+')
+    CURRENT_TEAM_PANE=$(get_pane "$CURRENT_TEAM_SURFACE")
+    sleep 1
+  fi
+
+  start_team_column "$TEAM_ID" "$CURRENT_TEAM_SURFACE" "$CURRENT_TEAM_PANE"
+done
 
 echo ""
 echo "전팀 준비 완료. (워크스페이스: $WS_ID)"

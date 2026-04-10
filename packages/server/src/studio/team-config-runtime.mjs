@@ -2,6 +2,13 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 
+import {
+  readSurfaceRegistryFile,
+  removeRegistryMemberSurface,
+  resolveRegistryMemberContext,
+  updateRegistryMemberSurface,
+  writeSurfaceRegistryFile,
+} from "../../../shared/surface-registry.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
 import { buildTeamConfigSelfWriteHash } from "./team-config-hash.mjs";
 
@@ -11,85 +18,6 @@ const DEFAULT_CMUX_KILL_SCRIPT = `${process.env.HOME ?? ""}/.kuma/cmux/kuma-cmux
 const DEFAULT_TEAM_RESPAWN_QUEUE_PATH = "/tmp/kuma-team-respawn-queue.json";
 const DEFAULT_TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
 const DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS = 5_000;
-
-function readSurfaceRegistry(registryPath = DEFAULT_SURFACE_REGISTRY_PATH) {
-  try {
-    return JSON.parse(readFileSync(registryPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function writeSurfaceRegistry(registry, registryPath = DEFAULT_SURFACE_REGISTRY_PATH) {
-  writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
-}
-
-function buildRegistryLabel(name, emoji = "") {
-  return emoji ? `${emoji} ${name}` : name;
-}
-
-function resolveRegistryMemberContext(registry, memberName, emoji = "") {
-  const canonicalLabel = buildRegistryLabel(memberName, emoji);
-  const labels = [canonicalLabel, memberName];
-
-  for (const [project, entries] of Object.entries(registry ?? {})) {
-    for (const label of labels) {
-      const surface = entries?.[label];
-      if (typeof surface === "string" && surface) {
-        return {
-          project,
-          label,
-          surface,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function updateRegistryMemberSurface(registry, project, memberName, emoji, surface) {
-  const next = { ...(registry ?? {}) };
-  const canonicalLabel = buildRegistryLabel(memberName, emoji);
-
-  for (const [projectId, entries] of Object.entries(next)) {
-    if (!entries || typeof entries !== "object") {
-      continue;
-    }
-    delete entries[memberName];
-    delete entries[canonicalLabel];
-    if (Object.keys(entries).length === 0) {
-      delete next[projectId];
-    }
-  }
-
-  next[project] = {
-    ...(next[project] ?? {}),
-    [canonicalLabel]: surface,
-  };
-
-  return next;
-}
-
-function removeRegistryMemberSurface(registry, memberName, emoji = "") {
-  const next = { ...(registry ?? {}) };
-  const canonicalLabel = buildRegistryLabel(memberName, emoji);
-
-  for (const [projectId, entries] of Object.entries(next)) {
-    if (!entries || typeof entries !== "object") {
-      continue;
-    }
-
-    delete entries[memberName];
-    delete entries[canonicalLabel];
-
-    if (Object.keys(entries).length === 0) {
-      delete next[projectId];
-    }
-  }
-
-  return next;
-}
 
 function resolveWorkspaceForSurface(surface) {
   if (!/^surface:\d+$/u.test(surface)) {
@@ -243,7 +171,7 @@ export function createTeamConfigRuntime(options = {}) {
   const logEvent = (message) => appendTeamWatcherLog(logPath, message);
   const performRespawn = ({ memberName, memberConfig, project, currentSurface, workspaceRoot }) => {
     const spawnArgs = [
-      buildRegistryLabel(memberName, memberConfig?.emoji),
+      `${memberConfig?.emoji ? `${memberConfig.emoji} ` : ""}${memberName}`.trim(),
       memberConfig?.type ?? "",
       workspaceRoot,
       project,
@@ -294,13 +222,15 @@ export function createTeamConfigRuntime(options = {}) {
     }
 
     const nextRegistry = updateRegistryMemberSurface(
-      readSurfaceRegistry(registryPath),
-      project,
-      memberName,
-      memberConfig?.emoji ?? "",
-      nextSurface,
+      readSurfaceRegistryFile(registryPath),
+      {
+        projectId: project,
+        memberName,
+        emoji: memberConfig?.emoji ?? "",
+        surface: nextSurface,
+      },
     );
-    writeSurfaceRegistry(nextRegistry, registryPath);
+    writeSurfaceRegistryFile(registryPath, nextRegistry);
 
     return {
       project,
@@ -312,7 +242,13 @@ export function createTeamConfigRuntime(options = {}) {
 
   const runtime = {
     resolveMemberContext(memberName, emoji) {
-      return resolveRegistryMemberContext(readSurfaceRegistry(registryPath), memberName, emoji);
+      return resolveRegistryMemberContext(
+        readSurfaceRegistryFile(registryPath),
+        {
+          displayName: memberName,
+          emoji,
+        },
+      );
     },
     registerPendingSelfWrite({ memberId, memberConfig, ttlMs = selfWriteTtlMs }) {
       if (!memberId) {
@@ -397,8 +333,8 @@ export function createTeamConfigRuntime(options = {}) {
       const memberContext = currentSurface
         ? { surface: currentSurface, project: null }
         : runtime.resolveMemberContext(memberName, emoji);
-      const nextRegistry = removeRegistryMemberSurface(readSurfaceRegistry(registryPath), memberName, emoji);
-      writeSurfaceRegistry(nextRegistry, registryPath);
+      const nextRegistry = removeRegistryMemberSurface(readSurfaceRegistryFile(registryPath), memberName, emoji);
+      writeSurfaceRegistryFile(registryPath, nextRegistry);
 
       if (memberContext?.surface) {
         try {

@@ -21,6 +21,7 @@ find_kuma_repo_root() {
 KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
+KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
 
 normalize_member_name() {
   local raw="${1:-}"
@@ -37,6 +38,14 @@ run_team_normalizer_cli() {
     exit 1
   }
   node "$KUMA_TEAM_NORMALIZER_CLI" "$@"
+}
+
+run_surface_registry_cli() {
+  [ -f "$KUMA_SURFACE_REGISTRY_CLI" ] || {
+    echo "ERROR: surface registry bridge not found: $KUMA_SURFACE_REGISTRY_CLI" >&2
+    exit 1
+  }
+  node "$KUMA_SURFACE_REGISTRY_CLI" "$@"
 }
 
 team_config_exists() {
@@ -146,24 +155,7 @@ member_display_label_from_record() {
 list_team_members() {
   local team="$1"
   local node_type="${2:-}"
-  node --input-type=module - "$KUMA_TEAM_JSON_PATH" "$team" "$node_type" "$KUMA_REPO_ROOT/packages/shared/team-normalizer.mjs" <<'NODE'
-import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
-
-const [, , configPath, teamId, nodeType, normalizerPath] = process.argv;
-const { normalizeAllTeams } = await import(pathToFileURL(normalizerPath).href);
-const data = normalizeAllTeams(JSON.parse(readFileSync(configPath, "utf8")));
-
-for (const member of data.members) {
-  if (member.team !== teamId) {
-    continue;
-  }
-  if (nodeType && member.nodeType !== nodeType) {
-    continue;
-  }
-  process.stdout.write(`${member.name.ko}\n`);
-}
-NODE
+  run_team_normalizer_cli list-team-members "$KUMA_TEAM_JSON_PATH" "$team" "$node_type"
 }
 
 list_bootstrap_system_members() {
@@ -172,6 +164,10 @@ list_bootstrap_system_members() {
 
 list_project_spawn_members() {
   run_team_normalizer_cli list-project-spawn-members "$KUMA_TEAM_JSON_PATH"
+}
+
+list_project_spawn_teams() {
+  run_team_normalizer_cli list-project-spawn-teams "$KUMA_TEAM_JSON_PATH"
 }
 
 list_spawn_members() {
@@ -200,4 +196,15 @@ member_display_label() {
   fi
 
   printf '%s\n' "$name"
+}
+
+resolve_registered_member_surface() {
+  local project="${1:?project required}"
+  local name="${2:?member name required}"
+  local registry_path="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+  local member_json context_json
+
+  member_json="$(team_config_get_member_json "$name" 2>/dev/null)" || return 1
+  context_json="$(run_surface_registry_cli resolve-member-context "$registry_path" "$project" "$member_json" 2>/dev/null)" || return 1
+  printf '%s' "$context_json" | node -e 'const fs=require("node:fs"); const data=JSON.parse(fs.readFileSync(0,"utf8")); if (!data.surface) process.exit(1); process.stdout.write(`${data.surface}\n`);'
 }

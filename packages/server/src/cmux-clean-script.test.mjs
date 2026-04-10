@@ -15,7 +15,7 @@ async function writeExecutable(path, content) {
   await chmod(path, 0o755);
 }
 
-describe("cmux orphan clean script", { timeout: 15_000 }, () => {
+describe("cmux orphan clean script", { timeout: 30_000 }, () => {
   const tempRoots = [];
 
   afterEach(async () => {

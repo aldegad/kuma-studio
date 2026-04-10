@@ -7,11 +7,15 @@ source "$SCRIPT_DIR/kuma-cli-common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: kuma-task <멤버이름> "<지시>" [--project <프로젝트>] [--qa <멤버|self|kuma-direct>] [--trust-worker] [--wait] [--timeout <sec>] [--poll]
+Usage: kuma-task <멤버이름> "<지시>" [--project <프로젝트>] [--qa <멤버|self|kuma-direct>] [--trust-worker] [--wait] [--wait-timeout <sec>] [--timeout <sec>] [--poll]
 
 Options:
   --qa <멤버>        QA 담당 멤버 override. 우선순위는 --qa > member.defaultQa > KUMA_DEFAULT_QA_MEMBER > 밤토리
   --trust-worker     밤토리 QA를 생략하고 qa: worker-self-report 로 기록
+  --wait             디스패치 후 exact signal file 을 감시하고 result 내용을 출력
+  --wait-timeout <sec>  최대 대기 시간. 기본 600초
+  --timeout <sec>    --wait-timeout 과 동일한 호환 alias
+  --poll             signal 대신 result file 존재를 폴링하며 대기
   --no-qa            deprecated alias for --trust-worker
 EOF
 }
@@ -32,7 +36,7 @@ shift 2
 
 PROJECT="$KUMA_DEFAULT_PROJECT"
 WAIT_FOR_SIGNAL=0
-WAIT_TIMEOUT=900
+WAIT_TIMEOUT=600
 WAIT_MODE="signal"
 TRUST_WORKER=0
 USED_DEPRECATED_NO_QA=0
@@ -55,6 +59,11 @@ while [ $# -gt 0 ]; do
     --wait)
       WAIT_FOR_SIGNAL=1
       shift
+      ;;
+    --wait-timeout)
+      WAIT_TIMEOUT="${2:?timeout seconds required}"
+      WAIT_FOR_SIGNAL=1
+      shift 2
       ;;
     --timeout)
       WAIT_TIMEOUT="${2:?timeout seconds required}"
@@ -136,10 +145,54 @@ else
     *)
       QA_MEMBER_JSON="$(resolve_member_json "$QA_TARGET_QUERY")" || die "qa member not found: $QA_TARGET_QUERY"
       QA_LABEL="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
-      QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON")" || die "qa surface not found for $QA_TARGET_QUERY"
-      QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+      QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || QA_SURFACE_JSON=""
+
+      # QA fallback: surface 없거나 busy면 fallback 멤버로 전환
+      QA_BUSY=0
+      if [ -z "$QA_SURFACE_JSON" ]; then
+        QA_BUSY=1
+      else
+        QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+        # surface status 체크
+        QA_STATUS="$(("$KUMA_CMUX_DIR/kuma-cmux-read.sh" "$QA_SURFACE" 2>/dev/null || echo "") | classify_surface_output_json | node -e 'const fs=require("node:fs"); const d=JSON.parse(fs.readFileSync(0,"utf8")); console.log(d.status);' 2>/dev/null || echo "unknown")"
+        if [ "$QA_STATUS" = "working" ]; then
+          QA_BUSY=1
+        fi
+      fi
+
+      if [ "$QA_BUSY" = "1" ]; then
+        # fallback 멤버 조회 (worker의 qaFallback 필드)
+        MEMBER_QA_FALLBACK="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const m=JSON.parse(fs.readFileSync(0,"utf8")); console.log(m.qaFallback || "");' 2>/dev/null || echo "")"
+        if [ -n "$MEMBER_QA_FALLBACK" ] && [ "$MEMBER_QA_FALLBACK" != "$QA_TARGET_QUERY" ]; then
+          printf 'QA_FALLBACK: %s busy → trying %s\n' "$QA_TARGET_QUERY" "$MEMBER_QA_FALLBACK" >&2
+          case "$MEMBER_QA_FALLBACK" in
+            self)
+              QA_MODE="self"
+              QA_LABEL="worker-self-report (fallback)"
+              QA_FRONTMATTER="worker-self-report"
+              QA_SURFACE=""
+              ;;
+            kuma-direct)
+              QA_MODE="kuma-direct"
+              QA_LABEL="kuma-direct (fallback)"
+              QA_FRONTMATTER="kuma-direct"
+              QA_SURFACE=""
+              ;;
+            *)
+              QA_MEMBER_JSON="$(resolve_member_json "$MEMBER_QA_FALLBACK")" || die "qa fallback member not found: $MEMBER_QA_FALLBACK"
+              QA_LABEL="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);') (fallback)"
+              QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || die "qa fallback surface not found for $MEMBER_QA_FALLBACK"
+              QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+              QA_FRONTMATTER="$QA_SURFACE"
+              ;;
+          esac
+        fi
+      fi
+
       QA_LABEL="${QA_LABEL:-$QA_TARGET_QUERY}"
-      QA_FRONTMATTER="$QA_SURFACE"
+      if [ -z "${QA_FRONTMATTER:-}" ]; then
+        QA_FRONTMATTER="${QA_SURFACE:-$QA_TARGET_QUERY}"
+      fi
       ;;
   esac
 fi
@@ -166,12 +219,25 @@ result: ${RESULT_FILE}
 ${INSTRUCTION}
 EOF
 
+# 오케스트레이터(team nodeType) 멤버에게는 분배 규칙 강제 삽입
+MEMBER_NODE_TYPE="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const m=JSON.parse(fs.readFileSync(0,"utf8")); console.log(m.nodeType || "worker");')"
+ORCHESTRATOR_FOOTER=""
+if [ "$MEMBER_NODE_TYPE" = "team" ]; then
+  ORCHESTRATOR_FOOTER="
+
+[오케스트레이터 규칙]
+- 직접 구현 금지. 1줄 이하 trivial fix만 예외.
+- 워커에게 kuma-task로 분배 필수.
+- 워커 태스크는 QA(밤토리)를 거치게 할 것. --trust-worker 사용 금지.
+- 순서: 플랜 작성 → 워커 분배 → 워커 QA 통과 → 결과 수합 → 시그널 발신."
+fi
+
 if [ "$QA_MODE" = "self" ]; then
-  PROMPT="Read ${TASK_FILE} and execute. Worker trust mode: qa is worker-self-report, so skip Bamdori handoff. 완료 후 result 파일에 'trusted: worker-self-report' 표시를 남기고 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것."
+  PROMPT="Read ${TASK_FILE} and execute. Worker trust mode: qa is worker-self-report, so skip Bamdori handoff. 완료 후 result 파일에 'trusted: worker-self-report' 표시를 남기고 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것.${ORCHESTRATOR_FOOTER}"
 elif [ "$QA_MODE" = "kuma-direct" ]; then
-  PROMPT="Read ${TASK_FILE} and execute. 완료 후 result 파일 작성 후 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것. 쿠마가 직접 리뷰함."
+  PROMPT="Read ${TASK_FILE} and execute. 완료 후 result 파일 작성 후 mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/${SIGNAL} 로 완료 신호 보낼 것. 쿠마가 직접 리뷰함.${ORCHESTRATOR_FOOTER}"
 else
-  PROMPT="Read ${TASK_FILE} and execute. 완료 후 QA 라우팅 프로토콜 따를 것."
+  PROMPT="Read ${TASK_FILE} and execute. 완료 후 QA 라우팅 프로토콜 따를 것.${ORCHESTRATOR_FOOTER}"
 fi
 
 "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$WORKER_SURFACE" "$PROMPT"

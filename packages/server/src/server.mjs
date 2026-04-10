@@ -27,13 +27,14 @@ import { AgentStateManager, mapJobStatusToAgentState } from "./studio/agent-stat
 import { getGitActivity, startGitActivityPolling, stopGitActivityPolling } from "./studio/git-activity-store.mjs";
 import { TokenTracker } from "./studio/token-tracker.mjs";
 import { TeamStatusStore, toStudioTeamStatusSnapshot } from "./studio/team-status-store.mjs";
-import { createStudioRouteHandler, createTeamConfigRuntime } from "./studio/studio-routes.mjs";
+import { createStudioRouteHandler } from "./studio/studio-routes.mjs";
 import { ContentStore } from "./studio/content-store.mjs";
 import { ExperimentStore } from "./studio/experiment-store.mjs";
 import { TrendStore } from "./studio/trend-store.mjs";
 import { createExperimentPipeline } from "./studio/experiment-pipeline.mjs";
 import { MemoStore } from "./studio/memo-store.mjs";
 import { TeamConfigStore, watchTeamConfig } from "./studio/team-config-store.mjs";
+import { createTeamConfigRuntime } from "./studio/team-config-runtime.mjs";
 import { createTeamConfigWatcherHandler } from "./studio/team-config-watcher.mjs";
 import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
 import { AgentHistoryStore } from "./studio/agent-history-store.mjs";

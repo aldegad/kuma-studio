@@ -19,4 +19,5 @@ export const teamData: NormalizedTeamData = {
   teams: flatTeams,
   members: flatTeamMembers,
   allTeams: normalizedTeamData.allTeams,
+  modelCatalog: normalizedTeamData.modelCatalog,
 };

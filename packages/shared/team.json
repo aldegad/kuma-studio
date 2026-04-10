@@ -1,6 +1,61 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "SINGLE SOURCE OF TRUTH — 쿠마 스튜디오 전체 팀/멤버 스키마. 팀 배치, 역할, spawnType/spawnModel/spawnOptions, capabilities는 이 파일만 수정한다.",
+  "$comment": "SINGLE SOURCE OF TRUTH — 쿠마 스튜디오 전체 팀/멤버 스키마. modelCatalog, 팀 배치, 역할, modelCatalogId/spawnType/spawnModel/spawnOptions, capabilities는 이 파일만 수정한다.",
+  "modelCatalog": [
+    {
+      "id": "gpt-5.4-mini-high-fast",
+      "type": "codex",
+      "model": "gpt-5.4-mini",
+      "label": "GPT-5.4 mini · high · fast",
+      "effort": "high",
+      "serviceTier": "fast"
+    },
+    {
+      "id": "gpt-5.4-mini-xhigh-fast",
+      "type": "codex",
+      "model": "gpt-5.4-mini",
+      "label": "GPT-5.4 mini · xhigh · fast",
+      "effort": "xhigh",
+      "serviceTier": "fast"
+    },
+    {
+      "id": "gpt-5.4-xhigh-fast",
+      "type": "codex",
+      "model": "gpt-5.4",
+      "label": "GPT-5.4 · xhigh · fast",
+      "effort": "xhigh",
+      "serviceTier": "fast"
+    },
+    {
+      "id": "gpt-5.4-high-fast",
+      "type": "codex",
+      "model": "gpt-5.4",
+      "label": "GPT-5.4 · high · fast",
+      "effort": "high",
+      "serviceTier": "fast"
+    },
+    {
+      "id": "claude-opus-4-6-high",
+      "type": "claude",
+      "model": "claude-opus-4-6",
+      "label": "Claude Opus 4.6 · high",
+      "options": "--dangerously-skip-permissions"
+    },
+    {
+      "id": "claude-opus-4-6-max",
+      "type": "claude",
+      "model": "claude-opus-4-6",
+      "label": "Claude Opus 4.6 · max",
+      "options": "--dangerously-skip-permissions"
+    },
+    {
+      "id": "claude-sonnet-4-6-high",
+      "type": "claude",
+      "model": "claude-sonnet-4-6",
+      "label": "Claude Sonnet 4.6 · high",
+      "options": "--dangerously-skip-permissions"
+    }
+  ],
   "teams": {
     "system": {
       "name": "시스템",
@@ -28,6 +83,7 @@
             "ko": "총괄 리더",
             "en": "Leader"
           },
+          "modelCatalogId": "claude-opus-4-6-high",
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
@@ -61,6 +117,7 @@
             "ko": "Vault 큐레이터. 지식 관리·정리·동기화",
             "en": "Vault Curator. Knowledge management, curation, sync"
           },
+          "modelCatalogId": "gpt-5.4-mini-high-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
@@ -94,6 +151,7 @@
             "ko": "CoS. Bash 실행 전담, cmux 워커 관리",
             "en": "CoS. Bash execution, cmux worker management"
           },
+          "modelCatalogId": "gpt-5.4-mini-high-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
@@ -143,6 +201,7 @@
             "ko": "PM. 작업 분해, 디스패치, 결과 취합",
             "en": "Operator. Task decomposition, dispatch, aggregation"
           },
+          "modelCatalogId": "gpt-5.4-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -157,7 +216,7 @@
           "nodeType": "team",
           "parentId": "kuma",
           "parallel": false,
-          "defaultQa": "bamdori",
+          "defaultQa": "self",
           "image": "/characters/howl.jpg",
           "animalKo": "늑대",
           "animalEn": "wolf"
@@ -173,6 +232,7 @@
             "ko": "구현. 코드 구현, 버그 수정, 리팩토링",
             "en": "Developer. Implementation, bug fixes, refactoring"
           },
+          "modelCatalogId": "gpt-5.4-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -189,6 +249,7 @@
           "parentId": "howl",
           "parallel": true,
           "defaultQa": "bamdori",
+          "qaFallback": "saemi",
           "image": "/characters/ttukddak.jpg",
           "animalKo": "비버",
           "animalEn": "beaver"
@@ -204,6 +265,7 @@
             "ko": "개발자. 기능 구현, 버그 수정, 리팩토링",
             "en": "Developer. Feature implementation, bug fixes, refactoring"
           },
+          "modelCatalogId": "gpt-5.4-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -219,6 +281,8 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
+          "defaultQa": "bamdori",
+          "qaFallback": "saemi",
           "image": "/characters/darami.jpg",
           "animalKo": "다람쥐",
           "animalEn": "squirrel"
@@ -234,6 +298,7 @@
             "ko": "비평가/리뷰어",
             "en": "Critic / Reviewer"
           },
+          "modelCatalogId": "gpt-5.4-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -250,7 +315,8 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "bamdori",
+          "defaultQa": "self",
+          "qaFallback": "kuma-direct",
           "image": "/characters/saemi.jpg",
           "animalKo": "독수리",
           "animalEn": "eagle"
@@ -266,6 +332,7 @@
             "ko": "퍼블리셔/디자이너. HTML/CSS/그래픽",
             "en": "Publisher / Designer. HTML/CSS/Graphics"
           },
+          "modelCatalogId": "claude-opus-4-6-high",
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
@@ -283,6 +350,7 @@
           "parentId": "howl",
           "parallel": true,
           "defaultQa": "bamdori",
+          "qaFallback": "saemi",
           "image": "/characters/koon.jpg",
           "animalKo": "너구리",
           "animalEn": "raccoon"
@@ -298,6 +366,7 @@
             "ko": "빌드/배포/화면검증. 코드 수정 X",
             "en": "QA. Build, deploy, screen verification. No code edits"
           },
+          "modelCatalogId": "gpt-5.4-mini-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -329,6 +398,7 @@
             "ko": "콘텐츠/SNS",
             "en": "Content / SNS"
           },
+          "modelCatalogId": "claude-opus-4-6-high",
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
@@ -379,6 +449,7 @@
             "ko": "리더. 전략/분석 스카우트 오케스트레이션과 합성",
             "en": "Leader. Strategy/analytics scout orchestration and synthesis"
           },
+          "modelCatalogId": "gpt-5.4-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -414,6 +485,7 @@
             "ko": "Ant / Scout. 질문 분해, 탐색 계획, 초벌 취합",
             "en": "Ant / Scout. Question decomposition, scout planning, first-pass aggregation"
           },
+          "modelCatalogId": "gpt-5.4-mini-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -444,6 +516,7 @@
             "ko": "Ant / Scout. 전략 시나리오, UX·그로스, 방향 정리",
             "en": "Ant / Scout. Strategy scenarios, UX/growth, direction setting"
           },
+          "modelCatalogId": "gpt-5.4-mini-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
@@ -481,6 +554,7 @@
             "ko": "Research scout. 웹 검색 쿼리 생성, URL 수집, 초벌 요약, source 비교",
             "en": "Fast research scout. Query generation, URL collection, first-pass summary, source comparison"
           },
+          "modelCatalogId": "gpt-5.4-mini-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
           "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=\"xhigh\" -c service_tier=fast",

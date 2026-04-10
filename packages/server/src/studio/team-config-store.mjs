@@ -6,6 +6,7 @@ import {
   MODEL_CATALOG,
   getModelCatalogEntry,
   listModelCatalogByType,
+  normalizeModelCatalog,
 } from "../../../shared/model-catalog.mjs";
 
 export const DEFAULT_TEAM_JSON_PATH = `${homedir()}/.kuma/team.json`;
@@ -15,6 +16,7 @@ const TEAM_CONFIG_DIFF_FIELDS = [
   "spawnType",
   "spawnModel",
   "spawnOptions",
+  "modelCatalogId",
 ];
 
 const CODEX_BASE_OPTIONS = "--dangerously-bypass-approvals-and-sandbox";
@@ -70,32 +72,50 @@ const PREFERRED_MODEL_CATALOG_IDS_BY_MODEL = Object.freeze({
   "gpt-5.4-mini": "gpt-5.4-mini-xhigh-fast",
 });
 
-function requireModelCatalogEntry(id) {
-  const entry = getModelCatalogEntry(id);
+function getModelCatalogEntries(catalog = MODEL_CATALOG) {
+  const normalized = normalizeModelCatalog(catalog);
+  return normalized.length > 0 ? normalized : MODEL_CATALOG;
+}
+
+function requireModelCatalogEntry(id, catalog = MODEL_CATALOG) {
+  const entry = getModelCatalogEntry(id, getModelCatalogEntries(catalog));
   if (!entry) {
     throw new Error(`Unknown model catalog entry: ${id}`);
   }
   return entry;
 }
 
-function getCatalogFallbackIdForModel(type, model = "") {
+function getCatalogFallbackIdForModel(type, model = "", catalog = MODEL_CATALOG) {
+  const entries = getModelCatalogEntries(catalog);
   const normalizedModel = normalizeWhitespace(model);
+  const defaultId = DEFAULT_MODEL_CATALOG_IDS[type];
+
+  if (!normalizedModel) {
+    return getModelCatalogEntry(defaultId, entries)?.id ?? entries.find((entry) => entry.type === type)?.id ?? defaultId;
+  }
+
   const preferredId = PREFERRED_MODEL_CATALOG_IDS_BY_MODEL[normalizedModel];
-  const preferredEntry = preferredId ? getModelCatalogEntry(preferredId) : undefined;
+  const preferredEntry = preferredId ? getModelCatalogEntry(preferredId, entries) : undefined;
   if (preferredEntry?.type === type) {
     return preferredEntry.id;
   }
 
-  return DEFAULT_MODEL_CATALOG_IDS[type];
+  const typedEntries = listModelCatalogByType(type, entries);
+  return typedEntries[0]?.id ?? defaultId;
 }
 
-function getCatalogFallbackEntry(type, model = "") {
-  return requireModelCatalogEntry(getCatalogFallbackIdForModel(type, model));
+function getCatalogFallbackEntry(type, model = "", catalog = MODEL_CATALOG) {
+  return requireModelCatalogEntry(getCatalogFallbackIdForModel(type, model, catalog), catalog);
 }
 
 function buildOptionsFromCatalogEntry(entry) {
+  const explicitOptions = normalizeWhitespace(entry?.options);
   if (entry.type !== "codex") {
-    return CLAUDE_DEFAULT_OPTIONS;
+    return explicitOptions || CLAUDE_DEFAULT_OPTIONS;
+  }
+
+  if (explicitOptions) {
+    return normalizeCodexOptions(explicitOptions, CODEX_BASE_OPTIONS);
   }
 
   let options = CODEX_BASE_OPTIONS;
@@ -108,24 +128,26 @@ function buildOptionsFromCatalogEntry(entry) {
   return normalizeWhitespace(options);
 }
 
-const DEFAULTS = Object.freeze({
-  claude: (() => {
-    const entry = requireModelCatalogEntry(DEFAULT_MODEL_CATALOG_IDS.claude);
-    return {
-      model: entry.model,
-      options: buildOptionsFromCatalogEntry(entry),
-      modelCatalogId: entry.id,
-    };
-  })(),
-  codex: (() => {
-    const entry = requireModelCatalogEntry(DEFAULT_MODEL_CATALOG_IDS.codex);
-    return {
-      model: entry.model,
-      options: buildOptionsFromCatalogEntry(entry),
-      modelCatalogId: entry.id,
-    };
-  })(),
-});
+function createDefaults(catalog = MODEL_CATALOG) {
+  const normalizedCatalog = getModelCatalogEntries(catalog);
+  const claude = getCatalogFallbackEntry("claude", "", normalizedCatalog);
+  const codex = getCatalogFallbackEntry("codex", "", normalizedCatalog);
+
+  return {
+    claude: {
+      model: claude.model,
+      options: buildOptionsFromCatalogEntry(claude),
+      modelCatalogId: claude.id,
+    },
+    codex: {
+      model: codex.model,
+      options: buildOptionsFromCatalogEntry(codex),
+      modelCatalogId: codex.id,
+    },
+  };
+}
+
+const DEFAULTS = Object.freeze(createDefaults(MODEL_CATALOG));
 
 function normalizeCodexOptions(options, fallbackOptions = DEFAULTS.codex.options) {
   const fallback = normalizeWhitespace(fallbackOptions) || DEFAULTS.codex.options;
@@ -151,13 +173,14 @@ function normalizeCodexOptions(options, fallbackOptions = DEFAULTS.codex.options
   );
 }
 
-function normalizeConfigDefaults(rawDefaults) {
+function normalizeConfigDefaults(rawDefaults, catalog = MODEL_CATALOG) {
+  const defaultCatalog = createDefaults(catalog);
   const rawClaude = {
-    ...DEFAULTS.claude,
+    ...defaultCatalog.claude,
     ...(rawDefaults?.claude ?? {}),
   };
   const rawCodex = {
-    ...DEFAULTS.codex,
+    ...defaultCatalog.codex,
     ...(rawDefaults?.codex ?? {}),
   };
 
@@ -165,15 +188,17 @@ function normalizeConfigDefaults(rawDefaults) {
     "claude",
     rawClaude.model,
     rawClaude.options,
-    DEFAULTS.claude,
+    defaultCatalog.claude,
     rawClaude.modelCatalogId,
+    catalog,
   );
   const codex = normalizeResolvedModelConfig(
     "codex",
     rawCodex.model,
     rawCodex.options,
-    DEFAULTS.codex,
+    defaultCatalog.codex,
     rawCodex.modelCatalogId,
+    catalog,
   );
 
   return { claude, codex };
@@ -191,31 +216,32 @@ function normalizeType(type, fallback) {
   return inferMemberType(fallback?.model);
 }
 
-export function resolveModelCatalogEntry(type, model, options = "") {
+export function resolveModelCatalogEntry(type, model, options = "", catalog = MODEL_CATALOG) {
   if (type !== "claude" && type !== "codex") {
     return undefined;
   }
 
+  const normalizedCatalog = getModelCatalogEntries(catalog);
   const normalizedModel = normalizeWhitespace(model);
   if (!normalizedModel) {
-    return getCatalogFallbackEntry(type);
+    return getCatalogFallbackEntry(type, "", normalizedCatalog);
   }
 
-  const directEntry = getModelCatalogEntry(normalizedModel);
+  const directEntry = getModelCatalogEntry(normalizedModel, normalizedCatalog);
   if (directEntry?.type === type) {
     return directEntry;
   }
 
   if (type === "claude") {
-    return listModelCatalogByType(type).find((entry) => entry.model === normalizedModel);
+    return listModelCatalogByType(type, normalizedCatalog).find((entry) => entry.model === normalizedModel);
   }
 
-  const fallbackEntry = getCatalogFallbackEntry(type, normalizedModel);
+  const fallbackEntry = getCatalogFallbackEntry(type, normalizedModel, normalizedCatalog);
   const normalizedOptions = normalizeCodexOptions(options, buildOptionsFromCatalogEntry(fallbackEntry));
   const effort = readCodexOption(normalizedOptions, ["model_reasoning_effort", "reasoning_effort"]);
   const serviceTier = readCodexOption(normalizedOptions, ["service_tier"]) || "default";
 
-  return listModelCatalogByType(type).find(
+  return listModelCatalogByType(type, normalizedCatalog).find(
     (entry) =>
       entry.model === normalizedModel
       && entry.effort === effort
@@ -223,13 +249,15 @@ export function resolveModelCatalogEntry(type, model, options = "") {
   );
 }
 
-function normalizeResolvedModelConfig(type, model, options, fallback, modelCatalogId = "") {
-  const defaultForType = fallback ?? DEFAULTS[type];
+function normalizeResolvedModelConfig(type, model, options, fallback, modelCatalogId = "", catalog = MODEL_CATALOG) {
+  const defaults = createDefaults(catalog);
+  const defaultForType = fallback ?? defaults[type];
+  const normalizedCatalog = getModelCatalogEntries(catalog);
   const explicitCatalogId = normalizeWhitespace(modelCatalogId) || normalizeWhitespace(model);
-  const explicitCatalogEntry = getModelCatalogEntry(explicitCatalogId);
+  const explicitCatalogEntry = getModelCatalogEntry(explicitCatalogId, normalizedCatalog);
   const requestedModel = explicitCatalogId || normalizeWhitespace(model) || defaultForType.model;
   const explicitCatalogSelection = explicitCatalogEntry?.type === type ? explicitCatalogEntry : undefined;
-  const catalogEntry = explicitCatalogSelection ?? resolveModelCatalogEntry(type, requestedModel, options);
+  const catalogEntry = explicitCatalogSelection ?? resolveModelCatalogEntry(type, requestedModel, options, normalizedCatalog);
   const fallbackOptions = catalogEntry ? buildOptionsFromCatalogEntry(catalogEntry) : defaultForType.options;
   const rawOptions = explicitCatalogSelection ? "" : options;
 
@@ -274,19 +302,21 @@ function deriveRole(member) {
   return typeof member?.role === "string" ? member.role : "";
 }
 
-function buildMemberConfig(teamId, member, defaults) {
+function buildMemberConfig(teamId, member, defaults, modelCatalog = MODEL_CATALOG) {
   const fallback = {
     model: typeof member?.spawnModel === "string" && member.spawnModel
       ? member.spawnModel
       : "",
   };
   const type = normalizeType(member?.spawnType, fallback);
-  const defaultForType = defaults[type] ?? DEFAULTS[type];
+  const defaultForType = defaults[type] ?? createDefaults(modelCatalog)[type];
   const resolvedModel = normalizeResolvedModelConfig(
     type,
     typeof member?.spawnModel === "string" ? member.spawnModel : "",
     typeof member?.spawnOptions === "string" ? member.spawnOptions : "",
     defaultForType,
+    typeof member?.modelCatalogId === "string" ? member.modelCatalogId : "",
+    modelCatalog,
   );
 
   return {
@@ -300,7 +330,7 @@ function buildMemberConfig(teamId, member, defaults) {
   };
 }
 
-function flattenTeamMembers(teamSchema, defaults) {
+function flattenTeamMembers(teamSchema, defaults, modelCatalog = MODEL_CATALOG) {
   const members = {};
 
   for (const [teamId, team] of Object.entries(teamSchema?.teams ?? {})) {
@@ -310,14 +340,14 @@ function flattenTeamMembers(teamSchema, defaults) {
         continue;
       }
 
-      members[displayName] = buildMemberConfig(teamId, member, defaults);
+      members[displayName] = buildMemberConfig(teamId, member, defaults, modelCatalog);
     }
   }
 
   return members;
 }
 
-function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}) {
+function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}, modelCatalog = MODEL_CATALOG) {
   const base = {
     id: typeof currentValue?.id === "string" ? currentValue.id : fallbackMember.id ?? "",
     emoji: typeof currentValue?.emoji === "string" ? currentValue.emoji : fallbackMember.emoji ?? "",
@@ -329,7 +359,7 @@ function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}
       : fallbackMember.model ?? "",
   };
   const type = normalizeType(currentValue?.type ?? fallbackMember.type, base);
-  const defaultForType = defaults[type] ?? DEFAULTS[type];
+  const defaultForType = defaults[type] ?? createDefaults(modelCatalog)[type];
   const resolvedModel = normalizeResolvedModelConfig(
     type,
     typeof currentValue?.model === "string" && currentValue.model
@@ -342,6 +372,7 @@ function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}
     typeof currentValue?.modelCatalogId === "string" && currentValue.modelCatalogId
       ? currentValue.modelCatalogId
       : fallbackMember.modelCatalogId || "",
+    modelCatalog,
   );
 
   return {
@@ -357,13 +388,14 @@ function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}
 }
 
 function normalizeTeamConfig(raw, fallbackSchema = createDefaultTeamSchema()) {
-  const defaults = normalizeConfigDefaults(raw?.defaults);
-  const fallbackMembers = flattenTeamMembers(fallbackSchema, defaults);
+  const modelCatalog = getModelCatalogEntries(raw?.modelCatalog ?? fallbackSchema?.modelCatalog ?? MODEL_CATALOG);
+  const defaults = normalizeConfigDefaults(raw?.defaults, modelCatalog);
+  const fallbackMembers = flattenTeamMembers(fallbackSchema, defaults, modelCatalog);
   const members = {};
   const sourceMembers = raw?.members && typeof raw.members === "object" ? raw.members : fallbackMembers;
 
   for (const [name, value] of Object.entries(sourceMembers)) {
-    members[name] = normalizeMemberConfig(name, value, defaults, fallbackMembers[name]);
+    members[name] = normalizeMemberConfig(name, value, defaults, fallbackMembers[name], modelCatalog);
     delete members[name].name;
   }
 
@@ -373,12 +405,12 @@ function normalizeTeamConfig(raw, fallbackSchema = createDefaultTeamSchema()) {
     }
   }
 
-  return { members, defaults, modelCatalog: MODEL_CATALOG };
+  return { members, defaults, modelCatalog };
 }
 
-function updateSchemaMemberWithConfig(member, memberConfig) {
+function updateSchemaMemberWithConfig(member, memberConfig, modelCatalog = MODEL_CATALOG) {
   const nextType = normalizeType(memberConfig?.type, memberConfig);
-  const defaults = DEFAULTS[nextType];
+  const defaults = createDefaults(modelCatalog)[nextType];
   const resolvedModel = normalizeResolvedModelConfig(
     nextType,
     typeof memberConfig?.model === "string" && memberConfig.model
@@ -391,10 +423,12 @@ function updateSchemaMemberWithConfig(member, memberConfig) {
     typeof memberConfig?.modelCatalogId === "string" && memberConfig.modelCatalogId
       ? memberConfig.modelCatalogId
       : "",
+    modelCatalog,
   );
 
   return {
     ...member,
+    modelCatalogId: resolvedModel.modelCatalogId,
     spawnType: nextType,
     spawnModel: resolvedModel.model,
     spawnOptions: resolvedModel.options,
@@ -404,6 +438,7 @@ function updateSchemaMemberWithConfig(member, memberConfig) {
 function applyConfigToTeamSchema(teamSchema, rawConfig) {
   const nextSchema = cloneJson(teamSchema);
   const normalizedConfig = normalizeTeamConfig(rawConfig, nextSchema);
+  nextSchema.modelCatalog = normalizedConfig.modelCatalog;
 
   for (const [teamId, team] of Object.entries(nextSchema?.teams ?? {})) {
     if (!Array.isArray(team?.members)) {
@@ -416,9 +451,9 @@ function applyConfigToTeamSchema(teamSchema, rawConfig) {
         return member;
       }
 
-      const fallback = buildMemberConfig(teamId, member, normalizedConfig.defaults);
+      const fallback = buildMemberConfig(teamId, member, normalizedConfig.defaults, normalizedConfig.modelCatalog);
       const memberConfig = normalizedConfig.members[displayName] ?? fallback;
-      return updateSchemaMemberWithConfig(member, memberConfig);
+      return updateSchemaMemberWithConfig(member, memberConfig, normalizedConfig.modelCatalog);
     });
   }
 
@@ -457,6 +492,7 @@ function snapshotTeamSchemaMembers(teamSchema) {
         name: typeof member?.name === "string" ? member.name : "",
         emoji: typeof member?.emoji === "string" ? member.emoji : "",
         team: typeof member?.team === "string" && member.team ? member.team : teamId,
+        modelCatalogId: normalizeComparableValue(member?.modelCatalogId),
         spawnType: normalizeComparableValue(member?.spawnType),
         spawnModel: normalizeComparableValue(member?.spawnModel),
         spawnOptions: normalizeComparableValue(member?.spawnOptions),
@@ -634,7 +670,7 @@ export class TeamConfigStore {
       typeof patch?.type === "string" ? patch.type : current.type,
       current,
     );
-    const defaults = config.defaults[nextType] ?? DEFAULTS[nextType];
+    const defaults = config.defaults[nextType] ?? createDefaults(config.modelCatalog)[nextType];
     const nextModel = typeof patch?.modelCatalogId === "string" && patch.modelCatalogId.trim()
       ? patch.modelCatalogId.trim()
       : typeof patch?.model === "string" && patch.model.trim()
@@ -650,12 +686,13 @@ export class TeamConfigStore {
     const nextMemberConfig = {
       ...current,
       type: nextType,
-      ...normalizeResolvedModelConfig(nextType, nextModel, nextOptions, defaults),
+      ...normalizeResolvedModelConfig(nextType, nextModel, nextOptions, defaults, "", config.modelCatalog),
     };
 
     teamSchema.teams[address.teamId].members[address.memberIndex] = updateSchemaMemberWithConfig(
       address.member,
       nextMemberConfig,
+      config.modelCatalog,
     );
     this.writeTeamSchema(teamSchema);
 
