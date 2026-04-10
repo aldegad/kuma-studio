@@ -240,6 +240,17 @@ async function setMemberDefaultQa(sandbox, memberId, defaultQa) {
   await writeJson(sandbox.teamPath, team);
 }
 
+async function setMemberVaultDomains(sandbox, memberId, vaultDomains) {
+  const team = await readJson(sandbox.teamPath);
+  const member = team?.teams?.dev?.members?.find((entry) => entry.id === memberId);
+  if (!member) {
+    throw new Error(`member not found in sandbox team.json: ${memberId}`);
+  }
+
+  member.vaultDomains = vaultDomains;
+  await writeJson(sandbox.teamPath, team);
+}
+
 async function runScript(scriptPath, args, env, cwd) {
   return execFile("bash", [scriptPath, ...args], { env, cwd });
 }
@@ -376,6 +387,53 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     const taskFile = await readFile(taskFilePath, "utf8");
     expect(taskFile).toContain("qa: surface:7");
     expect(stdout).toContain("QA: 밤토리 (surface:7)");
+  });
+
+  it("kuma-task prepends vault domain hints when instruction keywords match the vault index", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const vaultDomainsDir = join(sandbox.env.HOME, ".kuma", "vault", "domains");
+    await mkdir(vaultDomainsDir, { recursive: true });
+    await writeFile(join(vaultDomainsDir, "security.md"), "# security\n", "utf8");
+    await writeFile(join(vaultDomainsDir, "image-generation.md"), "# image-generation\n", "utf8");
+    await writeFile(
+      join(sandbox.env.HOME, ".kuma", "vault", "index.md"),
+      [
+        "# Kuma Vault Index",
+        "",
+        "## Domains",
+        "- [보안 점검 도메인 운영 가이드](domains/security.md) — KISA, OWASP 중심 보안 점검 문서",
+        "- [이미지 생성 도메인 운영 가이드](domains/image-generation.md) — 캐릭터, 디자인, image 작업 문서",
+        "",
+        "## Projects",
+        "- [dummy](projects/dummy.md) — ignored",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await runScript(KUMA_TASK_PATH, ["뚝딱이", "보안 KISA 이미지 캐릭터 작업", "--project", "kuma-studio"], sandbox.env);
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("Read ~/.kuma/vault/domains/security.md");
+    expect(cmuxLog).toContain("Read ~/.kuma/vault/domains/image-generation.md");
+    expect(cmuxLog).toMatch(/Read ~\/\.kuma\/vault\/domains\/security\.md[\s\S]*Read ~\/\.kuma\/vault\/domains\/image-generation\.md/u);
+  });
+
+  it("kuma-task always prepends member vaultDomains even without keyword matches", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberVaultDomains(sandbox, "tookdaki", ["analytics"]);
+    const vaultDomainsDir = join(sandbox.env.HOME, ".kuma", "vault", "domains");
+    await mkdir(vaultDomainsDir, { recursive: true });
+    await writeFile(join(vaultDomainsDir, "analytics.md"), "# analytics\n", "utf8");
+
+    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("Read ~/.kuma/vault/domains/analytics.md");
   });
 
   it("kuma-read resolves a member by id and tails the requested number of lines", async () => {
