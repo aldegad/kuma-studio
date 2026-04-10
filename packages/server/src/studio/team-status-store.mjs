@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 import {
   classifySurfaceOutput,
@@ -8,15 +9,15 @@ import {
   isPromptLine,
 } from "../../../shared/surface-classifier.mjs";
 import {
-  buildRegistryLabel,
   normalizeSurfaceRegistry,
   parseRegistryLabel,
   readSurfaceRegistryFile,
   removeSurfacesFromRegistry,
   writeSurfaceRegistryFile,
 } from "../../../shared/surface-registry.mjs";
+import { normalizeAllTeams } from "../../../shared/team-normalizer.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
-import { getMembersById } from "../team-metadata.mjs";
+import { DEFAULT_TEAM_JSON_PATH } from "./team-config-store.mjs";
 
 export { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
 export { parseRegistryLabel } from "../../../shared/surface-registry.mjs";
@@ -42,71 +43,32 @@ const STUDIO_MEMBER_STATE_BY_SURFACE_STATUS = {
   dead: "error",
 };
 
-const IMPLICIT_REGISTRY_MEMBERS = Array.from(getMembersById().values())
-  .filter((member) => member.team === "system" && typeof member.defaultSurface === "string" && member.defaultSurface)
-  .map((member) => ({
-    project: "system",
-    name: member.name.ko,
-    emoji: member.emoji,
-    surface: member.defaultSurface,
-  }));
-
-function cloneRegistryProjects(registry) {
-  return Object.fromEntries(
-    Object.entries(registry ?? {}).flatMap(([projectName, projectMembers]) =>
-      projectMembers && typeof projectMembers === "object" && !Array.isArray(projectMembers)
-        ? [[projectName, { ...projectMembers }]]
-        : [],
-    ),
-  );
+function getStudioDefaultProjectId(teamId) {
+  return teamId === "system" ? "system" : "kuma-studio";
 }
 
-function hasRegistryEntries(registry) {
-  return Object.values(registry ?? {}).some(
-    (projectMembers) => projectMembers && typeof projectMembers === "object" && Object.keys(projectMembers).length > 0,
-  );
-}
+function readStudioRosterMembers() {
+  try {
+    const rawTeamSchema = JSON.parse(readFileSync(DEFAULT_TEAM_JSON_PATH, "utf8"));
+    const normalizedMembers = normalizeAllTeams(rawTeamSchema).members;
+    return normalizedMembers.flatMap((member) => {
+      const id = typeof member?.id === "string" ? member.id.trim() : "";
+      const team = typeof member?.team === "string" ? member.team.trim() : "";
+      const displayName = typeof member?.name?.ko === "string" ? member.name.ko.trim() : "";
 
-function hasRegistryMember(registry, memberName) {
-  const normalizedName = String(memberName ?? "").trim();
-  if (!normalizedName) {
-    return false;
+      return id && team && displayName
+        ? [{
+            id,
+            team,
+            displayName,
+            emoji: typeof member?.emoji === "string" ? member.emoji : "",
+            role: typeof member?.role?.ko === "string" ? member.role.ko : "",
+          }]
+        : [];
+    });
+  } catch {
+    return [];
   }
-
-  for (const projectMembers of Object.values(registry ?? {})) {
-    if (!projectMembers || typeof projectMembers !== "object") {
-      continue;
-    }
-
-    for (const label of Object.keys(projectMembers)) {
-      if (parseRegistryLabel(label).name === normalizedName) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
-export function withImplicitRegistryMembers(registry) {
-  const next = cloneRegistryProjects(registry);
-
-  if (!hasRegistryEntries(next)) {
-    return next;
-  }
-
-  for (const member of IMPLICIT_REGISTRY_MEMBERS) {
-    if (hasRegistryMember(next, member.name)) {
-      continue;
-    }
-
-    next[member.project] = {
-      ...(next[member.project] ?? {}),
-      [buildRegistryLabel(member.name, member.emoji)]: member.surface,
-    };
-  }
-
-  return next;
 }
 
 export function isRetryableCmuxSocketFailure(candidate) {
@@ -313,16 +275,11 @@ export function buildTeamStatusSnapshot(registry, surfaceStates, membersByName) 
 
 function createMembersByName() {
   const members = new Map();
-  for (const member of getMembersById().values()) {
-    const displayName = member?.name?.ko;
-    if (typeof displayName !== "string" || !displayName.trim()) {
-      continue;
-    }
-
-    members.set(displayName.trim(), {
-      id: typeof member?.id === "string" ? member.id : "",
-      emoji: typeof member?.emoji === "string" ? member.emoji : "",
-      role: typeof member?.role?.ko === "string" ? member.role.ko : "",
+  for (const member of readStudioRosterMembers()) {
+    members.set(member.displayName, {
+      id: member.id,
+      emoji: member.emoji,
+      role: member.role,
     });
   }
 
@@ -367,6 +324,31 @@ function deriveTaskFromOutput(status, lastOutputLines) {
     .find((line) => !isPromptLine(line) && !isIgnoredSurfaceLine(line));
 
   return taskLine ?? null;
+}
+
+function buildStudioLiveMemberOverlay(snapshot, membersByName) {
+  const overlay = new Map();
+
+  for (const [projectId, project] of Object.entries(snapshot?.projects ?? {})) {
+    for (const member of project?.members ?? []) {
+      const memberMeta = membersByName.get(member.name);
+      if (!memberMeta?.id || overlay.has(memberMeta.id)) {
+        continue;
+      }
+
+      const { lastOutputLines } = classifySurfaceOutput(member.lastOutput);
+      overlay.set(memberMeta.id, {
+        projectId,
+        surface: member.surface || null,
+        status: member.status,
+        lastOutputLines,
+        task: deriveTaskFromOutput(member.status, lastOutputLines),
+        modelInfo: parseModelInfo(member.lastOutput),
+      });
+    }
+  }
+
+  return overlay;
 }
 
 /**
@@ -448,27 +430,48 @@ export function mapSurfaceStatusToStudioState(status) {
  * @returns {{ projects: Array<{ projectId: string, projectName: string, members: Array<{ id: string, state: "idle" | "working" | "error", lastOutputLines: string[], task: string | null, updatedAt: string | null }> }> }}
  */
 export function toStudioTeamStatusSnapshot(snapshot, updatedAt = new Date().toISOString()) {
+  const requestedProjectId = typeof snapshot?.requestedProjectId === "string"
+    ? snapshot.requestedProjectId.trim()
+    : "";
+  const rosterMembers = readStudioRosterMembers();
   const membersByName = createMembersByName();
+  const liveMemberOverlay = buildStudioLiveMemberOverlay(snapshot, membersByName);
+  const projects = new Map();
 
-  return {
-    projects: Object.entries(snapshot?.projects ?? {}).map(([projectId, project]) => ({
+  for (const member of rosterMembers) {
+    const liveMember = liveMemberOverlay.get(member.id);
+    if (
+      requestedProjectId
+      && (
+        liveMember
+          ? liveMember.projectId !== requestedProjectId
+          : getStudioDefaultProjectId(member.team) !== requestedProjectId
+      )
+    ) {
+      continue;
+    }
+
+    const projectId = liveMember?.projectId ?? getStudioDefaultProjectId(member.team);
+    const project = projects.get(projectId) ?? {
       projectId,
       projectName: projectId,
-      members: (project?.members ?? []).map((member) => {
-        const memberMeta = membersByName.get(member.name);
-        const { lastOutputLines } = classifySurfaceOutput(member.lastOutput);
+      members: [],
+    };
 
-        return {
-          id: memberMeta?.id || member.surface,
-          surface: member.surface || null,
-          state: mapSurfaceStatusToStudioState(member.status),
-          lastOutputLines,
-          task: deriveTaskFromOutput(member.status, lastOutputLines),
-          modelInfo: parseModelInfo(member.lastOutput),
-          updatedAt,
-        };
-      }),
-    })),
+    project.members.push({
+      id: member.id,
+      surface: liveMember?.surface ?? null,
+      state: liveMember ? mapSurfaceStatusToStudioState(liveMember.status) : "idle",
+      lastOutputLines: liveMember?.lastOutputLines ?? [],
+      task: liveMember?.task ?? null,
+      modelInfo: liveMember?.modelInfo ?? null,
+      updatedAt,
+    });
+    projects.set(projectId, project);
+  }
+
+  return {
+    projects: Array.from(projects.values()),
   };
 }
 
@@ -480,6 +483,7 @@ export function filterTeamStatusSnapshot(snapshot, projectId) {
 
   const project = snapshot?.projects?.[normalizedProjectId];
   return {
+    requestedProjectId: normalizedProjectId,
     projects: project ? { [normalizedProjectId]: cloneSnapshot(project) } : {},
   };
 }
@@ -679,10 +683,10 @@ export class TeamStatusStore {
     this.#refreshingRegistry = true;
 
     try {
+      this.#membersByName = createMembersByName();
       const rawRegistry = normalizeSurfaceRegistry(await this.#readRegistry(this.#registryPath));
       const reconciledRegistry = await this.#reconcileRegistryAgainstCmuxTree(rawRegistry);
       this.#setRegistry(reconciledRegistry);
-      await this.#seedImplicitSurfaceStates(this.#registry);
 
       const nextSnapshot = buildTeamStatusSnapshot(this.#registry, this.#surfaceStates, this.#membersByName);
       const changed = this.#commitSnapshot(nextSnapshot, { notifyOnStructureChange: true });
@@ -749,6 +753,7 @@ export class TeamStatusStore {
         }
       }
 
+      this.#membersByName = createMembersByName();
       this.#commitSnapshot(
         buildTeamStatusSnapshot(this.#registry, this.#surfaceStates, this.#membersByName),
         { notifyOnStructureChange: staleRegistryRemoved },
@@ -772,7 +777,7 @@ export class TeamStatusStore {
 
   #setRegistry(rawRegistry) {
     this.#rawRegistry = normalizeSurfaceRegistry(rawRegistry);
-    this.#registry = withImplicitRegistryMembers(this.#rawRegistry);
+    this.#registry = this.#rawRegistry;
     this.#pruneSurfaceStates();
   }
 
@@ -811,17 +816,6 @@ export class TeamStatusStore {
     }
 
     return true;
-  }
-
-  async #seedImplicitSurfaceStates(registry) {
-    for (const member of IMPLICIT_REGISTRY_MEMBERS) {
-      if (!hasRegistryMember(registry, member.name) || this.#surfaceStates.has(member.surface)) {
-        continue;
-      }
-
-      const state = await this.#readSurfaceState(member.surface);
-      this.#surfaceStates.set(member.surface, state);
-    }
   }
 
   async #reconcileRegistryAgainstCmuxTree(rawRegistry) {
