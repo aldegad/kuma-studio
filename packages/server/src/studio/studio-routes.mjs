@@ -3,12 +3,10 @@
  * and provides REST API endpoints for stats and office layout state.
  */
 
-import { appendFileSync, mkdirSync, readFileSync, existsSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, realpathSync, statSync } from "node:fs";
 import { readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { execFileSync, execSync } from "node:child_process";
 import { homedir } from "node:os";
-import { resolve, join, extname, basename, relative, isAbsolute, dirname } from "node:path";
-import { withCmuxEnv } from "../cmux-env.mjs";
+import { resolve, join, extname, basename, relative, isAbsolute } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { readPlans } from "./plan-store.mjs";
 import { listClaudePlans, deleteClaudePlan } from "./claude-plans-store.mjs";
@@ -22,6 +20,11 @@ import { readExtensionsCatalog } from "./extensions-catalog.mjs";
 import { isNightModeEnabled, setNightModeEnabled } from "./nightmode-store.mjs";
 import { syncVaultSkills } from "./vault-skill-sync.mjs";
 import { execGitSync } from "./git-command.mjs";
+import { createTeamConfigRuntime, findMemberStatus } from "./team-config-runtime.mjs";
+import { readStudioPlugins, readStudioSkills } from "./studio-skill-catalog.mjs";
+
+export { createTeamConfigRuntime } from "./team-config-runtime.mjs";
+export { extractStudioSkillDescription } from "./studio-skill-catalog.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -49,112 +52,6 @@ function isPathWithinRoot(rootPath, rootRealPath, candidatePath) {
   return !(realRelativePath.startsWith("..") || isAbsolute(realRelativePath));
 }
 
-function parseFrontmatter(content) {
-  const text = String(content ?? "");
-  if (!text.startsWith("---\n")) {
-    return null;
-  }
-
-  const endIndex = text.indexOf("\n---", 4);
-  if (endIndex === -1) {
-    return null;
-  }
-
-  const block = text.slice(4, endIndex).trim();
-  const fields = new Map();
-
-  for (const line of block.split(/\r?\n/u)) {
-    const match = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.+)$/u);
-    if (!match) {
-      continue;
-    }
-
-    const [, key, rawValue] = match;
-    fields.set(key, rawValue.trim().replace(/^['"]|['"]$/gu, ""));
-  }
-
-  return {
-    fields,
-    body: text.slice(endIndex + 4).trim(),
-  };
-}
-
-export function extractStudioSkillDescription(content) {
-  const frontmatter = parseFrontmatter(content);
-  const frontmatterDescription = frontmatter?.fields.get("description");
-  if (frontmatterDescription) {
-    return frontmatterDescription;
-  }
-
-  const body = frontmatter?.body ?? String(content ?? "");
-  const lines = body.split(/\r?\n/u);
-  const headingIndex = lines.findIndex((line) => /^#\s+/u.test(line.trim()));
-  const candidateLines = (headingIndex >= 0 ? lines.slice(headingIndex + 1) : lines)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .filter((line) => !/^#+\s+/u.test(line));
-
-  const firstSentence = candidateLines[0]?.match(/^(.+?[.!?])(?:\s|$)/u)?.[1] ?? candidateLines[0] ?? "";
-  return firstSentence.trim();
-}
-
-async function readStudioSkills() {
-  try {
-    const skillsDir = join(homedir(), ".claude", "skills");
-    const entries = await readdir(skillsDir, { withFileTypes: true });
-    const skills = [];
-
-    for (const entry of entries) {
-      if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
-      // Verify symlink target is a directory
-      if (entry.isSymbolicLink()) {
-        try {
-          const s = await stat(join(skillsDir, entry.name));
-          if (!s.isDirectory()) continue;
-        } catch { continue; }
-      }
-
-      try {
-        const skillDir = join(skillsDir, entry.name);
-        const files = await readdir(skillDir);
-        const skillFile = files.find((file) => file.toLowerCase() === "skill.md");
-
-        if (!skillFile) continue;
-
-        const content = await readFile(join(skillDir, skillFile), "utf8");
-
-        skills.push({
-          name: entry.name,
-          description: extractStudioSkillDescription(content),
-          file: skillFile,
-          content,
-          path: join(skillDir, skillFile),
-        });
-      } catch {
-        continue;
-      }
-    }
-
-    return skills;
-  } catch {
-    return [];
-  }
-}
-
-async function readStudioPlugins() {
-  try {
-    const settingsPath = join(homedir(), ".claude", "settings.json");
-    const content = await readFile(settingsPath, "utf8");
-    const settings = JSON.parse(content);
-    const plugins = settings.enabledPlugins;
-    if (Array.isArray(plugins)) return plugins;
-    if (plugins && typeof plugins === "object") return Object.keys(plugins).filter((k) => plugins[k]);
-    return [];
-  } catch {
-    return [];
-  }
-}
-
 // ---------------------------------------------------------------------------
 // File-system explorer helpers
 // ---------------------------------------------------------------------------
@@ -168,13 +65,6 @@ const fsAllowedRoots = [
   resolve(join(homedir(), ".kuma", "vault")),
   resolve(join(homedir(), ".kuma", "wiki")),
 ];
-const DEFAULT_SURFACE_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
-const DEFAULT_CMUX_SPAWN_SCRIPT = join(homedir(), ".kuma", "cmux", "kuma-cmux-spawn.sh");
-const DEFAULT_CMUX_KILL_SCRIPT = join(homedir(), ".kuma", "cmux", "kuma-cmux-kill.sh");
-const DEFAULT_TEAM_RESPAWN_QUEUE_PATH = "/tmp/kuma-team-respawn-queue.json";
-const DEFAULT_TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
-const DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS = 5_000;
-
 function isAllowedPath(candidatePath) {
   const resolved = resolve(candidatePath);
   return fsAllowedRoots.some((root) => resolved.startsWith(root));
@@ -231,360 +121,12 @@ async function buildFsTree(dirPath, maxDepth, currentDepth) {
   return node;
 }
 
-function readSurfaceRegistry(registryPath = DEFAULT_SURFACE_REGISTRY_PATH) {
-  try {
-    return JSON.parse(readFileSync(registryPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function writeSurfaceRegistry(registry, registryPath = DEFAULT_SURFACE_REGISTRY_PATH) {
-  writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
-}
-
-function buildRegistryLabel(name, emoji = "") {
-  return emoji ? `${emoji} ${name}` : name;
-}
-
-function resolveRegistryMemberContext(registry, memberName, emoji = "") {
-  const canonicalLabel = buildRegistryLabel(memberName, emoji);
-  const labels = [canonicalLabel, memberName];
-
-  for (const [project, entries] of Object.entries(registry ?? {})) {
-    for (const label of labels) {
-      const surface = entries?.[label];
-      if (typeof surface === "string" && surface) {
-        return {
-          project,
-          label,
-          surface,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
-function updateRegistryMemberSurface(registry, project, memberName, emoji, surface) {
-  const next = { ...(registry ?? {}) };
-  const canonicalLabel = buildRegistryLabel(memberName, emoji);
-
-  for (const [projectId, entries] of Object.entries(next)) {
-    if (!entries || typeof entries !== "object") {
-      continue;
-    }
-    delete entries[memberName];
-    delete entries[canonicalLabel];
-    if (Object.keys(entries).length === 0) {
-      delete next[projectId];
-    }
-  }
-
-  next[project] = {
-    ...(next[project] ?? {}),
-    [canonicalLabel]: surface,
-  };
-
-  return next;
-}
-
-function removeRegistryMemberSurface(registry, memberName, emoji = "") {
-  const next = { ...(registry ?? {}) };
-  const canonicalLabel = buildRegistryLabel(memberName, emoji);
-
-  for (const [projectId, entries] of Object.entries(next)) {
-    if (!entries || typeof entries !== "object") {
-      continue;
-    }
-
-    delete entries[memberName];
-    delete entries[canonicalLabel];
-
-    if (Object.keys(entries).length === 0) {
-      delete next[projectId];
-    }
-  }
-
-  return next;
-}
-
-function resolveWorkspaceForSurface(surface) {
-  if (!/^surface:\d+$/u.test(surface)) {
-    return null;
-  }
-
-  try {
-    const escaped = surface.replace(/'/gu, "'\\''");
-    const output = execSync(
-      `cmux tree 2>&1 | awk -v target='${escaped}' '{ if (match($0, /workspace:[0-9]+/)) { current_ws = substr($0, RSTART, RLENGTH) } if (index($0, target) > 0) { print current_ws; exit } }'`,
-      withCmuxEnv({ encoding: "utf8" }),
-    ).trim();
-
-    return output || null;
-  } catch {
-    return null;
-  }
-}
-
-function resolvePaneForSurface(surface) {
-  if (!/^surface:\d+$/u.test(surface)) {
-    return null;
-  }
-
-  try {
-    const escaped = surface.replace(/'/gu, "'\\''");
-    const output = execSync(
-      `cmux tree 2>&1 | grep -B5 '${escaped}' | grep -oE 'pane:[0-9]+' | tail -1`,
-      withCmuxEnv({ encoding: "utf8" }),
-    ).trim();
-
-    return output || null;
-  } catch {
-    return null;
-  }
-}
-
-function findMemberStatus(snapshot, memberName) {
-  for (const project of Object.values(snapshot?.projects ?? {})) {
-    for (const member of project?.members ?? []) {
-      if (member?.name === memberName) {
-        return member.status ?? null;
-      }
-    }
-  }
-
-  return null;
-}
-
-function readRespawnQueue(queuePath) {
-  try {
-    const parsed = JSON.parse(readFileSync(queuePath, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeRespawnQueue(queuePath, queue) {
-  mkdirSync(dirname(queuePath), { recursive: true });
-  writeFileSync(queuePath, `${JSON.stringify(queue, null, 2)}\n`, "utf8");
-}
-
-function appendTeamWatcherLog(logPath, message) {
-  mkdirSync(dirname(logPath), { recursive: true });
-  appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
-}
-
-function resolveProjectId(project, memberConfig, memberContext) {
-  if (typeof project === "string" && project.trim()) {
-    return project.trim();
-  }
-
-  if (typeof memberContext?.project === "string" && memberContext.project) {
-    return memberContext.project;
-  }
-
-  return memberConfig?.team === "system" ? "system" : "kuma-studio";
-}
-
-export function createTeamConfigRuntime(options = {}) {
-  const {
-    teamStatusStore = null,
-    teamConfigStore = null,
-    queuePath = DEFAULT_TEAM_RESPAWN_QUEUE_PATH,
-    logPath = DEFAULT_TEAM_WATCHER_LOG_PATH,
-    queuePollMs = DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS,
-  } = options;
-  let queue = readRespawnQueue(queuePath);
-  let queueTimer = null;
-
-  const persistQueue = () => {
-    writeRespawnQueue(queuePath, queue);
-  };
-  const removeQueuedRespawn = (memberId) => {
-    if (!memberId || !queue[memberId]) {
-      return;
-    }
-
-    delete queue[memberId];
-    persistQueue();
-  };
-  const getMemberStatus = (memberName) => findMemberStatus(teamStatusStore?.getSnapshot() ?? { projects: {} }, memberName);
-  const logEvent = (message) => appendTeamWatcherLog(logPath, message);
-  const performRespawn = ({ memberName, memberConfig, project, currentSurface, workspaceRoot }) => {
-    const spawnArgs = [
-      buildRegistryLabel(memberName, memberConfig?.emoji),
-      memberConfig?.type ?? "",
-      workspaceRoot,
-      project,
-    ];
-
-    if (currentSurface) {
-      const workspace = resolveWorkspaceForSurface(currentSurface);
-      const pane = resolvePaneForSurface(currentSurface);
-      if (workspace) {
-        spawnArgs.push("--workspace", workspace);
-      }
-      if (pane) {
-        spawnArgs.push("--pane", pane);
-      }
-    }
-
-    const output = execFileSync(
-      DEFAULT_CMUX_SPAWN_SCRIPT,
-      spawnArgs,
-      withCmuxEnv({
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          KUMA_SKIP_AGENT_STATE_NOTIFY: "1",
-        },
-      }),
-    ).trim();
-    const nextSurface = output.match(/surface:\d+/u)?.[0] ?? output;
-    if (!/^surface:\d+$/u.test(nextSurface)) {
-      throw new Error(`Failed to respawn ${memberName}: ${output || "missing surface id"}`);
-    }
-
-    if (currentSurface) {
-      execFileSync(DEFAULT_CMUX_KILL_SCRIPT, [currentSurface], withCmuxEnv({ encoding: "utf8" }));
-    }
-
-    const nextRegistry = updateRegistryMemberSurface(
-      readSurfaceRegistry(),
-      project,
-      memberName,
-      memberConfig?.emoji ?? "",
-      nextSurface,
-    );
-    writeSurfaceRegistry(nextRegistry);
-
-    return {
-      project,
-      surface: nextSurface,
-    };
-  };
-
-  const runtime = {
-    resolveMemberContext(memberName, emoji) {
-      return resolveRegistryMemberContext(readSurfaceRegistry(), memberName, emoji);
-    },
-    removeMemberSurface({ memberName, emoji = "", currentSurface = null }) {
-      const memberContext = currentSurface
-        ? { surface: currentSurface, project: null }
-        : runtime.resolveMemberContext(memberName, emoji);
-      const nextRegistry = removeRegistryMemberSurface(readSurfaceRegistry(), memberName, emoji);
-      writeSurfaceRegistry(nextRegistry);
-
-      if (memberContext?.surface) {
-        try {
-          execFileSync(DEFAULT_CMUX_KILL_SCRIPT, [memberContext.surface], withCmuxEnv({ encoding: "utf8" }));
-        } catch {
-          // If the surface is already gone we still want the registry cleanup to stick.
-        }
-      }
-
-      logEvent(`SURFACE_REMOVED: member=${memberName} surface=${memberContext?.surface ?? "none"}`);
-      return {
-        project: memberContext?.project ?? null,
-        surface: memberContext?.surface ?? null,
-        removed: true,
-      };
-    },
-    respawnMember({ memberName, memberConfig, project, currentSurface, workspaceRoot, deferIfWorking = true }) {
-      const memberContext = runtime.resolveMemberContext(memberName, memberConfig?.emoji);
-      const nextProject = resolveProjectId(project, memberConfig, memberContext);
-      const nextCurrentSurface = currentSurface ?? memberContext?.surface ?? null;
-      const memberStatus = getMemberStatus(memberName);
-      const memberId = memberConfig?.id ?? memberName;
-
-      if (deferIfWorking && memberStatus === "working") {
-        queue[memberId] = {
-          memberId,
-          memberName,
-          project: nextProject,
-          currentSurface: nextCurrentSurface,
-          requestedAt: new Date().toISOString(),
-          workspaceRoot,
-        };
-        persistQueue();
-        logEvent(`RESPAWN_QUEUED: member=${memberName} surface=${nextCurrentSurface ?? "none"} status=working`);
-        return {
-          project: nextProject,
-          surface: nextCurrentSurface,
-          queued: true,
-        };
-      }
-
-      const result = performRespawn({
-        memberName,
-        memberConfig,
-        project: nextProject,
-        currentSurface: nextCurrentSurface,
-        workspaceRoot,
-      });
-      removeQueuedRespawn(memberId);
-      logEvent(`RESPAWN_APPLIED: member=${memberName} old=${nextCurrentSurface ?? "none"} new=${result.surface}`);
-      return {
-        ...result,
-        queued: false,
-      };
-    },
-    processRespawnQueue() {
-      for (const [memberId, entry] of Object.entries(queue)) {
-        const latestEntry = teamConfigStore?.getMember(memberId) ?? teamConfigStore?.getMember(entry.memberName);
-        if (!latestEntry) {
-          removeQueuedRespawn(memberId);
-          logEvent(`RESPAWN_DROPPED: member=${entry.memberName} reason=missing-member`);
-          continue;
-        }
-
-        const status = getMemberStatus(latestEntry.key);
-        if (status === "working") {
-          continue;
-        }
-
-        try {
-          const currentContext = runtime.resolveMemberContext(latestEntry.key, latestEntry.member.emoji);
-          runtime.respawnMember({
-            memberName: latestEntry.key,
-            memberConfig: latestEntry.member,
-            project: entry.project,
-            currentSurface: currentContext?.surface ?? entry.currentSurface ?? null,
-            workspaceRoot: entry.workspaceRoot,
-            deferIfWorking: false,
-          });
-        } catch (error) {
-          logEvent(
-            `RESPAWN_ERROR: member=${latestEntry.key} details=${error instanceof Error ? error.message : "unknown error"}`,
-          );
-        }
-      }
-    },
-    close() {
-      if (queueTimer != null) {
-        clearInterval(queueTimer);
-      }
-    },
-  };
-
-  if (queuePollMs > 0) {
-    queueTimer = setInterval(() => {
-      runtime.processRespawnQueue();
-    }, queuePollMs);
-    queueTimer.unref?.();
-  }
-
-  return runtime;
-}
-
 /**
  * @param {object} options
  * @param {string} options.staticDir
  * @param {import("./stats-store.mjs").StatsStore} options.statsStore
  * @param {import("../scene-store.mjs").SceneStore} options.sceneStore
+ * @param {import("./agent-state.mjs").AgentStateManager} [options.agentStateManager]
  * @param {import("./team-status-store.mjs").TeamStatusStore} [options.teamStatusStore]
  * @param {import("./content-store.mjs").ContentStore} [options.contentStore]
  * @param {import("./trend-store.mjs").TrendStore} [options.trendStore]
@@ -593,9 +135,20 @@ export function createTeamConfigRuntime(options = {}) {
  * @param {import("./memo-store.mjs").MemoStore} [options.memoStore]
  * @param {import("./team-config-store.mjs").TeamConfigStore} [options.teamConfigStore]
  * @param {import("./studio-ws-events.mjs").StudioWsEvents} [options.studioWsEvents]
+ * @param {import("./agent-history-store.mjs").AgentHistoryStore} [options.agentHistoryStore]
  * @param {(options?: { vaultDir?: string }) => Promise<object>} [options.vaultSkillSyncFn]
- * @param {{ resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null, respawnMember?: (input: { memberName: string, memberConfig: object, project: string, currentSurface?: string | null, workspaceRoot: string }) => { project: string, surface: string } | Promise<{ project: string, surface: string }> }} [options.teamConfigRuntime]
+ * @param {{
+ *   resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null,
+ *   registerPendingSelfWrite?: (input: { memberId: string, memberConfig: object, ttlMs?: number }) => void,
+ *   settlePendingSelfWrite?: (memberId: string, ttlMs?: number) => void,
+ *   consumePendingSelfWrite?: (input: { memberId: string, memberConfig: object }) => boolean,
+ *   clearPendingSelfWrite?: (memberId: string) => void,
+ *   respawnMember?: (input: { memberName: string, memberConfig: object, project: string, currentSurface?: string | null, workspaceRoot: string }) =>
+ *     { project: string, surface: string | null, queued?: boolean, cleanupFailed?: boolean, cleanupError?: string | null } |
+ *     Promise<{ project: string, surface: string | null, queued?: boolean, cleanupFailed?: boolean, cleanupError?: string | null }>
+ * }} [options.teamConfigRuntime]
  * @param {string} [options.workspaceRoot]
+ * @param {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>} [options.studioDevDelegate]
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
  */
 export function createStudioRouteHandler({
@@ -740,6 +293,7 @@ export function createStudioRouteHandler({
 
       const hasPatch =
         typeof body?.type === "string" ||
+        typeof body?.modelCatalogId === "string" ||
         typeof body?.model === "string" ||
         typeof body?.options === "string";
       if (!hasPatch) {
@@ -782,8 +336,13 @@ export function createStudioRouteHandler({
         (typeof body?.project === "string" && body.project.trim()) ||
         memberContext?.project ||
         (updatedEntry.member.team === "system" ? "system" : "kuma-studio");
+      const memberId = updatedEntry.member.id || memberName;
 
       try {
+        configRuntime.registerPendingSelfWrite?.({
+          memberId,
+          memberConfig: updatedEntry.member,
+        });
         const respawned = await configRuntime.respawnMember({
           memberName,
           memberConfig: updatedEntry.member,
@@ -791,6 +350,11 @@ export function createStudioRouteHandler({
           currentSurface: memberContext?.surface ?? null,
           workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")),
         });
+        configRuntime.settlePendingSelfWrite?.(memberId);
+        const cleanupFailed = "cleanupFailed" in respawned && respawned.cleanupFailed === true;
+        const cleanupError = "cleanupError" in respawned && typeof respawned.cleanupError === "string"
+          ? respawned.cleanupError
+          : null;
 
         const payload = {
           member: memberName,
@@ -798,11 +362,14 @@ export function createStudioRouteHandler({
           project: respawned.project,
           surface: respawned.surface ?? memberContext?.surface ?? null,
           queued: respawned.queued === true,
+          cleanupFailed,
+          cleanupError,
           forced: body?.force === true,
         };
         studioWsEvents?.broadcastTeamConfigChanged(payload);
         sendJson(res, 200, payload);
       } catch (error) {
+        configRuntime.clearPendingSelfWrite?.(memberId);
         teamConfigStore.saveConfig(previousConfig);
         sendJson(res, 500, {
           error: "Failed to respawn member with the updated team config.",
@@ -1139,44 +706,6 @@ export function createStudioRouteHandler({
         status: agentStateManager.getState(agentId),
         task: agentStateManager.getTask(agentId),
       });
-      return true;
-    }
-
-    // ------------------------------------------------------------------
-    // Nightmode flag
-    // ------------------------------------------------------------------
-
-    const NIGHTMODE_FLAG = "/tmp/kuma-nightmode.flag";
-
-    if (url.pathname === "/studio/nightmode" && req.method === "GET") {
-      const enabled = existsSync(NIGHTMODE_FLAG);
-      sendJson(res, 200, { enabled });
-      return true;
-    }
-
-    if (url.pathname === "/studio/nightmode" && req.method === "POST") {
-      let body;
-      try {
-        body = await readJsonBody(req);
-      } catch {
-        sendJson(res, 400, { error: "Invalid JSON body." });
-        return true;
-      }
-      const enabled = body?.enabled === true;
-      try {
-        if (enabled) {
-          writeFileSync(NIGHTMODE_FLAG, new Date().toISOString(), "utf-8");
-        } else if (existsSync(NIGHTMODE_FLAG)) {
-          const { unlinkSync } = await import("node:fs");
-          unlinkSync(NIGHTMODE_FLAG);
-        }
-      } catch {
-        // ignore flag write errors
-      }
-      if (studioWsEvents) {
-        studioWsEvents.broadcastNightMode(enabled);
-      }
-      sendJson(res, 200, { enabled });
       return true;
     }
 

@@ -22,6 +22,7 @@
     "kuma-studio:get-browser-session": "node ./packages/server/src/cli.mjs get-browser-session",
     "kuma-studio:run": "node ./packages/server/src/cli.mjs run",
     "kuma-studio:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
+    "kuma-studio:vault-lint": "node ./packages/server/src/cli.mjs vault-lint",
     "vault:ingest": "node ./packages/server/src/cli.mjs vault-ingest",
     "wiki:ingest": "npm run vault:ingest",
     "kuma-studio:dashboard": "open http://localhost:4312/studio",

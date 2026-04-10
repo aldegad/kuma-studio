@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMemoStore } from "../../stores/use-memo-store";
+import { MemoImageLightbox } from "./MemoImageLightbox";
+import { buildMemoImageFilename, copyMemoImageToClipboard, downloadMemoImage } from "./memo-image-actions";
+
+interface MemoLightboxImage {
+  url: string;
+  label: string;
+  fileName: string;
+}
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -20,7 +28,9 @@ export function MemoPanel() {
     if (!initialized) loadMemos();
   }, [initialized, loadMemos]);
   const [showForm, setShowForm] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<MemoLightboxImage | null>(null);
+  const [lightboxMessage, setLightboxMessage] = useState<string | null>(null);
+  const [lightboxBusyAction, setLightboxBusyAction] = useState<"download" | "copy" | null>(null);
 
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
@@ -40,6 +50,58 @@ export function MemoPanel() {
     setText("");
     setImageUrls("");
     setShowForm(false);
+  };
+
+  const closeLightbox = () => {
+    setLightboxImage(null);
+    setLightboxMessage(null);
+    setLightboxBusyAction(null);
+  };
+
+  const handleOpenLightbox = (url: string, label: string) => {
+    setLightboxImage({
+      url,
+      label,
+      fileName: buildMemoImageFilename(url, label),
+    });
+    setLightboxMessage(null);
+    setLightboxBusyAction(null);
+  };
+
+  const handleDownloadLightboxImage = async () => {
+    if (!lightboxImage) {
+      return;
+    }
+
+    setLightboxBusyAction("download");
+    setLightboxMessage(null);
+
+    try {
+      const fileName = await downloadMemoImage(lightboxImage.url, lightboxImage.label);
+      setLightboxMessage(`${fileName} 다운로드를 시작했습니다.`);
+    } catch (error) {
+      setLightboxMessage(error instanceof Error ? error.message : "메모 이미지 다운로드에 실패했습니다.");
+    } finally {
+      setLightboxBusyAction(null);
+    }
+  };
+
+  const handleCopyLightboxImage = async () => {
+    if (!lightboxImage) {
+      return;
+    }
+
+    setLightboxBusyAction("copy");
+    setLightboxMessage(null);
+
+    try {
+      await copyMemoImageToClipboard(lightboxImage.url);
+      setLightboxMessage("이미지를 클립보드에 복사했습니다.");
+    } catch (error) {
+      setLightboxMessage(error instanceof Error ? error.message : "메모 이미지 복사에 실패했습니다.");
+    } finally {
+      setLightboxBusyAction(null);
+    }
   };
 
   return (
@@ -152,7 +214,9 @@ export function MemoPanel() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => deleteMemo(memo.id)}
+                        onClick={() => {
+                          void deleteMemo(memo.id);
+                        }}
                         className="shrink-0 rounded px-1.5 py-0.5 text-[10px] transition-colors"
                         style={{ color: "var(--danger-text)" }}
                         title="삭제"
@@ -169,12 +233,13 @@ export function MemoPanel() {
 
                     {memo.images.length > 0 && (
                       <div className="flex flex-wrap gap-1">
-                        {memo.images.map((url) => (
+                        {memo.images.map((url, index) => (
                           <button
                             key={url}
                             type="button"
-                            onClick={() => setLightboxUrl(url)}
+                            onClick={() => handleOpenLightbox(url, memo.title)}
                             className="overflow-hidden rounded-md border border-transparent transition-colors hover:border-current"
+                            aria-label={`${memo.title} 이미지 ${index + 1} 확대 보기`}
                           >
                             <img
                               src={url}
@@ -194,25 +259,20 @@ export function MemoPanel() {
         )}
       </section>
 
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => setLightboxUrl(null)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setLightboxUrl(null);
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="이미지 확대 보기"
-        >
-          <img
-            src={lightboxUrl}
-            alt=""
-            className="max-h-[85vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <MemoImageLightbox
+        imageUrl={lightboxImage?.url ?? null}
+        imageLabel={lightboxImage?.label ?? ""}
+        fileName={lightboxImage?.fileName ?? ""}
+        actionMessage={lightboxMessage}
+        busyAction={lightboxBusyAction}
+        onDownload={() => {
+          void handleDownloadLightboxImage();
+        }}
+        onCopy={() => {
+          void handleCopyLightboxImage();
+        }}
+        onClose={closeLightbox}
+      />
     </>
   );
 }

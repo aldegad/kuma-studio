@@ -1,68 +1,26 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 
+import {
+  classifySurfaceOutput,
+  classifySurfaceStatus,
+  getOutputLines,
+  isIgnoredSurfaceLine,
+  isPromptLine,
+} from "../../../shared/surface-classifier.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
 import { getMembersById } from "../team-metadata.mjs";
+
+export { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
 
 const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
 const DEFAULT_SURFACE_POLL_MS = 5_000;
+const CMUX_TREE_READ_TIMEOUT_MS = 5_000;
 const SURFACE_READ_TIMEOUT_MS = 5_000;
 const CMUX_SOCKET_HEAL_RETRY_DELAYS_MS = [0, 150];
-const PROMPT_LINE_PATTERN = /^(?:❯|>|›)\s*$/u;
-const CODEX_SUGGESTION_LINE_PATTERN = /^›\s+\S/u;
-const BOX_DRAWING_PATTERN = /[\u2500-\u257F]/u;
-const SURFACE_SPINNER_PATTERN = /^[✻✶✳✢·]\s*/u;
-const COMPLETED_SURFACE_PATTERN =
-  /^[✻✶✳✢·]\s*(?:baked|brewed|cooked|toasted|charred|churned|saut(?:e|é)ed|cogitated)\s+for\b/iu;
-const WORKING_SURFACE_PATTERNS = [
-  /^[✻✶✳✢·]\s*(?:concocting|thinking|meandering|fiddle-faddling|metamorphosing|working|reading|creating|cultivating)\b.*(?:\.\.\.|…)?$/iu,
-  /^•\s*(?:working|creating|cultivating)\b.*$/iu,
-  /^•\s*thinking(?:\.\.\.|…)?$/iu,
-  /\brunning(?:\.\.\.|…)/iu,
-];
-const THINKING_ONLY_SURFACE_PATTERNS = [
-  /^[*✻✶✳✢·]\s*(?:scurrying|cogitating|brewing|whisking|cogitated|brewed|whisked|worked)\b.*$/iu,
-];
-const ACTIVE_TOOL_WORK_LINE_PATTERNS = [
-  /^(?:[⏺●•]\s*)?(?:bash|read|edit)\(/iu,
-];
-const STATUS_BAR_LINE_PATTERNS = [
-  /⏵⏵\s*bypass(?:\s+permissions?)?(?: on\b.*)?/iu,
-  /⏵⏵.*bypa\s*·.*permissions.*$/iu,
-  /\bnow using extra usage\b/iu,
-  /\bextra credit\b/iu,
-];
-const IGNORED_SURFACE_LINE_PATTERNS = [
-  /^\s*⏵⏵.*bypass permissions/iu,
-  /^\s*⏵⏵.*bypa\s*·.*permissions/iu,
-  /^\s*\d+\s*shell\b.*(?:esc|↓)/iu,
-  /^\s*…\s*\+\d+\s*lines\b/iu,
-];
-const SURFACE_HINT_PATTERNS = [
-  /^bypass(?:\s+permissions?)?\b/iu,
-  /^now using extra usage\b/iu,
-  /^extra credit\b/iu,
-  /^compacting conversation(?:\.\.\.|…)?$/iu,
-  /^compacting conversation\b/iu,
-  /^compacted conversation\b/iu,
-  /^tip:.*\/statusline\b/iu,
-  /^\/statusline\b/iu,
-  /^context left until auto-compact\b/iu,
-  /^(?:brewed|baked|cooked|toasted|charred|churned|saut(?:e|é)ed) for\b/iu,
-  /^gpt-[\w.-]+\s+(?:low|medium|high|xhigh)(?:\s+fast)?\b/iu,
-  /^esc to\b/iu,
-  /^press up to edit\b/iu,
-  /^shift\+tab to cycle\b/iu,
-  /^tab to queue\b/iu,
-  /^[─━═─]{3,}$/u,
-];
-const IDLE_PROMPT_HINT_PATTERNS = [
-  /^~?\d+(?:\.\d+)?k uncached\b.*\/clear to start(?:\s+fresh|…)?$/iu,
-  /^gpt-[\w.-]+(?:…)?(?:\s+.*)?$/iu,
-  /^new task\?\s*\/clear to save \d+(?:\.\d+)?k tokens$/iu,
-  /^\d+(?:\.\d+)?%\s+until auto-compact\b.*$/iu,
-];
+const SURFACE_NOT_FOUND_PATTERN = /(?:\bno such surface\b|\bsurface(?::\d+|\s+[^\n\r]+)?\s+not found\b)/iu;
+const CMUX_TREE_SURFACE_PATTERN = /\bsurface:\d+\b/gu;
 const RETRYABLE_CMUX_SOCKET_FAILURE_PATTERN =
   /(?:failed to (?:write|read) to socket|failed to connect to socket|socket (?:closed|error|hang up)|broken pipe|\b(?:econnrefused|econnreset|epipe)\b)/iu;
 
@@ -163,65 +121,14 @@ export function parseRegistryLabel(label) {
   return { name, emoji };
 }
 
-/**
- * @param {string} output
- * @returns {TeamSurfaceStatus}
- */
-export function classifySurfaceStatus(output) {
-  const normalized = String(output ?? "").replace(/\r/gu, "").trim();
-
-  if (!normalized) {
-    return "dead";
-  }
-
-  if (
-    /invalid_params|not a terminal|no such surface|surface .* not found|read failed|timed out|enoent|command not found|fatal|panic|traceback|uncaught exception|segmentation fault/iu.test(normalized)
-  ) {
-    return "dead";
-  }
-
-  const lines = getOutputLines(normalized);
-  const activeWorkingSignal = hasActiveWorkingSurfaceSignal(lines);
-  if (hasCompletedSurfaceSignal(lines)) {
-    return "idle";
-  }
-
-  const lastInteractiveLine = getLastInteractiveLine(normalized);
-  if (
-    activeWorkingSignal &&
-    lastInteractiveLine &&
-    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
-  ) {
-    return "working";
-  }
-
-  if (
-    lastInteractiveLine &&
-    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
-  ) {
-    return "idle";
-  }
-
-  if (activeWorkingSignal) {
-    return "working";
-  }
-
-  const meaningfulLines = getMeaningfulOutputLines(normalized);
-  if (meaningfulLines.length > 0) {
-    return "working";
-  }
-
-  const promptVisible = lines.some((line) => isPromptLine(line));
-  if (promptVisible) {
-    return "idle";
-  }
-
-  return "idle";
-}
-
 export function isRetryableCmuxSocketFailure(candidate) {
   const normalized = String(candidate ?? "").trim();
   return normalized.length > 0 && RETRYABLE_CMUX_SOCKET_FAILURE_PATTERN.test(normalized);
+}
+
+export function isSurfaceNotFoundOutput(candidate) {
+  const normalized = String(candidate ?? "").trim();
+  return normalized.length > 0 && SURFACE_NOT_FOUND_PATTERN.test(normalized);
 }
 
 function waitForDelay(delayMs) {
@@ -298,6 +205,134 @@ export async function readSurfaceWithHealing(surface, readSurface, options = {})
   };
 }
 
+async function readCmuxTreeWithHealing(readCmuxTree, options = {}) {
+  const retryDelaysMs = Array.isArray(options.retryDelaysMs)
+    ? options.retryDelaysMs.filter((delay) => Number.isFinite(delay) && delay >= 0)
+    : CMUX_SOCKET_HEAL_RETRY_DELAYS_MS;
+  const strictFirst = options.strictFirst === true;
+  const attempts = [
+    { strictCmuxEnv: strictFirst, delayMs: 0 },
+    ...retryDelaysMs.map((delayMs) => ({
+      strictCmuxEnv: true,
+      delayMs,
+    })),
+  ];
+
+  /** @type {{ ok: boolean, output: string, healed: boolean, strictCmuxEnvUsed: boolean } | null} */
+  let lastResult = null;
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    if (attempt.delayMs > 0) {
+      await waitForDelay(attempt.delayMs);
+    }
+
+    try {
+      const result = await readCmuxTree({
+        strictCmuxEnv: attempt.strictCmuxEnv,
+      });
+      const normalizedResult = {
+        ok: result?.ok === true,
+        output: String(result?.output ?? ""),
+        healed: index > 0,
+        strictCmuxEnvUsed: attempt.strictCmuxEnv,
+      };
+
+      if (normalizedResult.ok || !isRetryableCmuxSocketFailure(normalizedResult.output)) {
+        return normalizedResult;
+      }
+
+      lastResult = normalizedResult;
+    } catch (error) {
+      const normalizedError = {
+        ok: false,
+        output: error instanceof Error ? error.message : String(error),
+        healed: index > 0,
+        strictCmuxEnvUsed: attempt.strictCmuxEnv,
+      };
+
+      if (!isRetryableCmuxSocketFailure(normalizedError.output)) {
+        return normalizedError;
+      }
+
+      lastResult = normalizedError;
+    }
+  }
+
+  return lastResult ?? {
+    ok: false,
+    output: "Error: cmux tree failed without a result",
+    healed: false,
+    strictCmuxEnvUsed: strictFirst,
+  };
+}
+
+function normalizeRegistry(registry) {
+  return Object.fromEntries(
+    Object.entries(registry ?? {}).flatMap(([projectName, projectMembers]) => {
+      if (!projectMembers || typeof projectMembers !== "object" || Array.isArray(projectMembers)) {
+        return [];
+      }
+
+      const normalizedMembers = Object.fromEntries(
+        Object.entries(projectMembers).flatMap(([label, surface]) => {
+          const normalizedSurface = typeof surface === "string" ? surface.trim() : "";
+          return normalizedSurface ? [[label, normalizedSurface]] : [];
+        }),
+      );
+
+      return Object.keys(normalizedMembers).length > 0 ? [[projectName, normalizedMembers]] : [];
+    }),
+  );
+}
+
+export function parseLiveSurfacesFromCmuxTree(output) {
+  return Array.from(new Set(String(output ?? "").match(CMUX_TREE_SURFACE_PATTERN) ?? []));
+}
+
+function removeSurfacesFromRegistry(registry, surfacesToRemove) {
+  const removeSet = new Set(
+    Array.from(surfacesToRemove ?? [])
+      .map((surface) => String(surface ?? "").trim())
+      .filter(Boolean),
+  );
+
+  if (removeSet.size === 0) {
+    return normalizeRegistry(registry);
+  }
+
+  return Object.fromEntries(
+    Object.entries(normalizeRegistry(registry)).flatMap(([projectName, projectMembers]) => {
+      const nextProjectMembers = Object.fromEntries(
+        Object.entries(projectMembers).flatMap(([label, surface]) =>
+          removeSet.has(surface)
+            ? []
+            : [[label, surface]],
+        ),
+      );
+
+      return Object.keys(nextProjectMembers).length > 0 ? [[projectName, nextProjectMembers]] : [];
+    }),
+  );
+}
+
+export function reconcileRegistryWithCmuxTree(registry, cmuxTreeOutput) {
+  const liveSurfaces = new Set(parseLiveSurfacesFromCmuxTree(cmuxTreeOutput));
+  return Object.fromEntries(
+    Object.entries(normalizeRegistry(registry)).flatMap(([projectName, projectMembers]) => {
+      const nextProjectMembers = Object.fromEntries(
+        Object.entries(projectMembers).flatMap(([label, surface]) =>
+          liveSurfaces.has(surface)
+            ? [[label, surface]]
+            : [],
+        ),
+      );
+
+      return Object.keys(nextProjectMembers).length > 0 ? [[projectName, nextProjectMembers]] : [];
+    }),
+  );
+}
+
 /**
  * @param {Record<string, Record<string, string>>} registry
  * @param {Map<string, { status: TeamSurfaceStatus, lastOutput: string }>} surfaceStates
@@ -351,131 +386,6 @@ function createMembersByName() {
   return members;
 }
 
-function getOutputLines(output) {
-  return String(output ?? "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function isPromptLine(line) {
-  const trimmed = String(line ?? "").trim();
-  if (PROMPT_LINE_PATTERN.test(trimmed)) {
-    return true;
-  }
-
-  const withoutFooter = stripStatusBarText(trimmed);
-  const withoutBoxDrawing = withoutFooter.replace(/[\u2500-\u257F]/gu, "").trim();
-  return PROMPT_LINE_PATTERN.test(withoutBoxDrawing);
-}
-
-function isCodexSuggestionLine(line) {
-  const trimmed = stripStatusBarText(String(line ?? "").trim());
-  return CODEX_SUGGESTION_LINE_PATTERN.test(trimmed);
-}
-
-function isThinkingOnlySurfaceLine(line) {
-  const trimmed = stripStatusBarText(String(line ?? "").trim());
-  return THINKING_ONLY_SURFACE_PATTERNS.some((pattern) => pattern.test(trimmed));
-}
-
-function isIdlePromptHintLine(line) {
-  const trimmed = stripStatusBarText(String(line ?? "").trim());
-  return IDLE_PROMPT_HINT_PATTERNS.some((pattern) => pattern.test(trimmed));
-}
-
-function stripStatusBarText(line) {
-  return STATUS_BAR_LINE_PATTERNS.reduce(
-    (current, pattern) => current.replace(pattern, " "),
-    String(line ?? ""),
-  ).trim();
-}
-
-function hasCompletedSurfaceSignal(lines) {
-  return lines.some((line) => COMPLETED_SURFACE_PATTERN.test(line));
-}
-
-function hasActiveWorkingSurfaceSignal(lines) {
-  return lines.some((line) => {
-    if (COMPLETED_SURFACE_PATTERN.test(line)) {
-      return false;
-    }
-
-    if (isThinkingOnlySurfaceLine(line)) {
-      return false;
-    }
-
-    if (WORKING_SURFACE_PATTERNS.some((pattern) => pattern.test(line))) {
-      return true;
-    }
-
-    if (ACTIVE_TOOL_WORK_LINE_PATTERNS.some((pattern) => pattern.test(line))) {
-      return true;
-    }
-
-    return SURFACE_SPINNER_PATTERN.test(line) && /(?:\.\.\.|…)/u.test(line);
-  });
-}
-
-function isIgnoredSurfaceLine(line) {
-  const trimmed = String(line ?? "").trim();
-  if (!trimmed) {
-    return false;
-  }
-
-  if (IGNORED_SURFACE_LINE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
-    return true;
-  }
-
-  if (BOX_DRAWING_PATTERN.test(trimmed)) {
-    return true;
-  }
-
-  if (isThinkingOnlySurfaceLine(trimmed)) {
-    return true;
-  }
-
-  if (isCodexSuggestionLine(trimmed)) {
-    return true;
-  }
-
-  if (isIdlePromptHintLine(trimmed)) {
-    return true;
-  }
-
-  if (!/[\p{L}\p{N}]/u.test(trimmed)) {
-    return true;
-  }
-
-  const normalized = trimmed.replace(/^[^\p{L}\p{N}]+/u, "");
-  return SURFACE_HINT_PATTERNS.some((pattern) => pattern.test(normalized));
-}
-
-function getMeaningfulOutputLines(output) {
-  return getOutputLines(output).filter(
-    (line) => !isPromptLine(line) && !isCodexSuggestionLine(line) && !isIgnoredSurfaceLine(line),
-  );
-}
-
-function getLastInteractiveLine(output) {
-  const lines = getOutputLines(output);
-
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (isPromptLine(line) || isCodexSuggestionLine(line) || isIdlePromptHintLine(line)) {
-      return line;
-    }
-
-    if (isIgnoredSurfaceLine(line)) {
-      continue;
-    }
-
-    return line;
-  }
-
-  return null;
-}
-
 function isPseudoRegistryMember(name) {
   return /\b(?:server|frontend)\b/iu.test(String(name ?? "").trim());
 }
@@ -502,26 +412,6 @@ function getRegistryProjectMembers(projectMembers) {
   }
 
   return Array.from(dedupedMembers.values());
-}
-
-function getLastOutputLines(output) {
-  const lines = getOutputLines(output);
-  const activeWorkingSignal = hasActiveWorkingSurfaceSignal(lines);
-  const lastInteractiveLine = getLastInteractiveLine(output);
-  if (
-    !activeWorkingSignal &&
-    lastInteractiveLine &&
-    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
-  ) {
-    return [];
-  }
-
-  const meaningfulLines = getMeaningfulOutputLines(output);
-  if (meaningfulLines.length > 0) {
-    return meaningfulLines.slice(-5);
-  }
-
-  return [];
 }
 
 function deriveTaskFromOutput(status, lastOutputLines) {
@@ -623,7 +513,7 @@ export function toStudioTeamStatusSnapshot(snapshot, updatedAt = new Date().toIS
       projectName: projectId,
       members: (project?.members ?? []).map((member) => {
         const memberMeta = membersByName.get(member.name);
-        const lastOutputLines = getLastOutputLines(member.lastOutput);
+        const { lastOutputLines } = classifySurfaceOutput(member.lastOutput);
 
         return {
           id: memberMeta?.id || member.surface,
@@ -657,7 +547,35 @@ async function defaultReadRegistry(registryPath) {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Registry root must be an object.");
   }
-  return /** @type {Record<string, Record<string, string>>} */ (parsed);
+  return normalizeRegistry(/** @type {Record<string, Record<string, string>>} */ (parsed));
+}
+
+async function defaultWriteRegistry(registryPath, registry) {
+  await writeFile(registryPath, `${JSON.stringify(normalizeRegistry(registry), null, 2)}\n`, "utf8");
+}
+
+async function defaultReadCmuxTree(options = {}) {
+  return new Promise((resolve) => {
+    execFile(
+      "cmux",
+      ["tree"],
+      withCmuxEnv({
+        encoding: "utf8",
+        timeout: CMUX_TREE_READ_TIMEOUT_MS,
+      }, {
+        strict: options.strictCmuxEnv === true,
+      }),
+      (error, stdout = "", stderr = "") => {
+        const output = `${stdout}${stderr}`.trim();
+        if (error) {
+          resolve({ ok: false, output: output || error.message });
+          return;
+        }
+
+        resolve({ ok: true, output });
+      },
+    );
+  });
 }
 
 async function defaultReadSurface(surface, options = {}) {
@@ -727,8 +645,11 @@ export class TeamStatusStore {
   #registryRefreshMs;
   #surfacePollMs;
   #readRegistry;
+  #writeRegistry;
   #readSurface;
+  #readCmuxTree;
   #membersByName = createMembersByName();
+  #rawRegistry = {};
   #registry = {};
   #surfaceStates = new Map();
   #snapshot = { projects: {} };
@@ -745,7 +666,9 @@ export class TeamStatusStore {
    *   registryRefreshMs?: number,
    *   surfacePollMs?: number,
    *   readRegistryFn?: (registryPath: string) => Promise<Record<string, Record<string, string>>>,
+   *   writeRegistryFn?: (registryPath: string, registry: Record<string, Record<string, string>>) => Promise<void>,
    *   readSurfaceFn?: (surface: string, options?: { strictCmuxEnv?: boolean }) => Promise<{ ok: boolean, output: string }>,
+   *   readCmuxTreeFn?: (options?: { strictCmuxEnv?: boolean }) => Promise<{ ok: boolean, output: string }>,
    * }} [options]
    */
   constructor(options = {}) {
@@ -753,7 +676,9 @@ export class TeamStatusStore {
     this.#registryRefreshMs = options.registryRefreshMs ?? DEFAULT_REGISTRY_REFRESH_MS;
     this.#surfacePollMs = options.surfacePollMs ?? DEFAULT_SURFACE_POLL_MS;
     this.#readRegistry = options.readRegistryFn ?? defaultReadRegistry;
+    this.#writeRegistry = options.writeRegistryFn ?? defaultWriteRegistry;
     this.#readSurface = options.readSurfaceFn ?? defaultReadSurface;
+    this.#readCmuxTree = options.readCmuxTreeFn ?? defaultReadCmuxTree;
   }
 
   start() {
@@ -816,9 +741,10 @@ export class TeamStatusStore {
     this.#refreshingRegistry = true;
 
     try {
-      const registry = withImplicitRegistryMembers(await this.#readRegistry(this.#registryPath));
-      await this.#seedImplicitSurfaceStates(registry);
-      this.#registry = registry;
+      const rawRegistry = normalizeRegistry(await this.#readRegistry(this.#registryPath));
+      const reconciledRegistry = await this.#reconcileRegistryAgainstCmuxTree(rawRegistry);
+      this.#setRegistry(reconciledRegistry);
+      await this.#seedImplicitSurfaceStates(this.#registry);
 
       const nextSnapshot = buildTeamStatusSnapshot(this.#registry, this.#surfaceStates, this.#membersByName);
       const changed = this.#commitSnapshot(nextSnapshot, { notifyOnStructureChange: true });
@@ -862,9 +788,32 @@ export class TeamStatusStore {
         this.#surfaceStates.set(surface, state);
       }
 
+      const staleSurfaces = results
+        .filter(({ state }) => isSurfaceNotFoundOutput(state.lastOutput))
+        .map(({ surface }) => surface);
+      const staleRegistryRemoved = await this.#removeStaleRegistrySurfaces(staleSurfaces);
+      if (staleRegistryRemoved) {
+        const previouslyPolledSurfaces = new Set(results.map(({ surface }) => surface));
+        const newlyTrackedSurfaces = this.#listSurfaces()
+          .filter((surface) => !previouslyPolledSurfaces.has(surface));
+
+        if (newlyTrackedSurfaces.length > 0) {
+          const followUpResults = await Promise.all(
+            newlyTrackedSurfaces.map(async (surface) => ({
+              surface,
+              state: await this.#readSurfaceState(surface),
+            })),
+          );
+
+          for (const { surface, state } of followUpResults) {
+            this.#surfaceStates.set(surface, state);
+          }
+        }
+      }
+
       this.#commitSnapshot(
         buildTeamStatusSnapshot(this.#registry, this.#surfaceStates, this.#membersByName),
-        { notifyOnStructureChange: false },
+        { notifyOnStructureChange: staleRegistryRemoved },
       );
 
       return this.getSnapshot();
@@ -881,6 +830,21 @@ export class TeamStatusStore {
           .map(({ surface }) => surface),
       ),
     );
+  }
+
+  #setRegistry(rawRegistry) {
+    this.#rawRegistry = normalizeRegistry(rawRegistry);
+    this.#registry = withImplicitRegistryMembers(this.#rawRegistry);
+    this.#pruneSurfaceStates();
+  }
+
+  #pruneSurfaceStates() {
+    const trackedSurfaces = new Set(this.#listSurfaces());
+    for (const surface of this.#surfaceStates.keys()) {
+      if (!trackedSurfaces.has(surface)) {
+        this.#surfaceStates.delete(surface);
+      }
+    }
   }
 
   #commitSnapshot(nextSnapshot, { notifyOnStructureChange }) {
@@ -920,6 +884,58 @@ export class TeamStatusStore {
       const state = await this.#readSurfaceState(member.surface);
       this.#surfaceStates.set(member.surface, state);
     }
+  }
+
+  async #reconcileRegistryAgainstCmuxTree(rawRegistry) {
+    const treeResult = await readCmuxTreeWithHealing(this.#readCmuxTree, {
+      strictFirst: this.#preferStrictCmuxEnv,
+    });
+    if (treeResult.strictCmuxEnvUsed) {
+      this.#preferStrictCmuxEnv = true;
+    }
+
+    if (!treeResult.ok) {
+      return normalizeRegistry(rawRegistry);
+    }
+
+    const normalizedRegistry = normalizeRegistry(rawRegistry);
+    const reconciledRegistry = reconcileRegistryWithCmuxTree(normalizedRegistry, treeResult.output);
+    await this.#persistRegistryIfChanged(normalizedRegistry, reconciledRegistry);
+    return reconciledRegistry;
+  }
+
+  async #removeStaleRegistrySurfaces(surfaces) {
+    const staleSurfaces = Array.from(
+      new Set(
+        Array.from(surfaces ?? [])
+          .map((surface) => String(surface ?? "").trim())
+          .filter(Boolean),
+      ),
+    );
+
+    if (staleSurfaces.length === 0) {
+      return false;
+    }
+
+    const nextRawRegistry = removeSurfacesFromRegistry(this.#rawRegistry, staleSurfaces);
+    const changed = JSON.stringify(nextRawRegistry) !== JSON.stringify(this.#rawRegistry);
+    if (!changed) {
+      return false;
+    }
+
+    await this.#persistRegistryIfChanged(this.#rawRegistry, nextRawRegistry);
+    this.#setRegistry(nextRawRegistry);
+    return true;
+  }
+
+  async #persistRegistryIfChanged(previousRegistry, nextRegistry) {
+    const normalizedPrevious = normalizeRegistry(previousRegistry);
+    const normalizedNext = normalizeRegistry(nextRegistry);
+    if (JSON.stringify(normalizedPrevious) === JSON.stringify(normalizedNext)) {
+      return;
+    }
+
+    await this.#writeRegistry(this.#registryPath, normalizedNext);
   }
 
   async #readSurfaceState(surface) {

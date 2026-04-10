@@ -6,7 +6,7 @@ set -euo pipefail
 PROJECT="${1:?project name required}"
 ROLE="${2:?role required}"
 SURFACE="${3:?surface id required}"
-REGISTRY="/tmp/kuma-surfaces.json"
+REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 
 if [ ! -f "$REGISTRY" ]; then
   echo "{}" > "$REGISTRY"

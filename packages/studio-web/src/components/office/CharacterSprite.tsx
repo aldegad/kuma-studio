@@ -100,7 +100,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
         <img
           src={spriteSrc}
           alt={character.name}
-          className="h-full w-full rounded-full object-cover shadow-md"
+          className="h-full w-full rounded-full object-cover"
         />
       </div>
     );
@@ -116,13 +116,13 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
         <img
           src={imageSrc}
           alt={character.name}
-          className="h-full w-full rounded-full object-cover shadow-md"
+          className="h-full w-full rounded-full object-cover"
           onError={(e) => {
             const img = e.target as HTMLImageElement;
             img.style.display = "none";
             const parent = img.parentElement;
             if (parent) {
-              parent.className = `flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl shadow-md ${animation}`;
+              parent.className = `flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl ${animation}`;
               parent.setAttribute("role", "img");
               parent.setAttribute("aria-label", `${character.name} (${character.animal}) - ${character.state}`);
               parent.textContent = getAnimalFallback(character.animal);
@@ -135,7 +135,7 @@ export function CharacterSprite({ character }: CharacterSpriteProps) {
 
   return (
     <div
-      className={`flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl shadow-md ${animation} ${isIdle ? "animate-idle-blink" : ""}`}
+      className={`flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 text-3xl ${animation} ${isIdle ? "animate-idle-blink" : ""}`}
       style={isIdle ? { animationDelay: blinkDelay } : undefined}
       role="img"
       aria-label={`${character.name} (${character.animal}) - ${character.state}`}

@@ -21,11 +21,13 @@ shift
 
 PROJECT=""
 DIR=""
+PROJECT_EXPLICIT=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --project)
       PROJECT="${2:?project required}"
+      PROJECT_EXPLICIT=1
       shift 2
       ;;
     --dir)
@@ -49,6 +51,7 @@ ensure_surface_registry
 MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
 MEMBER_NAME="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
 LABEL="$(member_display_label_from_json "$MEMBER_JSON")"
+MEMBER_TEAM="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.team || "");')"
 
 if [ -z "$DIR" ] && [ -n "$PROJECT" ]; then
   DIR="$(resolve_project_dir "$PROJECT" || true)"
@@ -60,6 +63,18 @@ fi
 
 if [ -z "$PROJECT" ]; then
   PROJECT="$(resolve_project_from_dir "$DIR" || true)"
+fi
+
+if [ "$MEMBER_TEAM" = "system" ]; then
+  if [ "$PROJECT_EXPLICIT" -eq 1 ] && [ -n "$PROJECT" ] && [ "$PROJECT" != "system" ]; then
+    printf 'WARN: system member %s must use project=system (received %s)\n' "$LABEL" "$PROJECT" >&2
+    die "refusing to spawn system member '$MEMBER_NAME' into non-system project '$PROJECT'"
+  fi
+
+  if [ "$PROJECT" != "system" ]; then
+    printf 'WARN: overriding project %s -> system for system member %s\n' "${PROJECT:-<none>}" "$LABEL" >&2
+  fi
+  PROJECT="system"
 fi
 
 [ -n "$PROJECT" ] || die "project is required when current directory is not registered in $KUMA_PROJECTS_PATH"

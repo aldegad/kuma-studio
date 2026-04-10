@@ -34,6 +34,7 @@ import { TrendStore } from "./studio/trend-store.mjs";
 import { createExperimentPipeline } from "./studio/experiment-pipeline.mjs";
 import { MemoStore } from "./studio/memo-store.mjs";
 import { TeamConfigStore, watchTeamConfig } from "./studio/team-config-store.mjs";
+import { createTeamConfigWatcherHandler } from "./studio/team-config-watcher.mjs";
 import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
 import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
@@ -136,6 +137,12 @@ export async function createServer({ host, port, root }) {
     teamConfigStore,
     logPath: TEAM_WATCHER_LOG_PATH,
   });
+  const handleTeamConfigChange = createTeamConfigWatcherHandler({
+    teamConfigRuntime,
+    studioWsEvents,
+    workspaceRoot,
+    appendLog: appendTeamWatcherLog,
+  });
 
   // Register agent hierarchy from team.json — session → team → worker
   const AGENT_HIERARCHY = getAgentHierarchy();
@@ -202,61 +209,7 @@ export async function createServer({ host, port, root }) {
 
   const teamConfigWatcher = watchTeamConfig({
     debounceMs: 500,
-    async onChange({ changedIds, diff, previousMembers, currentMembers }) {
-      appendTeamWatcherLog(
-        `TEAM_CONFIG_CHANGED: added=[${diff.added.join(",")}] removed=[${diff.removed.join(",")}] updated=[${diff.updated.join(",")}]`,
-      );
-
-      for (const memberId of diff.removed) {
-        const previousMember = previousMembers[memberId];
-        if (!previousMember) {
-          continue;
-        }
-
-        try {
-          teamConfigRuntime.removeMemberSurface({
-            memberName: previousMember.name,
-            emoji: previousMember.emoji,
-          });
-        } catch (error) {
-          appendTeamWatcherLog(
-            `TEAM_CONFIG_REMOVE_ERROR: member=${previousMember.name} details=${error instanceof Error ? error.message : "unknown error"}`,
-          );
-        }
-      }
-
-      for (const memberId of [...diff.added, ...diff.updated]) {
-        const currentMember = currentMembers[memberId];
-        if (!currentMember) {
-          continue;
-        }
-
-        const memberContext = teamConfigRuntime.resolveMemberContext(currentMember.name, currentMember.emoji);
-        const project = currentMember.team === "system"
-          ? "system"
-          : (memberContext?.project ?? "kuma-studio");
-
-        try {
-          teamConfigRuntime.respawnMember({
-            memberName: currentMember.name,
-            memberConfig: currentMember,
-            project,
-            currentSurface: memberContext?.surface ?? null,
-            workspaceRoot,
-          });
-        } catch (error) {
-          appendTeamWatcherLog(
-            `TEAM_CONFIG_RESPAWN_ERROR: member=${currentMember.name} details=${error instanceof Error ? error.message : "unknown error"}`,
-          );
-        }
-      }
-
-      studioWsEvents.broadcastTeamConfigChanged({
-        source: "watcher",
-        changedIds,
-        diff,
-      });
-    },
+    onChange: handleTeamConfigChange,
     onError(error) {
       const details = error instanceof Error ? error.message : "unknown error";
       console.error("watchTeamConfig failed:", details);

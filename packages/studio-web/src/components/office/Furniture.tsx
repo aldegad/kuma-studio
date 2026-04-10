@@ -61,7 +61,7 @@ export function Furniture({ furniture, isDragging = false, onDragStart }: Furnit
 
   return (
     <div
-      className={`absolute select-none group ${isDragging ? "z-20 cursor-grabbing" : "cursor-grab"} transition-transform duration-200 hover:scale-110`}
+      className={`office-furniture absolute select-none group ${isDragging ? "z-20 cursor-grabbing" : "cursor-grab"} transition-[transform,filter] duration-200 hover:scale-110`}
       onMouseDown={onDragStart}
       title={label}
       style={{
@@ -70,12 +70,12 @@ export function Furniture({ furniture, isDragging = false, onDragStart }: Furnit
         width: size.w,
         height: size.h,
         transform: "translate(-50%, -50%)",
-        filter: "drop-shadow(2px 3px 4px rgba(0,0,0,0.2))",
+        filter: isDragging ? "drop-shadow(2px 4px 6px rgba(0,0,0,0.3))" : undefined,
       }}
     >
-      {/* Ground shadow ellipse — gives furniture a grounded, game-like feel */}
+      {/* Ground shadow ellipse — only visible on hover/drag */}
       <div
-        className="absolute pointer-events-none"
+        className={`absolute pointer-events-none transition-opacity duration-200 ${isDragging ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         style={{
           left: "10%",
           right: "10%",

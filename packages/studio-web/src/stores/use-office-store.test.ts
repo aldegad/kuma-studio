@@ -257,14 +257,14 @@ describe("useOfficeStore", () => {
       x: SOFA_POSITIONS.system.x + 180,
       y: SOFA_POSITIONS.system.y + 40,
     };
-    const nextAnalyticsSofaPosition = {
-      x: SOFA_POSITIONS.analytics.x - 120,
-      y: SOFA_POSITIONS.analytics.y + 35,
+    const nextStrategyAnalyticsSofaPosition = {
+      x: SOFA_POSITIONS["strategy-analytics"].x - 120,
+      y: SOFA_POSITIONS["strategy-analytics"].y + 35,
     };
 
     useOfficeStore.getState().switchProject(["kuma", "jjooni", "noeuri", "lumi", "buri"]);
     useOfficeStore.getState().updateFurniturePosition("sofa-system", nextSystemSofaPosition);
-    useOfficeStore.getState().updateFurniturePosition("sofa-analytics", nextAnalyticsSofaPosition);
+    useOfficeStore.getState().updateFurniturePosition("sofa-strategy-analytics", nextStrategyAnalyticsSofaPosition);
 
     const state = useOfficeStore.getState();
     const positions = Object.fromEntries(
@@ -275,7 +275,7 @@ describe("useOfficeStore", () => {
     );
 
     expect(state.activeLayout.sofaPositions.system).toEqual(nextSystemSofaPosition);
-    expect(state.activeLayout.sofaPositions.analytics).toEqual(nextAnalyticsSofaPosition);
+    expect(state.activeLayout.sofaPositions["strategy-analytics"]).toEqual(nextStrategyAnalyticsSofaPosition);
 
     for (const id of ["kuma", "jjooni", "noeuri"] as const) {
       expect(positions[id]).toEqual(
@@ -286,7 +286,7 @@ describe("useOfficeStore", () => {
 
     for (const id of ["lumi", "buri"] as const) {
       expect(positions[id]).toEqual(
-        getAutoPosition(id, "idle", "analytics", state.activeLayout.deskPositions, state.activeLayout.sofaPositions, state.activeLayout.teamMemberIdsByTeam),
+        getAutoPosition(id, "idle", "strategy-analytics", state.activeLayout.deskPositions, state.activeLayout.sofaPositions, state.activeLayout.teamMemberIdsByTeam),
       );
       expect(positions[id]).not.toEqual(state.activeLayout.deskPositions[id]);
     }

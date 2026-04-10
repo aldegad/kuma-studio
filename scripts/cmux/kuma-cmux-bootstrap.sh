@@ -8,6 +8,10 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KUMA_STUDIO_DIR="/workspace/kuma-studio"
 WORKSPACE_DIR="/workspace"
+REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+
+source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
+require_team_config
 
 # 헬퍼: surface → pane 조회
 get_pane() {
@@ -15,62 +19,108 @@ get_pane() {
   cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1
 }
 
+surface_alive() {
+  local surface="${1:-}"
+  [ -n "$surface" ] || return 1
+  cmux read-screen --surface "$surface" --lines 1 > /dev/null 2>&1
+}
+
+lookup_registered_surface() {
+  local project="$1"
+  local label="$2"
+  local name="$3"
+
+  jq -r \
+    --arg project "$project" \
+    --arg label "$label" \
+    --arg name "$name" \
+    '.[$project][$label] // .[$project][$name] // empty' \
+    "$REGISTRY" 2>/dev/null || echo ""
+}
+
+resolve_bootstrap_surface() {
+  local name="$1"
+  local title="$2"
+  local default_surface="$3"
+  local existing_surface=""
+
+  existing_surface="$(lookup_registered_surface "system" "$title" "$name")"
+  if surface_alive "$existing_surface"; then
+    printf '%s\n' "$existing_surface"
+    return 0
+  fi
+
+  if surface_alive "$default_surface"; then
+    printf '%s\n' "$default_surface"
+    return 0
+  fi
+
+  return 1
+}
+
+ensure_system_member_surface() {
+  local name="$1"
+  local title default_surface surface command result
+
+  title="$(member_display_label "$name")"
+  default_surface="$(team_config_get_member_field "$name" defaultSurface)"
+
+  if [ "$name" = "쿠마" ]; then
+    cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$KUMA_S" --title "$title" > /dev/null 2>&1 || true
+    "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "$title" "$KUMA_S" 2>/dev/null || true
+    echo "✓ $title 이미 활성 ($KUMA_S)"
+    return 0
+  fi
+
+  surface="$(resolve_bootstrap_surface "$name" "$title" "$default_surface" 2>/dev/null || true)"
+  if [ -n "$surface" ]; then
+    cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$surface" --title "$title" > /dev/null 2>&1 || true
+    "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "$title" "$surface" 2>/dev/null || true
+    echo "✓ $title 이미 활성 ($surface)"
+    return 0
+  fi
+
+  if [ -n "$default_surface" ]; then
+    echo "  ↳ $title defaultSurface $default_surface 비활성, 새 system surface 할당"
+  fi
+
+  result=$(cmux new-surface --pane "$KUMA_P" --workspace "$CURRENT_WS" 2>&1)
+  surface=$(echo "$result" | grep -oE 'surface:[0-9]+' | head -1)
+  if [ -z "$surface" ]; then
+    echo "✗ $title surface 생성 실패: $result"
+    exit 1
+  fi
+
+  command="$(build_member_command "$name" "" "$WORKSPACE_DIR")"
+  "$SCRIPT_DIR/kuma-cmux-send.sh" "$surface" "$command" --workspace "$CURRENT_WS" > /dev/null
+  cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$surface" --title "$title" > /dev/null 2>&1 || true
+  "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "$title" "$surface" 2>/dev/null || true
+  echo "✓ $title 상주 탭 준비 완료 ($surface)"
+}
+
 echo "🐻 쿠마 스튜디오 부트스트랩"
 echo "=========================="
 echo ""
 
-# 1. 쭈니 상주 탭 (CTO와 같은 pane)
+# 1. System 상주 탭 (CTO와 같은 pane)
 CURRENT_WS=$(cmux tree 2>&1 | grep -oE 'workspace:[0-9]+' | head -1)
 if [ -z "$CURRENT_WS" ]; then
   echo "✗ 현재 워크스페이스 조회 실패"
   exit 1
 fi
 
-echo "→ 쭈니 상주 탭 준비 중..."
-KUMA_S="surface:1"
+echo "→ system 상주 탭 준비 중..."
+KUMA_S="$(team_config_get_member_field "쿠마" defaultSurface)"
+[ -n "$KUMA_S" ] || KUMA_S="surface:1"
 KUMA_P=$(get_pane "$KUMA_S")
 if [ -z "$KUMA_P" ]; then
   echo "✗ 쿠마 pane 조회 실패"
   exit 1
 fi
-"$SCRIPT_DIR/kuma-cmux-register.sh" "system" "🐻 쿠마" "$KUMA_S" 2>/dev/null || true
-
-JOONI_S=$(jq -r '.system["쭈니"] // empty' /tmp/kuma-surfaces.json 2>/dev/null || echo "")
-JOONI_READY=false
-
-if [ -n "$JOONI_S" ] && cmux read-screen --surface "$JOONI_S" --lines 1 > /dev/null 2>&1; then
-  JOONI_P=$(get_pane "$JOONI_S")
-  if [ -n "$JOONI_P" ] && [ "$JOONI_P" = "$KUMA_P" ]; then
-    JOONI_READY=true
-  fi
-fi
-
-if $JOONI_READY; then
-  cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$JOONI_S" --title "🐝 쭈니" > /dev/null 2>&1 || true
-  "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "쭈니" "$JOONI_S" 2>/dev/null || true
-  echo "✓ 쭈니 이미 활성 ($JOONI_S)"
-else
-  JR=$(cmux new-surface --pane "$KUMA_P" --workspace "$CURRENT_WS" 2>&1)
-  JOONI_S=$(echo "$JR" | grep -oE 'surface:[0-9]+')
-  if [ -z "$JOONI_S" ]; then
-    echo "✗ 쭈니 surface 생성 실패: $JR"
-    exit 1
-  fi
-
-  JOONI_P=$(get_pane "$JOONI_S")
-  if [ -z "$JOONI_P" ] || [ "$JOONI_P" != "$KUMA_P" ]; then
-    echo "✗ 쭈니 pane 배치 실패"
-    exit 1
-  fi
-
-  "$SCRIPT_DIR/kuma-cmux-send.sh" "$JOONI_S" \
-    "cd \"$WORKSPACE_DIR\" && KUMA_ROLE=worker codex --dangerously-bypass-approvals-and-sandbox -m gpt-5.4 -c service_tier=fast -c model_reasoning_effort=\"xhigh\"" \
-    --workspace "$CURRENT_WS" \
-    > /dev/null
-  cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$JOONI_S" --title "🐝 쭈니" > /dev/null 2>&1 || true
-  "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "쭈니" "$JOONI_S" 2>/dev/null || true
-  echo "✓ 쭈니 상주 탭 준비 완료 ($JOONI_S)"
-fi
+while IFS= read -r SYSTEM_MEMBER; do
+  [ -n "$SYSTEM_MEMBER" ] || continue
+  ensure_system_member_surface "$SYSTEM_MEMBER"
+done < <(list_bootstrap_system_members)
 
 # 2. 팀 스폰 (셸 스크립트, 토큰 0) — CTO 우측에 배치
 echo "→ 팀 스폰 중..."
@@ -153,7 +203,7 @@ fi
 
 # 4. 워크스페이스 + CTO 탭 이름 설정
 cmux workspace-action --action rename --title "🐻 kuma studio" > /dev/null 2>&1 || true
-cmux tab-action --action rename --surface surface:1 --title "🐻 쿠마" > /dev/null 2>&1 || true
+cmux tab-action --action rename --surface "$KUMA_S" --title "🐻 쿠마" > /dev/null 2>&1 || true
 /usr/bin/open -a 'Google Chrome' http://localhost:5173/studio/
 
 echo ""

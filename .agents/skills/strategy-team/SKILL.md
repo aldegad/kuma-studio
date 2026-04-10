@@ -1,3 +1,8 @@
+---
+name: strategy-team
+description: Route planning work to the Kuma strategy team workflow.
+---
+
 # /strategy-team — 전략팀 호출
 
 `packages/shared/team.json` 기준 현재 전략팀은 `🐹 뭉치` 1명만 담당한다. `🦌 노을이`는 전략팀이 아니라 system 팀의 `vault-manager`, `🐰 콩콩이`는 dev 팀의 content/SNS, `🐝 쭈니`는 system 팀의 ops 이다.

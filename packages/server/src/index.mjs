@@ -22,6 +22,8 @@ import { normalizeViewport } from "./scene-schema.mjs";
 import { SceneStore } from "./scene-store.mjs";
 import { maybeAutoIngestResult } from "./studio/vault-auto-ingest.mjs";
 import { ingestResultFile } from "./studio/vault-ingest.mjs";
+import { formatVaultLintReport, lintVaultFiles } from "./studio/vault-lint.mjs";
+import { formatVaultSearchText, searchVault } from "./studio/vault-search.mjs";
 import { resolveAgentIdByDescriptor } from "./team-metadata.mjs";
 import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
 
@@ -53,6 +55,8 @@ Usage:
   kuma-studio vault-ingest [result-file] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--task-dir /tmp/kuma-tasks] [--vault-dir ~/.kuma/vault] [--dry-run]
   kuma-studio wiki-ingest [result-file] ...                                   # temporary alias
   kuma-studio vault-auto-ingest [result-file] [--signal task-done] [--task-dir /tmp/kuma-tasks] [--stamp-dir /tmp/kuma-vault-auto-ingest] [--vault-dir ~/.kuma/vault] [--dry-run]
+  kuma-studio vault-lint [current-focus.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files current-focus.md,dispatch-log.md] [--json]
+  kuma-studio vault-search --query "task id" [--vault-dir ~/.kuma/vault] [--format text|json]
   kuma-studio project-info [--root .]            # show current project hash and state dir
   kuma-studio list-projects                      # list all known project state directories
   kuma-studio dashboard                          # open http://localhost:${DEFAULT_PORT}/studio
@@ -489,6 +493,73 @@ async function commandVaultAutoIngest(options, fileArg) {
   process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
 }
 
+async function commandVaultSearch(options) {
+  if (options.help === true) {
+    printUsage();
+    return;
+  }
+
+  const query = readOptionalString(options, "query") ?? options._.join(" ").trim();
+  if (!query) {
+    throw new Error("vault-search requires a query.");
+  }
+
+  const result = await searchVault({
+    query,
+    vaultDir: readOptionalString(options, "vault-dir") ?? undefined,
+  });
+
+  const format = readOptionalString(options, "format") ?? "text";
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+
+  if (format !== "text") {
+    throw new Error(`Unsupported vault-search format: ${format}`);
+  }
+
+  process.stdout.write(formatVaultSearchText(result));
+}
+
+function commandVaultLint(options) {
+  if (options.help === true) {
+    printUsage();
+    return;
+  }
+
+  const mode = readOptionalString(options, "mode") ?? "full";
+  if (mode !== "fast" && mode !== "full") {
+    throw new Error("--mode must be either fast or full.");
+  }
+
+  const positionalFiles = Array.isArray(options._)
+    ? options._.filter((value) => typeof value === "string" && value.trim())
+    : [];
+  const filesOption = readOptionalString(options, "files");
+  const requestedFiles = positionalFiles.length > 0 ? positionalFiles : filesOption ?? undefined;
+
+  const result = lintVaultFiles({
+    vaultDir:
+      readOptionalString(options, "vault-dir") ??
+      readOptionalString(options, "wiki-dir") ??
+      undefined,
+    schemaPath: readOptionalString(options, "schema-path") ?? undefined,
+    mode,
+    files: requestedFiles,
+  });
+
+  if (options.json === true) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  } else {
+    process.stdout.write(formatVaultLintReport(result));
+  }
+
+  if (!result.ok) {
+    process.exitCode = 1;
+  }
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const [command, ...rest] = argv;
 
@@ -564,6 +635,12 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "vault-auto-ingest":
       await commandVaultAutoIngest(options, fileArg);
+      return;
+    case "vault-lint":
+      commandVaultLint(options);
+      return;
+    case "vault-search":
+      await commandVaultSearch(options);
       return;
     case "project-info":
       commandProjectInfo(options);

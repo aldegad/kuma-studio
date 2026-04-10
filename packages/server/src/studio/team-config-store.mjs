@@ -2,6 +2,12 @@ import fs, { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path";
 import { homedir } from "node:os";
 
+import {
+  MODEL_CATALOG,
+  getModelCatalogEntry,
+  listModelCatalogByType,
+} from "../../../shared/model-catalog.mjs";
+
 export const DEFAULT_TEAM_JSON_PATH = `${homedir()}/.kuma/team.json`;
 
 const BUNDLED_TEAM_SCHEMA_PATH = new URL("../../../shared/team.json", import.meta.url);
@@ -11,22 +17,10 @@ const TEAM_CONFIG_DIFF_FIELDS = [
   "spawnOptions",
 ];
 
-const CODEX_BASE_OPTIONS = "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast";
-const CODEX_REASONING_OPTION = '-c model_reasoning_effort="xhigh"';
+const CODEX_BASE_OPTIONS = "--dangerously-bypass-approvals-and-sandbox";
 const VALID_CODEX_REASONING_LEVELS = new Set(["low", "medium", "high", "xhigh"]);
 const CODEX_REASONING_OPTION_PATTERN = /(?:^|\s)-c\s+(?:model_)?reasoning_effort=(?:"[^"]*"|'[^']*'|\S+)/u;
 const CODEX_SERVICE_TIER_PATTERN = /(?:^|\s)-c\s+service_tier=(?:"[^"]*"|'[^']*'|\S+)/u;
-
-const DEFAULTS = {
-  claude: {
-    model: "claude-opus-4-6",
-    options: "--dangerously-skip-permissions",
-  },
-  codex: {
-    model: "gpt-5.4",
-    options: `${CODEX_BASE_OPTIONS} ${CODEX_REASONING_OPTION}`,
-  },
-};
 
 function normalizeWhitespace(value) {
   return String(value ?? "").trim().replace(/\s+/gu, " ");
@@ -64,6 +58,75 @@ function appendCodexOption(options, setting, value, { quote = false } = {}) {
   return normalizeWhitespace(`${options} -c ${setting}=${renderedValue}`);
 }
 
+const CLAUDE_DEFAULT_OPTIONS = "--dangerously-skip-permissions";
+const DEFAULT_MODEL_CATALOG_IDS = Object.freeze({
+  claude: "claude-opus-4-6-high",
+  codex: "gpt-5.4-xhigh-fast",
+});
+const PREFERRED_MODEL_CATALOG_IDS_BY_MODEL = Object.freeze({
+  "claude-opus-4-6": "claude-opus-4-6-high",
+  "claude-sonnet-4-6": "claude-sonnet-4-6-high",
+  "gpt-5.4": "gpt-5.4-xhigh-fast",
+  "gpt-5.4-mini": "gpt-5.4-mini-xhigh-fast",
+});
+
+function requireModelCatalogEntry(id) {
+  const entry = getModelCatalogEntry(id);
+  if (!entry) {
+    throw new Error(`Unknown model catalog entry: ${id}`);
+  }
+  return entry;
+}
+
+function getCatalogFallbackIdForModel(type, model = "") {
+  const normalizedModel = normalizeWhitespace(model);
+  const preferredId = PREFERRED_MODEL_CATALOG_IDS_BY_MODEL[normalizedModel];
+  const preferredEntry = preferredId ? getModelCatalogEntry(preferredId) : undefined;
+  if (preferredEntry?.type === type) {
+    return preferredEntry.id;
+  }
+
+  return DEFAULT_MODEL_CATALOG_IDS[type];
+}
+
+function getCatalogFallbackEntry(type, model = "") {
+  return requireModelCatalogEntry(getCatalogFallbackIdForModel(type, model));
+}
+
+function buildOptionsFromCatalogEntry(entry) {
+  if (entry.type !== "codex") {
+    return CLAUDE_DEFAULT_OPTIONS;
+  }
+
+  let options = CODEX_BASE_OPTIONS;
+  if (entry.serviceTier) {
+    options = appendCodexOption(options, "service_tier", entry.serviceTier);
+  }
+  if (entry.effort) {
+    options = appendCodexOption(options, "model_reasoning_effort", entry.effort, { quote: true });
+  }
+  return normalizeWhitespace(options);
+}
+
+const DEFAULTS = Object.freeze({
+  claude: (() => {
+    const entry = requireModelCatalogEntry(DEFAULT_MODEL_CATALOG_IDS.claude);
+    return {
+      model: entry.model,
+      options: buildOptionsFromCatalogEntry(entry),
+      modelCatalogId: entry.id,
+    };
+  })(),
+  codex: (() => {
+    const entry = requireModelCatalogEntry(DEFAULT_MODEL_CATALOG_IDS.codex);
+    return {
+      model: entry.model,
+      options: buildOptionsFromCatalogEntry(entry),
+      modelCatalogId: entry.id,
+    };
+  })(),
+});
+
 function normalizeCodexOptions(options, fallbackOptions = DEFAULTS.codex.options) {
   const fallback = normalizeWhitespace(fallbackOptions) || DEFAULTS.codex.options;
   const normalizedInput = normalizeWhitespace(options);
@@ -89,20 +152,31 @@ function normalizeCodexOptions(options, fallbackOptions = DEFAULTS.codex.options
 }
 
 function normalizeConfigDefaults(rawDefaults) {
-  const defaults = {
-    claude: {
-      ...DEFAULTS.claude,
-      ...(rawDefaults?.claude ?? {}),
-    },
-    codex: {
-      ...DEFAULTS.codex,
-      ...(rawDefaults?.codex ?? {}),
-    },
+  const rawClaude = {
+    ...DEFAULTS.claude,
+    ...(rawDefaults?.claude ?? {}),
+  };
+  const rawCodex = {
+    ...DEFAULTS.codex,
+    ...(rawDefaults?.codex ?? {}),
   };
 
-  defaults.codex.options = normalizeCodexOptions(defaults.codex.options);
-  defaults.claude.options = normalizeWhitespace(defaults.claude.options) || DEFAULTS.claude.options;
-  return defaults;
+  const claude = normalizeResolvedModelConfig(
+    "claude",
+    rawClaude.model,
+    rawClaude.options,
+    DEFAULTS.claude,
+    rawClaude.modelCatalogId,
+  );
+  const codex = normalizeResolvedModelConfig(
+    "codex",
+    rawCodex.model,
+    rawCodex.options,
+    DEFAULTS.codex,
+    rawCodex.modelCatalogId,
+  );
+
+  return { claude, codex };
 }
 
 function inferMemberType(model) {
@@ -115,6 +189,57 @@ function normalizeType(type, fallback) {
   }
 
   return inferMemberType(fallback?.model);
+}
+
+export function resolveModelCatalogEntry(type, model, options = "") {
+  if (type !== "claude" && type !== "codex") {
+    return undefined;
+  }
+
+  const normalizedModel = normalizeWhitespace(model);
+  if (!normalizedModel) {
+    return getCatalogFallbackEntry(type);
+  }
+
+  const directEntry = getModelCatalogEntry(normalizedModel);
+  if (directEntry?.type === type) {
+    return directEntry;
+  }
+
+  if (type === "claude") {
+    return listModelCatalogByType(type).find((entry) => entry.model === normalizedModel);
+  }
+
+  const fallbackEntry = getCatalogFallbackEntry(type, normalizedModel);
+  const normalizedOptions = normalizeCodexOptions(options, buildOptionsFromCatalogEntry(fallbackEntry));
+  const effort = readCodexOption(normalizedOptions, ["model_reasoning_effort", "reasoning_effort"]);
+  const serviceTier = readCodexOption(normalizedOptions, ["service_tier"]) || "default";
+
+  return listModelCatalogByType(type).find(
+    (entry) =>
+      entry.model === normalizedModel
+      && entry.effort === effort
+      && (entry.serviceTier ?? "default") === serviceTier,
+  );
+}
+
+function normalizeResolvedModelConfig(type, model, options, fallback, modelCatalogId = "") {
+  const defaultForType = fallback ?? DEFAULTS[type];
+  const explicitCatalogId = normalizeWhitespace(modelCatalogId) || normalizeWhitespace(model);
+  const explicitCatalogEntry = getModelCatalogEntry(explicitCatalogId);
+  const requestedModel = explicitCatalogId || normalizeWhitespace(model) || defaultForType.model;
+  const explicitCatalogSelection = explicitCatalogEntry?.type === type ? explicitCatalogEntry : undefined;
+  const catalogEntry = explicitCatalogSelection ?? resolveModelCatalogEntry(type, requestedModel, options);
+  const fallbackOptions = catalogEntry ? buildOptionsFromCatalogEntry(catalogEntry) : defaultForType.options;
+  const rawOptions = explicitCatalogSelection ? "" : options;
+
+  return {
+    model: catalogEntry?.model ?? requestedModel,
+    options: type === "codex"
+      ? normalizeCodexOptions(rawOptions, fallbackOptions)
+      : normalizeWhitespace(rawOptions) || fallbackOptions,
+    modelCatalogId: catalogEntry?.id ?? "",
+  };
 }
 
 function cloneJson(value) {
@@ -157,12 +282,12 @@ function buildMemberConfig(teamId, member, defaults) {
   };
   const type = normalizeType(member?.spawnType, fallback);
   const defaultForType = defaults[type] ?? DEFAULTS[type];
-  const model = typeof member?.spawnModel === "string" && member.spawnModel
-    ? member.spawnModel
-    : defaultForType.model;
-  const rawOptions = typeof member?.spawnOptions === "string" && member.spawnOptions
-    ? member.spawnOptions
-    : defaultForType.options;
+  const resolvedModel = normalizeResolvedModelConfig(
+    type,
+    typeof member?.spawnModel === "string" ? member.spawnModel : "",
+    typeof member?.spawnOptions === "string" ? member.spawnOptions : "",
+    defaultForType,
+  );
 
   return {
     id: typeof member?.id === "string" ? member.id : "",
@@ -171,8 +296,7 @@ function buildMemberConfig(teamId, member, defaults) {
     team: typeof member?.team === "string" && member.team ? member.team : teamId,
     nodeType: typeof member?.nodeType === "string" ? member.nodeType : "worker",
     type,
-    model,
-    options: type === "codex" ? normalizeCodexOptions(rawOptions) : normalizeWhitespace(rawOptions) || defaultForType.options,
+    ...resolvedModel,
   };
 }
 
@@ -206,12 +330,19 @@ function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}
   };
   const type = normalizeType(currentValue?.type ?? fallbackMember.type, base);
   const defaultForType = defaults[type] ?? DEFAULTS[type];
-  const model = typeof currentValue?.model === "string" && currentValue.model
-    ? currentValue.model
-    : fallbackMember.model || defaultForType.model;
-  const rawOptions = typeof currentValue?.options === "string" && currentValue.options
-    ? currentValue.options
-    : fallbackMember.options || defaultForType.options;
+  const resolvedModel = normalizeResolvedModelConfig(
+    type,
+    typeof currentValue?.model === "string" && currentValue.model
+      ? currentValue.model
+      : fallbackMember.model || defaultForType.model,
+    typeof currentValue?.options === "string" && currentValue.options
+      ? currentValue.options
+      : fallbackMember.options || defaultForType.options,
+    defaultForType,
+    typeof currentValue?.modelCatalogId === "string" && currentValue.modelCatalogId
+      ? currentValue.modelCatalogId
+      : fallbackMember.modelCatalogId || "",
+  );
 
   return {
     id: base.id,
@@ -220,8 +351,7 @@ function normalizeMemberConfig(name, currentValue, defaults, fallbackMember = {}
     team: base.team,
     nodeType: base.nodeType,
     type,
-    model,
-    options: type === "codex" ? normalizeCodexOptions(rawOptions) : normalizeWhitespace(rawOptions) || defaultForType.options,
+    ...resolvedModel,
     name,
   };
 }
@@ -243,26 +373,31 @@ function normalizeTeamConfig(raw, fallbackSchema = createDefaultTeamSchema()) {
     }
   }
 
-  return { members, defaults };
+  return { members, defaults, modelCatalog: MODEL_CATALOG };
 }
 
 function updateSchemaMemberWithConfig(member, memberConfig) {
   const nextType = normalizeType(memberConfig?.type, memberConfig);
   const defaults = DEFAULTS[nextType];
-  const nextModel = typeof memberConfig?.model === "string" && memberConfig.model
-    ? memberConfig.model
-    : defaults.model;
-  const nextOptions = typeof memberConfig?.options === "string" && memberConfig.options
-    ? memberConfig.options
-    : defaults.options;
+  const resolvedModel = normalizeResolvedModelConfig(
+    nextType,
+    typeof memberConfig?.model === "string" && memberConfig.model
+      ? memberConfig.model
+      : defaults.model,
+    typeof memberConfig?.options === "string" && memberConfig.options
+      ? memberConfig.options
+      : defaults.options,
+    defaults,
+    typeof memberConfig?.modelCatalogId === "string" && memberConfig.modelCatalogId
+      ? memberConfig.modelCatalogId
+      : "",
+  );
 
   return {
     ...member,
     spawnType: nextType,
-    spawnModel: nextModel,
-    spawnOptions: nextType === "codex"
-      ? normalizeCodexOptions(nextOptions)
-      : normalizeWhitespace(nextOptions) || defaults.options,
+    spawnModel: resolvedModel.model,
+    spawnOptions: resolvedModel.options,
   };
 }
 
@@ -500,26 +635,23 @@ export class TeamConfigStore {
       current,
     );
     const defaults = config.defaults[nextType] ?? DEFAULTS[nextType];
+    const nextModel = typeof patch?.modelCatalogId === "string" && patch.modelCatalogId.trim()
+      ? patch.modelCatalogId.trim()
+      : typeof patch?.model === "string" && patch.model.trim()
+        ? patch.model.trim()
+        : typeof patch?.type === "string"
+          ? defaults.modelCatalogId || defaults.model
+          : current.modelCatalogId || current.model || defaults.model;
     const nextOptions = typeof patch?.options === "string" && patch.options.trim()
       ? patch.options.trim()
-      : current.options || defaults.options;
+      : typeof patch?.type === "string"
+        ? defaults.options
+        : current.options || defaults.options;
     const nextMemberConfig = {
       ...current,
       type: nextType,
-      model: typeof patch?.model === "string" && patch.model.trim()
-        ? patch.model.trim()
-        : current.model || defaults.model,
-      options: nextType === "codex" ? normalizeCodexOptions(nextOptions) : normalizeWhitespace(nextOptions) || defaults.options,
+      ...normalizeResolvedModelConfig(nextType, nextModel, nextOptions, defaults),
     };
-
-    if (typeof patch?.type === "string" && (!patch?.model || !patch.model.trim())) {
-      nextMemberConfig.model = defaults.model;
-    }
-    if (typeof patch?.type === "string" && (!patch?.options || !patch.options.trim())) {
-      nextMemberConfig.options = nextType === "codex"
-        ? normalizeCodexOptions(defaults.options)
-        : normalizeWhitespace(defaults.options) || defaults.options;
-    }
 
     teamSchema.teams[address.teamId].members[address.memberIndex] = updateSchemaMemberWithConfig(
       address.member,
