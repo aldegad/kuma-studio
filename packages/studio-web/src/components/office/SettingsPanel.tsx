@@ -23,6 +23,12 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; bo
     bg: "rgba(148, 163, 184, 0.12)",
     border: "rgba(148, 163, 184, 0.25)",
   },
+  offline: {
+    label: "offline",
+    color: "#94a3b8",
+    bg: "rgba(148, 163, 184, 0.12)",
+    border: "rgba(148, 163, 184, 0.25)",
+  },
   working: {
     label: "working",
     color: "#22d3ee",
@@ -87,6 +93,10 @@ function normalizeStatusTone(state: AgentState) {
 
   if (state === "error") {
     return STATUS_META.error;
+  }
+
+  if (state === "offline") {
+    return STATUS_META.offline;
   }
 
   return STATUS_META.idle;

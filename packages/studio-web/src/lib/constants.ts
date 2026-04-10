@@ -21,6 +21,7 @@ export const TEAM_LABELS_KO: Record<string, string> = Object.fromEntries(
 
 export const STATE_LABELS: Record<string, string> = {
   idle: "Idle",
+  offline: "Offline",
   working: "Working",
   thinking: "Thinking",
   completed: "Completed",
@@ -29,6 +30,7 @@ export const STATE_LABELS: Record<string, string> = {
 
 export const STATE_LABELS_KO: Record<string, string> = {
   idle: "대기 중",
+  offline: "오프라인",
   working: "작업 중",
   thinking: "생각 중",
   completed: "완료",
@@ -37,6 +39,7 @@ export const STATE_LABELS_KO: Record<string, string> = {
 
 export const STATE_COLORS: Record<string, string> = {
   idle: "#9CA3AF",
+  offline: "#94A3B8",
   working: "#3B82F6",
   thinking: "#F59E0B",
   completed: "#10B981",

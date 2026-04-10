@@ -45,6 +45,7 @@ export function Character({ character, isDragging = false, isSelected = false, s
 
   const shouldFloat = !isDragging && (character.state === "idle" || character.state === "completed");
   const isActive = character.state === "working" || character.state === "thinking";
+  const isOffline = character.state === "offline";
 
   return (
     <div
@@ -123,6 +124,8 @@ export function Character({ character, isDragging = false, isSelected = false, s
               ? "border-green-300/70 bg-green-50/80 animate-completion-pop"
               : character.state === "idle"
               ? "border-white/40 bg-white/80 animate-zzz"
+              : character.state === "offline"
+              ? "border-slate-300/70 bg-slate-100/85"
               : "border-white/40 bg-white/80"
           } ${isSelected ? "ring-2 ring-amber-400 ring-offset-1" : ""}`}
           style={{
@@ -145,7 +148,7 @@ export function Character({ character, isDragging = false, isSelected = false, s
         )}
 
         {/* Name plate — compact */}
-        <div className="character-name-plate mt-1.5 -mx-[2px] -mb-[2px] w-[calc(100%+4px)] rounded-b-[10px] px-1.5 py-1">
+        <div className={`character-name-plate mt-1.5 -mx-[2px] -mb-[2px] w-[calc(100%+4px)] rounded-b-[10px] px-1.5 py-1 ${isOffline ? "opacity-85" : ""}`}>
           <p className="text-[10px] font-bold text-amber-100 text-center truncate" style={{ textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}>
             {displayName}
           </p>

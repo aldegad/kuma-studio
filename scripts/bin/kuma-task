@@ -256,6 +256,7 @@ fi
 
 ensure_runtime_requirements
 require_file "$KUMA_CMUX_DIR/kuma-cmux-send.sh"
+require_file "$KUMA_CMUX_DIR/kuma-cmux-read.sh"
 mkdir -p "$KUMA_TASK_DIR" "$KUMA_RESULT_DIR"
 
 MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
@@ -266,6 +267,27 @@ MEMBER_DEFAULT_QA="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("nod
 
 SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$MEMBER_JSON")" || die "surface not found for $MEMBER_NAME in project '$PROJECT'"
 WORKER_SURFACE="$(printf '%s' "$SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+
+read_surface_status_json() {
+  local surface="${1:?surface required}"
+  local output=""
+
+  output="$("$KUMA_CMUX_DIR/kuma-cmux-read.sh" "$surface" 2>/dev/null || echo "")"
+  classify_surface_output_json "$output"
+}
+
+surface_status_field() {
+  local status_json="${1:?status json required}"
+  local field="${2:?field required}"
+
+  printf '%s' "$status_json" | node -e '
+    const fs = require("node:fs");
+    const data = JSON.parse(fs.readFileSync(0, "utf8"));
+    const field = process.argv[1];
+    const value = typeof data?.[field] === "string" ? data[field] : "";
+    process.stdout.write(`${value}\n`);
+  ' "$field"
+}
 
 QA_SURFACE=""
 QA_LABEL=""
@@ -310,7 +332,8 @@ else
       else
         QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
         # surface status 체크
-        QA_STATUS="$(("$KUMA_CMUX_DIR/kuma-cmux-read.sh" "$QA_SURFACE" 2>/dev/null || echo "") | classify_surface_output_json | node -e 'const fs=require("node:fs"); const d=JSON.parse(fs.readFileSync(0,"utf8")); console.log(d.status);' 2>/dev/null || echo "unknown")"
+        QA_STATUS_JSON="$(read_surface_status_json "$QA_SURFACE")"
+        QA_STATUS="$(surface_status_field "$QA_STATUS_JSON" status 2>/dev/null || echo "unknown")"
         if [ "$QA_STATUS" = "working" ]; then
           QA_BUSY=1
         fi
@@ -359,6 +382,13 @@ TASK_FILE="$KUMA_TASK_DIR/${TASK_BASENAME}.task.md"
 RESULT_FILE="$KUMA_RESULT_DIR/${TASK_BASENAME}.result.md"
 SIGNAL="${TASK_BASENAME}-done"
 INITIATOR_SURFACE="$(resolve_initiator_surface)"
+
+WORKER_STATUS_JSON="$(read_surface_status_json "$WORKER_SURFACE")"
+WORKER_STATUS="$(surface_status_field "$WORKER_STATUS_JSON" status 2>/dev/null || echo "unknown")"
+WORKER_PREVIEW="$(surface_status_field "$WORKER_STATUS_JSON" preview 2>/dev/null || echo "")"
+if [ "$WORKER_STATUS" = "working" ]; then
+  die "worker surface busy: $WORKER_SURFACE preview=${WORKER_PREVIEW:-working}; requeue or retry later"
+fi
 
 cat > "$TASK_FILE" <<EOF
 ---

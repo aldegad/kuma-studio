@@ -327,6 +327,28 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).not.toContain("send|--surface surface:16");
   });
 
+  it("kuma-task blocks dispatch when the worker surface is already working", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
+
+    let failure;
+    try {
+      await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(failure.code).toBe(1);
+    expect(`${failure.stderr}`).toContain("worker surface busy: surface:4");
+    expect(`${failure.stderr}`).toContain("requeue or retry later");
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8").catch(() => "");
+    expect(cmuxLog).not.toContain("send-wrapper|surface:4");
+  });
+
   it("kuma-task no-qa prompt uses file-based signal emission", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
@@ -633,20 +655,48 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
+    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "❯\n", "utf8");
 
-    const { stdout, stderr } = await runScript(
+    const child = spawn("bash", [
       KUMA_TASK_PATH,
-      ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--timeout", "1", "--trust-worker"],
-      {
+      "뚝딱이",
+      "echo test",
+      "--project",
+      "kuma-studio",
+      "--wait",
+      "--timeout",
+      "1",
+      "--trust-worker",
+    ], {
+      env: {
         ...sandbox.env,
         WAIT_TIMEOUT_COUNT: "1",
         WAIT_WRITE_RESULT_CONTENT: "# result\\nextended wait ok\\n",
         KUMA_WAIT_TIMEOUT_EXTEND_BY: "2",
         KUMA_WAIT_TIMEOUT_MAX_TOTAL: "5",
       },
-    );
+      cwd: sandbox.projectRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
+    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
+
+    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
+      child.on("error", rejectPromise);
+      child.on("close", resolvePromise);
+    });
+
+    expect(exitCode).toBe(0);
     const waitLog = await readFile(sandbox.waitLog, "utf8");
     expect(waitLog).toContain("--timeout 1");
     expect(waitLog).toContain("--timeout 2");
@@ -730,7 +780,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
+    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "❯\n", "utf8");
 
     const child = spawn("bash", [
       KUMA_TASK_PATH,
@@ -764,6 +814,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     });
 
     const resultPath = await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
+    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 1500));
     await writeFile(resultPath, "# result\npoll extend ok\n", "utf8");
 
@@ -834,29 +885,50 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
+    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "❯\n", "utf8");
+
+    const child = spawn("bash", [
+      KUMA_TASK_PATH,
+      "뚝딱이",
+      "echo test",
+      "--project",
+      "kuma-studio",
+      "--wait",
+      "--timeout",
+      "1",
+      "--no-qa",
+    ], {
+      env: {
+        ...sandbox.env,
+        WAIT_BEHAVIOR: "timeout",
+        KUMA_WAIT_TIMEOUT_EXTEND_BY: "1",
+        KUMA_WAIT_TIMEOUT_MAX_EXTENSIONS: "2",
+        KUMA_WAIT_TIMEOUT_MAX_TOTAL: "3",
+      },
+      cwd: sandbox.projectRoot,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
     await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
 
-    let failure;
-    try {
-      await runScript(
-        KUMA_TASK_PATH,
-        ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--timeout", "1", "--no-qa"],
-        {
-          ...sandbox.env,
-          WAIT_BEHAVIOR: "timeout",
-          KUMA_WAIT_TIMEOUT_EXTEND_BY: "1",
-          KUMA_WAIT_TIMEOUT_MAX_EXTENSIONS: "2",
-          KUMA_WAIT_TIMEOUT_MAX_TOTAL: "3",
-        },
-      );
-    } catch (error) {
-      failure = error;
-    }
+    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
+      child.on("error", rejectPromise);
+      child.on("close", resolvePromise);
+    });
 
-    expect(failure).toBeTruthy();
-    expect(failure.code).toBe(2);
-    expect(`${failure.stdout}${failure.stderr}`).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=1s total_timeout=2s extension=1/2");
-    expect(`${failure.stdout}${failure.stderr}`).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=1s total_timeout=3s extension=2/2");
-    expect(`${failure.stdout}${failure.stderr}`).toContain("WAIT_TIMEOUT_DIAG: surface=surface:4 status=working preview=Investigating stubborn bug");
+    expect(exitCode).toBe(2);
+    expect(`${stdout}${stderr}`).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=1s total_timeout=2s extension=1/2");
+    expect(`${stdout}${stderr}`).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=1s total_timeout=3s extension=2/2");
+    expect(`${stdout}${stderr}`).toContain("WAIT_TIMEOUT_DIAG: surface=surface:4 status=working preview=Investigating stubborn bug");
   }, 15000);
 });

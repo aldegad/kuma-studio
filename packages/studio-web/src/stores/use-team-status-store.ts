@@ -145,6 +145,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeMemberState(value: unknown): AgentState {
   switch (value) {
     case "idle":
+    case "offline":
     case "working":
     case "thinking":
     case "completed":

@@ -30,10 +30,7 @@ if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-task(\s|$)'; the
   exit 0
 fi
 
-if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/cmux/)?kuma-cmux-send\.sh(\s|$)'; then
-  echo '{"continue": true}'
-  exit 0
-fi
+# kuma-cmux-send.sh는 dispatch lock 섹션에서만 허용 (메인 스레드 직접 사용 금지)
 
 # raw cmux send/send-key는 직접 호출 금지
 if echo "$cmd" | grep -qE '^\s*cmux\s+(send|send-key)(\s|$)'; then
@@ -53,8 +50,23 @@ if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-status(\s|$)'; t
   echo '{"continue": true}'; exit 0
 fi
 
+# kuma-kill / kuma-kill-all / kuma-spawn-all / kuma-restart-all
+if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-(kill|kill-all|spawn-all|restart-all)(\s|$)'; then
+  echo '{"continue": true}'; exit 0
+fi
+
+# chmod on ~/.kuma/bin/
+if echo "$cmd" | grep -qE '^\s*chmod\s.*~/\.kuma/bin/'; then
+  echo '{"continue": true}'; exit 0
+fi
+
 # ls: /tmp/kuma-*, ~/.kuma/, ~/.claude/, output/playwright/ (파일 존재 확인)
 if echo "$cmd" | grep -qE '^\s*ls\s+(-[a-zA-Z]+\s+)*(/tmp/kuma-|.*/\.kuma/|.*/\.claude/|.*/output/playwright)'; then
+  echo '{"continue": true}'; exit 0
+fi
+
+# cmux tree / close-surface (진단 + surface 정리)
+if echo "$cmd" | grep -qE '^\s*cmux\s+(tree|close-surface)(\s|$)'; then
   echo '{"continue": true}'; exit 0
 fi
 

@@ -462,7 +462,7 @@ export function toStudioTeamStatusSnapshot(surfaceStates, options = {}) {
     project.members.push({
       id: member.id,
       surface,
-      state: surfaceState ? mapSurfaceStatusToStudioState(status) : "idle",
+      state: surfaceState ? mapSurfaceStatusToStudioState(status) : "offline",
       lastOutputLines,
       task: deriveTaskFromOutput(status, lastOutputLines),
       modelInfo: parseModelInfo(lastOutput),

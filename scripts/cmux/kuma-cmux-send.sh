@@ -86,6 +86,69 @@ fi
 SEND_ARGS+=(--surface "$SURFACE")
 READ_ARGS+=(--surface "$SURFACE" --lines 12)
 
+INTERACTIVE_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])'
+SUGGESTION_LINE_PATTERN='^[[:space:]]*›[[:space:]]+[^[:space:]]'
+EMPTY_PROMPT_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])[[:space:]]*$'
+
+read_input_view() {
+  local screen
+
+  screen=$(cmux read-screen "${READ_ARGS[@]}" 2>&1 || true)
+  printf '%s\n' "$screen" | tail -n 8
+}
+
+views_differ() {
+  local before="${1-}"
+  local after="${2-}"
+  [ "$before" != "$after" ]
+}
+
+last_interactive_line() {
+  local view="${1-}"
+  printf '%s\n' "$view" | grep -E "$INTERACTIVE_LINE_PATTERN" | tail -n 1 || true
+}
+
+blocking_suggestion_visible() {
+  local last_line
+  last_line="$(last_interactive_line "${1-}")"
+  printf '%s\n' "$last_line" | grep -Eq "$SUGGESTION_LINE_PATTERN"
+}
+
+prompt_ready_for_send() {
+  local last_line
+  last_line="$(last_interactive_line "${1-}")"
+  printf '%s\n' "$last_line" | grep -Eq "$EMPTY_PROMPT_LINE_PATTERN"
+}
+
+dismiss_blocking_suggestion() {
+  local view="${1-}"
+  local attempt
+
+  if ! blocking_suggestion_visible "$view"; then
+    printf '%s\n' "$view"
+    return 0
+  fi
+
+  # Codex suggestion lines (› Explain this codebase 등)는 텍스트 입력 시 자동 사라짐.
+  # Escape로 안 지워지면 그냥 진행 — cmux send가 paste하면 suggestion이 자동 dismiss됨.
+  for attempt in $(seq 1 2); do
+    log_send "dismiss-suggestion" "$view"
+    cmux send-key "${SEND_ARGS[@]}" Escape
+    sleep 0.4
+    view="$(read_input_view)"
+    if ! blocking_suggestion_visible "$view"; then
+      log_send "dismissed-suggestion" "$view"
+      printf '%s\n' "$view"
+      return 0
+    fi
+  done
+
+  # Escape로 안 지워져도 실패하지 않음 — 텍스트 paste가 suggestion을 자동 dismiss함
+  log_send "dismiss-skipped-will-auto-dismiss" "$view"
+  printf '%s\n' "$view"
+  return 0
+}
+
 if [ "$DRY_RUN" = "1" ]; then
   cmux read-screen "${READ_ARGS[@]}" > /dev/null
   log_send "dry-run" "$PROMPT"
@@ -100,24 +163,6 @@ else
   CHECK="${PROMPT: -30}"
 fi
 
-# Send the text WITHOUT trailing newline (Codex/Claude use bracketed paste;
-# a \n inside pasted text is treated as a literal newline, not Enter).
-log_send "dispatch" "$PROMPT"
-cmux send "${SEND_ARGS[@]}" "$PROMPT"
-sleep 1
-
-# Always explicitly press Enter via send-key — never rely on \n in paste.
-cmux send-key "${SEND_ARGS[@]}" Enter
-
-MAX_RETRIES=3
-
-read_input_view() {
-  local screen
-
-  screen=$(cmux read-screen "${READ_ARGS[@]}" 2>&1 || true)
-  printf '%s\n' "$screen" | tail -n 8
-}
-
 prompt_still_pending() {
   local view="$1"
   local line
@@ -126,21 +171,44 @@ prompt_still_pending() {
   local target_prompt_index=0
 
   # Detect prompt lines from Claude Code (❯ ›), Codex (>), and shell ($).
-  # Keep this in bash so Unicode prompt glyph handling does not depend on awk locale quirks.
   while IFS= read -r line; do
     line_index=$((line_index + 1))
-    case "$line" in
-      ([[:space:]]*'❯'*|[[:space:]]*'›'*|[[:space:]]*'>'*|[[:space:]]*'$'*)
-        last_prompt_index=$line_index
-        if [ -n "$CHECK" ] && printf '%s\n' "$line" | grep -F -- "$CHECK" > /dev/null; then
-          target_prompt_index=$line_index
-        fi
-        ;;
-    esac
+    if printf '%s\n' "$line" | grep -Eq "$INTERACTIVE_LINE_PATTERN"; then
+      last_prompt_index=$line_index
+      if [ -n "$CHECK" ] && printf '%s\n' "$line" | grep -F -- "$CHECK" > /dev/null; then
+        target_prompt_index=$line_index
+      fi
+    fi
   done <<< "$view"
 
   [ "$target_prompt_index" -gt 0 ] && [ "$target_prompt_index" -eq "$last_prompt_index" ]
 }
+
+MAX_RETRIES=3
+PRE_SEND_VIEW="$(dismiss_blocking_suggestion "$(read_input_view)")"
+log_send "pre-send" "$PRE_SEND_VIEW"
+
+# Send the text WITHOUT trailing newline (Codex/Claude use bracketed paste;
+# a \n inside pasted text is treated as a literal newline, not Enter).
+log_send "dispatch" "$PROMPT"
+cmux send "${SEND_ARGS[@]}" "$PROMPT"
+
+# Enter를 점진적 딜레이로 3회 시도 (1초, 2초, 3초) — codex가 긴 paste 처리 중 Enter를 씹는 문제 대응.
+for enter_try in 1 2 3; do
+  sleep "$enter_try"
+  cmux send-key "${SEND_ARGS[@]}" Enter
+  sleep 0.5
+  EARLY_VIEW="$(read_input_view)"
+  if echo "$EARLY_VIEW" | grep -qE "Working \([0-9]+s"; then
+    log_send "enter-accepted-try-$enter_try" "$EARLY_VIEW"
+    break
+  fi
+  if views_differ "$PRE_SEND_VIEW" "$EARLY_VIEW" && ! prompt_still_pending "$EARLY_VIEW"; then
+    log_send "enter-accepted-try-$enter_try" "$EARLY_VIEW"
+    break
+  fi
+  log_send "enter-retry-$enter_try" "$EARLY_VIEW"
+done
 
 # Verify delivery — retry Enter if text is still at prompt
 DELIVERED=false
@@ -148,11 +216,26 @@ for i in $(seq 1 $MAX_RETRIES); do
   sleep 1.2
   INPUT_VIEW="$(read_input_view)"
 
-  if prompt_still_pending "$INPUT_VIEW"; then
+  if ! views_differ "$PRE_SEND_VIEW" "$INPUT_VIEW"; then
+    echo "RETRY $i: screen unchanged after send, retrying..." >&2
+    log_send "retry-unchanged" "$INPUT_VIEW"
+    cmux send-key "${SEND_ARGS[@]}" Enter
+  elif echo "$INPUT_VIEW" | grep -qE "Working \([0-9]+s"; then
+    # Codex is actively working — delivery confirmed even if suggestion remnants linger.
+    DELIVERED=true
+    log_send "delivered-working" "$INPUT_VIEW"
+    break
+  elif blocking_suggestion_visible "$INPUT_VIEW"; then
+    echo "RETRY $i: suggestion still visible after send, retrying..." >&2
+    log_send "retry-suggestion" "$INPUT_VIEW"
+    cmux send-key "${SEND_ARGS[@]}" Enter
+  elif prompt_still_pending "$INPUT_VIEW"; then
     echo "RETRY $i: Enter not registered, retrying..." >&2
     log_send "retry-enter" "$INPUT_VIEW"
     cmux send-key "${SEND_ARGS[@]}" Enter
   else
+    # 화면이 바뀌었고 프롬프트에 텍스트 안 남아있으면 전달 완료.
+    # suggestion 잔상은 무시 — codex가 Working 상태면 전달된 것.
     DELIVERED=true
     log_send "delivered" "$INPUT_VIEW"
     break

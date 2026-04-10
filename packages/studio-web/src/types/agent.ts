@@ -1,6 +1,6 @@
 import { teamData } from "../lib/team-schema";
 
-export type AgentState = "idle" | "working" | "thinking" | "completed" | "error";
+export type AgentState = "idle" | "offline" | "working" | "thinking" | "completed" | "error";
 export type NodeType = "session" | "team" | "worker";
 export type ModelType = "claude" | "codex";
 export type TeamSkillId = "kuma" | "dev-team" | "analytics-team" | "strategy-team";
