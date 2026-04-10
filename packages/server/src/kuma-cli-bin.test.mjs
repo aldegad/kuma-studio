@@ -51,6 +51,14 @@ async function setupCliSandbox() {
     teamPath,
     `${JSON.stringify({
       teams: {
+        system: {
+          name: "시스템",
+          members: [
+            { id: "kuma", name: "쿠마", emoji: "🐻", spawnType: "claude", team: "system", nodeType: "session" },
+            { id: "noeuri", name: "노을이", emoji: "🦌", spawnType: "codex", team: "system" },
+            { id: "jjooni", name: "쭈니", emoji: "🐝", spawnType: "codex", team: "system" },
+          ],
+        },
         dev: {
           name: "개발팀",
           members: [
@@ -77,6 +85,10 @@ async function setupCliSandbox() {
   await writeFile(
     surfacesPath,
     `${JSON.stringify({
+      system: {
+        "🐻 쿠마": "surface:1",
+        "🐝 쭈니": "surface:2",
+      },
       "kuma-studio": {
         "🐺 하울": "surface:3",
         "🦫 뚝딱이": "surface:4",
@@ -245,7 +257,7 @@ async function waitForTaskResultPath(taskDir, resultDir) {
   throw new Error("task file was not created in time");
 }
 
-describe("kuma CLI bin scripts", () => {
+describe("kuma CLI bin scripts", { timeout: 15_000 }, () => {
   const tempRoots = [];
 
   afterEach(async () => {
@@ -396,6 +408,28 @@ describe("kuma CLI bin scripts", () => {
     expect(stdout).toContain("kuma-studio\t🦔 밤토리\tsurface:7\tidle");
   });
 
+  it("kuma-status treats bypass-permissions footers as idle instead of working", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await writeFile(
+      join(sandbox.outputDir, "surface_16.txt"),
+      [
+        "───────────────────────────",
+        "❯",
+        "───────────────────────────",
+        "  ⏵⏵ bypass permissions on /tmp",
+        "  Now using extra usage",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const { stdout } = await runScript(KUMA_STATUS_PATH, ["--project", "kuma-studio"], sandbox.env);
+    expect(stdout).toContain("kuma-studio\t🦝 쿤\tsurface:16\tidle\t");
+    expect(stdout).not.toContain("kuma-studio\t🦝 쿤\tsurface:16\tworking");
+    expect(stdout).not.toContain("bypass permissions");
+  });
+
   it("kuma-spawn resolves the project from cwd and registers the spawned surface", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
@@ -410,6 +444,39 @@ describe("kuma CLI bin scripts", () => {
 
     const registry = JSON.parse(await readFile(sandbox.surfacesPath, "utf8"));
     expect(registry["kuma-studio"]["🦫 뚝딱이"]).toBe("surface:55");
+  });
+
+  it("kuma-spawn forces system members into the system project even from a project cwd", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout, stderr } = await runScript(KUMA_SPAWN_PATH, ["노을이"], sandbox.env, sandbox.projectRoot);
+    expect(stdout).toContain("PROJECT: system");
+    expect(stdout).toContain("SURFACE: surface:55");
+    expect(stderr).toContain("overriding project kuma-studio -> system");
+
+    const spawnLog = await readFile(sandbox.spawnLog, "utf8");
+    expect(spawnLog).toContain("system");
+    expect(spawnLog).toContain("surface:1");
+
+    const registry = JSON.parse(await readFile(sandbox.surfacesPath, "utf8"));
+    expect(registry.system["🦌 노을이"]).toBe("surface:55");
+  });
+
+  it("kuma-spawn rejects explicit non-system projects for system members", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    let failure;
+    try {
+      await runScript(KUMA_SPAWN_PATH, ["노을이", "--project", "kuma-studio"], sandbox.env, sandbox.projectRoot);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(failure.stderr).toContain("must use project=system");
+    expect(failure.stderr).toContain("refusing to spawn system member '노을이'");
   });
 
   it("kuma-kill removes the killed member from the registry", async () => {

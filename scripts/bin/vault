@@ -1,0 +1,93 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_PATH="$(node -e 'const fs = require("node:fs"); process.stdout.write(fs.realpathSync(process.argv[1]));' "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  vault search <query>
+  vault index
+  vault <domain>
+
+Options:
+  --vault-dir <path>  Override the vault root (default: ~/.kuma/vault or KUMA_VAULT_DIR)
+  --json              Print search results as JSON
+EOF
+}
+
+resolve_domain_path() {
+  local alias="${1:?domain alias required}"
+  case "$alias" in
+    security|sec)
+      printf '%s/domains/security.md\n' "$VAULT_DIR"
+      ;;
+    analytics|usage|insights)
+      printf '%s/domains/analytics.md\n' "$VAULT_DIR"
+      ;;
+    image-gen|imagegen|image)
+      printf '%s/domains/image-generation.md\n' "$VAULT_DIR"
+      ;;
+    content|content-pipeline|pipeline)
+      printf '%s/domains/content-pipeline.md\n' "$VAULT_DIR"
+      ;;
+    *)
+      printf '%s/%s\n' "$VAULT_DIR" "$alias"
+      ;;
+  esac
+}
+
+VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
+SEARCH_FORMAT="text"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vault-dir)
+      VAULT_DIR="${2:?vault dir required}"
+      shift 2
+      ;;
+    --json)
+      SEARCH_FORMAT="json"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+[ $# -ge 1 ] || {
+  usage >&2
+  exit 1
+}
+
+COMMAND="$1"
+shift || true
+
+case "$COMMAND" in
+  search)
+    [ $# -ge 1 ] || die "search query required"
+    node "$REPO_ROOT/packages/server/src/cli.mjs" vault-search --vault-dir "$VAULT_DIR" --format "$SEARCH_FORMAT" --query "$*"
+    ;;
+  index)
+    require_file "$VAULT_DIR/index.md"
+    cat "$VAULT_DIR/index.md"
+    ;;
+  *)
+    DOMAIN_PATH="$(resolve_domain_path "$COMMAND")"
+    if [ ! -f "$DOMAIN_PATH" ] && [ -f "${DOMAIN_PATH}.md" ]; then
+      DOMAIN_PATH="${DOMAIN_PATH}.md"
+    fi
+    require_file "$DOMAIN_PATH"
+    cat "$DOMAIN_PATH"
+    ;;
+esac

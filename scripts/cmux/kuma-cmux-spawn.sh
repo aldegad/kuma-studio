@@ -14,10 +14,6 @@ PROJECT="${4:-}"
 shift 4 2>/dev/null || true
 
 NORMALIZED_NAME="$(normalize_member_name "$NAME")"
-RESOLVED_TYPE="$TYPE"
-if team_config_exists && team_config_member_exists "$NORMALIZED_NAME"; then
-  RESOLVED_TYPE="$(team_config_get_member_field "$NORMALIZED_NAME" type)"
-fi
 
 # Parse optional flags
 DIRECTION="right"
@@ -33,6 +29,9 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
+
+LAUNCH_RECORD="$(resolve_member_launch_record "$NAME" "$TYPE")"
+IFS=$'\x1f' read -r _RESOLVED_NAME RESOLVED_TYPE _RESOLVED_MODEL _RESOLVED_OPTIONS _RESOLVED_EMOJI <<< "$LAUNCH_RECORD"
 
 # Create new split pane or tab
 if [ -n "$TARGET_PANE" ]; then
@@ -62,7 +61,7 @@ fi
 
 sleep 1
 
-COMMAND="$(build_member_command "$NAME" "$TYPE" "$DIR")"
+COMMAND="$(build_member_command_from_record "$DIR" "$LAUNCH_RECORD")"
 SEND_SCRIPT_ARGS=("$SURFACE" "$COMMAND")
 if [ -n "$WORKSPACE" ]; then
   SEND_SCRIPT_ARGS+=(--workspace "$WORKSPACE")
@@ -70,8 +69,14 @@ fi
 "$SCRIPT_DIR/kuma-cmux-send.sh" "${SEND_SCRIPT_ARGS[@]}" > /dev/null
 
 # Tab title (이모지+이름)
-TITLE="$(member_display_label "$NORMALIZED_NAME")"
-cmux tab-action --action rename --surface "$SURFACE" --title "$TITLE" > /dev/null 2>&1 || true
+TITLE="$(member_display_label "$NORMALIZED_NAME" "$LAUNCH_RECORD")"
+RENAME_ARGS=(--action rename --surface "$SURFACE" --title "$TITLE")
+if [ -n "$WORKSPACE" ]; then
+  RENAME_ARGS=(--action rename --workspace "$WORKSPACE" --surface "$SURFACE" --title "$TITLE")
+fi
+if ! cmux tab-action "${RENAME_ARGS[@]}" > /dev/null 2>&1; then
+  echo "TITLE_RENAME_FAILED: member=$NAME surface=$SURFACE workspace=${WORKSPACE:-unknown}" >&2
+fi
 
 # Register
 if [ -n "$PROJECT" ]; then

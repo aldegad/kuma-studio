@@ -75,7 +75,7 @@ load_target_members() {
     fi
     seen="${seen}${member}"$'\n'
     TARGET_MEMBERS+=("$member")
-  done < <(list_spawn_members)
+  done < <(list_project_spawn_members)
 }
 
 lookup_existing_surface() {

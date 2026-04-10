@@ -343,6 +343,15 @@ body {
   border-color: rgba(100, 80, 180, 0.3);
 }
 
+/* Furniture — shadow only on hover/drag */
+.office-furniture {
+  filter: none;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.office-furniture:hover {
+  filter: drop-shadow(2px 3px 4px rgba(0, 0, 0, 0.2));
+}
+
 /* Character game card enhancements */
 .character-card {
   transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;

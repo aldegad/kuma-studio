@@ -105,22 +105,22 @@ export function Character({ character, isDragging = false, isSelected = false, s
         )}
         {/* Status dot — outside card to avoid overflow clip */}
         <div
-          className={`absolute -top-1 -right-1 z-10 h-3 w-3 rounded-full border-2 border-white shadow-sm ${isActive ? "animate-pulse" : ""}`}
+          className={`absolute -top-1 -right-1 z-10 h-3 w-3 rounded-full border-2 border-white ${isActive ? "animate-pulse" : ""}`}
           data-kuma-agent-overlay="status-dot"
           style={{ backgroundColor: stateColor }}
         />
 
         {/* Simplified card — near-square */}
         <div
-          className={`character-card relative flex w-24 flex-col items-center rounded-xl border-2 pt-2 shadow-md backdrop-blur-sm ${
+          className={`character-card relative flex w-24 flex-col items-center rounded-xl border-2 pt-2 backdrop-blur-sm ${
             character.state === "working"
-              ? "border-blue-400/70 bg-blue-50/85 shadow-blue-300/40 ring-2 ring-blue-400/40 animate-state-glow"
+              ? "border-blue-400/70 bg-blue-50/85 ring-2 ring-blue-400/40 animate-state-glow"
               : character.state === "thinking"
-              ? "border-amber-300/70 bg-amber-50/80 shadow-amber-200/40 ring-2 ring-amber-300/30 animate-state-glow"
+              ? "border-amber-300/70 bg-amber-50/80 ring-2 ring-amber-300/30 animate-state-glow"
               : character.state === "error"
-              ? "border-red-300/70 bg-red-50/80 shadow-red-200/40 ring-2 ring-red-300/30 animate-error-shake"
+              ? "border-red-300/70 bg-red-50/80 ring-2 ring-red-300/30 animate-error-shake"
               : character.state === "completed"
-              ? "border-green-300/70 bg-green-50/80 shadow-green-200/40 animate-completion-pop"
+              ? "border-green-300/70 bg-green-50/80 animate-completion-pop"
               : character.state === "idle"
               ? "border-white/40 bg-white/80 animate-zzz"
               : "border-white/40 bg-white/80"

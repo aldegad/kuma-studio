@@ -23,7 +23,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-REGISTRY="/tmp/kuma-surfaces.json"
+REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 
 if [ ! -f "$REGISTRY" ]; then
   echo "{}" > "$REGISTRY"
@@ -31,7 +31,7 @@ fi
 
 # 전원 살아있으면 스킵
 ALL_ALIVE=true
-for name in $(list_spawn_members); do
+for name in $(list_project_spawn_members); do
   LABEL="$(member_display_label "$name")"
   EXISTING=$(jq -r --arg p "$PROJECT" --arg n "$name" --arg l "$LABEL" '.[$p][$l] // .[$p][$n] // empty' "$REGISTRY" 2>/dev/null || echo "")
   if [ -z "$EXISTING" ] || ! cmux read-screen --surface "$EXISTING" --lines 1 > /dev/null 2>&1; then

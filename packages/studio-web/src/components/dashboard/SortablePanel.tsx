@@ -48,9 +48,9 @@ export function FloatingPanel({
           : undefined,
       }}
     >
-      <div className="game-panel-frame overflow-hidden rounded-xl">
+      <div className="game-panel-frame flex flex-col overflow-hidden rounded-xl max-h-[calc(100vh-120px)]">
         {/* Game window title bar */}
-        <div className="game-panel-titlebar flex items-center gap-1.5 px-3 py-1.5 cursor-grab active:cursor-grabbing">
+        <div className="game-panel-titlebar shrink-0 flex items-center gap-1.5 px-3 py-1.5 cursor-grab active:cursor-grabbing">
           <span className="w-1.5 h-1.5 rounded-sm bg-amber-400/50 shrink-0" />
           <span className="game-panel-title text-[9px] font-black uppercase tracking-[0.15em] truncate">{title}</span>
           <span className="ml-auto flex gap-0.5">
@@ -58,7 +58,7 @@ export function FloatingPanel({
             <span className="w-1 h-1 rounded-full bg-current opacity-20" />
           </span>
         </div>
-        <div className="[&>*]:!static [&>*]:!inset-auto [&>*]:!left-auto [&>*]:!right-auto [&>*]:!top-auto [&>*]:!bottom-auto [&>*]:!z-auto [&>*]:!w-full [&>*]:!max-w-full [&>*]:!rounded-none [&>*]:!border-0 [&>*]:!shadow-none">
+        <div className="min-h-0 flex-1 overflow-y-auto [&>*]:!static [&>*]:!inset-auto [&>*]:!left-auto [&>*]:!right-auto [&>*]:!top-auto [&>*]:!bottom-auto [&>*]:!z-auto [&>*]:!w-full [&>*]:!max-w-full [&>*]:!rounded-none [&>*]:!border-0 [&>*]:!shadow-none">
           {children}
         </div>
       </div>

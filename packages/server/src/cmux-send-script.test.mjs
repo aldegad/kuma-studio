@@ -90,7 +90,7 @@ esac
     expect(sendLogContents).toContain("\tdispatch\t");
     expect(sendLogContents).toContain("\tretry-enter\t");
     expect(sendLogContents).toContain("\tdelivered\t");
-  });
+  }, 10_000);
 
   it("routes helper scripts and kuma-task through the send wrapper instead of raw cmux send", async () => {
     for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH]) {

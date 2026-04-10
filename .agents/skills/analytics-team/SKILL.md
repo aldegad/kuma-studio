@@ -1,3 +1,8 @@
+---
+name: analytics-team
+description: Route research work to the Kuma analytics team workflow.
+---
+
 # /analytics-team — 분석팀 호출
 
 `packages/shared/team.json` 기준 분석팀은 `🦊 루미`가 PM/오케스트레이터, `🦉 부리`가 외부 리서치 워커다. 쿠마 모드에서 `/analytics-team`이 호출되면 쿠마가 직접 끝까지 수행하는 것이 아니라 **루미 프로토콜**을 로드해 과제를 분해하고 부리에게 위임한다.

@@ -1,17 +1,37 @@
 import { assert, describe, it } from "vitest";
 
+import { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
 import {
   buildTeamStatusSnapshot,
-  classifySurfaceStatus,
   filterTeamStatusSnapshot,
   isRetryableCmuxSocketFailure,
+  isSurfaceNotFoundOutput,
   mapSurfaceStatusToStudioState,
   parseModelInfo,
+  parseLiveSurfacesFromCmuxTree,
   parseRegistryLabel,
   readSurfaceWithHealing,
+  reconcileRegistryWithCmuxTree,
+  TeamStatusStore,
   toStudioTeamStatusSnapshot,
   withImplicitRegistryMembers,
 } from "./team-status-store.mjs";
+
+async function waitFor(assertion, timeoutMs = 1_000) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (await assertion()) {
+      return;
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 10);
+    });
+  }
+
+  throw new Error(`Timed out after ${timeoutMs}ms`);
+}
 
 describe("team-status-store", () => {
   it("parses registry labels into emoji and display name", () => {
@@ -214,6 +234,48 @@ describe("team-status-store", () => {
       isRetryableCmuxSocketFailure("Error: invalid_params: Surface is not a terminal"),
       false,
     );
+  });
+
+  it("detects explicit surface-not-found outputs for registry cleanup", () => {
+    assert.strictEqual(isSurfaceNotFoundOutput("Error: surface:85 not found"), true);
+    assert.strictEqual(isSurfaceNotFoundOutput("no such surface: surface:86"), true);
+    assert.strictEqual(isSurfaceNotFoundOutput("Error: invalid_params: Surface is not a terminal"), false);
+  });
+
+  it("parses live surfaces from cmux tree output", () => {
+    assert.deepEqual(
+      parseLiveSurfacesFromCmuxTree([
+        "workspace workspace:2",
+        "│   ├── surface surface:54 [terminal] \"🦔 밤토리\" tty=ttys007",
+        "│   ├── surface surface:63 [terminal] \"🐝 쭈니\" tty=ttys008",
+        "│   ├── surface surface:54 [terminal] duplicate sample",
+      ].join("\n")),
+      ["surface:54", "surface:63"],
+    );
+  });
+
+  it("reconciles the registry to live cmux surfaces only", () => {
+    const registry = {
+      "kuma-studio": {
+        쿤: "surface:24",
+        "🦝 쿤": "surface:22",
+        "🦦 슉슉이": "surface:86",
+      },
+    };
+
+    const reconciled = reconcileRegistryWithCmuxTree(
+      registry,
+      [
+        "workspace workspace:2",
+        "│   ├── surface surface:24 [terminal] \"🦝 쿤\" tty=ttys008",
+      ].join("\n"),
+    );
+
+    assert.deepEqual(reconciled, {
+      "kuma-studio": {
+        쿤: "surface:24",
+      },
+    });
   });
 
   it("retries socket failures with strict cmux env and reports a healed read", async () => {
@@ -725,5 +787,110 @@ describe("team-status-store", () => {
     );
 
     assert.deepEqual(Object.keys(snapshot.projects), ["kuma-studio"]);
+  });
+
+  it("removes stale registry entries when a surface read returns not found", async () => {
+    let registry = {
+      "kuma-studio": {
+        쿤: "surface:24",
+        "🦝 쿤": "surface:22",
+      },
+    };
+    const writes = [];
+
+    const store = new TeamStatusStore({
+      registryPath: "/tmp/team-status-store-stale-registry.json",
+      readRegistryFn: async () => registry,
+      writeRegistryFn: async (_registryPath, nextRegistry) => {
+        registry = JSON.parse(JSON.stringify(nextRegistry));
+        writes.push(registry);
+      },
+      readCmuxTreeFn: async () => ({
+        ok: false,
+        output: "Error: Failed to connect to socket",
+      }),
+      readSurfaceFn: async (surface) => {
+        if (surface === "surface:22") {
+          return { ok: false, output: "Error: surface:22 not found" };
+        }
+
+        return { ok: true, output: "Reviewing dashboard sync" };
+      },
+    });
+
+    await store.refreshRegistry();
+    await waitFor(() => writes.length === 1);
+    const snapshot = store.getSnapshot();
+
+    assert.strictEqual(writes.length, 1);
+    assert.deepEqual(registry, {
+      "kuma-studio": {
+        쿤: "surface:24",
+      },
+    });
+    assert.deepEqual(snapshot.projects["kuma-studio"].members.map(({ name, surface, status }) => ({
+      name,
+      surface,
+      status,
+    })), [
+      {
+        name: "쿤",
+        surface: "surface:24",
+        status: "working",
+      },
+    ]);
+  });
+
+  it("reconciles stale dead+live duplicates from cmux tree before polling", async () => {
+    let registry = {
+      "kuma-studio": {
+        쿤: "surface:24",
+        "🦝 쿤": "surface:22",
+        "🦦 슉슉이": "surface:86",
+      },
+    };
+    const writes = [];
+
+    const store = new TeamStatusStore({
+      registryPath: "/tmp/team-status-store-reconcile.json",
+      readRegistryFn: async () => registry,
+      writeRegistryFn: async (_registryPath, nextRegistry) => {
+        registry = JSON.parse(JSON.stringify(nextRegistry));
+        writes.push(registry);
+      },
+      readCmuxTreeFn: async () => ({
+        ok: true,
+        output: [
+          "workspace workspace:2",
+          "│   ├── surface surface:24 [terminal] \"🦝 쿤\" tty=ttys008",
+        ].join("\n"),
+      }),
+      readSurfaceFn: async () => ({ ok: true, output: "❯" }),
+    });
+
+    await store.refreshRegistry();
+    await waitFor(() => {
+      const project = store.getSnapshot().projects["kuma-studio"];
+      return project?.members?.[0]?.status === "idle";
+    });
+    const snapshot = store.getSnapshot();
+
+    assert.strictEqual(writes.length, 1);
+    assert.deepEqual(registry, {
+      "kuma-studio": {
+        쿤: "surface:24",
+      },
+    });
+    assert.deepEqual(snapshot.projects["kuma-studio"].members.map(({ name, surface, status }) => ({
+      name,
+      surface,
+      status,
+    })), [
+      {
+        name: "쿤",
+        surface: "surface:24",
+        status: "idle",
+      },
+    ]);
   });
 });

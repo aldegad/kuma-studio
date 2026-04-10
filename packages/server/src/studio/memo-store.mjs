@@ -5,7 +5,14 @@ import { basename, extname, join, normalize, relative, resolve } from "node:path
 import { homedir } from "node:os";
 
 const MEMO_IMAGE_ROUTE_PREFIX = "/studio/memo-images/";
+const USER_MEMORY_INDEX_FILE_NAME = "MEMORY.md";
 const VAULT_SYSTEM_FILE_NAMES = new Set(["index.md", "schema.md", "log.md"]);
+const VAULT_SPECIAL_FILE_NAMES = new Set([
+  "current-focus.md",
+  "dispatch-log.md",
+  "decisions.md",
+  "thread-map.md",
+]);
 const VAULT_ENTRY_SKIP_DIRS = new Set(["images", "inbox"]);
 const INBOX_ALLOWED_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
 
@@ -191,6 +198,14 @@ export function resolveVaultDir() {
   return resolve(homedir(), ".kuma", "vault");
 }
 
+export function resolveUserMemoDir() {
+  if (process.env.KUMA_USER_MEMO_DIR) {
+    return resolve(process.env.KUMA_USER_MEMO_DIR);
+  }
+
+  return resolve(homedir(), ".kuma", "memos");
+}
+
 export function resolveVaultImagesDir() {
   return join(resolveVaultDir(), "images");
 }
@@ -277,10 +292,12 @@ export class MemoStore {
   async #ensureSeedData() {
     const vaultDir = this.getVaultDir();
     const inboxDir = this.getInboxDir();
+    const userMemoDir = resolveUserMemoDir();
     const vaultImagesDir = resolveVaultImagesDir();
 
     await mkdir(vaultDir, { recursive: true });
     await mkdir(inboxDir, { recursive: true });
+    await mkdir(userMemoDir, { recursive: true });
     await mkdir(vaultImagesDir, { recursive: true });
 
     for (const dirName of VAULT_SCAFFOLD_DIRS) {
@@ -297,7 +314,7 @@ export class MemoStore {
     await this.#copySeedImagesInto(vaultImagesDir);
 
     for (const memo of SEED_MEMOS) {
-      const memoPath = join(vaultDir, `${memo.id}.md`);
+      const memoPath = join(userMemoDir, `${memo.id}.md`);
       if (!existsSync(memoPath)) {
         await writeFile(memoPath, toMemoMarkdown(memo), "utf8");
       }
@@ -344,21 +361,21 @@ export class MemoStore {
     };
   }
 
-  async #readVaultEntries() {
-    const vaultDir = this.getVaultDir();
-    const files = await walkFiles(vaultDir, {
-      recursive: true,
+  async #readUserMemoEntries() {
+    const userMemoDir = resolveUserMemoDir();
+    const files = await walkFiles(userMemoDir, {
+      recursive: false,
       allowedExtensions: new Set([".md"]),
-      skipDirNames: VAULT_ENTRY_SKIP_DIRS,
     });
 
     const entries = [];
     for (const file of files) {
-      const relativePath = normalizeRelativePath(relative(vaultDir, file));
-      if (VAULT_SYSTEM_FILE_NAMES.has(basename(relativePath))) {
+      const relativePath = normalizeRelativePath(relative(userMemoDir, file));
+      const fileName = basename(relativePath);
+      if (fileName === USER_MEMORY_INDEX_FILE_NAME) {
         continue;
       }
-      entries.push(await this.#readEntryFile(file, vaultDir, { source: "vault", section: "vault" }));
+      entries.push(await this.#readEntryFile(file, userMemoDir, { source: "user-memo", section: "user-memo" }));
     }
     return entries;
   }
@@ -382,7 +399,7 @@ export class MemoStore {
 
   async list() {
     await this.#ensureReady();
-    return sortMemosDesc(await this.#readVaultEntries());
+    return sortMemosDesc(await this.#readUserMemoEntries());
   }
 
   async listInbox() {
@@ -404,7 +421,7 @@ export class MemoStore {
       createdAt,
     };
 
-    await writeFile(join(this.getVaultDir(), fileName), toMemoMarkdown(memo), "utf8");
+    await writeFile(join(resolveUserMemoDir(), fileName), toMemoMarkdown(memo), "utf8");
 
     return {
       id: fileName,
@@ -413,8 +430,8 @@ export class MemoStore {
       text: memo.text || undefined,
       images: memo.images.map((image) => memoImageUrl(image)),
       createdAt,
-      source: "vault",
-      section: "vault",
+      source: "user-memo",
+      section: "user-memo",
     };
   }
 
@@ -451,9 +468,15 @@ export class MemoStore {
       return null;
     }
 
-    const vaultDir = this.getVaultDir();
-    const targetPath = resolve(vaultDir, normalize(sanitizedId));
-    return targetPath.startsWith(vaultDir) ? targetPath : null;
+    if (sanitizedId.startsWith("inbox/")) {
+      const vaultDir = this.getVaultDir();
+      const targetPath = resolve(vaultDir, normalize(sanitizedId));
+      return targetPath.startsWith(vaultDir) ? targetPath : null;
+    }
+
+    const userMemoDir = resolveUserMemoDir();
+    const targetPath = resolve(userMemoDir, normalize(sanitizedId));
+    return targetPath.startsWith(userMemoDir) ? targetPath : null;
   }
 
   async delete(id) {

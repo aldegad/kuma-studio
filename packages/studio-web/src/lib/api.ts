@@ -178,8 +178,18 @@ function isMemo(value: unknown): value is Memo {
     Array.isArray(value.images) &&
     value.images.every((image) => typeof image === "string") &&
     typeof value.createdAt === "string" &&
-    (value.source === undefined || value.source === "vault" || value.source === "legacy-memo") &&
-    (value.section === undefined || value.section === "vault" || value.section === "inbox")
+    (
+      value.source === undefined ||
+      value.source === "vault" ||
+      value.source === "legacy-memo" ||
+      value.source === "user-memo"
+    ) &&
+    (
+      value.section === undefined ||
+      value.section === "vault" ||
+      value.section === "inbox" ||
+      value.section === "user-memo"
+    )
   );
 }
 
