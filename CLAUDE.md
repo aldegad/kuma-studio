@@ -16,6 +16,10 @@
 - `packages/server/src/studio/` -- Studio-specific modules (stats, events, agent state, image gen)
 - `packages/studio-web/` -- Dashboard & Virtual Office (React 19, Vite, Tailwind v4, Zustand)
 
+## 보고 워딩 규칙
+- 이미 실행한 액션은 반드시 과거형으로 보고한다: "넣었어", "시켰어", "저장했어" (O) / "넣을게", "시킬게", "저장할게" (X)
+- 유저가 내가 뭘 했는지 인지하게 하는 게 목적. 이미 한 일을 미래형으로 말하면 안 한 것처럼 들린다.
+
 ## Conventions
 
 - Server boot/restart is standardized on `npm run server:reload`.
