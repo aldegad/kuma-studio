@@ -122,29 +122,12 @@ prompt_ready_for_send() {
 
 dismiss_blocking_suggestion() {
   local view="${1-}"
-  local attempt
 
-  if ! blocking_suggestion_visible "$view"; then
-    printf '%s\n' "$view"
-    return 0
+  # Suggestion은 텍스트 입력 시 자동 사라짐 — Escape 보내지 않는다.
+  # Escape는 codex 상태를 꼬이게 만들어 이후 paste가 안 먹히는 원인이었다.
+  if blocking_suggestion_visible "$view"; then
+    log_send "suggestion-visible-will-auto-dismiss" "$view"
   fi
-
-  # Codex suggestion lines (› Explain this codebase 등)는 텍스트 입력 시 자동 사라짐.
-  # Escape로 안 지워지면 그냥 진행 — cmux send가 paste하면 suggestion이 자동 dismiss됨.
-  for attempt in $(seq 1 2); do
-    log_send "dismiss-suggestion" "$view"
-    cmux send-key "${SEND_ARGS[@]}" Escape
-    sleep 0.4
-    view="$(read_input_view)"
-    if ! blocking_suggestion_visible "$view"; then
-      log_send "dismissed-suggestion" "$view"
-      printf '%s\n' "$view"
-      return 0
-    fi
-  done
-
-  # Escape로 안 지워져도 실패하지 않음 — 텍스트 paste가 suggestion을 자동 dismiss함
-  log_send "dismiss-skipped-will-auto-dismiss" "$view"
   printf '%s\n' "$view"
   return 0
 }

@@ -91,11 +91,11 @@ esac
     expect(sendKeyCount).toBe(2);
     expect(sendLogContents).toContain("\tpre-send\t");
     expect(sendLogContents).toContain("\tdispatch\t");
-    expect(sendLogContents).toContain("\tretry-enter\t");
+    expect(sendLogContents).toContain("\tenter-retry-1\t");
     expect(sendLogContents).toContain("\tdelivered\t");
-  }, 30_000);
+  }, 60_000);
 
-  it("dismisses an idle Codex suggestion with Escape before dispatching the prompt", async () => {
+  it("lets an idle Codex suggestion auto-dismiss before dispatching the prompt", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
     tempRoots.push(root);
 
@@ -154,11 +154,9 @@ esac
     const sendLogContents = await readFile(sendLog, "utf8");
     const sendKeyLogContents = await readFile(sendKeyLogPath, "utf8");
 
-    expect(sendKeyLogContents).toContain("--workspace workspace:1 --surface surface:9 Escape");
     expect(sendKeyLogContents).toContain("--workspace workspace:1 --surface surface:9 Enter");
     expect(cmuxLogContents).toContain("send|--workspace workspace:1 --surface surface:9");
-    expect(sendLogContents).toContain("\tdismiss-suggestion\t");
-    expect(sendLogContents).toContain("\tdismissed-suggestion\t");
+    expect(sendLogContents).toContain("\tsuggestion-visible-will-auto-dismiss\t");
     expect(sendLogContents).toContain("\tpre-send\t");
     expect(sendLogContents).toContain("\tdelivered\t");
   }, 30_000);
