@@ -1,12 +1,97 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, extname, join, resolve } from "node:path";
 
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { resolveVaultImagesDir } from "./memo-store.mjs";
 import { getStudioMimeType } from "./studio-asset-utils.mjs";
+import { parseFrontmatterDocument, stringifyFrontmatter } from "./vault-ingest.mjs";
 import { syncVaultSkills } from "./vault-skill-sync.mjs";
 
-export function createStudioMemoRouteHandler({ memoStore, vaultSkillSyncFn } = {}) {
+const THREAD_STATUSES = new Set(["draft", "approved", "posted"]);
+
+function resolveThreadsContentRoot(rootOverride) {
+  return resolve(rootOverride ?? join(homedir(), ".kuma", "vault", "domains", "threads-content"));
+}
+
+function normalizeThreadStatus(value) {
+  return THREAD_STATUSES.has(value) ? value : "draft";
+}
+
+function createThreadDocumentId() {
+  const stamp = new Date().toISOString().replace(/[-:TZ.]/gu, "").slice(0, 14);
+  return `thread-${stamp}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function resolveThreadDocumentPath(root, id) {
+  const safeId = String(id ?? "")
+    .trim()
+    .replace(/[^A-Za-z0-9._-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+  if (!safeId) {
+    throw new Error("Invalid thread document id.");
+  }
+  return resolve(join(root, `${safeId}.md`));
+}
+
+function serializeThreadDocument({ title, status, created, updated, body }) {
+  const frontmatter = {
+    title: String(title || "새 스레드").trim() || "새 스레드",
+    status: normalizeThreadStatus(status),
+    created,
+    updated,
+  };
+  const normalizedBody = typeof body === "string" ? body.replace(/\r\n/gu, "\n").trim() : "";
+  return `${stringifyFrontmatter(frontmatter)}\n\n${normalizedBody}\n`;
+}
+
+async function readThreadDocument(root, fileName) {
+  const filePath = resolve(join(root, fileName));
+  const raw = await readFile(filePath, "utf8");
+  const parsed = parseFrontmatterDocument(raw);
+  const metadata = statSync(filePath);
+  const id = basename(fileName, extname(fileName));
+  const created =
+    typeof parsed.frontmatter.created === "string" && parsed.frontmatter.created.trim()
+      ? parsed.frontmatter.created.trim()
+      : metadata.birthtime.toISOString();
+  const updated =
+    typeof parsed.frontmatter.updated === "string" && parsed.frontmatter.updated.trim()
+      ? parsed.frontmatter.updated.trim()
+      : metadata.mtime.toISOString();
+
+  return {
+    id,
+    fileName,
+    path: filePath,
+    title:
+      typeof parsed.frontmatter.title === "string" && parsed.frontmatter.title.trim()
+        ? parsed.frontmatter.title.trim()
+        : id,
+    status: normalizeThreadStatus(parsed.frontmatter.status),
+    created,
+    updated,
+    body: parsed.body,
+  };
+}
+
+async function listThreadDocuments(root) {
+  await mkdir(root, { recursive: true });
+  const entries = await readdir(root, { withFileTypes: true });
+  const files = entries
+    .filter((entry) => entry.isFile() && extname(entry.name).toLowerCase() === ".md")
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+
+  const items = await Promise.all(files.map((fileName) => readThreadDocument(root, fileName)));
+  items.sort((left, right) => right.updated.localeCompare(left.updated));
+  return items;
+}
+
+export function createStudioMemoRouteHandler({ memoStore, vaultSkillSyncFn, threadsContentRoot } = {}) {
+  const resolvedThreadsContentRoot = resolveThreadsContentRoot(threadsContentRoot);
+
   return async (req, res, url) => {
     if (url.pathname === "/studio/memos" && req.method === "GET") {
       if (!memoStore) {
@@ -41,6 +126,98 @@ export function createStudioMemoRouteHandler({ memoStore, vaultSkillSyncFn } = {
       } catch (error) {
         sendJson(res, 500, {
           error: "Failed to read vault entries.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/vault/threads-content" && req.method === "GET") {
+      try {
+        sendJson(res, 200, {
+          directory: resolvedThreadsContentRoot,
+          items: await listThreadDocuments(resolvedThreadsContentRoot),
+        });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to read thread documents.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/vault/threads-content" && req.method === "POST") {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid thread document payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      try {
+        await mkdir(resolvedThreadsContentRoot, { recursive: true });
+        const id = createThreadDocumentId();
+        const now = new Date().toISOString();
+        const filePath = resolveThreadDocumentPath(resolvedThreadsContentRoot, id);
+        const content = serializeThreadDocument({
+          title: typeof body?.title === "string" ? body.title : "새 스레드",
+          status: body?.status,
+          created: now,
+          updated: now,
+          body: typeof body?.body === "string" ? body.body : "",
+        });
+        await writeFile(filePath, content, "utf8");
+        sendJson(res, 201, await readThreadDocument(resolvedThreadsContentRoot, basename(filePath)));
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to create thread document.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    const threadDocumentMatch = url.pathname.match(/^\/studio\/vault\/threads-content\/([^/]+)$/u);
+    if (threadDocumentMatch && req.method === "PATCH") {
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid thread document payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      try {
+        await mkdir(resolvedThreadsContentRoot, { recursive: true });
+        const id = decodeURIComponent(threadDocumentMatch[1]);
+        const filePath = resolveThreadDocumentPath(resolvedThreadsContentRoot, id);
+        if (!existsSync(filePath)) {
+          sendJson(res, 404, { error: "Thread document not found." });
+          return true;
+        }
+
+        const current = await readThreadDocument(resolvedThreadsContentRoot, basename(filePath));
+        const nextUpdated = new Date().toISOString();
+        const content = serializeThreadDocument({
+          title: typeof body?.title === "string" ? body.title : current.title,
+          status: Object.prototype.hasOwnProperty.call(body ?? {}, "status") ? body?.status : current.status,
+          created: current.created,
+          updated: nextUpdated,
+          body: typeof body?.body === "string" ? body.body : current.body,
+        });
+        await writeFile(filePath, content, "utf8");
+        sendJson(res, 200, await readThreadDocument(resolvedThreadsContentRoot, basename(filePath)));
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to update thread document.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }

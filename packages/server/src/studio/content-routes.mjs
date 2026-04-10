@@ -1,7 +1,6 @@
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { getMembersById } from "../team-metadata.mjs";
 import { generateThreadPosts } from "./content-post-generator.mjs";
-import { generateContentDrafts } from "./content-suggestions.mjs";
 import { startResearchForContent } from "./research-workflow.mjs";
 import { getContentConstants } from "./content-store.mjs";
 
@@ -31,10 +30,6 @@ function isContentCollectionPath(pathname) {
 
 function isContentMetaPath(pathname) {
   return /^\/studio\/contents?\/meta$/u.test(pathname);
-}
-
-function isContentGeneratePath(pathname) {
-  return /^\/studio\/contents?\/generate$/u.test(pathname);
 }
 
 function normalizeAssigneeQuery(value) {
@@ -144,26 +139,6 @@ export function createContentRouteHandler({ contentStore, trendStore, experiment
       } catch (error) {
         sendJson(res, 400, {
           error: "Invalid content payload.",
-          details: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-      return true;
-    }
-
-    if (isContentGeneratePath(url.pathname) && req.method === "POST") {
-      try {
-        const body = await readJsonBody(req);
-        const project =
-          typeof body?.project === "string" && body.project.trim()
-            ? body.project.trim()
-            : "kuma-studio";
-        const drafts = await generateContentDrafts({ project, workspaceRoot });
-        const persist = body?.persist !== false;
-        const items = persist ? drafts.map((draft) => contentStore.write(draft)) : drafts;
-        sendJson(res, 200, { items });
-      } catch (error) {
-        sendJson(res, 500, {
-          error: "Failed to generate content drafts.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }

@@ -66,6 +66,70 @@ afterEach(async () => {
 });
 
 describe("studio memo routes", () => {
+  it("lists, creates, and updates vault-backed thread documents", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-thread-docs-"));
+    tempDirs.push(root);
+
+    const handler = createStudioMemoRouteHandler({
+      threadsContentRoot: root,
+    });
+
+    const initialListRes = createResponse();
+    await handler(
+      createRequest("GET", "/studio/vault/threads-content"),
+      initialListRes,
+      new URL("http://localhost:4312/studio/vault/threads-content"),
+    );
+
+    assert.strictEqual(initialListRes.statusCode, 200);
+    assert.strictEqual(initialListRes.json.directory, root);
+    assert.deepStrictEqual(initialListRes.json.items, []);
+
+    const createRes = createResponse();
+    await handler(
+      createRequest("POST", "/studio/vault/threads-content", {
+        title: "첫 스레드",
+        body: "첫 줄\n둘째 줄",
+        status: "draft",
+      }),
+      createRes,
+      new URL("http://localhost:4312/studio/vault/threads-content"),
+    );
+
+    assert.strictEqual(createRes.statusCode, 201);
+    assert.strictEqual(createRes.json.title, "첫 스레드");
+    assert.strictEqual(createRes.json.status, "draft");
+    assert.strictEqual(createRes.json.body, "첫 줄\n둘째 줄");
+
+    const patchRes = createResponse();
+    await handler(
+      createRequest("PATCH", `/studio/vault/threads-content/${encodeURIComponent(createRes.json.id)}`, {
+        title: "수정된 스레드",
+        body: "본문 수정",
+        status: "approved",
+      }),
+      patchRes,
+      new URL(`http://localhost:4312/studio/vault/threads-content/${encodeURIComponent(createRes.json.id)}`),
+    );
+
+    assert.strictEqual(patchRes.statusCode, 200);
+    assert.strictEqual(patchRes.json.title, "수정된 스레드");
+    assert.strictEqual(patchRes.json.status, "approved");
+    assert.strictEqual(patchRes.json.body, "본문 수정");
+
+    const listRes = createResponse();
+    await handler(
+      createRequest("GET", "/studio/vault/threads-content"),
+      listRes,
+      new URL("http://localhost:4312/studio/vault/threads-content"),
+    );
+
+    assert.strictEqual(listRes.statusCode, 200);
+    assert.strictEqual(listRes.json.items.length, 1);
+    assert.strictEqual(listRes.json.items[0].id, createRes.json.id);
+    assert.strictEqual(listRes.json.items[0].fileName, `${createRes.json.id}.md`);
+  });
+
   it("uses addInbox for /studio/vault/inbox", async () => {
     const calls = [];
     const handler = createStudioMemoRouteHandler({

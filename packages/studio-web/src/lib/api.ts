@@ -1,12 +1,8 @@
 import type { OfficeLayoutSnapshot } from "../types/office";
 import type { TeamMetadataResponse, TeamConfigResponse } from "../types/agent";
 import type {
-  ContentItem,
   ContentListResponse,
   ContentPostStatus,
-  ContentResearchStartResponse,
-  ContentStatus,
-  ContentType,
 } from "../types/content";
 import type { ExperimentItem, ExperimentListResponse, ExperimentSettings, ExperimentSource, ExperimentStatus } from "../types/experiment";
 import type { Memo, MemoListResponse } from "../types/memo";
@@ -17,6 +13,7 @@ import type {
   GitActivitySnapshot,
 } from "../types/stats";
 import type { Plan, PlanItem, PlanSection, PlanWarning, PlansSnapshot } from "../types/plan";
+import type { ThreadDocument, ThreadDocumentListResponse, ThreadDocumentStatus } from "../types/thread-document";
 import { normalizeTeamStatusSnapshot, type TeamStatusSnapshot } from "../stores/use-team-status-store";
 
 const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
@@ -199,6 +196,33 @@ function isMemoListResponse(value: unknown): value is MemoListResponse {
     Array.isArray(value.memos) &&
     value.memos.every(isMemo) &&
     (value.inbox === undefined || (Array.isArray(value.inbox) && value.inbox.every(isMemo)))
+  );
+}
+
+function isThreadDocumentStatus(value: unknown): value is ThreadDocumentStatus {
+  return value === "draft" || value === "approved" || value === "posted";
+}
+
+function isThreadDocument(value: unknown): value is ThreadDocument {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.fileName === "string" &&
+    typeof value.path === "string" &&
+    typeof value.title === "string" &&
+    isThreadDocumentStatus(value.status) &&
+    typeof value.created === "string" &&
+    typeof value.updated === "string" &&
+    typeof value.body === "string"
+  );
+}
+
+function isThreadDocumentListResponse(value: unknown): value is ThreadDocumentListResponse {
+  return (
+    isRecord(value) &&
+    typeof value.directory === "string" &&
+    Array.isArray(value.items) &&
+    value.items.every(isThreadDocument)
   );
 }
 
@@ -509,15 +533,24 @@ export async function fetchContentItems(project?: string, assignee?: string | nu
   return res.json();
 }
 
-export async function createContentItem(input: {
-  project: string;
-  type: ContentType;
-  title: string;
-  body: string;
-  scheduledFor?: string | null;
-  assignee?: string | null;
-}): Promise<ContentItem> {
-  const res = await fetch(`${BASE_URL}/studio/content`, {
+export async function fetchThreadDocuments(): Promise<ThreadDocumentListResponse> {
+  const res = await fetch(`${BASE_URL}/studio/vault/threads-content`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch thread documents: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isThreadDocumentListResponse(payload)) {
+    throw new Error("Failed to fetch thread documents: invalid response payload");
+  }
+  return payload;
+}
+
+export async function createThreadDocument(input: {
+  title?: string;
+  body?: string;
+  status?: ThreadDocumentStatus;
+} = {}): Promise<ThreadDocument> {
+  const res = await fetch(`${BASE_URL}/studio/vault/threads-content`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -525,15 +558,19 @@ export async function createContentItem(input: {
     },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error(`Failed to create content item: ${res.statusText}`);
-  return res.json();
+  if (!res.ok) throw new Error(`Failed to create thread document: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isThreadDocument(payload)) {
+    throw new Error("Failed to create thread document: invalid response payload");
+  }
+  return payload;
 }
 
-export async function updateContentItem(
+export async function updateThreadDocument(
   id: string,
-  patch: Partial<Pick<ContentItem, "project" | "type" | "title" | "body" | "scheduledFor" | "assignee" | "postStatus" | "threadPosts">>,
-): Promise<ContentItem> {
-  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}`, {
+  patch: Partial<Pick<ThreadDocument, "title" | "body" | "status">>,
+): Promise<ThreadDocument> {
+  const res = await fetch(`${BASE_URL}/studio/vault/threads-content/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: {
       Accept: "application/json",
@@ -541,73 +578,12 @@ export async function updateContentItem(
     },
     body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error(`Failed to update content item: ${res.statusText}`);
-  return res.json();
-}
-
-export async function generateContentPost(id: string, tags: string[] = []): Promise<ContentItem> {
-  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}/generate-post`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ tags }),
-  });
-  if (!res.ok) throw new Error(`Failed to generate content post: ${res.statusText}`);
-  return res.json();
-}
-
-export async function updateContentStatus(
-  id: string,
-  status: ContentStatus,
-  scheduledFor?: string | null,
-): Promise<ContentItem> {
-  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}/status`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ status, scheduledFor: scheduledFor ?? null }),
-  });
-  if (!res.ok) throw new Error(`Failed to update content status: ${res.statusText}`);
-  return res.json();
-}
-
-export async function startContentResearch(id: string): Promise<ContentResearchStartResponse> {
-  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}/start-research`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({}),
-  });
-  if (!res.ok) throw new Error(`Failed to start research: ${res.statusText}`);
-  return res.json();
-}
-
-export async function deleteContentItem(id: string): Promise<ContentItem> {
-  const res = await fetch(`${BASE_URL}/studio/content/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    headers: { Accept: "application/json" },
-  });
-  if (!res.ok) throw new Error(`Failed to delete content item: ${res.statusText}`);
-  return res.json();
-}
-
-export async function generateContentDrafts(project: string): Promise<ContentListResponse> {
-  const res = await fetch(`${BASE_URL}/studio/content/generate`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ project, persist: true }),
-  });
-  if (!res.ok) throw new Error(`Failed to generate content drafts: ${res.statusText}`);
-  return res.json();
+  if (!res.ok) throw new Error(`Failed to update thread document: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isThreadDocument(payload)) {
+    throw new Error("Failed to update thread document: invalid response payload");
+  }
+  return payload;
 }
 
 export async function fetchExperiments(): Promise<ExperimentListResponse> {
