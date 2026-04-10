@@ -162,7 +162,7 @@ export async function createServer({ host, port, root }) {
   });
 
   teamStatusStore.onChange((snapshot) => {
-    studioWsEvents.broadcastTeamStatusUpdate(toStudioTeamStatusSnapshot(snapshot));
+    studioWsEvents.broadcastTeamStatusUpdate(toStudioTeamStatusSnapshot(teamStatusStore.getSurfaceStates()));
     agentHistoryStore.recordFromSnapshot(snapshot, teamStatusStore.getMembersByName());
   });
   teamStatusStore.start();
@@ -807,7 +807,7 @@ export async function createServer({ host, port, root }) {
         });
         sendSocketJson(websocket, {
           type: "kuma-studio:team-status-update",
-          snapshot: toStudioTeamStatusSnapshot(teamStatusStore.getSnapshot()),
+          snapshot: toStudioTeamStatusSnapshot(teamStatusStore.getSurfaceStates()),
         });
         sendSocketJson(websocket, {
           type: "kuma-studio:nightmode",

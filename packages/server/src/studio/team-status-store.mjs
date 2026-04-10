@@ -326,29 +326,30 @@ function deriveTaskFromOutput(status, lastOutputLines) {
   return taskLine ?? null;
 }
 
-function buildStudioLiveMemberOverlay(snapshot, membersByName) {
-  const overlay = new Map();
-
-  for (const [projectId, project] of Object.entries(snapshot?.projects ?? {})) {
-    for (const member of project?.members ?? []) {
-      const memberMeta = membersByName.get(member.name);
-      if (!memberMeta?.id || overlay.has(memberMeta.id)) {
-        continue;
-      }
-
-      const { lastOutputLines } = classifySurfaceOutput(member.lastOutput);
-      overlay.set(memberMeta.id, {
-        projectId,
-        surface: member.surface || null,
-        status: member.status,
-        lastOutputLines,
-        task: deriveTaskFromOutput(member.status, lastOutputLines),
-        modelInfo: parseModelInfo(member.lastOutput),
-      });
+function readSurfaceAssignmentsForRoster(rosterMembers, registryData) {
+  try {
+    const registry = normalizeSurfaceRegistry(registryData ?? readSurfaceRegistryFile(DEFAULT_REGISTRY_PATH));
+    const idByDisplayName = new Map();
+    for (const member of rosterMembers) {
+      idByDisplayName.set(member.displayName, member.id);
     }
-  }
 
-  return overlay;
+    const assignments = new Map();
+    for (const [projectId, projectMembers] of Object.entries(registry)) {
+      for (const [label, surface] of Object.entries(projectMembers ?? {})) {
+        const { name } = parseRegistryLabel(label);
+        if (isPseudoRegistryMember(name)) continue;
+        if (typeof surface !== "string" || !surface.trim()) continue;
+        const memberId = idByDisplayName.get(name);
+        if (!memberId) continue;
+        assignments.set(memberId, { surface, projectId });
+      }
+    }
+
+    return assignments;
+  } catch {
+    return new Map();
+  }
 }
 
 /**
@@ -425,49 +426,49 @@ export function mapSurfaceStatusToStudioState(status) {
 }
 
 /**
- * @param {{ projects: Record<string, { members: Array<{ name: string, emoji: string, role: string, surface: string, status: TeamSurfaceStatus, lastOutput: string }> }> }} snapshot
- * @param {string} [updatedAt]
+ * Build the studio team status snapshot from SSOT sources.
+ *
+ * @param {Map<string, { status: TeamSurfaceStatus, lastOutput: string }>} surfaceStates — polled surface status
+ * @param {{ updatedAt?: string, projectId?: string, registry?: Record<string, Record<string, string>> }} [options]
  * @returns {{ projects: Array<{ projectId: string, projectName: string, members: Array<{ id: string, state: "idle" | "working" | "error", lastOutputLines: string[], task: string | null, updatedAt: string | null }> }> }}
  */
-export function toStudioTeamStatusSnapshot(snapshot, updatedAt = new Date().toISOString()) {
-  const requestedProjectId = typeof snapshot?.requestedProjectId === "string"
-    ? snapshot.requestedProjectId.trim()
-    : "";
+export function toStudioTeamStatusSnapshot(surfaceStates, options = {}) {
+  const updatedAt = options.updatedAt ?? new Date().toISOString();
+  const requestedProjectId = typeof options.projectId === "string" ? options.projectId.trim() : "";
   const rosterMembers = readStudioRosterMembers();
-  const membersByName = createMembersByName();
-  const liveMemberOverlay = buildStudioLiveMemberOverlay(snapshot, membersByName);
+  const surfaceAssignments = readSurfaceAssignmentsForRoster(rosterMembers, options.registry);
   const projects = new Map();
 
   for (const member of rosterMembers) {
-    const liveMember = liveMemberOverlay.get(member.id);
-    if (
-      requestedProjectId
-      && (
-        liveMember
-          ? liveMember.projectId !== requestedProjectId
-          : getStudioDefaultProjectId(member.team) !== requestedProjectId
-      )
-    ) {
+    const assignment = surfaceAssignments.get(member.id);
+    const surface = assignment?.surface ?? null;
+    const assignedProjectId = assignment?.projectId ?? getStudioDefaultProjectId(member.team);
+
+    if (requestedProjectId && assignedProjectId !== requestedProjectId) {
       continue;
     }
 
-    const projectId = liveMember?.projectId ?? getStudioDefaultProjectId(member.team);
-    const project = projects.get(projectId) ?? {
-      projectId,
-      projectName: projectId,
+    const surfaceState = surface ? (surfaceStates?.get(surface) ?? null) : null;
+    const status = surfaceState?.status ?? "idle";
+    const lastOutput = surfaceState?.lastOutput ?? "";
+    const { lastOutputLines } = classifySurfaceOutput(lastOutput);
+
+    const project = projects.get(assignedProjectId) ?? {
+      projectId: assignedProjectId,
+      projectName: assignedProjectId,
       members: [],
     };
 
     project.members.push({
       id: member.id,
-      surface: liveMember?.surface ?? null,
-      state: liveMember ? mapSurfaceStatusToStudioState(liveMember.status) : "idle",
-      lastOutputLines: liveMember?.lastOutputLines ?? [],
-      task: liveMember?.task ?? null,
-      modelInfo: liveMember?.modelInfo ?? null,
+      surface,
+      state: surfaceState ? mapSurfaceStatusToStudioState(status) : "idle",
+      lastOutputLines,
+      task: deriveTaskFromOutput(status, lastOutputLines),
+      modelInfo: parseModelInfo(lastOutput),
       updatedAt,
     });
-    projects.set(projectId, project);
+    projects.set(assignedProjectId, project);
   }
 
   return {
@@ -475,18 +476,6 @@ export function toStudioTeamStatusSnapshot(snapshot, updatedAt = new Date().toIS
   };
 }
 
-export function filterTeamStatusSnapshot(snapshot, projectId) {
-  const normalizedProjectId = typeof projectId === "string" ? projectId.trim() : "";
-  if (!normalizedProjectId) {
-    return cloneSnapshot(snapshot ?? { projects: {} });
-  }
-
-  const project = snapshot?.projects?.[normalizedProjectId];
-  return {
-    requestedProjectId: normalizedProjectId,
-    projects: project ? { [normalizedProjectId]: cloneSnapshot(project) } : {},
-  };
-}
 
 async function defaultReadRegistry(registryPath) {
   return readSurfaceRegistryFile(registryPath);
@@ -662,6 +651,10 @@ export class TeamStatusStore {
 
   getMembersByName() {
     return this.#membersByName;
+  }
+
+  getSurfaceStates() {
+    return new Map(this.#surfaceStates);
   }
 
   /**
