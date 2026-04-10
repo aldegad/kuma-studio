@@ -84,6 +84,18 @@ if [ -z "$DIR" ]; then
 fi
 
 SPAWN_ARGS=("$MEMBER_NAME" "" "$DIR" "$PROJECT")
+STALE_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$MEMBER_JSON" || true)"
+if [ -n "$STALE_SURFACE_JSON" ]; then
+  STALE_SURFACE="$(printf '%s' "$STALE_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface || "");')"
+  STALE_PROJECT="$(printf '%s' "$STALE_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.project || "");')"
+  if [ -n "$STALE_SURFACE" ]; then
+    if ! "$KUMA_CMUX_DIR/kuma-cmux-kill.sh" "$STALE_SURFACE"; then
+      printf 'WARN: failed to kill existing surface %s for %s; clearing stale registry mapping anyway\n' "$STALE_SURFACE" "$LABEL" >&2
+    fi
+    remove_surface_from_registry "$STALE_SURFACE" "$STALE_PROJECT"
+  fi
+fi
+
 ANCHOR_SURFACE="$(resolve_project_anchor_surface "$PROJECT" || true)"
 if [ -n "$ANCHOR_SURFACE" ]; then
   SPAWN_ARGS+=(--surface "$ANCHOR_SURFACE")

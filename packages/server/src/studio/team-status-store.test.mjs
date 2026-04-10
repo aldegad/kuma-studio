@@ -14,7 +14,6 @@ import {
   reconcileRegistryWithCmuxTree,
   TeamStatusStore,
   toStudioTeamStatusSnapshot,
-  withImplicitRegistryMembers,
 } from "./team-status-store.mjs";
 
 async function waitFor(assertion, timeoutMs = 1_000) {
@@ -31,6 +30,14 @@ async function waitFor(assertion, timeoutMs = 1_000) {
   }
 
   throw new Error(`Timed out after ${timeoutMs}ms`);
+}
+
+function getStudioProject(snapshot, projectId) {
+  return snapshot.projects.find((project) => project.projectId === projectId);
+}
+
+function getStudioProjectMember(snapshot, projectId, memberId) {
+  return getStudioProject(snapshot, projectId)?.members.find((member) => member.id === memberId);
 }
 
 describe("team-status-store", () => {
@@ -181,8 +188,9 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, []);
-    assert.strictEqual(snapshot.projects[0].members[0].task, null);
+    const kuma = getStudioProjectMember(snapshot, "system", "kuma");
+    assert.deepEqual(kuma?.lastOutputLines, []);
+    assert.strictEqual(kuma?.task, null);
   });
 
   it("treats the live kuma whisking prompt sample as idle with no bubble fallback", () => {
@@ -217,8 +225,9 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, []);
-    assert.strictEqual(snapshot.projects[0].members[0].task, null);
+    const kuma = getStudioProjectMember(snapshot, "system", "kuma");
+    assert.deepEqual(kuma?.lastOutputLines, []);
+    assert.strictEqual(kuma?.task, null);
   });
 
   it("classifies cmux failures as dead", () => {
@@ -363,19 +372,36 @@ describe("team-status-store", () => {
     });
   });
 
-  it("adds implicit system surfaces when the registry is otherwise populated", () => {
-    const registry = withImplicitRegistryMembers({
-      "kuma-studio": {
-        "🦫 뚝딱이": "surface:7",
+  it("keeps system members idle with null surfaces when they are missing from the live registry", () => {
+    const snapshot = toStudioTeamStatusSnapshot(
+      {
+        projects: {
+          "kuma-studio": {
+            members: [
+              {
+                name: "뚝딱이",
+                emoji: "🦫",
+                role: "구현",
+                surface: "surface:7",
+                status: "working",
+                lastOutput: "Working on API route",
+              },
+            ],
+          },
+        },
       },
+      "2026-04-10T00:00:00.000Z",
+    );
+
+    assert.deepEqual(getStudioProjectMember(snapshot, "system", "kuma"), {
+      id: "kuma",
+      surface: null,
+      state: "idle",
+      lastOutputLines: [],
+      task: null,
+      modelInfo: null,
+      updatedAt: "2026-04-10T00:00:00.000Z",
     });
-
-    assert.strictEqual(registry.system["🐻 쿠마"], "surface:1");
-    assert.strictEqual(registry.system["🐝 쭈니"], "surface:2");
-  });
-
-  it("keeps an empty registry empty when no surfaces have been registered yet", () => {
-    assert.deepEqual(withImplicitRegistryMembers({}), {});
   });
 
   it("keeps the latest registry surface when the same member is registered twice", () => {
@@ -438,25 +464,118 @@ describe("team-status-store", () => {
       "2026-04-05T00:00:00.000Z",
     );
 
-    assert.deepEqual(snapshot, {
-      projects: [
-        {
-          projectId: "kuma-studio",
-          projectName: "kuma-studio",
-          members: [
-            {
-              id: "tookdaki",
-              surface: "surface:7",
-              state: "working",
-              lastOutputLines: ["Working on API route", "Applying patch"],
-              task: "Applying patch",
-              modelInfo: null,
-              updatedAt: "2026-04-05T00:00:00.000Z",
-            },
-          ],
-        },
-      ],
+    const kumaStudioProject = getStudioProject(snapshot, "kuma-studio");
+    const tookdaki = getStudioProjectMember(snapshot, "kuma-studio", "tookdaki");
+
+    assert.ok(kumaStudioProject);
+    assert.deepEqual(tookdaki, {
+      id: "tookdaki",
+      surface: "surface:7",
+      state: "working",
+      lastOutputLines: ["Working on API route", "Applying patch"],
+      task: "Applying patch",
+      modelInfo: null,
+      updatedAt: "2026-04-05T00:00:00.000Z",
     });
+    assert.strictEqual(
+      kumaStudioProject.members.some((member) => member.id === "moongchi"),
+      true,
+    );
+  });
+
+  it("builds the studio roster from team.json even when the live registry is partial", () => {
+    const snapshot = toStudioTeamStatusSnapshot(
+      {
+        projects: {
+          "kuma-studio": {
+            members: [
+              {
+                name: "부리",
+                emoji: "🦉",
+                role: "분석",
+                surface: "surface:18",
+                status: "working",
+                lastOutput: "Reviewing analytics panel",
+              },
+            ],
+          },
+        },
+      },
+      "2026-04-10T00:00:00.000Z",
+    );
+
+    const kumaStudioProject = getStudioProject(snapshot, "kuma-studio");
+    const moongchi = getStudioProjectMember(snapshot, "kuma-studio", "moongchi");
+    const shuksshuki = getStudioProjectMember(snapshot, "kuma-studio", "shuksshuki");
+    const jjooni = getStudioProjectMember(snapshot, "system", "jjooni");
+
+    assert.ok(kumaStudioProject);
+    assert.deepEqual(moongchi, {
+      id: "moongchi",
+      surface: null,
+      state: "idle",
+      lastOutputLines: [],
+      task: null,
+      modelInfo: null,
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    });
+    assert.deepEqual(shuksshuki, {
+      id: "shuksshuki",
+      surface: null,
+      state: "idle",
+      lastOutputLines: [],
+      task: null,
+      modelInfo: null,
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    });
+    assert.deepEqual(jjooni, {
+      id: "jjooni",
+      surface: null,
+      state: "idle",
+      lastOutputLines: [],
+      task: null,
+      modelInfo: null,
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    });
+  });
+
+  it("uses live project membership as an overlay while keeping team.json as the roster source", () => {
+    const snapshot = toStudioTeamStatusSnapshot(
+      {
+        projects: {
+          other-project: {
+            members: [
+              {
+                name: "부리",
+                emoji: "🦉",
+                role: "분석",
+                surface: "surface:18",
+                status: "working",
+                lastOutput: "Reviewing mobile playback",
+              },
+            ],
+          },
+        },
+      },
+      "2026-04-10T00:00:00.000Z",
+    );
+
+    const other-projectProject = getStudioProject(snapshot, "other-project");
+    const kumaStudioProject = getStudioProject(snapshot, "kuma-studio");
+
+    assert.deepEqual(getStudioProjectMember(snapshot, "other-project", "buri"), {
+      id: "buri",
+      surface: "surface:18",
+      state: "working",
+      lastOutputLines: ["Reviewing mobile playback"],
+      task: "Reviewing mobile playback",
+      modelInfo: null,
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    });
+    assert.strictEqual(
+      kumaStudioProject?.members.some((member) => member.id === "buri"),
+      false,
+    );
   });
 
   it("drops stale output lines when the surface is back at a prompt or suggestion", () => {
@@ -500,10 +619,10 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    assert.deepEqual(promptSnapshot.projects[0].members[0].lastOutputLines, []);
-    assert.deepEqual(suggestionSnapshot.projects[0].members[0].lastOutputLines, []);
-    assert.strictEqual(promptSnapshot.projects[0].members[0].task, null);
-    assert.strictEqual(suggestionSnapshot.projects[0].members[0].task, null);
+    assert.deepEqual(getStudioProjectMember(promptSnapshot, "kuma-studio", "tookdaki")?.lastOutputLines, []);
+    assert.deepEqual(getStudioProjectMember(suggestionSnapshot, "kuma-studio", "tookdaki")?.lastOutputLines, []);
+    assert.strictEqual(getStudioProjectMember(promptSnapshot, "kuma-studio", "tookdaki")?.task, null);
+    assert.strictEqual(getStudioProjectMember(suggestionSnapshot, "kuma-studio", "tookdaki")?.task, null);
   });
 
   it("drops stale output lines when the surface ends with idle footer hints", () => {
@@ -559,7 +678,7 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    for (const member of footerSnapshot.projects[0].members) {
+    for (const member of getStudioProject(footerSnapshot, "kuma-studio")?.members ?? []) {
       assert.deepEqual(member.lastOutputLines, []);
       assert.strictEqual(member.task, null);
     }
@@ -594,10 +713,10 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, ["• Working (34s • esc to interr…)"]);
-    assert.strictEqual(snapshot.projects[0].members[0].task, "• Working (34s • esc to interr…)");
-    assert.deepEqual(snapshot.projects[0].members[1].lastOutputLines, ["• Creating branch…"]);
-    assert.strictEqual(snapshot.projects[0].members[1].task, "• Creating branch…");
+    assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "tookdaki")?.lastOutputLines, ["• Working (34s • esc to interr…)"]);
+    assert.strictEqual(getStudioProjectMember(snapshot, "kuma-studio", "tookdaki")?.task, "• Working (34s • esc to interr…)");
+    assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "saemi")?.lastOutputLines, ["• Creating branch…"]);
+    assert.strictEqual(getStudioProjectMember(snapshot, "kuma-studio", "saemi")?.task, "• Creating branch…");
   });
 
   it("keeps Claude tool activity as working even when a prompt and bypass footer are visible", () => {
@@ -630,11 +749,11 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    assert.deepEqual(snapshot.projects[0].members[0].lastOutputLines, [
+    assert.deepEqual(getStudioProjectMember(snapshot, "system", "kuma")?.lastOutputLines, [
       "⏺ Bash(npm test -- packages/server/src/studio/team-status-store.test.mjs 2>&1 | tail -8)",
     ]);
     assert.strictEqual(
-      snapshot.projects[0].members[0].task,
+      getStudioProjectMember(snapshot, "system", "kuma")?.task,
       "⏺ Bash(npm test -- packages/server/src/studio/team-status-store.test.mjs 2>&1 | tail -8)",
     );
   });
@@ -677,7 +796,7 @@ describe("team-status-store", () => {
       "2026-04-08T00:00:00.000Z",
     );
 
-    assert.deepEqual(snapshot.projects[0].members[0], {
+    assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "tookdaki"), {
       id: "tookdaki",
       surface: "surface:7",
       state: "working",
@@ -709,7 +828,7 @@ describe("team-status-store", () => {
       "2026-04-05T00:00:00.000Z",
     );
 
-    assert.strictEqual(snapshot.projects[0].members[0].id, "bamdori");
+    assert.strictEqual(getStudioProjectMember(snapshot, "kuma-studio", "bamdori")?.id, "bamdori");
   });
 
   // -------------------------------------------------------------------------
@@ -772,7 +891,7 @@ describe("team-status-store", () => {
       },
       "2026-04-06T00:00:00.000Z",
     );
-    const member = snapshot.projects[0].members[0];
+    const member = getStudioProjectMember(snapshot, "test-proj", "tookdaki");
     assert.deepEqual(member.modelInfo, { model: "gpt-5.4", effort: "high", speed: "fast", contextRemaining: 88 });
   });
 

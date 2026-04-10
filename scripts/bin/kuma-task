@@ -423,4 +423,5 @@ if [ "$WAIT_FOR_SIGNAL" = "1" ]; then
   else
     wait_for_signal_with_diagnostics "$SIGNAL" "$RESULT_FILE" "$WORKER_SURFACE" "$WAIT_TIMEOUT"
   fi
+  ingest_result_file_to_vault "$RESULT_FILE"
 fi
