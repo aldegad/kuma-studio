@@ -121,15 +121,8 @@ prompt_ready_for_send() {
 }
 
 dismiss_blocking_suggestion() {
-  local view="${1-}"
-
   # Suggestion은 텍스트 입력 시 자동 사라짐 — Escape 보내지 않는다.
-  # Escape는 codex 상태를 꼬이게 만들어 이후 paste가 안 먹히는 원인이었다.
-  if blocking_suggestion_visible "$view"; then
-    log_send "suggestion-visible-will-auto-dismiss" "$view"
-  fi
-  printf '%s\n' "$view"
-  return 0
+  printf '%s\n' "${1-}"
 }
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -208,13 +201,13 @@ for i in $(seq 1 $MAX_RETRIES); do
     DELIVERED=true
     log_send "delivered-working" "$INPUT_VIEW"
     break
+  # suggestion 잔상은 무시 — 텍스트 입력 시 자동 사라짐.
   elif prompt_still_pending "$INPUT_VIEW"; then
     echo "RETRY $i: Enter not registered, retrying..." >&2
     log_send "retry-enter" "$INPUT_VIEW"
     cmux send-key "${SEND_ARGS[@]}" Enter
   else
     # 화면이 바뀌었고 프롬프트에 텍스트 안 남아있으면 전달 완료.
-    # suggestion 잔상은 무시 — codex가 Working 상태면 전달된 것.
     DELIVERED=true
     log_send "delivered" "$INPUT_VIEW"
     break
