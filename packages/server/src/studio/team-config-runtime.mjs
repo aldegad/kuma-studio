@@ -18,6 +18,7 @@ const DEFAULT_CMUX_KILL_SCRIPT = `${process.env.HOME ?? ""}/.kuma/cmux/kuma-cmux
 const DEFAULT_TEAM_RESPAWN_QUEUE_PATH = "/tmp/kuma-team-respawn-queue.json";
 const DEFAULT_TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
 const DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS = 5_000;
+const SURFACE_NOT_FOUND_PATTERN = /(?:\bno such surface\b|\bsurface(?::\d+|\s+[^\n\r]+)?\s+not found\b)/iu;
 
 function resolveWorkspaceForSurface(surface) {
   if (!/^surface:\d+$/u.test(surface)) {
@@ -123,6 +124,14 @@ function defaultKillRunner(scriptPath, surface) {
   execFileSync(scriptPath, [surface], withCmuxEnv({ encoding: "utf8" }));
 }
 
+function isMissingSurfaceError(error) {
+  if (error instanceof Error) {
+    return SURFACE_NOT_FOUND_PATTERN.test(error.message);
+  }
+
+  return false;
+}
+
 export function createTeamConfigRuntime(options = {}) {
   const {
     teamStatusStore = null,
@@ -170,6 +179,31 @@ export function createTeamConfigRuntime(options = {}) {
   const getMemberStatus = (memberName) => findMemberStatus(teamStatusStore?.getSnapshot() ?? { projects: {} }, memberName);
   const logEvent = (message) => appendTeamWatcherLog(logPath, message);
   const performRespawn = ({ memberName, memberConfig, project, currentSurface, workspaceRoot }) => {
+    let cleanupFailed = false;
+    let cleanupError = null;
+
+    if (currentSurface) {
+      try {
+        killRunner(killScriptPath, currentSurface);
+      } catch (error) {
+        if (!isMissingSurfaceError(error)) {
+          cleanupFailed = true;
+          cleanupError = error instanceof Error ? error.message : "unknown error";
+          logEvent(
+            `RESPAWN_CLEANUP_FAILED: member=${memberName} surface=${currentSurface} details=${cleanupError}`,
+          );
+          throw error;
+        }
+      }
+
+      const registryWithoutCurrent = removeRegistryMemberSurface(
+        readSurfaceRegistryFile(registryPath),
+        memberName,
+        memberConfig?.emoji ?? "",
+      );
+      writeSurfaceRegistryFile(registryPath, registryWithoutCurrent);
+    }
+
     const spawnArgs = [
       `${memberConfig?.emoji ? `${memberConfig.emoji} ` : ""}${memberName}`.trim(),
       memberConfig?.type ?? "",
@@ -205,20 +239,6 @@ export function createTeamConfigRuntime(options = {}) {
     const nextSurface = output.match(/surface:\d+/u)?.[0] ?? output;
     if (!/^surface:\d+$/u.test(nextSurface)) {
       throw new Error(`Failed to respawn ${memberName}: ${output || "missing surface id"}`);
-    }
-
-    let cleanupFailed = false;
-    let cleanupError = null;
-    if (currentSurface) {
-      try {
-        killRunner(killScriptPath, currentSurface);
-      } catch (error) {
-        cleanupFailed = true;
-        cleanupError = error instanceof Error ? error.message : "unknown error";
-        logEvent(
-          `RESPAWN_CLEANUP_FAILED: member=${memberName} surface=${currentSurface} details=${cleanupError}`,
-        );
-      }
     }
 
     const nextRegistry = updateRegistryMemberSurface(

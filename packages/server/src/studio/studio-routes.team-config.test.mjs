@@ -614,6 +614,49 @@ describe("studio-routes team-config", () => {
     }
   });
 
+  it("kills the previous surface before spawning the replacement surface", () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-runtime-"));
+    tempDirs.push(root);
+
+    const registryPath = join(root, "surfaces.json");
+    writeFileSync(registryPath, `${JSON.stringify({ "kuma-studio": { "🦔 밤토리": "surface:74" } }, null, 2)}\n`, "utf8");
+
+    const calls = [];
+    const runtime = createTeamConfigRuntime({
+      registryPath,
+      queuePollMs: 0,
+      resolveWorkspaceForSurfaceFn: () => "workspace:2",
+      resolvePaneForSurfaceFn: () => "pane:4",
+      killRunner(_scriptPath, surface) {
+        calls.push(`kill:${surface}`);
+      },
+      spawnRunner(_scriptPath, args) {
+        calls.push(`spawn:${args[0]}`);
+        return { status: 0, stdout: "surface:87\n", stderr: "", error: null };
+      },
+    });
+
+    try {
+      const result = runtime.respawnMember({
+        memberName: "밤토리",
+        memberConfig: {
+          id: "bamdori",
+          emoji: "🦔",
+          team: "dev",
+          type: "codex",
+        },
+        project: "kuma-studio",
+        currentSurface: "surface:74",
+        workspaceRoot: root,
+      });
+
+      assert.deepStrictEqual(calls, ["kill:surface:74", "spawn:🦔 밤토리"]);
+      assert.strictEqual(result.surface, "surface:87");
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("spawns the exact codex command with model and options for 밤토리", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
@@ -679,7 +722,7 @@ describe("studio-routes team-config", () => {
     assert.match(result.stderr, /TITLE_RENAME_FAILED: member=밤토리 surface=surface:123 workspace=workspace:9/u);
   }, 30_000);
 
-  it("returns cleanupFailed in the PATCH payload when old surface cleanup throws", async () => {
+  it("fails the PATCH without spawning a replacement when old surface cleanup throws", async () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-team-config-routes-"));
     tempDirs.push(root);
 
@@ -691,6 +734,7 @@ describe("studio-routes team-config", () => {
     writeFileSync(registryPath, `${JSON.stringify({ "kuma-studio": { "🦔 밤토리": "surface:74" } }, null, 2)}\n`, "utf8");
 
     const store = new TeamConfigStore(configPath);
+    let spawnCalls = 0;
     const runtime = createTeamConfigRuntime({
       teamConfigStore: store,
       teamStatusStore: createIdleTeamStatusStore(),
@@ -701,6 +745,7 @@ describe("studio-routes team-config", () => {
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner() {
+        spawnCalls += 1;
         return {
           status: 0,
           stdout: "surface:87\n",
@@ -733,13 +778,12 @@ describe("studio-routes team-config", () => {
         new URL("http://localhost:4312/studio/team-config/bamdori"),
       );
 
-      assert.strictEqual(res.statusCode, 200);
-      assert.strictEqual(res.json.surface, "surface:87");
-      assert.strictEqual(res.json.cleanupFailed, true);
-      assert.match(res.json.cleanupError, /close-surface failed/u);
+      assert.strictEqual(res.statusCode, 500);
+      assert.strictEqual(spawnCalls, 0);
+      assert.match(res.json.error, /Failed to respawn member with the updated team config\./u);
+      assert.match(res.json.details, /close-surface failed/u);
 
       const log = readFileSync(logPath, "utf8");
-      assert.match(log, /TITLE_RENAME_FAILED: member=밤토리 surface=surface:87 workspace=workspace:2/u);
       assert.match(log, /RESPAWN_CLEANUP_FAILED: member=밤토리 surface=surface:74 details=close-surface failed/u);
     } finally {
       runtime.close();
