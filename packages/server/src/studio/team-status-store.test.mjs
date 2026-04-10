@@ -3,7 +3,6 @@ import { assert, describe, it } from "vitest";
 import { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
 import {
   buildTeamStatusSnapshot,
-  filterTeamStatusSnapshot,
   isRetryableCmuxSocketFailure,
   isSurfaceNotFoundOutput,
   mapSurfaceStatusToStudioState,
@@ -169,23 +168,11 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus(sample), "idle");
 
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:1", { status: "idle", lastOutput: sample }]]),
       {
-        projects: {
-          system: {
-            members: [
-              {
-                name: "쿠마",
-                emoji: "🐻",
-                role: "",
-                surface: "surface:1",
-                status: "idle",
-                lastOutput: sample,
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-08T00:00:00.000Z",
+        registry: { system: { "🐻 쿠마": "surface:1" } },
       },
-      "2026-04-08T00:00:00.000Z",
     );
 
     const kuma = getStudioProjectMember(snapshot, "system", "kuma");
@@ -206,23 +193,11 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus(sample), "idle");
 
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:1", { status: "idle", lastOutput: sample }]]),
       {
-        projects: {
-          system: {
-            members: [
-              {
-                name: "쿠마",
-                emoji: "🐻",
-                role: "",
-                surface: "surface:1",
-                status: "idle",
-                lastOutput: sample,
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-08T00:00:00.000Z",
+        registry: { system: { "🐻 쿠마": "surface:1" } },
       },
-      "2026-04-08T00:00:00.000Z",
     );
 
     const kuma = getStudioProjectMember(snapshot, "system", "kuma");
@@ -374,23 +349,11 @@ describe("team-status-store", () => {
 
   it("keeps system members idle with null surfaces when they are missing from the live registry", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:7", { status: "working", lastOutput: "Working on API route" }]]),
       {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "구현",
-                surface: "surface:7",
-                status: "working",
-                lastOutput: "Working on API route",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-10T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:7" } },
       },
-      "2026-04-10T00:00:00.000Z",
     );
 
     assert.deepEqual(getStudioProjectMember(snapshot, "system", "kuma"), {
@@ -443,25 +406,13 @@ describe("team-status-store", () => {
     assert.strictEqual(mapSurfaceStatusToStudioState("dead"), "error");
   });
 
-  it("converts the raw snapshot to the studio API shape", () => {
+  it("converts surface states to the studio API shape", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:7", { status: "working", lastOutput: "Working on API route\nApplying patch" }]]),
       {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "구현. 코드 구현, 버그 수정, 리팩토링",
-                surface: "surface:7",
-                status: "working",
-                lastOutput: "Working on API route\nApplying patch",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-05T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:7" } },
       },
-      "2026-04-05T00:00:00.000Z",
     );
 
     const kumaStudioProject = getStudioProject(snapshot, "kuma-studio");
@@ -485,23 +436,11 @@ describe("team-status-store", () => {
 
   it("builds the studio roster from team.json even when the live registry is partial", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:18", { status: "working", lastOutput: "Reviewing analytics panel" }]]),
       {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "부리",
-                emoji: "🦉",
-                role: "분석",
-                surface: "surface:18",
-                status: "working",
-                lastOutput: "Reviewing analytics panel",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-10T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦉 부리": "surface:18" } },
       },
-      "2026-04-10T00:00:00.000Z",
     );
 
     const kumaStudioProject = getStudioProject(snapshot, "kuma-studio");
@@ -541,26 +480,13 @@ describe("team-status-store", () => {
 
   it("uses live project membership as an overlay while keeping team.json as the roster source", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:18", { status: "working", lastOutput: "Reviewing mobile playback" }]]),
       {
-        projects: {
-          other-project: {
-            members: [
-              {
-                name: "부리",
-                emoji: "🦉",
-                role: "분석",
-                surface: "surface:18",
-                status: "working",
-                lastOutput: "Reviewing mobile playback",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-10T00:00:00.000Z",
+        registry: { other-project: { "🦉 부리": "surface:18" } },
       },
-      "2026-04-10T00:00:00.000Z",
     );
 
-    const other-projectProject = getStudioProject(snapshot, "other-project");
     const kumaStudioProject = getStudioProject(snapshot, "kuma-studio");
 
     assert.deepEqual(getStudioProjectMember(snapshot, "other-project", "buri"), {
@@ -579,44 +505,15 @@ describe("team-status-store", () => {
   });
 
   it("drops stale output lines when the surface is back at a prompt or suggestion", () => {
+    const reg = { "kuma-studio": { "🦫 뚝딱이": "surface:7" } };
     const promptSnapshot = toStudioTeamStatusSnapshot(
-      {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "",
-                surface: "surface:7",
-                status: "idle",
-                lastOutput: "Applying patch\n❯",
-              },
-            ],
-          },
-        },
-      },
-      "2026-04-08T00:00:00.000Z",
+      new Map([["surface:7", { status: "idle", lastOutput: "Applying patch\n❯" }]]),
+      { updatedAt: "2026-04-08T00:00:00.000Z", registry: reg },
     );
 
     const suggestionSnapshot = toStudioTeamStatusSnapshot(
-      {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "",
-                surface: "surface:7",
-                status: "idle",
-                lastOutput: "Applying patch\n› Write tests",
-              },
-            ],
-          },
-        },
-      },
-      "2026-04-08T00:00:00.000Z",
+      new Map([["surface:7", { status: "idle", lastOutput: "Applying patch\n› Write tests" }]]),
+      { updatedAt: "2026-04-08T00:00:00.000Z", registry: reg },
     );
 
     assert.deepEqual(getStudioProjectMember(promptSnapshot, "kuma-studio", "tookdaki")?.lastOutputLines, []);
@@ -627,90 +524,47 @@ describe("team-status-store", () => {
 
   it("drops stale output lines when the surface ends with idle footer hints", () => {
     const footerSnapshot = toStudioTeamStatusSnapshot(
+      new Map([
+        ["surface:7", { status: "idle", lastOutput: "Applying patch\ngpt-5.4 xhig…" }],
+        ["surface:5", { status: "idle", lastOutput: "Review complete\nnew task? /clear to save 149k tokens" }],
+        ["surface:16", { status: "idle", lastOutput: "완료\n✻ Cogitated for 1m 5s\n❯\n~53k uncached · /clear to start…" }],
+        ["surface:26", { status: "idle", lastOutput: "⚠ MCP startup incomplete\n(failed: mcp-arena)\n› Implement {feature}\ngpt-5.4-mini xhigh …" }],
+      ]),
       {
-        projects: {
+        updatedAt: "2026-04-08T00:00:00.000Z",
+        registry: {
           "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "",
-                surface: "surface:7",
-                status: "idle",
-                lastOutput: "Applying patch\ngpt-5.4 xhig…",
-              },
-              {
-                name: "새미",
-                emoji: "🦅",
-                role: "",
-                surface: "surface:5",
-                status: "idle",
-                lastOutput: "Review complete\nnew task? /clear to save 149k tokens",
-              },
-              {
-                name: "쿤",
-                emoji: "🦝",
-                role: "",
-                surface: "surface:16",
-                status: "idle",
-                lastOutput: "Draft ready\n1% until auto-compact",
-              },
-              {
-                name: "노을이",
-                emoji: "🦌",
-                role: "",
-                surface: "surface:26",
-                status: "idle",
-                lastOutput: "⚠ MCP startup incomplete\n(failed: mcp-arena)\n› Implement {feature}\ngpt-5.4-mini xhigh …",
-              },
-              {
-                name: "쿤",
-                emoji: "🦝",
-                role: "",
-                surface: "surface:16",
-                status: "idle",
-                lastOutput: "완료\n✻ Cogitated for 1m 5s\n❯\n~53k uncached · /clear to start…",
-              },
-            ],
+            "🦫 뚝딱이": "surface:7",
+            "🦅 새미": "surface:5",
+            "🦝 쿤": "surface:16",
+          },
+          system: {
+            "🦌 노을이": "surface:26",
           },
         },
       },
-      "2026-04-08T00:00:00.000Z",
     );
 
-    for (const member of getStudioProject(footerSnapshot, "kuma-studio")?.members ?? []) {
-      assert.deepEqual(member.lastOutputLines, []);
-      assert.strictEqual(member.task, null);
+    for (const project of footerSnapshot.projects) {
+      for (const member of project.members) {
+        if (member.surface) {
+          assert.deepEqual(member.lastOutputLines, [], `${member.id} should have empty lastOutputLines`);
+          assert.strictEqual(member.task, null, `${member.id} should have null task`);
+        }
+      }
     }
   });
 
   it("keeps working lines and task text when active work is followed by idle hints", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([
+        ["surface:4", { status: "working", lastOutput: "• Working (34s • esc to interr…)\n› Summarize recent commits\ngpt-5.4 xhigh fast · 46% left" }],
+        ["surface:5", { status: "working", lastOutput: "• Creating branch…\n1% until auto-compact" }],
+      ]),
       {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "",
-                surface: "surface:4",
-                status: "working",
-                lastOutput: "• Working (34s • esc to interr…)\n› Summarize recent commits\ngpt-5.4 xhigh fast · 46% left",
-              },
-              {
-                name: "새미",
-                emoji: "🦅",
-                role: "",
-                surface: "surface:5",
-                status: "working",
-                lastOutput: "• Creating branch…\n1% until auto-compact",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-08T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:4", "🦅 새미": "surface:5" } },
       },
-      "2026-04-08T00:00:00.000Z",
     );
 
     assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "tookdaki")?.lastOutputLines, ["• Working (34s • esc to interr…)"]);
@@ -730,23 +584,11 @@ describe("team-status-store", () => {
     assert.strictEqual(classifySurfaceStatus(output), "working");
 
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:1", { status: "working", lastOutput: output }]]),
       {
-        projects: {
-          system: {
-            members: [
-              {
-                name: "쿠마",
-                emoji: "🐻",
-                role: "",
-                surface: "surface:1",
-                status: "working",
-                lastOutput: output,
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-08T00:00:00.000Z",
+        registry: { system: { "🐻 쿠마": "surface:1" } },
       },
-      "2026-04-08T00:00:00.000Z",
     );
 
     assert.deepEqual(getStudioProjectMember(snapshot, "system", "kuma")?.lastOutputLines, [
@@ -777,23 +619,11 @@ describe("team-status-store", () => {
 
   it("filters Claude Code system messages from task lines", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:7", { status: "working", lastOutput: "Working on parser fix\nCompacting conversation...\n⎿ Tip: Use /statusline off to disable the status line" }]]),
       {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "구현. 코드 구현, 버그 수정, 리팩토링",
-                surface: "surface:7",
-                status: "working",
-                lastOutput: "Working on parser fix\nCompacting conversation...\n⎿ Tip: Use /statusline off to disable the status line",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-08T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:7" } },
       },
-      "2026-04-08T00:00:00.000Z",
     );
 
     assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "tookdaki"), {
@@ -809,23 +639,11 @@ describe("team-status-store", () => {
 
   it("maps 밤토리 directly to the canonical member id from team.json", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:7", { status: "working", lastOutput: "QA in progress" }]]),
       {
-        projects: {
-          "kuma-studio": {
-            members: [
-              {
-                name: "밤토리",
-                emoji: "🦔",
-                role: "",
-                surface: "surface:7",
-                status: "working",
-                lastOutput: "QA in progress",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-05T00:00:00.000Z",
+        registry: { "kuma-studio": { "🦔 밤토리": "surface:7" } },
       },
-      "2026-04-05T00:00:00.000Z",
     );
 
     assert.strictEqual(getStudioProjectMember(snapshot, "kuma-studio", "bamdori")?.id, "bamdori");
@@ -873,40 +691,30 @@ describe("team-status-store", () => {
 
   it("includes modelInfo in toStudioTeamStatusSnapshot output", () => {
     const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:7", { status: "idle", lastOutput: "gpt-5.4 high fast · 88% left\n❯" }]]),
       {
-        projects: {
-          "test-proj": {
-            members: [
-              {
-                name: "뚝딱이",
-                emoji: "🦫",
-                role: "구현",
-                surface: "surface:7",
-                status: "idle",
-                lastOutput: "gpt-5.4 high fast · 88% left\n❯",
-              },
-            ],
-          },
-        },
+        updatedAt: "2026-04-06T00:00:00.000Z",
+        registry: { "test-proj": { "🦫 뚝딱이": "surface:7" } },
       },
-      "2026-04-06T00:00:00.000Z",
     );
     const member = getStudioProjectMember(snapshot, "test-proj", "tookdaki");
     assert.deepEqual(member.modelInfo, { model: "gpt-5.4", effort: "high", speed: "fast", contextRemaining: 88 });
   });
 
-  it("filters snapshots by project id", () => {
-    const snapshot = filterTeamStatusSnapshot(
+  it("filters snapshots by project id via options.projectId", () => {
+    const snapshot = toStudioTeamStatusSnapshot(
+      new Map([
+        ["surface:5", { status: "idle", lastOutput: "❯" }],
+        ["surface:22", { status: "working", lastOutput: "Reviewing mockup" }],
+      ]),
       {
-        projects: {
-          "kuma-studio": { members: [{ name: "뚝딱이", emoji: "🦫", role: "", surface: "surface:5", status: "idle", lastOutput: "❯" }] },
-          other-project: { members: [{ name: "쿤", emoji: "🦝", role: "", surface: "surface:22", status: "working", lastOutput: "Reviewing mockup" }] },
-        },
+        projectId: "kuma-studio",
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:5" }, other-project: { "🦝 쿤": "surface:22" } },
       },
-      "kuma-studio",
     );
 
-    assert.deepEqual(Object.keys(snapshot.projects), ["kuma-studio"]);
+    assert.strictEqual(snapshot.projects.length, 1);
+    assert.strictEqual(snapshot.projects[0].projectId, "kuma-studio");
   });
 
   it("removes stale registry entries when a surface read returns not found", async () => {

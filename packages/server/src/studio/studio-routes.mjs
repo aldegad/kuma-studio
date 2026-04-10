@@ -9,7 +9,7 @@ import { resolve, join } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { readPlans } from "./plan-store.mjs";
 import { listClaudePlans, deleteClaudePlan } from "./claude-plans-store.mjs";
-import { filterTeamStatusSnapshot, toStudioTeamStatusSnapshot } from "./team-status-store.mjs";
+import { toStudioTeamStatusSnapshot } from "./team-status-store.mjs";
 import { createContentRouteHandler } from "./content-routes.mjs";
 import { getMembersById } from "../team-metadata.mjs";
 import { createExperimentRouteHandler } from "./experiment-routes.mjs";
@@ -142,9 +142,11 @@ export function createStudioRouteHandler({
     }
 
     if (url.pathname === "/studio/team-status" && req.method === "GET") {
-      const projectId = url.searchParams.get("project");
-      const snapshot = filterTeamStatusSnapshot(teamStatusStore?.getSnapshot() ?? { projects: {} }, projectId);
-      sendJson(res, 200, toStudioTeamStatusSnapshot(snapshot));
+      const projectId = url.searchParams.get("project") ?? "";
+      sendJson(res, 200, toStudioTeamStatusSnapshot(
+        teamStatusStore?.getSurfaceStates() ?? new Map(),
+        { projectId },
+      ));
       return true;
     }
 
