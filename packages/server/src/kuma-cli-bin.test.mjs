@@ -1,7 +1,7 @@
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
-import { execFile as execFileCallback, spawn } from "node:child_process";
+import { join, resolve } from "node:path";
+import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +15,7 @@ const KUMA_SPAWN_PATH = resolve(process.cwd(), "scripts/bin/kuma-spawn");
 const KUMA_KILL_PATH = resolve(process.cwd(), "scripts/bin/kuma-kill");
 const KUMA_PROJECT_INIT_PATH = resolve(process.cwd(), "scripts/bin/kuma-project-init");
 const KUMA_RESULT_INGEST_PATH = resolve(process.cwd(), "scripts/bin/kuma-result-ingest");
+const KUMA_DISPATCH_PATH = resolve(process.cwd(), "scripts/bin/kuma-dispatch");
 
 async function writeExecutable(path, content) {
   await writeFile(path, content, "utf8");
@@ -40,8 +41,9 @@ async function setupCliSandbox() {
   const spawnLog = join(root, "spawn.log");
   const killLog = join(root, "kill.log");
   const projectInitLog = join(root, "project-init.log");
-  const waitLog = join(root, "wait.log");
-  const waitCountPath = join(root, "wait-count.txt");
+  const dispatchLog = join(root, "dispatch.log");
+  const dispatchStatePath = join(root, "dispatch-state.json");
+  const serverCliPath = join(root, "kuma-server-cli.mjs");
 
   await mkdir(cmuxDir, { recursive: true });
   await mkdir(binDir, { recursive: true });
@@ -66,10 +68,10 @@ async function setupCliSandbox() {
           name: "개발팀",
           members: [
             { id: "howl", name: "하울", emoji: "🐺", spawnType: "claude", team: "dev", nodeType: "team" },
-            { id: "tookdaki", name: "뚝딱이", emoji: "🦫", spawnType: "codex", team: "dev" },
+            { id: "tookdaki", name: "뚝딱이", emoji: "🦫", spawnType: "codex", team: "dev", roleLabel: { en: "Engineer. Implementation and fix delivery" }, skills: ["dev-team"] },
             { id: "saemi", name: "새미", emoji: "🦅", spawnType: "codex", team: "dev" },
-            { id: "koon", name: "쿤", emoji: "🦝", spawnType: "claude", team: "dev" },
-            { id: "bamdori", name: "밤토리", emoji: "🦔", spawnType: "claude", team: "dev" },
+            { id: "koon", name: "쿤", emoji: "🦝", spawnType: "claude", team: "dev", roleLabel: { en: "Publisher / Designer. HTML/CSS/Graphics" }, skills: ["frontend-design"] },
+            { id: "bamdori", name: "밤토리", emoji: "🦔", spawnType: "claude", team: "dev", roleLabel: { en: "QA. Build, deploy, screen verification. No code edits" }, skills: ["kuma-picker"] },
           ],
         },
       },
@@ -128,41 +130,6 @@ cat "${outputDir}/$(printf '%s' "$surface" | tr ':' '_').txt"
   );
 
   await writeExecutable(
-    join(cmuxDir, "kuma-cmux-wait.sh"),
-    `#!/bin/bash
-set -euo pipefail
-signal="$1"
-result_file="\${2:-}"
-count=0
-if [ -f "${waitCountPath}" ]; then
-  count="$(cat "${waitCountPath}")"
-fi
-count=$((count + 1))
-printf '%s' "$count" > "${waitCountPath}"
-printf '%q ' "$@" >> "${waitLog}"
-printf '\\n' >> "${waitLog}"
-timeout_count="\${WAIT_TIMEOUT_COUNT:-0}"
-case "\${WAIT_BEHAVIOR:-ok}" in
-  timeout)
-    echo "SIGNAL_TIMEOUT: $signal (timeout=test)" >&2
-    exit 1
-    ;;
-  *)
-    if [ "$count" -le "$timeout_count" ]; then
-      echo "SIGNAL_TIMEOUT: $signal (timeout=test count=$count)" >&2
-      exit 1
-    fi
-    if [ -n "\${WAIT_WRITE_RESULT_CONTENT:-}" ] && [ -n "$result_file" ]; then
-      mkdir -p "$(dirname "$result_file")"
-      printf '%b' "$WAIT_WRITE_RESULT_CONTENT" > "$result_file"
-    fi
-    echo "SIGNAL_RECEIVED: $signal"
-    ;;
-esac
-`,
-  );
-
-  await writeExecutable(
     join(cmuxDir, "kuma-cmux-send.sh"),
     `#!/bin/bash
 set -euo pipefail
@@ -170,6 +137,260 @@ printf 'send-wrapper|' >> "${cmuxLog}"
 printf '%q ' "$@" >> "${cmuxLog}"
 printf '\\n' >> "${cmuxLog}"
 `,
+  );
+
+  await writeFile(
+    serverCliPath,
+    `#!/usr/bin/env node
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+
+function parseFlags(argv) {
+  const options = { _: [] };
+  for (let index = 0; index < argv.length; index += 1) {
+    const value = argv[index];
+    if (value.startsWith("--")) {
+      const key = value.slice(2);
+      const next = argv[index + 1];
+      if (next != null && !next.startsWith("--")) {
+        options[key] = next;
+        index += 1;
+      } else {
+        options[key] = true;
+      }
+      continue;
+    }
+    options._.push(value);
+  }
+  return options;
+}
+
+function parseTaskFile(taskFile) {
+  const contents = readFileSync(taskFile, "utf8");
+  const lines = contents.replace(/\\r/g, "").split("\\n");
+  const frontmatter = {};
+  let index = 1;
+  for (; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "---") {
+      index += 1;
+      break;
+    }
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    frontmatter[line.slice(0, separator).trim()] = line.slice(separator + 1).trim();
+  }
+  const body = lines.slice(index).join("\\n");
+  const summary = body.split(/\\r?\\n/u).map((line) => line.trim()).find((line) => line && !line.startsWith("#")) || "";
+  return {
+    taskId: frontmatter.id || "",
+    taskFile,
+    project: frontmatter.project || "",
+    initiator: frontmatter.initiator || "",
+    worker: frontmatter.worker || "",
+    qa: frontmatter.qa || "",
+    resultFile: frontmatter.result || "",
+    signal: frontmatter.signal || "",
+    instruction: body.trim(),
+    summary,
+  };
+}
+
+function readState() {
+  if (!existsSync(process.env.KUMA_DISPATCH_STATE_PATH)) {
+    return { dispatches: {} };
+  }
+  return JSON.parse(readFileSync(process.env.KUMA_DISPATCH_STATE_PATH, "utf8"));
+}
+
+function writeState(state) {
+  mkdirSync(dirname(process.env.KUMA_DISPATCH_STATE_PATH), { recursive: true });
+  writeFileSync(process.env.KUMA_DISPATCH_STATE_PATH, JSON.stringify(state, null, 2) + "\\n", "utf8");
+}
+
+function appendLog(message) {
+  writeFileSync(process.env.KUMA_DISPATCH_LOG_PATH, message + "\\n", { encoding: "utf8", flag: "a" });
+}
+
+function classifyOutput(output) {
+  const text = String(output || "").replace(/\\r/g, "");
+  const lines = text.split("\\n").map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return { state: "idle", lastOutputLines: [], task: null };
+  }
+
+  const meaningful = lines.filter((line) => !/^[-─]{3,}$/u.test(line) && !/bypass permissions/iu.test(line) && !/now using extra usage/iu.test(line));
+  const hasPrompt = meaningful.some((line) => /^(?:❯|>|›)\s*$/.test(line));
+  const idleHint = meaningful.some((line) => /^new task\\?/iu.test(line) || /^gpt-[\\w.-]+/iu.test(line));
+  const working = meaningful.some((line) =>
+    /^Investigating\\b/u.test(line) ||
+    /^Working on\\b/u.test(line) ||
+    /^•\\s*Working\\b/u.test(line) ||
+    /^⏺\\s*(?:Bash|Read|Edit)\\(/u.test(line),
+  );
+  const filteredLines = meaningful.filter((line) => !/^(?:❯|>|›)\s*$/.test(line));
+  const preview = filteredLines[0] || null;
+
+  if (working && !hasPrompt) {
+    return { state: "working", lastOutputLines: preview ? [preview] : [], task: preview };
+  }
+
+  if (idleHint || hasPrompt) {
+    return { state: "idle", lastOutputLines: [], task: null };
+  }
+
+  if (working) {
+    return { state: "working", lastOutputLines: preview ? [preview] : [], task: preview };
+  }
+
+  return { state: "idle", lastOutputLines: preview ? [preview] : [], task: preview };
+}
+
+function buildTeamStatus(projectFilter = "") {
+  const registry = JSON.parse(readFileSync(process.env.KUMA_SURFACES_PATH, "utf8"));
+  const team = JSON.parse(readFileSync(process.env.HOME + "/.kuma/team.json", "utf8"));
+  const allMembers = Object.values(team.teams || {}).flatMap((entry) => Array.isArray(entry?.members) ? entry.members : []);
+  const projects = [];
+
+  const candidateProjectIds = projectFilter ? [projectFilter] : Object.keys(registry || {});
+  for (const projectId of candidateProjectIds) {
+    if (projectFilter && projectId !== projectFilter) continue;
+    const members = [];
+    for (const member of allMembers) {
+      const assignedProjectId = member?.team === "system" ? "system" : "kuma-studio";
+      if (assignedProjectId !== projectId) continue;
+      const label = String((member.emoji || "") + " " + (member.name || member.id || "")).trim();
+      const surface = registry?.[projectId]?.[label] || null;
+      let state = "offline";
+      let lastOutputLines = [];
+      let task = null;
+      if (surface) {
+        const outputPath = process.env.KUMA_STUB_OUTPUT_DIR + "/" + String(surface).replace(/:/g, "_") + ".txt";
+        const output = existsSync(outputPath) ? readFileSync(outputPath, "utf8") : "";
+        const classified = classifyOutput(output);
+        state = classified.state;
+        lastOutputLines = classified.lastOutputLines;
+        task = classified.task;
+      }
+      members.push({
+        id: member.id,
+        surface,
+        state,
+        lastOutputLines,
+        task,
+        modelInfo: null,
+        updatedAt: "2026-04-11T00:00:00.000Z",
+      });
+    }
+    projects.push({ projectId, projectName: projectId, members });
+  }
+
+  return { projects };
+}
+
+const [command, ...rest] = process.argv.slice(2);
+const options = parseFlags(rest);
+
+switch (command) {
+  case "dispatch-register": {
+    const task = parseTaskFile(options["task-file"]);
+    const state = readState();
+    state.dispatches[task.taskId] = {
+      ...task,
+      workerId: options["worker-id"] || "",
+      workerName: options["worker-name"] || "",
+      workerType: options["worker-type"] || "",
+      qaMember: options["qa-member"] || "",
+      qaSurface: options["qa-surface"] || "",
+      status: "dispatched",
+      messages: task.instruction ? [{
+        id: task.taskId + ":message:0001",
+        kind: "instruction",
+        text: task.instruction,
+        from: "initiator",
+        to: "worker",
+        fromSurface: task.initiator || "",
+        toSurface: task.worker || "",
+        source: "kuma-task",
+      }] : [],
+    };
+    writeState(state);
+    appendLog(\`dispatch-register|\${task.taskId}|\${task.qa}|\${options["qa-member"] || ""}\`);
+    process.stdout.write(JSON.stringify({ dispatch: state.dispatches[task.taskId] }, null, 2) + "\\n");
+    break;
+  }
+  case "dispatch-message": {
+    const task = parseTaskFile(options["task-file"]);
+    const state = readState();
+    const current = state.dispatches[task.taskId] || { ...task, status: "dispatched", messages: [] };
+    const messages = Array.isArray(current.messages) ? current.messages.slice() : [];
+    const message = {
+      id: task.taskId + ":message:" + String(messages.length + 1).padStart(4, "0"),
+      kind: options.kind || "note",
+      text: options.text || "",
+      from: options.from || "",
+      to: options.to || "",
+      fromSurface: options["from-surface"] || "",
+      toSurface: options["to-surface"] || "",
+      source: options.source || "kuma-dispatch",
+    };
+    messages.push(message);
+    state.dispatches[task.taskId] = {
+      ...current,
+      ...task,
+      messages,
+      lastEvent: "message:" + message.kind,
+    };
+    writeState(state);
+    appendLog(\`dispatch-message|\${task.taskId}|\${message.kind}|\${message.from}|\${message.to}|\${message.text}\`);
+    process.stdout.write(JSON.stringify({ dispatch: state.dispatches[task.taskId] }, null, 2) + "\\n");
+    break;
+  }
+  case "dispatch-complete":
+  case "dispatch-fail":
+  case "dispatch-qa-pass":
+  case "dispatch-qa-reject": {
+    const task = parseTaskFile(options["task-file"]);
+    const state = readState();
+    const current = state.dispatches[task.taskId] || { ...task, status: "dispatched" };
+    let status = current.status;
+    if (command === "dispatch-complete") {
+      status = current.qa === "worker-self-report" || current.qa === "kuma-direct" ? "qa-passed" : "worker-done";
+    } else if (command === "dispatch-fail") {
+      status = "failed";
+    } else if (command === "dispatch-qa-pass") {
+      status = "qa-passed";
+    } else if (command === "dispatch-qa-reject") {
+      status = "qa-rejected";
+    }
+    state.dispatches[task.taskId] = {
+      ...current,
+      ...task,
+      status,
+      blocker: options.blocker || "",
+      note: options.note || "",
+    };
+    writeState(state);
+    appendLog(\`\${command}|\${task.taskId}|\${status}|\${options.blocker || ""}\`);
+    process.stdout.write(JSON.stringify({ dispatch: state.dispatches[task.taskId] }, null, 2) + "\\n");
+    break;
+  }
+  case "dispatch-status": {
+    const task = parseTaskFile(options["task-file"]);
+    const state = readState();
+    process.stdout.write(JSON.stringify({ dispatch: state.dispatches[task.taskId] || null }, null, 2) + "\\n");
+    break;
+  }
+  case "team-status": {
+    process.stdout.write(JSON.stringify(buildTeamStatus(options.project || ""), null, 2) + "\\n");
+    break;
+  }
+  default:
+    process.stderr.write(\`Unsupported stub CLI command: \${command}\\n\`);
+    process.exitCode = 1;
+}
+`,
+    "utf8",
   );
 
   await writeExecutable(
@@ -228,8 +449,9 @@ echo "전팀 준비 완료. (워크스페이스: workspace:9)"
     spawnLog,
     killLog,
     projectInitLog,
-    waitLog,
-    waitCountPath,
+    dispatchLog,
+    dispatchStatePath,
+    serverCliPath,
     env: {
       ...process.env,
       HOME: home,
@@ -238,7 +460,13 @@ echo "전팀 준비 완료. (워크스페이스: workspace:9)"
       KUMA_PROJECTS_PATH: projectsPath,
       KUMA_TASK_DIR: taskDir,
       KUMA_RESULT_DIR: resultDir,
+      KUMA_STUB_OUTPUT_DIR: outputDir,
       KUMA_INITIATOR_SURFACE: "surface:99",
+      KUMA_SERVER_CLI: serverCliPath,
+      KUMA_DISPATCH_STATE_PATH: dispatchStatePath,
+      KUMA_DISPATCH_LOG_PATH: dispatchLog,
+      KUMA_AUTO_VAULT_INGEST: "0",
+      KUMA_AUTO_NOEURI_TRIGGER: "0",
     },
   };
 }
@@ -275,19 +503,6 @@ async function setMemberVaultDomains(sandbox, memberId, vaultDomains) {
 
 async function runScript(scriptPath, args, env, cwd) {
   return execFile("bash", [scriptPath, ...args], { env, cwd });
-}
-
-async function waitForTaskResultPath(taskDir, resultDir) {
-  for (let index = 0; index < 100; index += 1) {
-    const entries = (await readdir(taskDir)).filter((entry) => entry.endsWith(".task.md"));
-    if (entries.length > 0) {
-      const taskEntry = entries[0];
-      return join(resultDir, basename(taskEntry).replace(/\.task\.md$/u, ".result.md"));
-    }
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
-  }
-
-  throw new Error("task file was not created in time");
 }
 
 describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
@@ -327,6 +542,20 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).not.toContain("send|--surface surface:16");
   });
 
+  it("kuma-task keeps dispatch prompts lean when role and skill already come from bootstrap", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await runScript(KUMA_TASK_PATH, ["쿤", "echo test", "--project", "kuma-studio"], sandbox.env);
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("echo test");
+    expect(cmuxLog).toContain("Tracked task file:");
+    expect(cmuxLog).not.toContain("frontend-design");
+    expect(cmuxLog).not.toContain("role: Publisher / Designer. HTML/CSS/Graphics");
+    expect(cmuxLog).not.toContain("role and skill are context, not autonomous commands.");
+  });
+
   it("kuma-task blocks dispatch when the worker surface is already working", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
@@ -349,15 +578,112 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).not.toContain("send-wrapper|surface:4");
   });
 
-  it("kuma-task no-qa prompt uses file-based signal emission", async () => {
+  it("kuma-task no-qa prompt uses broker completion reporting", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
     await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--no-qa"], sandbox.env);
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).toContain("/tmp/kuma-signals/");
-    expect(cmuxLog).not.toMatch(/wait-for\\ -S/u);
+    const dispatchLog = await readFile(sandbox.dispatchLog, "utf8");
+    expect(cmuxLog).toContain("kuma-dispatch complete --task-file");
+    expect(cmuxLog).toContain("kuma-dispatch fail --task-file");
+    expect(dispatchLog).toContain("dispatch-register|tookdaki-");
+  });
+
+  it("kuma-dispatch ask appends a thread message and sends it to the initiator surface", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["ask", "--task-file", taskFilePath, "--message", "Need API confirmation."],
+      {
+        ...sandbox.env,
+        KUMA_INITIATOR_SURFACE: "surface:4",
+      },
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "question",
+      from: "worker",
+      to: "initiator",
+      text: "Need API confirmation.",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Need API confirmation.");
+  });
+
+  it("kuma-dispatch reply defaults back to the worker surface from the initiator", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["reply", "--task-file", taskFilePath, "--message", "Use the existing route handler."],
+      sandbox.env,
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "answer",
+      from: "initiator",
+      to: "worker",
+      text: "Use the existing route handler.",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("send-wrapper|surface:4");
+    expect(cmuxLog).toContain("Use the existing route handler.");
+  });
+
+  it("kuma-dispatch reply infers worker-to-initiator routing from the latest thread message when the current surface is opaque", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    const replyEnv = {
+      ...sandbox.env,
+      CMUX_SURFACE_ID: "066C9972-931B-4AF4-A6B1-08811B8D6898",
+    };
+    delete replyEnv.KUMA_INITIATOR_SURFACE;
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["reply", "--task-file", taskFilePath, "--message", "I'll handle the worker side from here."],
+      replyEnv,
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "answer",
+      from: "worker",
+      to: "initiator",
+      fromSurface: "surface:4",
+      toSurface: "surface:99",
+      text: "I'll handle the worker side from here.",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("I\\'ll handle the worker side from here.");
   });
 
   it("kuma-task prefers member defaultQa over the global default QA member", async () => {
@@ -411,7 +737,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(taskFile).toContain("qa: kuma-direct");
     expect(stdout).toContain("QA: kuma-direct (쿠마 직접 리뷰)");
     expect(cmuxLog).toContain("send-wrapper|surface:4");
-    expect(cmuxLog).toContain("/tmp/kuma-signals/");
+    expect(cmuxLog).toContain("kuma-dispatch complete --task-file");
     expect(cmuxLog).not.toContain("worker-self-report");
   });
 
@@ -433,7 +759,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(stdout).toContain("QA: 밤토리 (surface:7)");
   });
 
-  it("kuma-task prepends vault domain hints when instruction keywords match the vault index", async () => {
+  it("kuma-task does not prepend vault domain hints into the worker prompt by default", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
@@ -460,12 +786,12 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     await runScript(KUMA_TASK_PATH, ["뚝딱이", "보안 KISA 이미지 캐릭터 작업", "--project", "kuma-studio"], sandbox.env);
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).toContain("Read ~/.kuma/vault/domains/security.md");
-    expect(cmuxLog).toContain("Read ~/.kuma/vault/domains/image-generation.md");
-    expect(cmuxLog).toMatch(/Read ~\/\.kuma\/vault\/domains\/security\.md[\s\S]*Read ~\/\.kuma\/vault\/domains\/image-generation\.md/u);
+    expect(cmuxLog).toContain("Tracked task file:");
+    expect(cmuxLog).not.toContain("Read ~/.kuma/vault/domains/security.md");
+    expect(cmuxLog).not.toContain("Read ~/.kuma/vault/domains/image-generation.md");
   });
 
-  it("kuma-task always prepends member vaultDomains even without keyword matches", async () => {
+  it("kuma-task does not prepend member vaultDomains into the worker prompt by default", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
@@ -477,7 +803,8 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).toContain("Read ~/.kuma/vault/domains/analytics.md");
+    expect(cmuxLog).toContain("echo test");
+    expect(cmuxLog).not.toContain("Read ~/.kuma/vault/domains/analytics.md");
   });
 
   it("kuma-read resolves a member by id and tails the requested number of lines", async () => {
@@ -619,217 +946,6 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(registry.smoke["🦔 밤토리"]).toBe("surface:35");
   });
 
-  it("kuma-task forwards --wait-timeout to kuma-cmux-wait.sh", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--wait-timeout", "60"], sandbox.env);
-
-    const waitLog = await readFile(sandbox.waitLog, "utf8");
-    expect(waitLog).toContain("kuma-studio-tookdaki");
-    expect(waitLog).toContain("--timeout 60");
-    expect(waitLog).toContain("--surface surface:4");
-  });
-
-  it("kuma-task keeps --timeout as a backward-compatible wait-timeout alias", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--timeout", "45"], sandbox.env);
-
-    const waitLog = await readFile(sandbox.waitLog, "utf8");
-    expect(waitLog).toContain("--timeout 45");
-  });
-
-  it("kuma-task uses a 600 second default wait timeout", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait"], sandbox.env);
-
-    const waitLog = await readFile(sandbox.waitLog, "utf8");
-    expect(waitLog).toContain("--timeout 600");
-  });
-
-  it("kuma-task extends wait timeout when the worker surface is still working", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "❯\n", "utf8");
-
-    const child = spawn("bash", [
-      KUMA_TASK_PATH,
-      "뚝딱이",
-      "echo test",
-      "--project",
-      "kuma-studio",
-      "--wait",
-      "--timeout",
-      "1",
-      "--trust-worker",
-    ], {
-      env: {
-        ...sandbox.env,
-        WAIT_TIMEOUT_COUNT: "1",
-        WAIT_WRITE_RESULT_CONTENT: "# result\\nextended wait ok\\n",
-        KUMA_WAIT_TIMEOUT_EXTEND_BY: "2",
-        KUMA_WAIT_TIMEOUT_MAX_TOTAL: "5",
-      },
-      cwd: sandbox.projectRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-
-    await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
-
-    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
-      child.on("error", rejectPromise);
-      child.on("close", resolvePromise);
-    });
-
-    expect(exitCode).toBe(0);
-    const waitLog = await readFile(sandbox.waitLog, "utf8");
-    expect(waitLog).toContain("--timeout 1");
-    expect(waitLog).toContain("--timeout 2");
-    expect(stderr).toContain("WAIT_TIMEOUT_DIAG: surface=surface:4 status=working preview=Investigating stubborn bug");
-    expect(stderr).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=2s total_timeout=3s extension=1/3");
-    const resultPath = stdout.match(/RESULT_FILE: (.+)/)?.[1];
-    expect(resultPath).toBeTruthy();
-    expect(await readFile(resultPath, "utf8")).toBe("# result\nextended wait ok\n");
-  });
-
-  it("kuma-task wait mode ingests the completed result file into vault/results", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    const { stdout } = await runScript(
-      KUMA_TASK_PATH,
-      ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--trust-worker"],
-      {
-        ...sandbox.env,
-        WAIT_WRITE_RESULT_CONTENT: "# result\\nwait ok\\n",
-      },
-    );
-
-    const resultPath = stdout.match(/RESULT_FILE: (.+)/)?.[1];
-    expect(resultPath).toBeTruthy();
-
-    const vaultResultPath = join(sandbox.vaultResultsDir, basename(resultPath));
-    expect(await readFile(vaultResultPath, "utf8")).toBe("# result\nwait ok\n");
-    expect(stdout).toContain(`VAULT_RESULT_FILE: ${vaultResultPath}`);
-  });
-
-  it("kuma-task poll mode finishes when the result file appears", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    const child = spawn("bash", [
-      KUMA_TASK_PATH,
-      "뚝딱이",
-      "echo test",
-      "--project",
-      "kuma-studio",
-      "--wait",
-      "--poll",
-      "--timeout",
-      "10",
-      "--trust-worker",
-    ], {
-      env: sandbox.env,
-      cwd: sandbox.projectRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-
-    const resultPath = await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
-    await writeFile(resultPath, "# result\npoll ok\n", "utf8");
-
-    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
-      child.on("error", rejectPromise);
-      child.on("close", resolvePromise);
-    });
-
-    expect(exitCode).toBe(0);
-    expect(stderr).toBe("");
-    expect(stdout).toContain(`RESULT_FILE: ${resultPath}`);
-    expect(stdout).toContain("poll ok");
-
-    const vaultResultPath = join(sandbox.vaultResultsDir, basename(resultPath));
-    expect(await readFile(vaultResultPath, "utf8")).toBe("# result\npoll ok\n");
-    expect(stdout).toContain(`VAULT_RESULT_FILE: ${vaultResultPath}`);
-  });
-
-  it("kuma-task poll mode extends timeout while the worker surface is still working", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "❯\n", "utf8");
-
-    const child = spawn("bash", [
-      KUMA_TASK_PATH,
-      "뚝딱이",
-      "echo test",
-      "--project",
-      "kuma-studio",
-      "--wait",
-      "--poll",
-      "--timeout",
-      "1",
-      "--trust-worker",
-    ], {
-      env: {
-        ...sandbox.env,
-        KUMA_WAIT_POLL_INTERVAL: "1",
-        KUMA_WAIT_TIMEOUT_EXTEND_BY: "2",
-        KUMA_WAIT_TIMEOUT_MAX_TOTAL: "5",
-      },
-      cwd: sandbox.projectRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-
-    const resultPath = await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1500));
-    await writeFile(resultPath, "# result\npoll extend ok\n", "utf8");
-
-    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
-      child.on("error", rejectPromise);
-      child.on("close", resolvePromise);
-    });
-
-    expect(exitCode).toBe(0);
-    expect(stderr).toContain("RESULT_POLL_TIMEOUT:");
-    expect(stderr).toContain("WAIT_TIMEOUT_DIAG: surface=surface:4 status=working preview=Investigating stubborn bug");
-    expect(stderr).toContain("TIMEOUT_EXTEND: mode=poll surface=surface:4 status=working add=2s total_timeout=3s extension=1/3");
-    expect(stdout).toContain("poll extend ok");
-  });
-
   it("kuma-result-ingest copies only missing result files into vault/results", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
@@ -846,89 +962,19 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(await readFile(join(sandbox.vaultResultsDir, "task-b.result.md"), "utf8")).toBe("# b\ncopy me\n");
   });
 
-  it("kuma-task exits with diagnostics when wait times out on an idle surface", async () => {
+  it("kuma-task rejects removed wait flags", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
-    await writeFile(
-      join(sandbox.outputDir, "surface_4.txt"),
-      [
-        "───────────────────────────",
-        "❯",
-        "───────────────────────────",
-      ].join("\n"),
-      "utf8",
-    );
-
     let failure;
     try {
-      await runScript(
-        KUMA_TASK_PATH,
-        ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait", "--timeout", "60", "--no-qa"],
-        {
-          ...sandbox.env,
-          WAIT_BEHAVIOR: "timeout",
-        },
-      );
+      await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio", "--wait"], sandbox.env);
     } catch (error) {
       failure = error;
     }
 
     expect(failure).toBeTruthy();
-    expect(failure.code).toBe(2);
-    expect(`${failure.stdout}${failure.stderr}`).toContain("SIGNAL_TIMEOUT:");
-    expect(`${failure.stdout}${failure.stderr}`).toContain("WAIT_TIMEOUT_DIAG: surface=surface:4 status=idle");
-    expect(`${failure.stdout}${failure.stderr}`).not.toContain("TIMEOUT_EXTEND:");
-  }, 30000);
-
-  it("kuma-task stops extending after the adaptive wait timeout limit is exhausted", async () => {
-    const sandbox = await setupCliSandbox();
-    tempRoots.push(sandbox.root);
-
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "❯\n", "utf8");
-
-    const child = spawn("bash", [
-      KUMA_TASK_PATH,
-      "뚝딱이",
-      "echo test",
-      "--project",
-      "kuma-studio",
-      "--wait",
-      "--timeout",
-      "1",
-      "--no-qa",
-    ], {
-      env: {
-        ...sandbox.env,
-        WAIT_BEHAVIOR: "timeout",
-        KUMA_WAIT_TIMEOUT_EXTEND_BY: "1",
-        KUMA_WAIT_TIMEOUT_MAX_EXTENSIONS: "2",
-        KUMA_WAIT_TIMEOUT_MAX_TOTAL: "3",
-      },
-      cwd: sandbox.projectRoot,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-
-    await waitForTaskResultPath(sandbox.taskDir, sandbox.resultDir);
-    await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating stubborn bug\n", "utf8");
-
-    const exitCode = await new Promise((resolvePromise, rejectPromise) => {
-      child.on("error", rejectPromise);
-      child.on("close", resolvePromise);
-    });
-
-    expect(exitCode).toBe(2);
-    expect(`${stdout}${stderr}`).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=1s total_timeout=2s extension=1/2");
-    expect(`${stdout}${stderr}`).toContain("TIMEOUT_EXTEND: mode=wait surface=surface:4 status=working add=1s total_timeout=3s extension=2/2");
-    expect(`${stdout}${stderr}`).toContain("WAIT_TIMEOUT_DIAG: surface=surface:4 status=working preview=Investigating stubborn bug");
-  }, 15000);
+    expect(failure.code).toBe(1);
+    expect(`${failure.stderr}`).toContain("unknown argument: --wait");
+  });
 });

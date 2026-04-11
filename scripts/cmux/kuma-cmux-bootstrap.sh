@@ -5,17 +5,108 @@
 # 팀을 먼저 오른쪽에 띄워야 인프라 down-split이 왼쪽 컬럼에만 적용됨
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-KUMA_STUDIO_DIR="/workspace/kuma-studio"
-WORKSPACE_DIR="/workspace"
+SCRIPT_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+KUMA_STUDIO_DIR="${KUMA_STUDIO_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+WORKSPACE_DIR="${KUMA_STUDIO_WORKSPACE:-$KUMA_STUDIO_DIR}"
+KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_STUDIO_DIR/prompts/kuma-system-prompt.md}"
 
 source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
+set -euo pipefail
 require_team_config
+
+REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 
 # 헬퍼: surface → pane 조회
 get_pane() {
   local surface="$1"
-  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1
+  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1 || true
+}
+
+ensure_registry_file() {
+  if [ ! -f "$REGISTRY" ]; then
+    mkdir -p "$(dirname "$REGISTRY")"
+    echo "{}" > "$REGISTRY"
+  fi
+}
+
+extract_surface_title() {
+  printf '%s\n' "$1" \
+    | sed -E 's/^[*[:space:]]*surface:[0-9]+[[:space:]]+//' \
+    | sed -E -e ':again' -e 's/[[:space:]]+\[[^]]+\][[:space:]]*$//' -e 't again' -e 's/[[:space:]]+$//'
+}
+
+normalize_title() {
+  printf '%s\n' "${1:-}" | tr '[:upper:]' '[:lower:]'
+}
+
+first_workspace_surface() {
+  local workspace="$1"
+  local panes_output pane_line pane_ref surfaces_output surface_ref
+
+  panes_output="$(cmux list-panes --workspace "$workspace" 2>/dev/null || true)"
+  while IFS= read -r pane_line; do
+    pane_ref="$(printf '%s\n' "$pane_line" | grep -oE 'pane:[0-9]+' | head -1)"
+    [ -n "$pane_ref" ] || continue
+    surfaces_output="$(cmux list-pane-surfaces --workspace "$workspace" --pane "$pane_ref" 2>/dev/null || true)"
+    surface_ref="$(printf '%s\n' "$surfaces_output" | grep -oE 'surface:[0-9]+' | head -1)"
+    if [ -n "$surface_ref" ]; then
+      printf '%s\n' "$surface_ref"
+      return 0
+    fi
+  done <<< "$panes_output"
+
+  return 1
+}
+
+find_surface_by_title_in_workspace() {
+  local workspace="$1"
+  local target_title normalized_target panes_output pane_line pane_ref surfaces_output surface_line surface_ref surface_title
+
+  normalized_target="$(normalize_title "$2")"
+  [ -n "$workspace" ] && [ -n "$normalized_target" ] || return 1
+
+  panes_output="$(cmux list-panes --workspace "$workspace" 2>/dev/null || true)"
+  while IFS= read -r pane_line; do
+    pane_ref="$(printf '%s\n' "$pane_line" | grep -oE 'pane:[0-9]+' | head -1)"
+    [ -n "$pane_ref" ] || continue
+
+    surfaces_output="$(cmux list-pane-surfaces --workspace "$workspace" --pane "$pane_ref" 2>/dev/null || true)"
+    while IFS= read -r surface_line; do
+      surface_ref="$(printf '%s\n' "$surface_line" | grep -oE 'surface:[0-9]+' | head -1)"
+      [ -n "$surface_ref" ] || continue
+      surface_title="$(extract_surface_title "$surface_line")"
+      if [ "$(normalize_title "$surface_title")" = "$normalized_target" ]; then
+        printf '%s\n' "$surface_ref"
+        return 0
+      fi
+    done <<< "$surfaces_output"
+  done <<< "$panes_output"
+
+  return 1
+}
+
+resolve_registered_label_surface() {
+  local project="${1:?project required}"
+  local label="${2:?label required}"
+
+  node --input-type=module - "$REGISTRY" "$project" "$label" <<'NODE'
+import { readFileSync } from "node:fs";
+
+const [, , registryPath, projectId, label] = process.argv;
+
+try {
+  const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+  const surface = registry?.[projectId]?.[label];
+  if (typeof surface === "string" && surface.trim()) {
+    process.stdout.write(`${surface.trim()}\n`);
+  } else {
+    process.exit(1);
+  }
+} catch {
+  process.exit(1);
+}
+NODE
 }
 
 surface_alive() {
@@ -43,9 +134,40 @@ resolve_bootstrap_surface() {
   return 1
 }
 
+resolve_infra_surface() {
+  local label="$1"
+  local title="$2"
+  local surface=""
+
+  surface="$(resolve_registered_label_surface "kuma-studio" "$label" 2>/dev/null || true)"
+  if surface_alive "$surface"; then
+    printf '%s\n' "$surface"
+    return 0
+  fi
+
+  surface="$(find_surface_by_title_in_workspace "$CURRENT_WS" "$title" 2>/dev/null || true)"
+  if surface_alive "$surface"; then
+    printf '%s\n' "$surface"
+    return 0
+  fi
+
+  return 1
+}
+
+register_surface_label() {
+  local project="$1"
+  local label="$2"
+  local surface="$3"
+  local title="${4:-$label}"
+
+  [ -n "$surface" ] || return 1
+  cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$surface" --title "$title" > /dev/null 2>&1 || true
+  "$SCRIPT_DIR/kuma-cmux-register.sh" "$project" "$label" "$surface" 2>/dev/null || true
+}
+
 ensure_system_member_surface() {
   local name="$1"
-  local title default_surface surface command result
+  local title default_surface surface startup_command result
 
   title="$(member_display_label "$name")"
   default_surface="$(team_config_get_member_field "$name" defaultSurface)"
@@ -69,15 +191,16 @@ ensure_system_member_surface() {
     echo "  ↳ $title defaultSurface $default_surface 비활성, 새 system surface 할당"
   fi
 
-  result=$(cmux new-surface --pane "$KUMA_P" --workspace "$CURRENT_WS" 2>&1)
-  surface=$(echo "$result" | grep -oE 'surface:[0-9]+' | head -1)
+  result="$(cmux new-surface --pane "$KUMA_P" --workspace "$CURRENT_WS" 2>&1 || true)"
+  surface="$(echo "$result" | grep -oE 'surface:[0-9]+' | head -1 || true)"
   if [ -z "$surface" ]; then
     echo "✗ $title surface 생성 실패: $result"
     exit 1
   fi
 
-  command="$(build_member_command "$name" "" "$WORKSPACE_DIR")"
-  "$SCRIPT_DIR/kuma-cmux-send.sh" "$surface" "$command" --workspace "$CURRENT_WS" > /dev/null
+  # System worker surfaces also boot into idle mode; dispatched work arrives later.
+  startup_command="$(build_member_command "$name" "" "$WORKSPACE_DIR")"
+  "$SCRIPT_DIR/kuma-cmux-send.sh" "$surface" "$startup_command" --workspace "$CURRENT_WS" > /dev/null
   cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$surface" --title "$title" > /dev/null 2>&1 || true
   "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "$title" "$surface" 2>/dev/null || true
   echo "✓ $title 상주 탭 준비 완료 ($surface)"
@@ -87,8 +210,11 @@ echo "🐻 쿠마 스튜디오 부트스트랩"
 echo "=========================="
 echo ""
 
+# 0. 레지스트리 보장 (부트스트랩은 기존 surface를 재사용해야 함)
+ensure_registry_file
+
 # 1. System 상주 탭 (CTO와 같은 pane)
-CURRENT_WS=$(cmux tree 2>&1 | grep -oE 'workspace:[0-9]+' | head -1)
+CURRENT_WS="$(cmux tree 2>&1 | grep -oE 'workspace:[0-9]+' | head -1 || true)"
 if [ -z "$CURRENT_WS" ]; then
   echo "✗ 현재 워크스페이스 조회 실패"
   exit 1
@@ -99,8 +225,14 @@ KUMA_S="$(team_config_get_member_field "쿠마" defaultSurface)"
 [ -n "$KUMA_S" ] || KUMA_S="surface:1"
 KUMA_P=$(get_pane "$KUMA_S")
 if [ -z "$KUMA_P" ]; then
-  echo "✗ 쿠마 pane 조회 실패"
-  exit 1
+  # Fresh session: fall back to the first surface inside the current workspace only.
+  KUMA_S="$(first_workspace_surface "$CURRENT_WS" 2>/dev/null || true)"
+  KUMA_P="$(get_pane "$KUMA_S")"
+  if [ -z "$KUMA_P" ]; then
+    echo "✗ 쿠마 pane 조회 실패"
+    exit 1
+  fi
+  echo "  ↳ 기존 surface 없음, 현재 pane 사용 ($KUMA_P / $KUMA_S)"
 fi
 while IFS= read -r SYSTEM_MEMBER; do
   [ -n "$SYSTEM_MEMBER" ] || continue
@@ -117,73 +249,105 @@ FRONT_ALIVE=false
 curl -sf http://localhost:4312/health > /dev/null 2>&1 && SERVER_ALIVE=true
 curl -sf http://localhost:5173/studio/ > /dev/null 2>&1 && FRONT_ALIVE=true
 
+SERVER_SURFACE="$(resolve_infra_surface "server" "kuma-server" 2>/dev/null || true)"
+FRONT_SURFACE="$(resolve_infra_surface "frontend" "kuma-frontend" 2>/dev/null || true)"
+[ -n "$SERVER_SURFACE" ] && register_surface_label "kuma-studio" "server" "$SERVER_SURFACE" "kuma-server"
+[ -n "$FRONT_SURFACE" ] && register_surface_label "kuma-studio" "frontend" "$FRONT_SURFACE" "kuma-frontend"
+
+INFRA_P=""
+if [ -n "$SERVER_SURFACE" ]; then
+  INFRA_P="$(get_pane "$SERVER_SURFACE")"
+elif [ -n "$FRONT_SURFACE" ]; then
+  INFRA_P="$(get_pane "$FRONT_SURFACE")"
+fi
+
 if $SERVER_ALIVE && $FRONT_ALIVE; then
   echo "✓ 서버/프론트 이미 실행 중"
 else
-  # 인프라 pane 생성 (아래)
-  RESULT=$(cmux new-split down 2>&1) || true
-  INFRA_S=$(echo "$RESULT" | grep -oE 'surface:[0-9]+')
-  INFRA_P=$(get_pane "$INFRA_S")
+  if ! $SERVER_ALIVE; then
+    STALE_PID="$(lsof -i :4312 -t 2>/dev/null || true)"
+    [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
 
-  if [ -n "$INFRA_S" ]; then
-    # 서버 시작
-    if ! $SERVER_ALIVE; then
-      STALE_PID=$(lsof -i :4312 -t 2>/dev/null)
-      [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
-      echo "→ 쿠마 서버 시작 중..."
-      "$SCRIPT_DIR/kuma-cmux-send.sh" "$INFRA_S" "cd \"$KUMA_STUDIO_DIR\" && npm run server:reload" > /dev/null
-      cmux tab-action --action rename --surface "$INFRA_S" --title "kuma-server" > /dev/null 2>&1
-      "$SCRIPT_DIR/kuma-cmux-register.sh" "kuma-studio" "server" "$INFRA_S" 2>/dev/null || true
-
-      echo -n "  기동 대기"
-      SERVER_OK=false
-      for i in $(seq 1 30); do
-        curl -sf http://localhost:4312/health > /dev/null 2>&1 && SERVER_OK=true && break
-        echo -n "."; sleep 1
-      done
-      echo ""
-      if $SERVER_OK; then
-        echo "✓ 쿠마 서버 정상 기동 ($INFRA_S)"
+    if [ -z "$SERVER_SURFACE" ]; then
+      if [ -n "$INFRA_P" ]; then
+        RESULT="$(cmux new-surface --pane "$INFRA_P" --workspace "$CURRENT_WS" 2>&1 || true)"
       else
-        echo "✗ 쿠마 서버 기동 실패"
-        cmux read-screen --surface "$INFRA_S" --lines 15 2>/dev/null || true
+        RESULT="$(cmux new-split down --workspace "$CURRENT_WS" 2>&1 || true)"
+      fi
+      SERVER_SURFACE="$(echo "$RESULT" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+      if [ -z "$SERVER_SURFACE" ]; then
+        echo "✗ 서버 surface 생성 실패: $RESULT"
         exit 1
       fi
     fi
 
-    # 프론트 시작 (같은 pane에 새 탭)
-    if ! $FRONT_ALIVE; then
-      STALE_PID=$(lsof -i :5173 -t 2>/dev/null)
-      [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
-      echo "→ 스튜디오 프론트 시작 중..."
-      FR=$(cmux new-surface --pane "$INFRA_P" 2>&1)
-      FRONT_S=$(echo "$FR" | grep -oE 'surface:[0-9]+')
-      "$SCRIPT_DIR/kuma-cmux-send.sh" "$FRONT_S" "cd \"$KUMA_STUDIO_DIR\" && npm run dev:studio" > /dev/null
-      cmux tab-action --action rename --surface "$FRONT_S" --title "kuma-frontend" > /dev/null 2>&1
-      "$SCRIPT_DIR/kuma-cmux-register.sh" "kuma-studio" "frontend" "$FRONT_S" 2>/dev/null || true
+    INFRA_P="$(get_pane "$SERVER_SURFACE")"
+    echo "→ 쿠마 서버 시작 중..."
+    "$SCRIPT_DIR/kuma-cmux-send.sh" "$SERVER_SURFACE" "cd \"$KUMA_STUDIO_DIR\" && npm run server:reload" > /dev/null
+    register_surface_label "kuma-studio" "server" "$SERVER_SURFACE" "kuma-server"
 
-      echo -n "  기동 대기"
-      FRONT_OK=false
-      for i in $(seq 1 30); do
-        curl -sf http://localhost:5173/studio/ > /dev/null 2>&1 && FRONT_OK=true && break
-        echo -n "."; sleep 1
-      done
-      echo ""
-      if $FRONT_OK; then
-        echo "✓ 스튜디오 프론트 정상 기동 ($FRONT_S)"
-      else
-        echo "✗ 스튜디오 프론트 기동 실패"
-        cmux read-screen --surface "$FRONT_S" --lines 15 2>/dev/null || true
-        exit 1
-      fi
+    echo -n "  기동 대기"
+    SERVER_OK=false
+    for i in $(seq 1 30); do
+      curl -sf http://localhost:4312/health > /dev/null 2>&1 && SERVER_OK=true && break
+      echo -n "."; sleep 1
+    done
+    echo ""
+    if $SERVER_OK; then
+      echo "✓ 쿠마 서버 정상 기동 ($SERVER_SURFACE)"
+    else
+      echo "✗ 쿠마 서버 기동 실패"
+      cmux read-screen --surface "$SERVER_SURFACE" --lines 15 2>/dev/null || true
+      exit 1
     fi
-
-    # 인프라 pane 높이 줄이기 (CTO가 세로 70% 차지)
-    cmux resize-pane --pane "$INFRA_P" -U --amount 15 > /dev/null 2>&1 || true
-  else
-    echo "✗ 인프라 pane 생성 실패"
-    exit 1
   fi
+
+  if [ -z "$INFRA_P" ] && [ -n "$SERVER_SURFACE" ]; then
+    INFRA_P="$(get_pane "$SERVER_SURFACE")"
+  fi
+  if [ -z "$INFRA_P" ] && [ -n "$FRONT_SURFACE" ]; then
+    INFRA_P="$(get_pane "$FRONT_SURFACE")"
+  fi
+
+  if ! $FRONT_ALIVE; then
+    STALE_PID="$(lsof -i :5173 -t 2>/dev/null || true)"
+    [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
+
+    if [ -z "$FRONT_SURFACE" ]; then
+      if [ -n "$INFRA_P" ]; then
+        FR="$(cmux new-surface --pane "$INFRA_P" --workspace "$CURRENT_WS" 2>&1 || true)"
+      else
+        FR="$(cmux new-split down --workspace "$CURRENT_WS" 2>&1 || true)"
+      fi
+      FRONT_SURFACE="$(echo "$FR" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+      if [ -z "$FRONT_SURFACE" ]; then
+        echo "✗ 프론트 surface 생성 실패: $FR"
+        exit 1
+      fi
+    fi
+
+    [ -n "$INFRA_P" ] || INFRA_P="$(get_pane "$FRONT_SURFACE")"
+    echo "→ 스튜디오 프론트 시작 중..."
+    "$SCRIPT_DIR/kuma-cmux-send.sh" "$FRONT_SURFACE" "cd \"$KUMA_STUDIO_DIR\" && npm run dev:studio" > /dev/null
+    register_surface_label "kuma-studio" "frontend" "$FRONT_SURFACE" "kuma-frontend"
+
+    echo -n "  기동 대기"
+    FRONT_OK=false
+    for i in $(seq 1 30); do
+      curl -sf http://localhost:5173/studio/ > /dev/null 2>&1 && FRONT_OK=true && break
+      echo -n "."; sleep 1
+    done
+    echo ""
+    if $FRONT_OK; then
+      echo "✓ 스튜디오 프론트 정상 기동 ($FRONT_SURFACE)"
+    else
+      echo "✗ 스튜디오 프론트 기동 실패"
+      cmux read-screen --surface "$FRONT_SURFACE" --lines 15 2>/dev/null || true
+      exit 1
+    fi
+  fi
+
+  [ -n "$INFRA_P" ] && cmux resize-pane --pane "$INFRA_P" -U --amount 15 > /dev/null 2>&1 || true
 fi
 
 # 4. 워크스페이스 + CTO 탭 이름 설정
@@ -200,4 +364,8 @@ echo "서버 API: http://localhost:4312"
 echo ""
 echo "→ 쿠마 CTO 세션 시작..."
 cd "$WORKSPACE_DIR"
-exec claude --dangerously-skip-permissions --channels plugin:discord@claude-plugins-official -- "/kuma"
+KUMA_SYSTEM_PROMPT="$(cat "$KUMA_SYSTEM_PROMPT_PATH")"
+exec claude \
+  --dangerously-skip-permissions \
+  --channels plugin:discord@claude-plugins-official \
+  --append-system-prompt "$KUMA_SYSTEM_PROMPT"

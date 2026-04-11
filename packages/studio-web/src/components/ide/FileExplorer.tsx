@@ -88,25 +88,28 @@ const BASE_URL = `http://${window.location.hostname}:${KUMA_PORT}`;
 const TREE_WIDTH_INITIAL = 260;
 const TREE_WIDTH_MIN = 180;
 const TREE_WIDTH_MAX = 420;
-const WORKSPACE_ROOT = "~/Documents/workspace";
-const HOME_DIR = "/Users/soohongkim";
+
+interface ExplorerRoots {
+  workspaceRoot: string;
+  globalRoots: Record<"vault" | "claude" | "codex", string>;
+}
 
 interface GlobalSection {
   id: string;
   label: string;
   icon: string;
   color: string;
-  path: string;
 }
 
-const GLOBAL_SECTIONS: GlobalSection[] = [
-  { id: "vault", label: ".kuma/vault", icon: "V", color: "text-sky-500", path: `${HOME_DIR}/.kuma/vault` },
-  { id: "claude", label: ".claude", icon: "C", color: "text-violet-500", path: `${HOME_DIR}/.claude` },
-  { id: "codex", label: ".codex", icon: "X", color: "text-emerald-500", path: `${HOME_DIR}/.codex` },
+const GLOBAL_SECTION_DEFS: GlobalSection[] = [
+  { id: "vault", label: ".kuma/vault", icon: "V", color: "text-sky-500" },
+  { id: "claude", label: ".claude", icon: "C", color: "text-violet-500" },
+  { id: "codex", label: ".codex", icon: "X", color: "text-emerald-500" },
 ];
 
 export function FileExplorer({ onCollapse }: FileExplorerProps) {
   const [tree, setTree] = useState<FsNode | null>(null);
+  const [explorerRoots, setExplorerRoots] = useState<ExplorerRoots | null>(null);
   const [globalTrees, setGlobalTrees] = useState<Record<string, FsNode | null>>({});
   const [globalExpanded, setGlobalExpanded] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -179,13 +182,23 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
   // Git status summary
   const gitChangedCount = Object.keys(gitStatus).length;
+  const globalSections = useMemo(
+    () => GLOBAL_SECTION_DEFS.map((section) => ({
+      ...section,
+      path: explorerRoots?.globalRoots[section.id as keyof ExplorerRoots["globalRoots"]] ?? "",
+    })),
+    [explorerRoots],
+  );
 
   // Fetch root tree
   useEffect(() => {
     setLoading(true);
-    fetch(`${BASE_URL}/studio/fs/tree?depth=2`)
-      .then((r) => r.json())
-      .then((data: FsNode) => {
+    Promise.all([
+      fetch(`${BASE_URL}/studio/fs/roots`).then((r) => r.json()),
+      fetch(`${BASE_URL}/studio/fs/tree?depth=2`).then((r) => r.json()),
+    ])
+      .then(([roots, data]: [ExplorerRoots, FsNode]) => {
+        setExplorerRoots(roots);
         setTree(data);
         setError(null);
       })
@@ -194,8 +207,8 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   }, []);
 
   // Load global config tree on demand
-  const loadGlobalTree = useCallback(async (section: GlobalSection) => {
-    if (globalTrees[section.id]) return;
+  const loadGlobalTree = useCallback(async (section: GlobalSection & { path: string }) => {
+    if (!section.path || globalTrees[section.id]) return;
     try {
       const r = await fetch(`${BASE_URL}/studio/fs/tree?root=${encodeURIComponent(section.path)}&depth=2`);
       const data: FsNode = await r.json();
@@ -205,7 +218,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
     }
   }, [globalTrees]);
 
-  const toggleGlobalSection = useCallback((section: GlobalSection) => {
+  const toggleGlobalSection = useCallback((section: GlobalSection & { path: string }) => {
     const willExpand = !globalExpanded[section.id];
     setGlobalExpanded((prev) => ({ ...prev, [section.id]: willExpand }));
     if (willExpand) {
@@ -295,8 +308,8 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
   // Parse index.md when vault tab is selected
   useEffect(() => {
-    if (sidebarTab !== "vault" || vaultIndexLoaded) return;
-    const indexPath = `${HOME_DIR}/.kuma/vault/index.md`;
+    if (sidebarTab !== "vault" || vaultIndexLoaded || !explorerRoots?.globalRoots.vault) return;
+    const indexPath = `${explorerRoots.globalRoots.vault}/index.md`;
     fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(indexPath)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -313,12 +326,13 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
         setVaultIndexLoaded(true);
       })
       .catch(() => setVaultIndexLoaded(true));
-  }, [vaultIndexLoaded, sidebarTab]);
+  }, [explorerRoots, vaultIndexLoaded, sidebarTab]);
 
   const handleVaultSelect = useCallback(async (doc: TocDoc) => {
+    if (!explorerRoots?.globalRoots.vault) return;
     if (viewerFile?.type === "vault" && viewerFile.path === doc.path) return;
     if (viewerFile?.type === "image" && viewerFile.path === doc.path) return;
-    const filePath = `${HOME_DIR}/.kuma/vault/${doc.path}`;
+    const filePath = `${explorerRoots.globalRoots.vault}/${doc.path}`;
     setFileLoading(true);
     try {
       const r = await fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(filePath)}`);
@@ -338,7 +352,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
       }
     } catch { /* ignore */ }
     setFileLoading(false);
-  }, [viewerFile]);
+  }, [explorerRoots, viewerFile]);
 
   // Keyboard: Esc closes viewer
   useEffect(() => {
@@ -352,6 +366,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   }, [viewerFile]);
 
   const projectName = tree?.path?.split("/").pop() || "workspace";
+  const workspaceRootLabel = tree?.path || explorerRoots?.workspaceRoot || "workspace";
   const hasViewer = viewerFile !== null;
 
   return (
@@ -380,7 +395,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
               <h3 className="text-[11px] font-semibold truncate" style={{ color: "var(--t-secondary)" }}>
                 {projectName}
               </h3>
-              <p className="truncate text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>{tree?.path || WORKSPACE_ROOT}</p>
+              <p className="truncate text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>{workspaceRootLabel}</p>
             </div>
           </div>
           {onCollapse && (
@@ -514,7 +529,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
           </div>
 
           {/* Global Config sections */}
-          {GLOBAL_SECTIONS.map((section) => {
+          {globalSections.map((section) => {
             const isExpanded = globalExpanded[section.id] ?? false;
             const sectionTree = globalTrees[section.id];
 

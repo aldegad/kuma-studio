@@ -38,6 +38,7 @@ import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
  * @param {import("./team-config-store.mjs").TeamConfigStore} [options.teamConfigStore]
  * @param {import("./studio-ws-events.mjs").StudioWsEvents} [options.studioWsEvents]
  * @param {import("./agent-history-store.mjs").AgentHistoryStore} [options.agentHistoryStore]
+ * @param {import("./dispatch-broker.mjs").DispatchBroker} [options.dispatchBroker]
  * @param {(options?: { vaultDir?: string }) => Promise<object>} [options.vaultSkillSyncFn]
  * @param {{
  *   resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null,
@@ -67,6 +68,7 @@ export function createStudioRouteHandler({
   teamConfigStore,
   studioWsEvents,
   agentHistoryStore,
+  dispatchBroker,
   vaultSkillSyncFn,
   teamConfigRuntime,
   workspaceRoot,
@@ -147,6 +149,142 @@ export function createStudioRouteHandler({
         teamStatusStore?.getSurfaceStates() ?? new Map(),
         { projectId },
       ));
+      return true;
+    }
+
+    if (url.pathname === "/studio/dispatches" && req.method === "GET") {
+      if (!dispatchBroker) {
+        sendJson(res, 503, { error: "Dispatch broker is not available." });
+        return true;
+      }
+
+      const status = url.searchParams.get("status") ?? "";
+      sendJson(res, 200, { dispatches: dispatchBroker.listDispatches({ status }) });
+      return true;
+    }
+
+    if (url.pathname === "/studio/dispatches" && req.method === "POST") {
+      if (!dispatchBroker) {
+        sendJson(res, 503, { error: "Dispatch broker is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid dispatch payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      try {
+        sendJson(res, 200, { dispatch: await dispatchBroker.registerDispatch(body) });
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Failed to register dispatch.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    const dispatchMatch = url.pathname.match(/^\/studio\/dispatches\/([^/]+)$/u);
+    if (dispatchMatch && req.method === "GET") {
+      if (!dispatchBroker) {
+        sendJson(res, 503, { error: "Dispatch broker is not available." });
+        return true;
+      }
+
+      const taskId = decodeURIComponent(dispatchMatch[1]);
+      const dispatch = dispatchBroker.getDispatch(taskId);
+      if (!dispatch) {
+        sendJson(res, 404, { error: "Unknown dispatch." });
+        return true;
+      }
+
+      sendJson(res, 200, { dispatch });
+      return true;
+    }
+
+    const dispatchEventMatch = url.pathname.match(/^\/studio\/dispatches\/([^/]+)\/events$/u);
+    if (dispatchEventMatch && req.method === "POST") {
+      if (!dispatchBroker) {
+        sendJson(res, 503, { error: "Dispatch broker is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid dispatch event payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      const taskId = decodeURIComponent(dispatchEventMatch[1]);
+      try {
+        sendJson(res, 200, { dispatch: await dispatchBroker.reportEvent(taskId, body) });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : "Unknown error";
+        sendJson(res, details.startsWith("Unknown dispatch:") ? 404 : 400, {
+          error: "Failed to report dispatch event.",
+          details,
+        });
+      }
+      return true;
+    }
+
+    const dispatchMessagesMatch = url.pathname.match(/^\/studio\/dispatches\/([^/]+)\/messages$/u);
+    if (dispatchMessagesMatch && req.method === "GET") {
+      if (!dispatchBroker) {
+        sendJson(res, 503, { error: "Dispatch broker is not available." });
+        return true;
+      }
+
+      const taskId = decodeURIComponent(dispatchMessagesMatch[1]);
+      const messages = dispatchBroker.listMessages(taskId);
+      if (!messages) {
+        sendJson(res, 404, { error: "Unknown dispatch." });
+        return true;
+      }
+
+      sendJson(res, 200, { messages });
+      return true;
+    }
+
+    if (dispatchMessagesMatch && req.method === "POST") {
+      if (!dispatchBroker) {
+        sendJson(res, 503, { error: "Dispatch broker is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid dispatch message payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      const taskId = decodeURIComponent(dispatchMessagesMatch[1]);
+      try {
+        sendJson(res, 200, { dispatch: await dispatchBroker.appendMessage(taskId, body) });
+      } catch (error) {
+        const details = error instanceof Error ? error.message : "Unknown error";
+        sendJson(res, details.startsWith("Unknown dispatch:") ? 404 : 400, {
+          error: "Failed to append dispatch message.",
+          details,
+        });
+      }
       return true;
     }
 

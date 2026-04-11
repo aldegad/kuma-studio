@@ -132,6 +132,17 @@ export class StudioWsEvents {
   }
 
   /**
+   * Broadcast a dispatch update event.
+   * @param {object} dispatch
+   */
+  broadcastDispatchUpdate(dispatch) {
+    this.#broadcast({
+      type: "kuma-studio:event",
+      event: { kind: "dispatch-update", dispatch },
+    });
+  }
+
+  /**
    * Get the number of connected studio clients.
    * @returns {number}
    */
