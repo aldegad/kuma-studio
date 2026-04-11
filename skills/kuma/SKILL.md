@@ -16,7 +16,7 @@ user-invocable: true
 2. **`~/.kuma/vault/dispatch-log.md`** 마지막 10줄 — 최근 task 사건열 (episodic memory). 없으면 skip.
 3. **`~/.kuma/vault/decisions.md`** 마지막 5줄 — 최근 유저 결정/보류/reject (episodic memory). 없으면 skip.
 4. **`~/.kuma/vault/index.md`** — entity 맵 (semantic navigation). 항상 read.
-5. **`~/Documents/workspace/.kuma/plans/index.md`** — 큰 단위 plan 트래커. 항상 read.
+5. **`${KUMA_PLANS_DIR:-./.kuma/plans}/index.md`** — 큰 단위 plan 트래커. 항상 read.
 6. **`~/.kuma/bin/kuma-status`** — 워커 surface 레지스트리. 항상 실행.
 
 > **vault = 쿠마(나) 의 뇌**. 휘발성 컨텍스트 윈도우에 의존하지 말고 vault 를 1차 메모리로 본다.
@@ -85,6 +85,14 @@ user-invocable: true
   4. 쿠마피커로 동일 동작 재테스트 확인
   5. Playwright 세션 종료 + 메모리 회수 필수 (부하 큼)
 - Playwright를 직접 QA 용도로 사용하는 것은 금지
+
+### 인프라 재사용 정책
+
+- `kuma-studio` 프로젝트에서는 `kuma-server` 와 `kuma-frontend` surface 를 관리형 infra 로 간주한다.
+- 작업 시작 전에는 새 서버를 띄운다고 가정하지 말고, 먼저 `~/.kuma/bin/kuma-status` 또는 `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` 로 기존 surface 를 확인한다.
+- 서버 재시작이 필요하면 기존 `kuma-server` surface 에서 `npm run server:reload` 를 사용한다.
+- 프론트 재시작이 필요하면 기존 `kuma-frontend` surface 를 재사용한다.
+- 관리형 surface 가 살아 있는데 현재 터미널에서 새 서버나 새 Vite dev server 를 중복 기동하는 것은 금지한다.
 
 ## 팀 결과 적용 플로우
 

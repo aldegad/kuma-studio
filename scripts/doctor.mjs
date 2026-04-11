@@ -61,6 +61,7 @@ async function main() {
   ];
   for (const skill of skills) {
     const resolvedSkill = skill.candidates.find((candidate) =>
+      existsSync(join(CLAUDE_DIR, "skills", candidate, "SKILL.md")) ||
       existsSync(join(CLAUDE_DIR, "skills", candidate, "skill.md")),
     );
     const ok = Boolean(resolvedSkill);

@@ -6,13 +6,11 @@ user-invocable: true
 
 # /kuma:dev-team — 🐺 하울 오케스트레이션
 
-canonical: `./.claude/skills/dev-team/skill.md`
-
 ## 목적
 
 - 하울을 구현자가 아니라 PM/오케스트레이터로 강제한다.
 - 개발 작업은 반드시 플랜 작성, 워커 분배, 결과 수합 순서로 진행한다.
-- 시그널 송신/수신 규칙을 파일 기반 canonical flow 에 맞춘다.
+- broker 기반 dispatch 완료/QA 보고 규칙을 canonical flow 에 맞춘다.
 
 ## Hard Rules
 
@@ -30,8 +28,8 @@ canonical: `./.claude/skills/dev-team/skill.md`
 3. 필요하면 `kuma-task --wait --wait-timeout <sec>` 로 완료까지 감시한다.
 4. 워커 결과를 모아 통합 판단과 최종 보고만 하울이 담당한다.
 
-## Signal Rules
+## Dispatch Report Rules
 
-- signal sender 는 `mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/{signal-name}` 이다.
-- `cmux wait-for` 는 sender 가 아니라 receiver 전용이다.
-- 비슷한 signal 이름 substring 매칭을 기대하지 않는다. exact filename 기준으로 다룬다.
+- 구현 워커는 result 파일을 쓴 뒤 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
+- QA 워커는 같은 task file 기준으로 `~/.kuma/bin/kuma-dispatch qa-pass|qa-reject` 로 최종 상태를 보고한다.
+- `cmux wait-for -S` 나 `/tmp/kuma-signals` 파일은 더 이상 canonical completion flow 가 아니다.

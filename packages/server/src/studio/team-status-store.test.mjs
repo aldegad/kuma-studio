@@ -503,7 +503,7 @@ describe("team-status-store", () => {
       new Map([["surface:18", { status: "working", lastOutput: "Reviewing mobile playback" }]]),
       {
         updatedAt: "2026-04-10T00:00:00.000Z",
-        registry: { other-project: { "🦉 부리": "surface:18" } },
+        registry: { "other-project": { "🦉 부리": "surface:18" } },
       },
     );
 
@@ -626,7 +626,7 @@ describe("team-status-store", () => {
         [
           "Scene path reported by",
           "the server:",
-          "~/.kuma-picker/projects/110b4d7cf23f/scene.json",
+          "/home/test-user/.kuma-picker/projects/110b4d7cf23f/scene.json",
           "",
           "› Write tests",
           "",
@@ -729,7 +729,7 @@ describe("team-status-store", () => {
       ]),
       {
         projectId: "kuma-studio",
-        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:5" }, other-project: { "🦝 쿤": "surface:22" } },
+        registry: { "kuma-studio": { "🦫 뚝딱이": "surface:5" }, "other-project": { "🦝 쿤": "surface:22" } },
       },
     );
 

@@ -1,12 +1,12 @@
 # Kuma Picker commands
 
-All commands use the CLI directly:
+All commands below assume the shell is already at the kuma-studio repo root.
 
 ```bash
-node /workspace/kuma-studio/packages/server/src/cli.mjs <command> [args]
+node packages/server/src/cli.mjs <command> [args]
 ```
 
-Shorthand used below: `kuma-cli` = `node /workspace/kuma-studio/packages/server/src/cli.mjs`
+Shorthand used below: `kuma-cli` = `node packages/server/src/cli.mjs`
 
 ## State home resolution
 
@@ -61,7 +61,6 @@ const href = await page.evaluate(() => window.location.href);
 - After extension code changes, reloading the unpacked extension in `chrome://extensions` is supported and remains the simplest manual recovery path.
 - Daemon-driven extension self-reload is also supported:
   ```bash
-  cd /workspace/kuma-studio
   npm run server:reload
   ```
   - with the daemon running, saving a file under `packages/browser-extension/` triggers the watcher in `packages/server/src/server.mjs`

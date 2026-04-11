@@ -139,9 +139,9 @@ async function installSkills() {
   await ensureDirWithSummary(CLAUDE_SKILLS_DIR);
 
   for (const skill of SKILLS) {
-    const srcFile = resolve(ROOT, ".claude", "skills", skill.source, "skill.md");
+    const srcFile = resolve(ROOT, "skills", skill.source, "SKILL.md");
     const destDir = resolve(CLAUDE_SKILLS_DIR, skill.id);
-    const destFile = resolve(destDir, "skill.md");
+    const destFile = resolve(destDir, "SKILL.md");
 
     if (!(await pathExists(srcFile))) {
       warn(`skill source not found: ${summarizePath(srcFile)} — skipping`);

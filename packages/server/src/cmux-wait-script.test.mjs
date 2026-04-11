@@ -138,7 +138,7 @@ describe("cmux wait script", { timeout: 30000 }, () => {
     const sendLog = join(root, "send.log");
     const resultPath = join(resultDir, "phase8.result.md");
     const signalName = "kuma-studio-tookdaki-20260408-185642-done";
-    const planPath = "~/.kuma/plans/kuma-studio/noeuri-vault-consolidation.md";
+    const planPath = join(root, ".kuma", "plans", "kuma-studio", "noeuri-vault-consolidation.md");
 
     await mkdir(binDir, { recursive: true });
     await mkdir(taskDir, { recursive: true });
@@ -319,7 +319,7 @@ Wait for an exact signal file
     const sendLog = join(root, "send.log");
     const resultPath = join(resultDir, "phase4.result.md");
     const signalName = "kuma-studio-kuma-task-allowlist-noeuri-phase4-done";
-    const planPath = "~/.kuma/plans/kuma-studio/kuma-cli-unification.md";
+    const planPath = join(root, ".kuma", "plans", "kuma-studio", "kuma-cli-unification.md");
 
     await mkdir(binDir, { recursive: true });
     await mkdir(taskDir, { recursive: true });
@@ -403,7 +403,7 @@ printf '\\n' >> "${sendLog}"
     expect(sendLogContents).toContain("surface:46");
     expect(sendLogContents).toContain("task: kuma-task-allowlist-noeuri-phase4.");
     expect(sendLogContents).toContain(`plan: ${planPath}`);
-    expect(sendLogContents).toContain(`${root}/.claude/skills/noeuri/skill.md`);
+    expect(sendLogContents).toContain(`${root}/skills/noeuri/SKILL.md`);
     expect(sendLogContents).toContain("protected user-memo read-only notebook");
     expect(sendLogContents).toContain(`${root}/user-memo`);
     expect(sendLogContents).toContain("Never write, rewrite, move, rename, or delete anything under that directory");

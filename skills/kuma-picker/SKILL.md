@@ -6,22 +6,16 @@ user-invocable: false
 
 # Kuma Picker
 
-Kuma Picker repo is installed at:
-
-```
-/workspace/kuma-studio
-```
-
-All CLI commands use this path directly:
+All commands below assume the shell is already at the kuma-studio repo root:
 
 ```bash
-node /workspace/kuma-studio/packages/server/src/cli.mjs <command> [args]
+node packages/server/src/cli.mjs <command> [args]
 ```
 
 The Chrome extension is loaded from:
 
 ```
-/workspace/kuma-studio/packages/browser-extension/
+packages/browser-extension/
 ```
 
 ## Installation
@@ -29,7 +23,7 @@ The Chrome extension is loaded from:
 When the user asks to install Kuma Picker, run:
 
 ```bash
-node /workspace/kuma-studio/scripts/install.mjs
+node scripts/install.mjs
 ```
 
 This handles: dependency install, daemon start, shared state home creation, and installing the current agent skill by default.
@@ -39,7 +33,7 @@ The only human step is loading the Chrome extension (see below).
 ### Health check
 
 ```bash
-node /workspace/kuma-studio/scripts/doctor.mjs
+node scripts/doctor.mjs
 ```
 
 ### The one human step
@@ -50,12 +44,12 @@ The Chrome extension cannot be installed by an agent. Tell the user:
 > 1. Open `chrome://extensions`
 > 2. Turn on "Developer mode" in the top-right corner
 > 3. Click "Load unpacked"
-> 4. Select `/workspace/kuma-studio/packages/browser-extension/`
+> 4. Select the repo's `packages/browser-extension/` directory
 > 5. Refresh any page once
 
 Then verify:
 ```bash
-node /workspace/kuma-studio/packages/server/src/cli.mjs get-browser-session
+node packages/server/src/cli.mjs get-browser-session
 ```
 
 ## State home
@@ -69,14 +63,14 @@ Kuma Picker resolves its shared state directory in this priority order:
 
 1. Read the latest selection before doing anything else.
    ```bash
-   node /workspace/kuma-studio/packages/server/src/cli.mjs get-selection
+   node packages/server/src/cli.mjs get-selection
    ```
    - Use `--recent 5` for bounded recent history.
    - Use `--all` only when the user explicitly needs the full collection.
 2. If the latest selection includes a `job`, treat it as the user's explicit task.
    - When you begin work:
      ```bash
-     node /workspace/kuma-studio/packages/server/src/cli.mjs set-job-status --status in_progress --message "Implementing the requested change."
+     node packages/server/src/cli.mjs set-job-status --status in_progress --message "Implementing the requested change."
      ```
 3. Interpret the selection.
    - Read `page.url`, `page.title`, element metadata, and snapshot reference.
@@ -84,18 +78,18 @@ Kuma Picker resolves its shared state directory in this priority order:
 4. Work from that saved context.
 5. Before the final reply, mark completed:
    ```bash
-   node /workspace/kuma-studio/packages/server/src/cli.mjs set-job-status --status completed --message "Updated the picked element and verified the change."
+   node packages/server/src/cli.mjs set-job-status --status completed --message "Updated the picked element and verified the change."
    ```
 
 ## Browser bridge workflow
 
 1. Check the browser bridge session:
    ```bash
-   node /workspace/kuma-studio/packages/server/src/cli.mjs get-browser-session
+   node packages/server/src/cli.mjs get-browser-session
    ```
 2. If missing or stale, start the daemon:
    ```bash
-   node /workspace/kuma-studio/packages/server/src/cli.mjs serve
+   node packages/server/src/cli.mjs serve
    ```
 3. Prefer targeted tab commands (`--tab-id`, `--url`, `--url-contains`).
 4. Use the narrowest command that answers the question. See [references/commands.md](references/commands.md).
@@ -112,7 +106,6 @@ Kuma Picker resolves its shared state directory in this priority order:
   - Extension self-reload while the daemon is running
     - Start or restart the daemon:
       ```bash
-      cd /workspace/kuma-studio
       npm run server:reload
       ```
     - While that daemon is watching `packages/browser-extension/`, saving a file under that directory triggers the watcher in `packages/server/src/server.mjs`, which broadcasts `extension.reload`.

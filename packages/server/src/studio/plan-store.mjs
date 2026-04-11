@@ -8,7 +8,6 @@
 import fs, { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { homedir } from "node:os";
 
 const PLAN_STATUS_COLOR_BY_STATUS = {
   active: "blue",
@@ -24,12 +23,11 @@ let cachedPlansPromise = null;
 
 /**
  * Resolve the plans directory.
- * Priority: KUMA_PLANS_DIR > KUMA_STUDIO_WORKSPACE/.kuma/plans > ~/Documents/workspace/.kuma/plans
+ * Priority: KUMA_PLANS_DIR > KUMA_STUDIO_WORKSPACE/.kuma/plans > <cwd>/.kuma/plans
  */
 function resolvePlansDir() {
   if (process.env.KUMA_PLANS_DIR) return process.env.KUMA_PLANS_DIR;
-  const workspace =
-    process.env.KUMA_STUDIO_WORKSPACE || join(homedir(), "Documents", "workspace");
+  const workspace = process.env.KUMA_STUDIO_WORKSPACE || process.cwd();
   return join(workspace, ".kuma", "plans");
 }
 
