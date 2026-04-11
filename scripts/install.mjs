@@ -468,9 +468,12 @@ async function main() {
   header("Installation complete!");
   process.stdout.write(`
   Quick start:
-    cd ${ROOT}
-    npm run server:reload         # Start/restart daemon (port ${DEFAULT_PORT})
-    npm run kuma-studio:dashboard # Open studio in browser
+    1. Pick your top-level work root
+    2. Start Kuma Studio against that workspace:
+       cd /path/to/workspace-root
+       KUMA_STUDIO_WORKSPACE="$PWD" npm run --prefix ${ROOT} server:reload
+    3. Open the dashboard:
+       npm run --prefix ${ROOT} kuma-studio:dashboard
 
   Skills installed:
 ${SKILLS.map((s) => `    /claude ${s.id}`).join("\n")}

@@ -22,14 +22,32 @@ git clone https://github.com/aldegad/kuma-studio.git
 cd kuma-studio
 npm install
 node scripts/install.mjs
-npm run server:reload
 ```
 
 Then:
 
 1. Load `packages/browser-extension/` in Chrome via `chrome://extensions`
-2. Run `npm run kuma-studio:dashboard`
-3. If something looks off, run `npm run skill:doctor`
+2. Pick your top-level work root, not the `kuma-studio` repo clone, as the runtime workspace
+3. Start the daemon with that workspace bound:
+
+```bash
+cd /path/to/workspace-root
+KUMA_STUDIO_WORKSPACE="$PWD" npm run --prefix /path/to/kuma-studio server:reload
+```
+
+4. Run `npm run --prefix /path/to/kuma-studio kuma-studio:dashboard`
+5. If something looks off, run `npm run --prefix /path/to/kuma-studio skill:doctor`
+
+## Workspace Root Model
+
+Kuma Studio is designed to be installed from this repository, but operated
+against your top-level work root.
+
+- The repository clone is the tool source.
+- The runtime workspace is the directory you actually want Kuma to supervise.
+- By default, plans resolve from `<workspace-root>/.kuma/plans`.
+- If you launch the daemon from the repo clone, bind the real workspace with
+  `KUMA_STUDIO_WORKSPACE=/path/to/workspace-root`.
 
 ## Local State Boundary
 
