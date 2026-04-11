@@ -41,6 +41,7 @@ function toShellMember(member) {
     id: member?.id ?? "",
     emoji: member?.emoji ?? "",
     role: member?.role?.ko ?? "",
+    roleLabelEn: member?.role?.en ?? "",
     team: member?.team ?? "",
     nodeType: member?.nodeType ?? "",
     defaultQa: member?.defaultQa ?? "",
@@ -50,6 +51,7 @@ function toShellMember(member) {
     type: member?.engine ?? "",
     model: member?.model ?? "",
     options: member?.options ?? "",
+    skills: Array.isArray(member?.skills) ? member.skills : [],
   };
 }
 
@@ -213,6 +215,8 @@ switch (command) {
         shellMember.model,
         shellMember.options,
         shellMember.emoji,
+        shellMember.skills[0] ?? "",
+        shellMember.roleLabelEn,
       ]);
       break;
     }
@@ -227,6 +231,8 @@ switch (command) {
       type,
       DEFAULT_MODELS[type],
       DEFAULT_OPTIONS[type],
+      "",
+      "",
       "",
     ]);
     break;

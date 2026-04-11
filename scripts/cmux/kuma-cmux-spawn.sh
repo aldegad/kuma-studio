@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 LAUNCH_RECORD="$(resolve_member_launch_record "$NAME" "$TYPE")"
-IFS=$'\x1f' read -r _RESOLVED_NAME RESOLVED_TYPE _RESOLVED_MODEL _RESOLVED_OPTIONS _RESOLVED_EMOJI <<< "$LAUNCH_RECORD"
+IFS=$'\x1f' read -r _RESOLVED_NAME RESOLVED_TYPE _RESOLVED_MODEL _RESOLVED_OPTIONS _RESOLVED_EMOJI _RESOLVED_SKILL _RESOLVED_ROLE_LABEL <<< "$LAUNCH_RECORD"
 
 # Create new split pane or tab
 if [ -n "$TARGET_PANE" ]; then

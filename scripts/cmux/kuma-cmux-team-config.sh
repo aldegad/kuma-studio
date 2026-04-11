@@ -86,6 +86,8 @@ parse_shell_member_record() {
       data.model || "",
       data.options || "",
       data.emoji || "",
+      (Array.isArray(data.skills) ? data.skills[0] : "") || "",
+      data.roleLabelEn || "",
     ];
     process.stdout.write(`${record.join("\x1f")}\n`);
   '
@@ -104,15 +106,23 @@ resolve_member_launch_record() {
 build_member_command_from_record() {
   local dir="$1"
   local record="${2:?launch record required}"
-  local _name type model options _emoji
-  IFS=$'\x1f' read -r _name type model options _emoji <<< "$record"
+  local _name type model options _emoji skill role_label_en
+  IFS=$'\x1f' read -r _name type model options _emoji skill role_label_en <<< "$record"
 
   case "$type" in
     claude)
-      printf 'cd "%s" && KUMA_ROLE=worker claude --model %q %s' "$dir" "$model" "$options"
+      if [ -n "$skill" ]; then
+        printf 'cd "%s" && KUMA_ROLE=worker claude --model %q %s -- "/%s"' "$dir" "$model" "$options" "$skill"
+      else
+        printf 'cd "%s" && KUMA_ROLE=worker claude --model %q %s' "$dir" "$model" "$options"
+      fi
       ;;
     codex)
-      printf 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
+      if [ -n "$role_label_en" ]; then
+        printf 'cd "%s" && KUMA_ROLE=worker codex -m %q --instructions %q %s' "$dir" "$model" "$role_label_en" "$options"
+      else
+        printf 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
+      fi
       ;;
     sonnet)
       printf 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions' "$dir"
@@ -137,10 +147,10 @@ build_member_command() {
 member_display_label_from_record() {
   local fallback_name="$1"
   local record="${2:-}"
-  local _name _type _model _options emoji
+  local _name _type _model _options emoji _skill _role_label
 
   if [ -n "$record" ]; then
-    IFS=$'\x1f' read -r _name _type _model _options emoji <<< "$record"
+    IFS=$'\x1f' read -r _name _type _model _options emoji _skill _role_label <<< "$record"
   else
     emoji=""
   fi

@@ -3,7 +3,7 @@
 # 사용: kuma-cmux-register.sh <project> <role> <surface-id>
 set -euo pipefail
 
-SCRIPT_PATH="$(node -e 'const fs = require(\"node:fs\"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "$0")"
+SCRIPT_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "$0")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
 find_kuma_repo_root() {
