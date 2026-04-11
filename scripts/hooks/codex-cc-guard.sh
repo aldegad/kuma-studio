@@ -1,15 +1,27 @@
 #!/usr/bin/env bash
 # Codex Co-Authored-By guard hook for Claude Code PreToolUse:Bash
-# Blocks git commit if Claude CC exists but Codex CC is missing.
-# Install: symlink to ~/.claude/hooks/ and reference from settings.json
+# git commit에 Claude CC가 있으면 Codex CC도 항상 같이 넣어야 함.
 
-jq -r '
-  if (.tool_input.command | test("git commit"))
-     and (.tool_input.command | test("Co-Authored-By.*Claude"; "i"))
-     and (.tool_input.command | test("Co-Authored-By.*Codex"; "i") | not)
-  then
-    "{\"continue\":false,\"stopReason\":\"Codex Co-Authored-By 누락! Codex 워커 참여 시 Co-Authored-By: Codex <noreply@openai.com> 추가 필요.\"}"
-  else
-    "{\"continue\":true}"
-  end
-'
+input=$(cat)
+cmd=$(echo "$input" | jq -r '.tool_input.command // ""')
+
+# git commit이 아니면 통과
+if ! echo "$cmd" | grep -q 'git commit'; then
+  echo '{"continue": true}'
+  exit 0
+fi
+
+# Claude CC가 없으면 통과 (Codex CC만 강제할 이유 없음)
+if ! echo "$cmd" | grep -qiE 'Co-Authored-By.*Claude'; then
+  echo '{"continue": true}'
+  exit 0
+fi
+
+# Claude CC 있는데 Codex CC 없으면 차단
+if ! echo "$cmd" | grep -qiE 'Co-Authored-By.*Codex'; then
+  echo "⚠️ CC Claude 있으면 CC Codex도 같이 넣을 것. Co-Authored-By: Codex <noreply@openai.com>" >&2
+  exit 2
+fi
+
+echo '{"continue": true}'
+exit 0
