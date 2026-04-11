@@ -15,7 +15,7 @@ for spec in "${required_skill_specs[@]}"; do
   skill="${spec%%:*}"
   source_skill="${spec#*:}"
   link="$HOME/.claude/skills/$skill"
-  target="$KUMA_STUDIO/.claude/skills/$source_skill"
+  target="$KUMA_STUDIO/skills/$source_skill"
   if [ "$(readlink "$link" 2>/dev/null)" != "$target" ]; then
     echo "❌ skill/$skill: 심링크 불일치"
     errors=$((errors + 1))
@@ -23,7 +23,7 @@ for spec in "${required_skill_specs[@]}"; do
 done
 
 strategy_analytics_link="$HOME/.claude/skills/strategy-analytics-team"
-strategy_analytics_target="$KUMA_STUDIO/.claude/skills/analytics-team"
+strategy_analytics_target="$KUMA_STUDIO/skills/analytics-team"
 if [ -L "$strategy_analytics_link" ]; then
   if [ "$(readlink "$strategy_analytics_link" 2>/dev/null)" != "$strategy_analytics_target" ]; then
     echo "❌ skill/strategy-analytics-team: 심링크 불일치"

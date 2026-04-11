@@ -10,12 +10,12 @@
 #
 
 # ─── 매핑 테이블 ───────────────────────────────────────────────
-# 새 프로젝트 추가 시 아래에 한 줄씩 추가
-# 형식: CHAT_ID|프로젝트명|프로젝트_경로 (한 줄에 하나)
-THREAD_ENTRIES="
-1488473532181643345|쿠마 스튜디오|personal/kuma-studio
-1488474039298035884|Example Project|example-org/example-project
-"
+# 로컬 전용 파일에서 읽는다. 형식: CHAT_ID|프로젝트명|프로젝트_경로 (한 줄에 하나)
+THREAD_ENTRIES_FILE="${KUMA_DISCORD_THREAD_MAP_PATH:-$HOME/.kuma/discord-thread-map.txt}"
+THREAD_ENTRIES=""
+if [ -f "$THREAD_ENTRIES_FILE" ]; then
+  THREAD_ENTRIES="$(cat "$THREAD_ENTRIES_FILE")"
+fi
 
 # ─── 현재 프로젝트 감지 ────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,8 +35,8 @@ while IFS='|' read -r cid pname ppath; do
   esac
 done <<< "$THREAD_ENTRIES"
 
-# 현재 프로젝트를 식별할 수 없으면 조용히 종료
-if [ -z "$CURRENT_PROJECT_PATH" ]; then
+# 현재 프로젝트를 식별할 수 없거나 로컬 매핑이 없으면 조용히 종료
+if [ -z "$CURRENT_PROJECT_PATH" ] || [ -z "$THREAD_ENTRIES" ]; then
   exit 0
 fi
 

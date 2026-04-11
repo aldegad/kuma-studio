@@ -18,7 +18,7 @@ skill_specs=(
 for spec in "${skill_specs[@]}"; do
   skill="${spec%%:*}"
   source_skill="${spec#*:}"
-  target="$KUMA_STUDIO/.claude/skills/$source_skill"
+  target="$KUMA_STUDIO/skills/$source_skill"
   link="$HOME/.claude/skills/$skill"
   [ -L "$link" ] && rm "$link"
   ln -sf "$target" "$link"
@@ -65,7 +65,11 @@ done
 # 4. 프로젝트 맵 (없으면 복사, 있으면 스킵)
 mkdir -p ~/.kuma
 if [ ! -f ~/.kuma/projects.json ]; then
-  cp "$KUMA_STUDIO/config/projects.json" ~/.kuma/projects.json
+  node - "$HOME/.kuma/projects.json" "$KUMA_STUDIO" <<'NODE'
+const fs = require("node:fs");
+const [, , destPath, studioPath] = process.argv;
+fs.writeFileSync(destPath, `${JSON.stringify({ "kuma-studio": studioPath }, null, 2)}\n`);
+NODE
   echo "  ✓ config: projects.json (새로 생성)"
 else
   echo "  ⊘ config: projects.json (기존 유지)"

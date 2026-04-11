@@ -31,7 +31,7 @@ user-invocable: true
 
 ```bash
 # 현재 active 상태인 플랜 확인
-grep -l 'status: active' ~/.kuma/plans/**/*.md
+find "${KUMA_PLANS_DIR:-.kuma/plans}" -name '*.md' -exec grep -l 'status: active' {} +
 ```
 
 파란(active) 플랜이 **야근 scope 외**에 남아있으면 처리:

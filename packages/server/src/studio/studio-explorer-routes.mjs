@@ -17,7 +17,7 @@ const SKIP_DIRS = new Set([
   "coverage",
   ".cache",
 ]);
-const fsWorkspaceRoot = resolve(process.env.KUMA_STUDIO_WORKSPACE || join(homedir(), "Documents", "workspace"));
+const fsWorkspaceRoot = resolve(process.env.KUMA_STUDIO_WORKSPACE || process.cwd());
 const fsAllowedRoots = [
   fsWorkspaceRoot,
   resolve(join(homedir(), ".claude")),
@@ -140,6 +140,11 @@ export function createStudioExplorerRouteHandler({ workspaceRoot } = {}) {
     ? [resolve(workspaceRoot), ...fsAllowedRoots.filter((root) => resolve(root) !== resolve(workspaceRoot))]
     : fsAllowedRoots;
   const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : fsWorkspaceRoot;
+  const globalRoots = {
+    vault: resolve(join(homedir(), ".kuma", "vault")),
+    claude: resolve(join(homedir(), ".claude")),
+    codex: resolve(join(homedir(), ".codex")),
+  };
 
   function isAllowedPath(candidatePath) {
     const resolved = resolve(candidatePath);
@@ -147,6 +152,14 @@ export function createStudioExplorerRouteHandler({ workspaceRoot } = {}) {
   }
 
   return async (req, res, url) => {
+    if (url.pathname === "/studio/fs/roots" && req.method === "GET") {
+      sendJson(res, 200, {
+        workspaceRoot: defaultRoot,
+        globalRoots,
+      });
+      return true;
+    }
+
     if (url.pathname === "/studio/git/status" && req.method === "GET") {
       const root = url.searchParams.get("root") || defaultRoot;
       const resolvedRoot = resolve(root);

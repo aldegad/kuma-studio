@@ -30,7 +30,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 1. `~/.kuma/vault/current-focus.md` — 현재 dispatch snapshot
 2. `~/.kuma/vault/dispatch-log.md` 최근 N개 — task 사건열
 3. `~/.kuma/vault/decisions.md` 최근 N개 — 결정 이력
-4. `~/Documents/workspace/.kuma/plans/index.md` Active — 큰 plan
+4. `${KUMA_PLANS_DIR:-./.kuma/plans}/index.md` Active — 큰 plan
 5. `~/.kuma/vault/log.md` tail — vault 변경 timeline
 6. `~/.kuma/vault/index.md` — entity 맵
 7. `/vault search <q>` — content/entity hit 분리
