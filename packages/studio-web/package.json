@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aldegad/kuma-studio.git",
+    "directory": "packages/studio-web"
+  },
+  "homepage": "https://github.com/aldegad/kuma-studio/tree/main/packages/studio-web",
+  "bugs": {
+    "url": "https://github.com/aldegad/kuma-studio/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
