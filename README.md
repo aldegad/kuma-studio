@@ -3,6 +3,34 @@
 Kuma Studio is an AI agent virtual office and browser automation bridge with a
 visual dashboard and team characters.
 
+## Open Source Status
+
+Kuma Studio is open source, but its supported distribution model is currently
+`git clone` plus the bundled installer.
+
+- Supported today: clone the repository, run `npm install`, then run
+  `node scripts/install.mjs`
+- Not promised yet: npm registry publishing for the whole workspace as a single
+  global package
+- Runtime state stays machine-local under `~/.kuma`, `~/.claude`, and other
+  ignored directories
+
+## Quick Start
+
+```bash
+git clone https://github.com/aldegad/kuma-studio.git
+cd kuma-studio
+npm install
+node scripts/install.mjs
+npm run server:reload
+```
+
+Then:
+
+1. Load `packages/browser-extension/` in Chrome via `chrome://extensions`
+2. Run `npm run kuma-studio:dashboard`
+3. If something looks off, run `npm run skill:doctor`
+
 ## Local State Boundary
 
 This repository tracks product code, reusable skills, and public templates. It
@@ -16,6 +44,14 @@ vault contents, review artifacts, screenshots, or machine-specific paths.
 - The Studio file explorer now exposes only the workspace root by default. To
   opt into home-level roots such as `vault`, `claude`, or `codex`, set
   `KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=vault,claude,codex`.
+
+## Main Commands
+
+- `npm run server:reload`: restart the daemon on port `4312`
+- `npm run dev:studio`: run the Studio web UI in Vite dev mode
+- `npm run build:studio`: build the production Studio bundle
+- `npm test`: run the Vitest suite
+- `npm run skill:doctor`: validate the local Kuma install
 
 ## License
 
