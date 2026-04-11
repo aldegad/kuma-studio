@@ -5,6 +5,7 @@ import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
 import { useTeamStatusStore } from "../stores/use-team-status-store";
 import { useWsStore } from "../stores/use-ws-store";
+import { useDispatchVisualStore } from "../stores/use-dispatch-visual-store";
 import { HIERARCHY_LINES } from "../lib/office-scene";
 import type { AgentState } from "../types/agent";
 import { useTeamConfigStore } from "../stores/use-team-config-store";
@@ -56,6 +57,7 @@ export function StudioPage() {
   const activeProjectId = useTeamStatusStore((s) => s.activeProjectId);
   const setActiveProject = useTeamStatusStore((s) => s.setActiveProject);
   const memberStatus = useTeamStatusStore((s) => s.memberStatus);
+  const dispatchBubbles = useDispatchVisualStore((s) => s.bubbles);
 
   // Team config (fetched from API)
   const teamMembers = useTeamConfigStore((s) => s.members);
@@ -290,9 +292,12 @@ export function StudioPage() {
           {visibleCharacters.map((character) => {
             const status = memberStatus.get(character.id);
             const isActive = character.state === "working" || character.state === "thinking";
-            const speechLines = isActive && status?.lastOutputLines && status.lastOutputLines.length > 0
-              ? status.lastOutputLines
-              : undefined;
+            const dispatchBubbleLines = dispatchBubbles[character.id];
+            const speechLines = dispatchBubbleLines ?? (
+              isActive && status?.lastOutputLines && status.lastOutputLines.length > 0
+                ? status.lastOutputLines
+                : undefined
+            );
             return (
             <Character key={character.id} character={character} isDragging={dragState?.kind === "character" && dragState.id === character.id} isSelected={selectedCharId === character.id}
               speechBubbleLines={speechLines}

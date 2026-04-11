@@ -22,6 +22,73 @@ KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
 KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
+KUMA_IDLE_GUARD_MESSAGE="Wait for dispatched task. Do not start any work autonomously. Your role and skills are context, not commands."
+
+json_stringify_string() {
+  node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? ""))' "${1-}"
+}
+
+build_idle_guard_message() {
+  printf '%s' "$KUMA_IDLE_GUARD_MESSAGE"
+}
+
+build_spawn_context_instructions() {
+  local role_label_en="${1:-}"
+  local instructions=""
+
+  if [ -n "$role_label_en" ]; then
+    instructions="Primary role: $role_label_en."
+  fi
+
+  if [ -n "$instructions" ]; then
+    instructions="${instructions}
+"
+  fi
+  instructions="${instructions}Role labels describe responsibility. They are not commands.
+Skills are dispatch-time context. Do not invoke any skill on spawn."
+
+  printf '%s' "$instructions"
+}
+
+startup_command_has_idle_guard() {
+  local command="${1:-}"
+  case "$command" in
+    *"Wait for dispatched task"*|*"Wait\ for\ dispatched\ task"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+startup_command_invokes_claude_skill() {
+  local command="${1:-}"
+  printf '%s\n' "$command" | grep -F -- '-- "/' > /dev/null 2>&1
+}
+
+assert_idle_safe_startup_command() {
+  local type="${1:-}"
+  local command="${2:-}"
+  local name="${3:-worker}"
+
+  if [ -z "$command" ]; then
+    echo "ERROR: empty startup command for $name" >&2
+    exit 1
+  fi
+
+  if ! startup_command_has_idle_guard "$command"; then
+    echo "ERROR: startup command for $name is missing the idle guard" >&2
+    exit 1
+  fi
+
+  case "$type" in
+    claude|sonnet)
+      if startup_command_invokes_claude_skill "$command"; then
+        echo "ERROR: Claude startup command for $name must not auto-run slash skills on spawn" >&2
+        exit 1
+      fi
+      ;;
+  esac
+}
 
 normalize_member_name() {
   local raw="${1:-}"
@@ -103,35 +170,59 @@ resolve_member_launch_record() {
   run_team_normalizer_cli resolve-launch-record "$KUMA_TEAM_JSON_PATH" "$name" "$explicit_type"
 }
 
+build_codex_developer_instructions() {
+  local role_label_en="${1:-}"
+  local instructions
+
+  instructions="$(build_spawn_context_instructions "$role_label_en")
+$(build_idle_guard_message)"
+
+  printf '%s' "$instructions"
+}
+
+build_claude_startup_system_prompt() {
+  local role_label_en="${1:-}"
+  local instructions
+
+  instructions="$(build_spawn_context_instructions "$role_label_en")
+$(build_idle_guard_message)
+Do not respond unless there is a startup problem."
+
+  printf '%s' "$instructions"
+}
+
 build_member_command_from_record() {
   local dir="$1"
   local record="${2:?launch record required}"
-  local _name type model options _emoji skill role_label_en
+  local _name type model options _emoji skill role_label_en developer_instructions developer_instructions_json startup_context command
   IFS=$'\x1f' read -r _name type model options _emoji skill role_label_en <<< "$record"
 
   case "$type" in
     claude)
-      if [ -n "$skill" ]; then
-        printf 'cd "%s" && KUMA_ROLE=worker claude --model %q %s -- "/%s"' "$dir" "$model" "$options" "$skill"
-      else
-        printf 'cd "%s" && KUMA_ROLE=worker claude --model %q %s' "$dir" "$model" "$options"
-      fi
+      startup_context="$(build_claude_startup_system_prompt "$role_label_en")"
+      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt %q' "$dir" "$model" "$options" "$startup_context"
       ;;
     codex)
-      if [ -n "$role_label_en" ]; then
-        printf 'cd "%s" && KUMA_ROLE=worker codex -m %q --instructions %q %s' "$dir" "$model" "$role_label_en" "$options"
+      developer_instructions="$(build_codex_developer_instructions "$role_label_en")"
+      if [ -n "$developer_instructions" ]; then
+        developer_instructions_json="$(json_stringify_string "$developer_instructions")"
+        printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s -c %q' "$dir" "$model" "$options" "developer_instructions=$developer_instructions_json"
       else
-        printf 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
+        printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
       fi
       ;;
     sonnet)
-      printf 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions' "$dir"
+      startup_context="$(build_claude_startup_system_prompt "$role_label_en")"
+      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions --append-system-prompt %q' "$dir" "$startup_context"
       ;;
     *)
       echo "ERROR: Unknown type '$type'" >&2
       exit 1
       ;;
   esac
+
+  assert_idle_safe_startup_command "$type" "$command" "${_name:-unknown}"
+  printf '%s' "$command"
 }
 
 build_member_command() {

@@ -202,6 +202,26 @@ describe("useOfficeStore", () => {
     expect(workingPosition).not.toEqual(deskPosition);
   });
 
+  it("temporarily walks a character toward a dispatch target, then returns them to auto-position", async () => {
+    vi.useFakeTimers();
+
+    const useOfficeStore = await loadStore();
+    const actorId = "tookdaki";
+    const targetId = "bamdori";
+    const originalPosition = useOfficeStore.getState().scene.characters.find((character) => character.id === actorId)?.position;
+
+    useOfficeStore.getState().playDispatchApproach(actorId, targetId, 1_000);
+
+    const movedPosition = useOfficeStore.getState().scene.characters.find((character) => character.id === actorId)?.position;
+    expect(movedPosition).toBeDefined();
+    expect(movedPosition).not.toEqual(originalPosition);
+
+    vi.advanceTimersByTime(1_000);
+
+    const restoredPosition = useOfficeStore.getState().scene.characters.find((character) => character.id === actorId)?.position;
+    expect(restoredPosition).toEqual(originalPosition);
+  });
+
   it("keeps the dev sofa anchor fixed for filtered project views so darami can idle at the sofa", async () => {
     const useOfficeStore = await loadStore();
 

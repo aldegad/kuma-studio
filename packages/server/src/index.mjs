@@ -37,6 +37,7 @@ Usage:
   kuma-studio get-scene [--root .]
   kuma-studio get-selection [--session-id session-01] [--recent 5 | --all] [--root .]
   kuma-studio get-job-card [--session-id session-01] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio team-status [--project kuma-studio] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio get-extension-status [--root .]
   kuma-studio get-browser-session [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio browser-list-tabs [--daemon-url ${DEFAULT_DAEMON_URL}]
@@ -48,6 +49,13 @@ Usage:
   kuma-studio run [script.js] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio set-job-status --status in_progress --message "Write a short progress note" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url ${DEFAULT_DAEMON_URL}] [--root .]
   kuma-studio set-agent-status --status working|idle --from-stdin [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-register --task-file /tmp/kuma-tasks/task.task.md [--summary "Implement fix"] [--worker-id saemi] [--worker-name 새미] [--worker-type codex] [--qa-member 밤토리] [--qa-surface surface:7] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-status --task-file /tmp/kuma-tasks/task.task.md [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-message --task-file /tmp/kuma-tasks/task.task.md --kind question --text "Need clarification" [--from worker] [--to initiator] [--from-surface surface:4] [--to-surface surface:1] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-complete --task-file /tmp/kuma-tasks/task.task.md [--summary "Implemented"] [--note "handoff complete"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-fail --task-file /tmp/kuma-tasks/task.task.md --blocker "reason" [--summary "Failed"] [--note "details"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-qa-pass --task-file /tmp/kuma-tasks/task.task.md [--note "QA PASS"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-qa-reject --task-file /tmp/kuma-tasks/task.task.md --blocker "reason" [--note "details"] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio put-scene --file ./scene.json [--root .]
   kuma-studio add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   kuma-studio move-node --id node-01 --x 120 --y 80 [--root .]
@@ -138,6 +146,22 @@ async function readJobCardFromDaemon(daemonUrl, sessionId = null) {
   return response.json();
 }
 
+async function readTeamStatusFromDaemon(daemonUrl, projectId = "") {
+  const search = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
+  const response = await fetch(`${daemonUrl}/studio/team-status${search}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error((await response.text()) || `Failed to read team status from ${daemonUrl}.`);
+  }
+
+  return response.json();
+}
+
 async function writeJobCardToDaemon(daemonUrl, payload) {
   const response = await fetch(`${daemonUrl}/job-card`, {
     method: "POST",
@@ -170,6 +194,103 @@ async function writeAgentStateToDaemon(daemonUrl, payload) {
   }
 
   return response.json();
+}
+
+async function postDispatchJson(daemonUrl, path, payload, fallbackMessage) {
+  const response = await fetch(`${daemonUrl}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new Error(raw || fallbackMessage);
+  }
+
+  return response.json();
+}
+
+async function getDispatchJson(daemonUrl, path, fallbackMessage) {
+  const response = await fetch(`${daemonUrl}${path}`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const raw = await response.text();
+    throw new Error(raw || fallbackMessage);
+  }
+
+  return response.json();
+}
+
+function parseTaskFileFrontmatter(contents) {
+  const lines = String(contents ?? "").replace(/\r/gu, "").split("\n");
+  if (lines[0] !== "---") {
+    throw new Error("task file is missing YAML frontmatter.");
+  }
+
+  const frontmatter = {};
+  let index = 1;
+  for (; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line === "---") {
+      index += 1;
+      break;
+    }
+    const separator = line.indexOf(":");
+    if (separator === -1) {
+      continue;
+    }
+    const key = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    frontmatter[key] = value === "null" ? "" : value;
+  }
+
+  const body = lines.slice(index).join("\n");
+  const instruction = body.trim();
+  const summaryLine = body
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith("#")) ?? "";
+
+  return {
+    taskId: typeof frontmatter.id === "string" ? frontmatter.id.trim() : "",
+    project: typeof frontmatter.project === "string" ? frontmatter.project.trim() : "",
+    initiator: typeof frontmatter.initiator === "string" ? frontmatter.initiator.trim() : "",
+    worker: typeof frontmatter.worker === "string" ? frontmatter.worker.trim() : "",
+    qa: typeof frontmatter.qa === "string" ? frontmatter.qa.trim() : "",
+    resultFile: typeof frontmatter.result === "string" ? frontmatter.result.trim() : "",
+    signal: typeof frontmatter.signal === "string" ? frontmatter.signal.trim() : "",
+    instruction,
+    summary: summaryLine.replace(/\s+/gu, " ").slice(0, 200),
+  };
+}
+
+function readDispatchTaskMetadata(options) {
+  const taskFile = resolve(requireString(options, "task-file"));
+  const parsed = parseTaskFileFrontmatter(readFileSync(taskFile, "utf8"));
+  if (!parsed.taskId) {
+    throw new Error("task file is missing id frontmatter.");
+  }
+  return {
+    ...parsed,
+    taskFile,
+  };
+}
+
+function dispatchTaskIdFromOptions(options) {
+  const explicitTaskId = readOptionalString(options, "task-id");
+  if (explicitTaskId) {
+    return explicitTaskId;
+  }
+  return readDispatchTaskMetadata(options).taskId;
 }
 
 function readStdin() {
@@ -284,6 +405,12 @@ async function commandGetJobCard(options) {
   process.stdout.write(`${JSON.stringify(await readJobCardFromDaemon(daemonUrl, sessionId), null, 2)}\n`);
 }
 
+async function commandTeamStatus(options) {
+  const daemonUrl = readDaemonUrlOption(options);
+  const projectId = readOptionalString(options, "project") ?? "";
+  process.stdout.write(`${JSON.stringify(await readTeamStatusFromDaemon(daemonUrl, projectId), null, 2)}\n`);
+}
+
 function commandGetExtensionStatus(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const extensionStatusStore = new BrowserExtensionStatusStore(root);
@@ -336,6 +463,97 @@ async function commandSetAgentStatus(options) {
   const task = status === "working" ? readOptionalString(payload, "description") : null;
   const response = await writeAgentStateToDaemon(daemonUrl, { agentId, status, task });
   process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+}
+
+async function commandDispatchRegister(options) {
+  const daemonUrl = readDaemonUrlOption(options);
+  const task = readDispatchTaskMetadata(options);
+  const payload = {
+    taskId: task.taskId,
+    taskFile: task.taskFile,
+    project: task.project,
+    initiator: task.initiator,
+    worker: readOptionalString(options, "worker-surface") ?? task.worker,
+    workerId: readOptionalString(options, "worker-id") ?? "",
+    workerName: readOptionalString(options, "worker-name") ?? "",
+    workerType: readOptionalString(options, "worker-type") ?? "",
+    qa: task.qa,
+    qaMember: readOptionalString(options, "qa-member") ?? "",
+    qaSurface: readOptionalString(options, "qa-surface") ?? "",
+    resultFile: task.resultFile,
+    signal: task.signal,
+    instruction: readOptionalString(options, "instruction") ?? task.instruction,
+    summary: readOptionalString(options, "summary") ?? task.summary,
+  };
+  process.stdout.write(`${JSON.stringify(await postDispatchJson(
+    daemonUrl,
+    "/studio/dispatches",
+    payload,
+    `Failed to register dispatch via ${daemonUrl}.`,
+  ), null, 2)}\n`);
+}
+
+async function commandDispatchStatus(options) {
+  const daemonUrl = readDaemonUrlOption(options);
+  const taskId = dispatchTaskIdFromOptions(options);
+  process.stdout.write(`${JSON.stringify(await getDispatchJson(
+    daemonUrl,
+    `/studio/dispatches/${encodeURIComponent(taskId)}`,
+    `Failed to read dispatch ${taskId} via ${daemonUrl}.`,
+  ), null, 2)}\n`);
+}
+
+async function commandDispatchMessage(options) {
+  const daemonUrl = readDaemonUrlOption(options);
+  const task = readDispatchTaskMetadata(options);
+  const text = readOptionalString(options, "text") ?? options._.join(" ").trim();
+  if (!text) {
+    throw new Error("dispatch-message requires --text.");
+  }
+
+  const payload = {
+    kind: readOptionalString(options, "kind") ?? "note",
+    text,
+    from: readOptionalString(options, "from") ?? "",
+    to: readOptionalString(options, "to") ?? "",
+    fromSurface: readOptionalString(options, "from-surface") ?? "",
+    toSurface: readOptionalString(options, "to-surface") ?? "",
+    source: readOptionalString(options, "source") ?? "kuma-dispatch",
+  };
+
+  process.stdout.write(`${JSON.stringify(await postDispatchJson(
+    daemonUrl,
+    `/studio/dispatches/${encodeURIComponent(task.taskId)}/messages`,
+    payload,
+    `Failed to append a dispatch message for ${task.taskId} via ${daemonUrl}.`,
+  ), null, 2)}\n`);
+}
+
+async function commandDispatchEvent(options, type) {
+  const daemonUrl = readDaemonUrlOption(options);
+  const task = readDispatchTaskMetadata(options);
+  const payload = {
+    type,
+    summary: readOptionalString(options, "summary") ?? "",
+    blocker: readOptionalString(options, "blocker") ?? "",
+    note: readOptionalString(options, "note") ?? "",
+    source: readOptionalString(options, "source") ?? "kuma-dispatch",
+    resultFile: readOptionalString(options, "result-file") ?? task.resultFile,
+  };
+
+  if (type === "fail" && !payload.blocker) {
+    throw new Error("dispatch-fail requires --blocker.");
+  }
+  if (type === "qa-reject" && !payload.blocker) {
+    throw new Error("dispatch-qa-reject requires --blocker.");
+  }
+
+  process.stdout.write(`${JSON.stringify(await postDispatchJson(
+    daemonUrl,
+    `/studio/dispatches/${encodeURIComponent(task.taskId)}/events`,
+    payload,
+    `Failed to report ${type} for ${task.taskId} via ${daemonUrl}.`,
+  ), null, 2)}\n`);
 }
 
 function commandPutScene(options) {
@@ -584,6 +802,9 @@ export async function main(argv = process.argv.slice(2)) {
     case "get-job-card":
       await commandGetJobCard(options);
       return;
+    case "team-status":
+      await commandTeamStatus(options);
+      return;
     case "get-extension-status":
       commandGetExtensionStatus(options);
       return;
@@ -616,6 +837,27 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "set-agent-status":
       await commandSetAgentStatus(options);
+      return;
+    case "dispatch-register":
+      await commandDispatchRegister(options);
+      return;
+    case "dispatch-status":
+      await commandDispatchStatus(options);
+      return;
+    case "dispatch-message":
+      await commandDispatchMessage(options);
+      return;
+    case "dispatch-complete":
+      await commandDispatchEvent(options, "complete");
+      return;
+    case "dispatch-fail":
+      await commandDispatchEvent(options, "fail");
+      return;
+    case "dispatch-qa-pass":
+      await commandDispatchEvent(options, "qa-pass");
+      return;
+    case "dispatch-qa-reject":
+      await commandDispatchEvent(options, "qa-reject");
       return;
     case "put-scene":
       commandPutScene(options);

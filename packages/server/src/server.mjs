@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import http from "node:http";
+import { execFile as execFileCallback } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 
 import { BrowserSessionStore } from "./browser-session-store.mjs";
@@ -38,6 +40,7 @@ import { createTeamConfigRuntime } from "./studio/team-config-runtime.mjs";
 import { createTeamConfigWatcherHandler } from "./studio/team-config-watcher.mjs";
 import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
 import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
+import { DispatchBroker } from "./studio/dispatch-broker.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
@@ -45,6 +48,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
 const STUDIO_DEV_HMR_CLIENT_PATH = "/__vite_ws";
 const STUDIO_DEV_HMR_UPGRADE_PATH = "/studio/__vite_ws";
+const execFile = promisify(execFileCallback);
 
 function appendTeamWatcherLog(message) {
   fs.mkdirSync(dirname(TEAM_WATCHER_LOG_PATH), { recursive: true });
@@ -138,6 +142,25 @@ export async function createServer({ host, port, root }) {
     teamConfigStore,
     logPath: TEAM_WATCHER_LOG_PATH,
   });
+  const dispatchBroker = new DispatchBroker({
+    storagePath: resolve(root, ".kuma-studio", "dispatch-broker.json"),
+    async runLifecycleHook({ event, taskFile, summary, blocker, note }) {
+      const waitScriptPath = resolve(root, "scripts/cmux/kuma-cmux-wait.sh");
+      const args = [waitScriptPath, "--vault-hook", event, "--task-file", taskFile];
+      if (typeof summary === "string" && summary.trim()) {
+        args.push("--summary", summary);
+      }
+      if (typeof blocker === "string" && blocker.trim()) {
+        args.push("--blocker", blocker);
+      }
+      if (typeof note === "string" && note.trim()) {
+        args.push("--note", note);
+      }
+      await execFile("bash", args, {
+        cwd: resolve(root),
+      });
+    },
+  });
   const handleTeamConfigChange = createTeamConfigWatcherHandler({
     teamConfigRuntime,
     studioWsEvents,
@@ -159,6 +182,9 @@ export async function createServer({ host, port, root }) {
   // Wire up token tracker to studio WS broadcast
   tokenTracker.onRecord((entry) => {
     studioWsEvents.broadcastTokenUsage(entry.agentId, entry.tokens, entry.model);
+  });
+  dispatchBroker.onChange((dispatch) => {
+    studioWsEvents.broadcastDispatchUpdate(dispatch);
   });
 
   teamStatusStore.onChange((snapshot) => {
@@ -764,6 +790,7 @@ export async function createServer({ host, port, root }) {
     teamConfigStore,
     studioWsEvents,
     agentHistoryStore,
+    dispatchBroker,
     workspaceRoot,
     teamConfigRuntime,
     studioDevDelegate,

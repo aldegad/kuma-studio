@@ -11,8 +11,10 @@ import {
 } from "../lib/office-scene.js";
 
 const IDLE_GRACE_PERIOD_MS = 10_000;
+const DISPATCH_APPROACH_DURATION_MS = 5_000;
 const ACTIVE_AGENT_STATES = new Set<AgentState>(["working", "thinking"]);
 const idleGraceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const dispatchApproachTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 interface OfficeState {
   scene: OfficeScene;
@@ -27,6 +29,7 @@ interface OfficeState {
   updateCharacterState: (characterId: string, state: AgentState, task?: string | null) => void;
   updateCharacterPosition: (characterId: string, position: { x: number; y: number }) => void;
   updateFurniturePosition: (furnitureId: string, position: { x: number; y: number }) => void;
+  playDispatchApproach: (characterId: string, targetCharacterId: string, durationMs?: number) => void;
   syncCharactersFromTeam: (agents: Agent[]) => void;
   markDragged: (characterId: string) => void;
   /** Switch to a project view: rebuilds furniture and positions for given members */
@@ -78,6 +81,74 @@ function clearIdleGraceTimer(characterId: string) {
     clearTimeout(timer);
     idleGraceTimers.delete(characterId);
   }
+}
+
+function clearDispatchApproachTimer(characterId: string) {
+  const timer = dispatchApproachTimers.get(characterId);
+  if (timer) {
+    clearTimeout(timer);
+    dispatchApproachTimers.delete(characterId);
+  }
+}
+
+function computeDispatchApproachPosition(
+  actor: OfficeCharacter,
+  target: OfficeCharacter,
+): { x: number; y: number } {
+  const dx = target.position.x - actor.position.x;
+  const dy = target.position.y - actor.position.y;
+  const distance = Math.hypot(dx, dy);
+
+  if (!Number.isFinite(distance) || distance < 1) {
+    return {
+      x: target.position.x + 64,
+      y: target.position.y,
+    };
+  }
+
+  const standOff = Math.max(52, Math.min(76, distance * 0.35));
+  return {
+    x: Math.round(target.position.x - (dx / distance) * standOff),
+    y: Math.round(target.position.y - (dy / distance) * standOff),
+  };
+}
+
+function restoreCharacterAutoPosition(characterId: string) {
+  useOfficeStore.setState((prev) => {
+    const character = prev.scene.characters.find((entry: OfficeCharacter) => entry.id === characterId);
+    if (!character || prev.draggedIds.has(characterId)) {
+      return prev;
+    }
+
+    const now = Date.now();
+    const lastActiveAt = prev.lastWorkingAt[characterId] ?? 0;
+    const withinIdleGrace =
+      character.state === "idle" &&
+      lastActiveAt > 0 &&
+      now - lastActiveAt < IDLE_GRACE_PERIOD_MS;
+    const autoState = withinIdleGrace ? "working" : character.state;
+    const autoPosition = getAutoPosition(
+      characterId,
+      autoState,
+      character.team,
+      prev.activeLayout.deskPositions,
+      prev.activeLayout.sofaPositions,
+      prev.activeLayout.teamMemberIdsByTeam,
+    );
+
+    if (!autoPosition || positionsEqual(autoPosition, character.position)) {
+      return prev;
+    }
+
+    return {
+      scene: {
+        ...prev.scene,
+        characters: prev.scene.characters.map((entry: OfficeCharacter) =>
+          entry.id === characterId ? { ...entry, position: autoPosition } : entry,
+        ),
+      },
+    };
+  });
 }
 
 function patchLayoutAnchorPositions(
@@ -372,6 +443,48 @@ export const useOfficeStore = create<OfficeState>((set) => ({
         },
       };
     }),
+
+  playDispatchApproach: (characterId, targetCharacterId, durationMs = DISPATCH_APPROACH_DURATION_MS) => {
+    const normalizedCharacterId = String(characterId ?? "").trim();
+    const normalizedTargetId = String(targetCharacterId ?? "").trim();
+    if (!normalizedCharacterId || !normalizedTargetId || normalizedCharacterId === normalizedTargetId) {
+      return;
+    }
+
+    clearDispatchApproachTimer(normalizedCharacterId);
+
+    set((prev) => {
+      if (prev.draggedIds.has(normalizedCharacterId)) {
+        return prev;
+      }
+
+      const character = prev.scene.characters.find((entry: OfficeCharacter) => entry.id === normalizedCharacterId);
+      const target = prev.scene.characters.find((entry: OfficeCharacter) => entry.id === normalizedTargetId);
+      if (!character || !target) {
+        return prev;
+      }
+
+      const approachPosition = computeDispatchApproachPosition(character, target);
+      if (positionsEqual(approachPosition, character.position)) {
+        return prev;
+      }
+
+      return {
+        scene: {
+          ...prev.scene,
+          characters: prev.scene.characters.map((entry: OfficeCharacter) =>
+            entry.id === normalizedCharacterId ? { ...entry, position: approachPosition } : entry,
+          ),
+        },
+      };
+    });
+
+    const timer = setTimeout(() => {
+      dispatchApproachTimers.delete(normalizedCharacterId);
+      restoreCharacterAutoPosition(normalizedCharacterId);
+    }, durationMs);
+    dispatchApproachTimers.set(normalizedCharacterId, timer);
+  },
 
   markDragged: (characterId) =>
     set((prev) => {

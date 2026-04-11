@@ -1,0 +1,314 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage:
+  kuma-dispatch send <멤버이름> "<지시>" [kuma-task options...]
+  kuma-dispatch ask --task-file <path> --message <text> [--to initiator|worker|qa|surface:7]
+  kuma-dispatch reply --task-file <path> --message <text> [--to initiator|worker|qa|surface:7]
+  kuma-dispatch message --task-file <path> --kind <question|answer|status|note|blocker> --message <text> [--to initiator|worker|qa|surface:7]
+  kuma-dispatch done --task-file <path> [--summary <text>] [--note <text>] [--result-file <path>]
+  kuma-dispatch complete --task-file <path> [--summary <text>] [--note <text>] [--result-file <path>]
+  kuma-dispatch fail --task-file <path> --blocker <text> [--summary <text>] [--note <text>] [--result-file <path>]
+  kuma-dispatch qa-pass --task-file <path> [--note <text>] [--result-file <path>]
+  kuma-dispatch qa-reject --task-file <path> --blocker <text> [--note <text>] [--result-file <path>]
+  kuma-dispatch status --task-file <path>
+EOF
+}
+
+[ $# -ge 1 ] || {
+  usage >&2
+  exit 1
+}
+
+COMMAND="$1"
+shift
+
+require_cmd node
+
+json_field() {
+  local field="${1:?field required}"
+  node -e '
+    const fs = require("node:fs");
+    const field = process.argv[1];
+    const data = JSON.parse(fs.readFileSync(0, "utf8"));
+    const value = typeof data?.[field] === "string" ? data[field] : "";
+    process.stdout.write(`${value}\n`);
+  ' "$field"
+}
+
+resolve_dispatch_message_context() {
+  local current_surface="${1:?current surface required}"
+  local target="${2:-auto}"
+  local kind="${3:-note}"
+
+  node -e '
+const fs = require("node:fs");
+
+const [, currentSurfaceRaw, targetRaw, kindRaw] = process.argv;
+const currentSurface = typeof currentSurfaceRaw === "string" ? currentSurfaceRaw.trim() : "";
+const target = typeof targetRaw === "string" ? targetRaw.trim() : "auto";
+const kind = typeof kindRaw === "string" ? kindRaw.trim() : "";
+const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+const dispatch = payload?.dispatch ?? payload ?? {};
+
+function normalize(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRole(value) {
+  const role = normalize(value);
+  return role === "initiator" || role === "worker" || role === "qa" || role === "surface" ? role : "";
+}
+
+const initiator = normalize(dispatch.initiator);
+const worker = normalize(dispatch.worker);
+const qaSurface = normalize(dispatch.qaSurface) || (normalize(dispatch.qa).startsWith("surface:") ? normalize(dispatch.qa) : "");
+const messages = Array.isArray(dispatch.messages) ? dispatch.messages : [];
+const latestMessage = messages.length > 0 && typeof messages[messages.length - 1] === "object"
+  ? messages[messages.length - 1]
+  : null;
+
+function surfaceForRole(role) {
+  if (role === "initiator") return initiator;
+  if (role === "worker") return worker;
+  if (role === "qa") return qaSurface;
+  return "";
+}
+
+let from = "initiator";
+let fromSurface = initiator || currentSurface;
+if (currentSurface && currentSurface === worker) {
+  from = "worker";
+  fromSurface = worker;
+} else if (currentSurface && currentSurface === qaSurface) {
+  from = "qa";
+  fromSurface = qaSurface;
+} else if (currentSurface && currentSurface === initiator) {
+  from = "initiator";
+  fromSurface = initiator;
+} else if (currentSurface && currentSurface !== initiator) {
+  from = "surface";
+  fromSurface = currentSurface;
+}
+
+let to = target || "auto";
+let toSurface = "";
+if (to === "auto" && kind === "answer" && from === "surface" && latestMessage) {
+  const replyFrom = normalizeRole(latestMessage.to) || "surface";
+  const replyTo = normalizeRole(latestMessage.from) || "surface";
+  const replyFromSurface = normalize(latestMessage.toSurface) || surfaceForRole(replyFrom) || currentSurface;
+  const replyToSurface = normalize(latestMessage.fromSurface) || surfaceForRole(replyTo);
+
+  if (replyToSurface) {
+    from = replyFrom;
+    fromSurface = replyFromSurface;
+    to = replyTo;
+    toSurface = replyToSurface;
+  }
+}
+
+if (to === "auto") {
+  if (from === "worker") {
+    to = "initiator";
+    toSurface = initiator;
+  } else if (from === "qa") {
+    to = "worker";
+    toSurface = worker;
+  } else {
+    to = "worker";
+    toSurface = worker;
+  }
+} else if (to === "initiator") {
+  toSurface = initiator;
+} else if (to === "worker") {
+  toSurface = worker;
+} else if (to === "qa") {
+  toSurface = qaSurface;
+} else if (to.startsWith("surface:")) {
+  toSurface = to;
+  to = "surface";
+}
+
+process.stdout.write(`${JSON.stringify({
+  taskId: normalize(dispatch.taskId),
+  taskFile: normalize(dispatch.taskFile),
+  from,
+  fromSurface,
+  to,
+  toSurface,
+}, null, 2)}\n`);
+' "$current_surface" "$target" "$kind"
+}
+
+send_thread_message() {
+  local kind="${1:?kind required}"
+  shift
+
+  local task_file=""
+  local message_text=""
+  local target="auto"
+  local source="kuma-dispatch"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --kind)
+        kind="${2:?message kind required}"
+        shift 2
+        ;;
+      --task-file)
+        task_file="${2:?task file required}"
+        shift 2
+        ;;
+      --message|--text)
+        message_text="${2:?message required}"
+        shift 2
+        ;;
+      --to)
+        target="${2:?target required}"
+        shift 2
+        ;;
+      --source)
+        source="${2:?source required}"
+        shift 2
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$task_file" ] || die "--task-file is required"
+  [ -n "$message_text" ] || die "--message is required"
+
+  ensure_runtime_requirements
+  require_file "$KUMA_CMUX_DIR/kuma-cmux-send.sh"
+
+  local current_surface
+  current_surface="$(resolve_initiator_surface)"
+
+  local dispatch_json
+  dispatch_json="$(node "$KUMA_SERVER_CLI" dispatch-status \
+    --task-file "$task_file" \
+    --daemon-url "$KUMA_DAEMON_URL")"
+
+  local context_json
+  context_json="$(printf '%s' "$dispatch_json" | resolve_dispatch_message_context "$current_surface" "$target" "$kind")"
+
+  local task_id
+  local from_role
+  local from_surface
+  local to_role
+  local to_surface
+  task_id="$(printf '%s' "$context_json" | json_field taskId)"
+  from_role="$(printf '%s' "$context_json" | json_field from)"
+  from_surface="$(printf '%s' "$context_json" | json_field fromSurface)"
+  to_role="$(printf '%s' "$context_json" | json_field to)"
+  to_surface="$(printf '%s' "$context_json" | json_field toSurface)"
+
+  [ -n "$task_id" ] || die "dispatch not found for task file: $task_file"
+  [ -n "$to_surface" ] || die "could not resolve a target surface for '$target'"
+
+  node "$KUMA_SERVER_CLI" dispatch-message \
+    --task-file "$task_file" \
+    --kind "$kind" \
+    --text "$message_text" \
+    --from "$from_role" \
+    --to "$to_role" \
+    --from-surface "$from_surface" \
+    --to-surface "$to_surface" \
+    --source "$source" \
+    --daemon-url "$KUMA_DAEMON_URL" > /dev/null
+
+  local header="Dispatch message"
+  case "$kind" in
+    question)
+      header="Dispatch question"
+      ;;
+    answer)
+      header="Dispatch reply"
+      ;;
+    status)
+      header="Dispatch status"
+      ;;
+    blocker)
+      header="Dispatch blocker"
+      ;;
+    note)
+      header="Dispatch note"
+      ;;
+  esac
+
+  local prompt
+  prompt="$(cat <<EOF
+[${header}] ${task_id}
+From: ${from_role}${from_surface:+ (${from_surface})}
+To: ${to_role}${to_surface:+ (${to_surface})}
+
+${message_text}
+
+Tracked task file: ${task_file}
+Continue in-thread with:
+- ~/.kuma/bin/kuma-dispatch ask --task-file ${task_file} --message "..."
+- ~/.kuma/bin/kuma-dispatch reply --task-file ${task_file} --message "..."
+EOF
+)"
+
+  "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$to_surface" "$prompt"
+
+  printf 'TASK_FILE: %s\n' "$task_file"
+  printf 'TASK_ID: %s\n' "$task_id"
+  printf 'FROM: %s (%s)\n' "$from_role" "$from_surface"
+  printf 'TO: %s (%s)\n' "$to_role" "$to_surface"
+}
+
+case "$COMMAND" in
+  send)
+    exec "$SCRIPT_DIR/kuma-task" "$@"
+    ;;
+  ask)
+    send_thread_message question "$@"
+    ;;
+  reply)
+    send_thread_message answer "$@"
+    ;;
+  message)
+    send_thread_message note "$@"
+    ;;
+  done)
+    exec node "$KUMA_SERVER_CLI" dispatch-complete "$@"
+    ;;
+  complete)
+    exec node "$KUMA_SERVER_CLI" dispatch-complete "$@"
+    ;;
+  fail)
+    exec node "$KUMA_SERVER_CLI" dispatch-fail "$@"
+    ;;
+  qa-pass)
+    exec node "$KUMA_SERVER_CLI" dispatch-qa-pass "$@"
+    ;;
+  qa-reject)
+    exec node "$KUMA_SERVER_CLI" dispatch-qa-reject "$@"
+    ;;
+  status)
+    exec node "$KUMA_SERVER_CLI" dispatch-status "$@"
+    ;;
+  -h|--help|help)
+    usage
+    exit 0
+    ;;
+  *)
+    printf 'ERROR: unknown kuma-dispatch command: %s\n' "$COMMAND" >&2
+    usage >&2
+    exit 1
+    ;;
+esac
