@@ -10,6 +10,7 @@ import {
   writeSurfaceRegistryFile,
 } from "../../../shared/surface-registry.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
+import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { buildTeamConfigSelfWriteHash } from "./team-config-hash.mjs";
 
 const DEFAULT_SURFACE_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
@@ -87,7 +88,7 @@ function appendTeamWatcherLog(logPath, message) {
   appendFileSync(logPath, `${new Date().toISOString()} ${message}\n`, "utf8");
 }
 
-function resolveProjectId(project, memberConfig, memberContext) {
+function resolveProjectId(project, memberConfig, memberContext, workspaceRoot) {
   if (typeof project === "string" && project.trim()) {
     return project.trim();
   }
@@ -96,7 +97,7 @@ function resolveProjectId(project, memberConfig, memberContext) {
     return memberContext.project;
   }
 
-  return memberConfig?.team === "system" ? "system" : "kuma-studio";
+  return getDefaultProjectIdForTeam(memberConfig?.team, { workspaceRoot });
 }
 
 function defaultSpawnRunner(scriptPath, args) {
@@ -375,7 +376,7 @@ export function createTeamConfigRuntime(options = {}) {
     },
     respawnMember({ memberName, memberConfig, project, currentSurface, workspaceRoot, deferIfWorking = true }) {
       const memberContext = runtime.resolveMemberContext(memberName, memberConfig?.emoji);
-      const nextProject = resolveProjectId(project, memberConfig, memberContext);
+      const nextProject = resolveProjectId(project, memberConfig, memberContext, workspaceRoot);
       const nextCurrentSurface = currentSurface ?? memberContext?.surface ?? null;
       const memberStatus = getMemberStatus(memberName);
       const memberId = memberConfig?.id ?? memberName;

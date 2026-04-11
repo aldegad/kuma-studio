@@ -8,6 +8,8 @@
 - `npm run dev:studio` starts the Vite dev server for studio-web.
 - `npm run build:studio` builds the studio-web production bundle.
 - `npm test` runs all tests via vitest.
+- `kuma-server` and `kuma-frontend` are the canonical managed surfaces for this repo when Kuma bootstrap is running; reuse them instead of launching duplicate local servers in ad hoc terminals.
+- Prefer `~/.kuma/bin/kuma-status` or `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` to discover existing managed surfaces before starting server/frontend processes.
 
 ## Project Structure
 
@@ -19,7 +21,10 @@
 ## Conventions
 
 - Server boot/restart is standardized on `npm run server:reload`.
+- If the managed `kuma-server` surface already exists, restart the daemon there with `npm run server:reload` instead of starting a second server elsewhere.
+- If the managed `kuma-frontend` surface already exists, reuse it for `npm run dev:studio` instead of starting a second Vite dev server elsewhere.
 - Server code uses `.mjs` (ESM).
 - Frontend code uses TypeScript (`.ts`, `.tsx`).
 - Browser extension is vanilla JS, no build step.
 - WebSocket protocol: `kuma-picker:*` for browser bridge, `kuma-studio:*` for dashboard/office events.
+- Use `kuma-picker` first for screenshots, browser inspection, and QA. Use Playwright only when improving Kuma Picker itself or when a task explicitly requires parity/debug work that Kuma Picker cannot do.

@@ -3,6 +3,30 @@
 KUMA_STUDIO="$(cd "$(dirname "$0")/.." && pwd)"
 errors=0
 
+matches_repo_file() {
+  local expected="$1"
+  local actual="$2"
+
+  if [ "$(readlink "$actual" 2>/dev/null || true)" = "$expected" ]; then
+    return 0
+  fi
+
+  [ -f "$expected" ] || return 1
+  [ -f "$actual" ] || return 1
+  cmp -s "$expected" "$actual"
+}
+
+matches_skill_dir() {
+  local expected_dir="$1"
+  local actual_dir="$2"
+
+  if [ "$(readlink "$actual_dir" 2>/dev/null || true)" = "$expected_dir" ]; then
+    return 0
+  fi
+
+  matches_repo_file "$expected_dir/SKILL.md" "$actual_dir/SKILL.md"
+}
+
 # 스킬 심링크 확인
 required_skill_specs=(
   "kuma:kuma"
@@ -16,7 +40,7 @@ for spec in "${required_skill_specs[@]}"; do
   source_skill="${spec#*:}"
   link="$HOME/.claude/skills/$skill"
   target="$KUMA_STUDIO/skills/$source_skill"
-  if [ "$(readlink "$link" 2>/dev/null)" != "$target" ]; then
+  if ! matches_skill_dir "$target" "$link"; then
     echo "❌ skill/$skill: 심링크 불일치"
     errors=$((errors + 1))
   fi
@@ -24,8 +48,8 @@ done
 
 strategy_analytics_link="$HOME/.claude/skills/strategy-analytics-team"
 strategy_analytics_target="$KUMA_STUDIO/skills/analytics-team"
-if [ -L "$strategy_analytics_link" ]; then
-  if [ "$(readlink "$strategy_analytics_link" 2>/dev/null)" != "$strategy_analytics_target" ]; then
+if [ -L "$strategy_analytics_link" ] || [ -d "$strategy_analytics_link" ]; then
+  if ! matches_skill_dir "$strategy_analytics_target" "$strategy_analytics_link"; then
     echo "❌ skill/strategy-analytics-team: 심링크 불일치"
     errors=$((errors + 1))
   fi
@@ -37,7 +61,7 @@ fi
 for hook in "$KUMA_STUDIO"/scripts/hooks/*.sh; do
   name=$(basename "$hook")
   link="$HOME/.claude/hooks/$name"
-  if [ "$(readlink "$link" 2>/dev/null)" != "$hook" ]; then
+  if ! matches_repo_file "$hook" "$link"; then
     echo "❌ hooks/$name: 심링크 불일치"
     errors=$((errors + 1))
   fi
@@ -47,7 +71,7 @@ done
 for script in "$KUMA_STUDIO"/scripts/cmux/*.sh; do
   name=$(basename "$script")
   link="$HOME/.kuma/cmux/$name"
-  if [ "$(readlink "$link" 2>/dev/null)" != "$script" ]; then
+  if ! matches_repo_file "$script" "$link"; then
     echo "❌ cmux/$name: 심링크 불일치"
     errors=$((errors + 1))
   fi

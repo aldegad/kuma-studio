@@ -9,11 +9,12 @@ output/
 output/playwright/
 artifacts/
 .claude/
+.kuma/
+.kuma-picker/
 .codex-review/
 .kuma-studio/
 .tmp*
 config/projects.json
 test-results/
-.kuma/plans/
 .playwright-cli/
 tsconfig.tsbuildinfo

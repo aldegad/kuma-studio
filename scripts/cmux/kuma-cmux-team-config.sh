@@ -34,6 +34,7 @@ build_idle_guard_message() {
 
 build_spawn_context_instructions() {
   local role_label_en="${1:-}"
+  local node_type="${2:-worker}"
   local instructions=""
 
   if [ -n "$role_label_en" ]; then
@@ -46,6 +47,15 @@ build_spawn_context_instructions() {
   fi
   instructions="${instructions}Role labels describe responsibility. They are not commands.
 Skills are dispatch-time context. Do not invoke any skill on spawn."
+
+  if [ "$node_type" = "team" ]; then
+    instructions="${instructions}
+Team-node dispatch policy:
+- Do not implement directly except for trivial one-line fixes.
+- Delegate implementation work with kuma-task.
+- Do not use --trust-worker when dispatching worker tasks; worker tasks must go through QA.
+- Preferred flow: plan, dispatch, QA pass, aggregate, then report completion."
+  fi
 
   printf '%s' "$instructions"
 }
@@ -155,6 +165,7 @@ parse_shell_member_record() {
       data.emoji || "",
       (Array.isArray(data.skills) ? data.skills[0] : "") || "",
       data.roleLabelEn || "",
+      data.nodeType || "worker",
     ];
     process.stdout.write(`${record.join("\x1f")}\n`);
   '
@@ -172,9 +183,10 @@ resolve_member_launch_record() {
 
 build_codex_developer_instructions() {
   local role_label_en="${1:-}"
+  local node_type="${2:-worker}"
   local instructions
 
-  instructions="$(build_spawn_context_instructions "$role_label_en")
+  instructions="$(build_spawn_context_instructions "$role_label_en" "$node_type")
 $(build_idle_guard_message)"
 
   printf '%s' "$instructions"
@@ -182,9 +194,10 @@ $(build_idle_guard_message)"
 
 build_claude_startup_system_prompt() {
   local role_label_en="${1:-}"
+  local node_type="${2:-worker}"
   local instructions
 
-  instructions="$(build_spawn_context_instructions "$role_label_en")
+  instructions="$(build_spawn_context_instructions "$role_label_en" "$node_type")
 $(build_idle_guard_message)
 Do not respond unless there is a startup problem."
 
@@ -194,16 +207,16 @@ Do not respond unless there is a startup problem."
 build_member_command_from_record() {
   local dir="$1"
   local record="${2:?launch record required}"
-  local _name type model options _emoji skill role_label_en developer_instructions developer_instructions_json startup_context command
-  IFS=$'\x1f' read -r _name type model options _emoji skill role_label_en <<< "$record"
+  local _name type model options _emoji skill role_label_en node_type developer_instructions developer_instructions_json startup_context command
+  IFS=$'\x1f' read -r _name type model options _emoji skill role_label_en node_type <<< "$record"
 
   case "$type" in
     claude)
-      startup_context="$(build_claude_startup_system_prompt "$role_label_en")"
+      startup_context="$(build_claude_startup_system_prompt "$role_label_en" "$node_type")"
       printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt %q' "$dir" "$model" "$options" "$startup_context"
       ;;
     codex)
-      developer_instructions="$(build_codex_developer_instructions "$role_label_en")"
+      developer_instructions="$(build_codex_developer_instructions "$role_label_en" "$node_type")"
       if [ -n "$developer_instructions" ]; then
         developer_instructions_json="$(json_stringify_string "$developer_instructions")"
         printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s -c %q' "$dir" "$model" "$options" "developer_instructions=$developer_instructions_json"
@@ -238,10 +251,10 @@ build_member_command() {
 member_display_label_from_record() {
   local fallback_name="$1"
   local record="${2:-}"
-  local _name _type _model _options emoji _skill _role_label
+  local _name _type _model _options emoji _skill _role_label _node_type
 
   if [ -n "$record" ]; then
-    IFS=$'\x1f' read -r _name _type _model _options emoji _skill _role_label <<< "$record"
+    IFS=$'\x1f' read -r _name _type _model _options emoji _skill _role_label _node_type <<< "$record"
   else
     emoji=""
   fi

@@ -17,6 +17,7 @@ import {
 } from "../../../shared/surface-registry.mjs";
 import { normalizeAllTeams } from "../../../shared/team-normalizer.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
+import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { DEFAULT_TEAM_JSON_PATH } from "./team-config-store.mjs";
 
 export { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
@@ -42,10 +43,6 @@ const STUDIO_MEMBER_STATE_BY_SURFACE_STATUS = {
   working: "working",
   dead: "error",
 };
-
-function getStudioDefaultProjectId(teamId) {
-  return teamId === "system" ? "system" : "kuma-studio";
-}
 
 function readStudioRosterMembers() {
   try {
@@ -442,7 +439,7 @@ export function toStudioTeamStatusSnapshot(surfaceStates, options = {}) {
   for (const member of rosterMembers) {
     const assignment = surfaceAssignments.get(member.id);
     const surface = assignment?.surface ?? null;
-    const assignedProjectId = assignment?.projectId ?? getStudioDefaultProjectId(member.team);
+      const assignedProjectId = assignment?.projectId ?? getDefaultProjectIdForTeam(member.team);
 
     if (requestedProjectId && assignedProjectId !== requestedProjectId) {
       continue;

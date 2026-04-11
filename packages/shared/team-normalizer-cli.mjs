@@ -217,6 +217,7 @@ switch (command) {
         shellMember.emoji,
         shellMember.skills[0] ?? "",
         shellMember.roleLabelEn,
+        shellMember.nodeType,
       ]);
       break;
     }
@@ -234,6 +235,7 @@ switch (command) {
       "",
       "",
       "",
+      "worker",
     ]);
     break;
   }

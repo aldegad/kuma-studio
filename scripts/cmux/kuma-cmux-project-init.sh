@@ -8,6 +8,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
+set -euo pipefail
 require_team_config
 
 PROJECT="${1:?project name required}"
@@ -29,24 +30,33 @@ if [ ! -f "$REGISTRY" ]; then
   echo "{}" > "$REGISTRY"
 fi
 
-# 전원 살아있으면 스킵
-ALL_ALIVE=true
-for name in $(list_project_spawn_members); do
+# 전원 살아있으면 스킵, 일부만 살아있으면 중복 스폰 방지를 위해 실패
+ACTIVE_COUNT=0
+TOTAL_COUNT=0
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  TOTAL_COUNT=$((TOTAL_COUNT + 1))
   EXISTING="$(resolve_registered_member_surface "$PROJECT" "$name" 2>/dev/null || true)"
-  if [ -z "$EXISTING" ] || ! cmux read-screen --surface "$EXISTING" --lines 1 > /dev/null 2>&1; then
-    ALL_ALIVE=false
-    break
+  if [ -n "$EXISTING" ] && cmux read-screen --surface "$EXISTING" --lines 1 > /dev/null 2>&1; then
+    ACTIVE_COUNT=$((ACTIVE_COUNT + 1))
   fi
-done
-if [ "$ALL_ALIVE" = true ]; then
+done < <(list_project_spawn_members)
+
+if [ "$TOTAL_COUNT" -gt 0 ] && [ "$ACTIVE_COUNT" -eq "$TOTAL_COUNT" ]; then
   echo "✓ 전원 이미 활성"
   exit 0
+fi
+
+if [ "$ACTIVE_COUNT" -gt 0 ]; then
+  echo "✗ 프로젝트 일부만 활성 상태입니다 ($ACTIVE_COUNT/$TOTAL_COUNT). 중복 스폰 방지를 위해 초기화를 중단합니다." >&2
+  echo "  먼저 ~/.kuma/cmux/kuma-cmux-clean.sh 로 꼬인 surface 를 정리한 뒤 다시 실행하세요." >&2
+  exit 1
 fi
 
 # 헬퍼: surface → pane 조회
 get_pane() {
   local surface="$1"
-  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1
+  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1 || true
 }
 
 # 헬퍼: surface에 세션 시작 + 등록 + 타이틀
@@ -90,8 +100,12 @@ start_team_column() {
       continue
     fi
 
-    result=$(cmux new-surface --pane "$lead_pane" --workspace "$WS_ID" 2>&1)
-    surface=$(echo "$result" | grep -oE 'surface:[0-9]+')
+    result="$(cmux new-surface --pane "$lead_pane" --workspace "$WS_ID" 2>&1 || true)"
+    surface="$(echo "$result" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+    if [ -z "$surface" ]; then
+      echo "✗ worker surface 생성 실패: $result"
+      exit 1
+    fi
     sleep 1
     start_session "$surface" "$worker_name" "$WS_ID"
   done < <(list_team_members "$team_id" worker)
@@ -101,24 +115,24 @@ start_team_column() {
 if [ -n "$EXISTING_WS" ]; then
   # 기존 워크스페이스에 right split으로 팀 pane 생성
   WS_ID="$EXISTING_WS"
-  SPLIT_RESULT=$(cmux new-split right --workspace "$WS_ID" 2>&1)
-  FIRST_S=$(echo "$SPLIT_RESULT" | grep -oE 'surface:[0-9]+')
+  SPLIT_RESULT="$(cmux new-split right --workspace "$WS_ID" 2>&1 || true)"
+  FIRST_S="$(echo "$SPLIT_RESULT" | grep -oE 'surface:[0-9]+' | head -1 || true)"
   if [ -z "$FIRST_S" ]; then
     echo "✗ 팀 pane 생성 실패: $SPLIT_RESULT"
     exit 1
   fi
 else
   # 새 워크스페이스(탭) 생성
-  WS_RESULT=$(cmux new-workspace --name "$PROJECT" --cwd "$DIR" 2>&1)
-  WS_ID=$(echo "$WS_RESULT" | grep -oE 'workspace:[0-9]+')
+  WS_RESULT="$(cmux new-workspace --name "$PROJECT" --cwd "$DIR" 2>&1 || true)"
+  WS_ID="$(echo "$WS_RESULT" | grep -oE 'workspace:[0-9]+' | head -1 || true)"
   if [ -z "$WS_ID" ]; then
     echo "✗ 워크스페이스 생성 실패: $WS_RESULT"
     exit 1
   fi
   # new-workspace 출력에 surface가 ���을 수 있으므로 tree에서 조회
-  FIRST_S=$(echo "$WS_RESULT" | grep -oE 'surface:[0-9]+')
+  FIRST_S="$(echo "$WS_RESULT" | grep -oE 'surface:[0-9]+' | head -1 || true)"
   if [ -z "$FIRST_S" ]; then
-    FIRST_S=$(cmux tree 2>&1 | grep -A5 "$WS_ID" | grep -oE 'surface:[0-9]+' | head -1)
+    FIRST_S="$(cmux tree 2>&1 | grep -A5 "$WS_ID" | grep -oE 'surface:[0-9]+' | head -1 || true)"
   fi
   if [ -z "$FIRST_S" ]; then
     echo "✗ 워크스페이스 surface 조회 실패"
@@ -127,6 +141,10 @@ else
 fi
 
 FIRST_P=$(get_pane "$FIRST_S")
+if [ -z "$FIRST_P" ]; then
+  echo "✗ 팀 pane 조회 실패"
+  exit 1
+fi
 sleep 1
 
 PROJECT_TEAMS=()
@@ -148,9 +166,17 @@ for INDEX in "${!PROJECT_TEAMS[@]}"; do
   TEAM_ID="${PROJECT_TEAMS[$INDEX]}"
 
   if [ "$INDEX" -gt 0 ]; then
-    SPLIT_RESULT=$(cmux new-split right --surface "$CURRENT_TEAM_SURFACE" --workspace "$WS_ID" 2>&1)
-    CURRENT_TEAM_SURFACE=$(echo "$SPLIT_RESULT" | grep -oE 'surface:[0-9]+')
-    CURRENT_TEAM_PANE=$(get_pane "$CURRENT_TEAM_SURFACE")
+    SPLIT_RESULT="$(cmux new-split right --surface "$CURRENT_TEAM_SURFACE" --workspace "$WS_ID" 2>&1 || true)"
+    CURRENT_TEAM_SURFACE="$(echo "$SPLIT_RESULT" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+    if [ -z "$CURRENT_TEAM_SURFACE" ]; then
+      echo "✗ 팀 컬럼 생성 실패: $SPLIT_RESULT"
+      exit 1
+    fi
+    CURRENT_TEAM_PANE="$(get_pane "$CURRENT_TEAM_SURFACE")"
+    if [ -z "$CURRENT_TEAM_PANE" ]; then
+      echo "✗ 팀 컬럼 pane 조회 실패 ($CURRENT_TEAM_SURFACE)"
+      exit 1
+    fi
     sleep 1
   fi
 

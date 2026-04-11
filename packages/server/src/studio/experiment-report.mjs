@@ -1,3 +1,5 @@
+import { getConfiguredDefaultProjectId } from "./project-defaults.mjs";
+
 function normalizeOptionalString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
@@ -133,7 +135,7 @@ export function buildExperimentThreadDraft({ experiment, sourceTrend = null, sou
 
 export function buildResearchResultContentDraft({ experiment, sourceTrend = null, sourceContent = null } = {}) {
   const artifacts = buildExperimentReportArtifacts({ experiment, sourceTrend, sourceContent });
-  const project = normalizeOptionalString(sourceContent?.project) ?? "kuma-studio";
+  const project = normalizeOptionalString(sourceContent?.project) ?? getConfiguredDefaultProjectId({ fallback: "workspace" });
   const title = `${normalizeOptionalString(experiment?.title) ?? artifacts.trendTitle} 연구 결과`;
   const bodyLines = [
     `트렌드 원본: ${artifacts.trendTitle}`,

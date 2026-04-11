@@ -1,4 +1,5 @@
 import { buildTeamConfigSelfWriteHash } from "./team-config-hash.mjs";
+import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 
 export function createTeamConfigWatcherHandler(options = {}) {
   const {
@@ -58,9 +59,7 @@ export function createTeamConfigWatcherHandler(options = {}) {
       }
 
       const memberContext = teamConfigRuntime.resolveMemberContext(currentMember.name, currentMember.emoji);
-      const project = currentMember.team === "system"
-        ? "system"
-        : (memberContext?.project ?? "kuma-studio");
+      const project = memberContext?.project ?? getDefaultProjectIdForTeam(currentMember.team, { workspaceRoot });
 
       try {
         const respawned = await teamConfigRuntime.respawnMember({

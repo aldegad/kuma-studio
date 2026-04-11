@@ -8,6 +8,8 @@
 - `npm run dev:studio` starts the Vite dev server for studio-web.
 - `npm run build:studio` builds the studio-web production bundle.
 - `npm test` runs all tests via vitest.
+- `kuma-server` and `kuma-frontend` are the canonical managed surfaces for this repo when Kuma bootstrap is running; reuse them instead of launching duplicate local servers in ad hoc terminals.
+- Prefer `~/.kuma/bin/kuma-status` or `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` to discover existing managed surfaces before starting server/frontend processes.
 
 ## Project Structure
 
@@ -24,10 +26,13 @@
 - **Playwright 사용 금지.** 스크린샷은 반드시 쿠마피커(kuma-picker)로 찍는다. Playwright headless browser 절대 금지.
 - **fallback/backfill 패턴 절대 금지.** 실패하면 실패로 보고. 자동 재전달/auto-redispatch/다른 소스에서 보충 절대 금지. SSOT 하나만 사용.
 - **서버 포트는 4312.** 3000/3001 아님. 확인 없이 포트 추측 금지.
+- **관리형 infra surface 우선.** `kuma-server`/`kuma-frontend` 가 있으면 거기서만 서버/프론트를 재시작한다. 현재 터미널에서 중복 기동 금지.
 
 ## Conventions
 
 - Server boot/restart is standardized on `npm run server:reload`.
+- If the managed `kuma-server` surface already exists, restart the daemon there with `npm run server:reload` instead of starting a second server elsewhere.
+- If the managed `kuma-frontend` surface already exists, reuse it for `npm run dev:studio` instead of starting a second Vite dev server elsewhere.
 - Server code uses `.mjs` (ESM).
 - Frontend code uses TypeScript (`.ts`, `.tsx`).
 - Browser extension is vanilla JS, no build step.
