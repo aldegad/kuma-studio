@@ -91,7 +91,7 @@ const TREE_WIDTH_MAX = 420;
 
 interface ExplorerRoots {
   workspaceRoot: string;
-  globalRoots: Record<"vault" | "claude" | "codex", string>;
+  globalRoots: Partial<Record<"vault" | "claude" | "codex", string>>;
 }
 
 interface GlobalSection {
@@ -183,12 +183,15 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   // Git status summary
   const gitChangedCount = Object.keys(gitStatus).length;
   const globalSections = useMemo(
-    () => GLOBAL_SECTION_DEFS.map((section) => ({
-      ...section,
-      path: explorerRoots?.globalRoots[section.id as keyof ExplorerRoots["globalRoots"]] ?? "",
-    })),
+    () => GLOBAL_SECTION_DEFS
+      .map((section) => ({
+        ...section,
+        path: explorerRoots?.globalRoots[section.id as keyof ExplorerRoots["globalRoots"]] ?? "",
+      }))
+      .filter((section) => section.path),
     [explorerRoots],
   );
+  const hasVaultRoot = Boolean(explorerRoots?.globalRoots.vault);
 
   // Fetch root tree
   useEffect(() => {
@@ -205,6 +208,12 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!hasVaultRoot && sidebarTab === "vault") {
+      setSidebarTab("files");
+    }
+  }, [hasVaultRoot, sidebarTab]);
 
   // Load global config tree on demand
   const loadGlobalTree = useCallback(async (section: GlobalSection & { path: string }) => {
@@ -428,18 +437,20 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
           >
             파일
           </button>
-          <button
-            type="button"
-            onClick={() => setSidebarTab("vault")}
-            className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
-            style={{
-              color: sidebarTab === "vault" ? "var(--t-primary)" : "var(--t-faint)",
-              background: sidebarTab === "vault" ? "var(--card-bg)" : "transparent",
-              borderBottom: sidebarTab === "vault" ? "2px solid #0ea5e9" : "2px solid transparent",
-            }}
-          >
-            Vault
-          </button>
+          {hasVaultRoot && (
+            <button
+              type="button"
+              onClick={() => setSidebarTab("vault")}
+              className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
+              style={{
+                color: sidebarTab === "vault" ? "var(--t-primary)" : "var(--t-faint)",
+                background: sidebarTab === "vault" ? "var(--card-bg)" : "transparent",
+                borderBottom: sidebarTab === "vault" ? "2px solid #0ea5e9" : "2px solid transparent",
+              }}
+            >
+              Vault
+            </button>
+          )}
         </div>
 
         {/* Scrollable tree content */}

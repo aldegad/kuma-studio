@@ -30,7 +30,7 @@ MEMBER_QUERY="$1"
 INSTRUCTION="$2"
 shift 2
 
-PROJECT="$KUMA_DEFAULT_PROJECT"
+PROJECT="$(resolve_default_project || true)"
 TRUST_WORKER=0
 USED_DEPRECATED_NO_QA=0
 QA_MEMBER_QUERY=""
@@ -263,19 +263,6 @@ node "$KUMA_SERVER_CLI" dispatch-register \
   --qa-surface "$QA_SURFACE" \
   --daemon-url "$KUMA_DAEMON_URL" > /dev/null
 
-# 오케스트레이터(team nodeType) 멤버에게는 분배 규칙 강제 삽입
-MEMBER_NODE_TYPE="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const m=JSON.parse(fs.readFileSync(0,"utf8")); console.log(m.nodeType || "worker");')"
-ORCHESTRATOR_FOOTER=""
-if [ "$MEMBER_NODE_TYPE" = "team" ]; then
-  ORCHESTRATOR_FOOTER="
-
-[오케스트레이터 규칙]
-- 직접 구현 금지. 1줄 이하 trivial fix만 예외.
-- 워커에게 kuma-task로 분배 필수.
-- 워커 태스크는 QA(밤토리)를 거치게 할 것. --trust-worker 사용 금지.
-- 순서: 플랜 작성 → 워커 분배 → 워커 QA 통과 → 결과 수합 → 시그널 발신."
-fi
-
 if [ "$QA_MODE" = "self" ]; then
   PROMPT="$(cat <<EOF
 ${INSTRUCTION}
@@ -290,7 +277,6 @@ When the work is complete:
 - include 'trusted: worker-self-report' in the result file
 - report completion with ~/.kuma/bin/kuma-dispatch complete --task-file ${TASK_FILE}
 If the task fails or is blocked, write the result file and report ~/.kuma/bin/kuma-dispatch fail --task-file ${TASK_FILE} --blocker "..."
-${ORCHESTRATOR_FOOTER}
 EOF
 )"
 elif [ "$QA_MODE" = "kuma-direct" ]; then
@@ -306,7 +292,6 @@ When the work is complete:
 - write the result file at ${RESULT_FILE}
 - report completion with ~/.kuma/bin/kuma-dispatch complete --task-file ${TASK_FILE}
 If the task fails or is blocked, write the result file and report ~/.kuma/bin/kuma-dispatch fail --task-file ${TASK_FILE} --blocker "..."
-${ORCHESTRATOR_FOOTER}
 EOF
 )"
 else
@@ -323,7 +308,6 @@ When implementation is ready:
 - then hand off QA to ${QA_DISPATCH_TARGET} using:
   ~/.kuma/bin/kuma-task "${QA_DISPATCH_TARGET}" "QA this completed task. Read ${TASK_FILE} and ${RESULT_FILE}. Use kuma-picker first. If QA passes, run ~/.kuma/bin/kuma-dispatch qa-pass --task-file ${TASK_FILE}. If QA fails, update ${RESULT_FILE} with the blocker and run ~/.kuma/bin/kuma-dispatch qa-reject --task-file ${TASK_FILE} --blocker \"...\"." --project "${PROJECT}" --trust-worker
 If the task fails or is blocked before QA, write the result file and report ~/.kuma/bin/kuma-dispatch fail --task-file ${TASK_FILE} --blocker "..."
-${ORCHESTRATOR_FOOTER}
 EOF
 )"
 fi

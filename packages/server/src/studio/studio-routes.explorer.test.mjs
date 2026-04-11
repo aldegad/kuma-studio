@@ -109,6 +109,65 @@ describe("studio-routes explorer endpoints", () => {
     assert.deepStrictEqual(deleteRes.json, { success: true });
   });
 
+  it("returns only the workspace root unless extra explorer roots are explicitly enabled", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    await mkdir(staticDir, { recursive: true });
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      workspaceRoot: repoRoot,
+    });
+
+    const rootsRes = createResponse();
+    await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
+    assert.strictEqual(rootsRes.statusCode, 200);
+    assert.strictEqual(rootsRes.json.workspaceRoot, repoRoot);
+    assert.deepStrictEqual(rootsRes.json.globalRoots, {});
+  });
+
+  it("allows explicitly configured global explorer roots", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    const vaultRoot = join(root, "vault");
+    await mkdir(staticDir, { recursive: true });
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(vaultRoot, { recursive: true });
+    await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+    await writeFile(join(vaultRoot, "index.md"), "# Vault\n", "utf8");
+
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      workspaceRoot: repoRoot,
+      explorerGlobalRoots: { vault: vaultRoot },
+    });
+
+    const rootsRes = createResponse();
+    await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
+    assert.strictEqual(rootsRes.statusCode, 200);
+    assert.deepStrictEqual(rootsRes.json.globalRoots, { vault: vaultRoot });
+
+    const readRes = createResponse();
+    await handler(
+      createRequest("GET", `/studio/fs/read?path=${encodeURIComponent(join(vaultRoot, "index.md"))}`),
+      readRes,
+    );
+    assert.strictEqual(readRes.statusCode, 200);
+    assert.strictEqual(readRes.json.content, "# Vault\n");
+  });
+
   it("rejects explorer access outside the allowed roots", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
     tempDirs.push(root);

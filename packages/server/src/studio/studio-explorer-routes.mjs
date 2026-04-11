@@ -18,13 +18,11 @@ const SKIP_DIRS = new Set([
   ".cache",
 ]);
 const fsWorkspaceRoot = resolve(process.env.KUMA_STUDIO_WORKSPACE || process.cwd());
-const fsAllowedRoots = [
-  fsWorkspaceRoot,
-  resolve(join(homedir(), ".claude")),
-  resolve(join(homedir(), ".codex")),
-  resolve(join(homedir(), ".kuma", "vault")),
-  resolve(join(homedir(), ".kuma", "wiki")),
-];
+const EXPLORER_GLOBAL_ROOTS = {
+  vault: resolve(join(homedir(), ".kuma", "vault")),
+  claude: resolve(join(homedir(), ".claude")),
+  codex: resolve(join(homedir(), ".codex")),
+};
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
 const IMAGE_MIME_MAP = {
   ".png": "image/png",
@@ -68,6 +66,25 @@ const LANGUAGE_BY_EXTENSION = {
 function isWithinRoot(root, candidatePath) {
   const relativePath = relative(root, candidatePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith(`${sep}..`));
+}
+
+function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS) {
+  const configuredIds = String(envValue || "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (configuredIds.length === 0) {
+    return {};
+  }
+
+  return configuredIds.reduce((roots, id) => {
+    const root = EXPLORER_GLOBAL_ROOTS[id];
+    if (root) {
+      roots[id] = root;
+    }
+    return roots;
+  }, {});
 }
 
 async function buildFsTree(dirPath, maxDepth, currentDepth) {
@@ -135,16 +152,15 @@ function parseGitStatus(output) {
   return files;
 }
 
-export function createStudioExplorerRouteHandler({ workspaceRoot } = {}) {
-  const allowedRoots = workspaceRoot
-    ? [resolve(workspaceRoot), ...fsAllowedRoots.filter((root) => resolve(root) !== resolve(workspaceRoot))]
-    : fsAllowedRoots;
+export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots } = {}) {
   const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : fsWorkspaceRoot;
-  const globalRoots = {
-    vault: resolve(join(homedir(), ".kuma", "vault")),
-    claude: resolve(join(homedir(), ".claude")),
-    codex: resolve(join(homedir(), ".codex")),
-  };
+  const configuredGlobalRoots = Object.fromEntries(
+    Object.entries(globalRoots ?? resolveConfiguredGlobalRoots()).map(([id, root]) => [id, resolve(root)]),
+  );
+  const allowedRoots = [
+    defaultRoot,
+    ...Object.values(configuredGlobalRoots).filter((root) => resolve(root) !== defaultRoot),
+  ];
 
   function isAllowedPath(candidatePath) {
     const resolved = resolve(candidatePath);
@@ -155,7 +171,7 @@ export function createStudioExplorerRouteHandler({ workspaceRoot } = {}) {
     if (url.pathname === "/studio/fs/roots" && req.method === "GET") {
       sendJson(res, 200, {
         workspaceRoot: defaultRoot,
-        globalRoots,
+        globalRoots: configuredGlobalRoots,
       });
       return true;
     }

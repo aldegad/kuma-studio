@@ -365,7 +365,21 @@ echo ""
 echo "→ 쿠마 CTO 세션 시작..."
 cd "$WORKSPACE_DIR"
 KUMA_SYSTEM_PROMPT="$(cat "$KUMA_SYSTEM_PROMPT_PATH")"
+KUMA_BOOTSTRAP_BRIEF_PROMPT="$(cat <<'EOF'
+쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.
+
+첫 응답에서는 지금 워크스페이스 기준으로 아래만 짧고 운영자답게 정리해:
+- managed infra 상태: kuma-server / kuma-frontend
+- 팀 멤버 상태 요약: idle / working
+- 최근 커밋 1개와 현재 워크트리 변경 요약
+- 마지막 한 줄: 지금 무엇을 시킬지 묻기
+
+바로 브리핑부터 시작해.
+EOF
+)"
 exec claude \
   --dangerously-skip-permissions \
   --channels plugin:discord@claude-plugins-official \
-  --append-system-prompt "$KUMA_SYSTEM_PROMPT"
+  --name "🐻 쿠마" \
+  --append-system-prompt "$KUMA_SYSTEM_PROMPT" \
+  "$KUMA_BOOTSTRAP_BRIEF_PROMPT"

@@ -349,6 +349,97 @@ describe("shared team normalizer", () => {
     await expect(runTeamConfigHelper("list_team_members", teamPath, ["dev", "worker"])).resolves.toEqual(["뚝딱이", "쿤"]);
   });
 
+  it("builds a Claude startup command that waits idle instead of auto-running a skill", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            {
+              id: "koon",
+              name: "쿤",
+              team: "dev",
+              spawnType: "claude",
+              spawnModel: "claude-opus-4-6",
+              spawnOptions: "--dangerously-skip-permissions",
+              roleLabel: { en: "Publisher / Designer. HTML/CSS/Graphics" },
+              skills: ["frontend-design"],
+            },
+          ],
+        },
+      },
+    });
+
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["쿤", "", "/tmp/work"]);
+    expect(command).toContain('claude --model claude-opus-4-6');
+    expect(command).toContain("--append-system-prompt");
+    expect(command).toContain("Wait for dispatched task");
+    expect(command).not.toContain('"/frontend-design"');
+    expect(command).not.toContain('--\\ "/frontend-design"');
+  });
+
+  it("builds a Codex startup command with idle guard and without preferred skill injection", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            {
+              id: "bamdori",
+              name: "밤토리",
+              team: "dev",
+              spawnType: "codex",
+              spawnModel: "gpt-5.4-mini",
+              spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+              roleLabel: { en: "QA. Build, deploy, screen verification. No code edits" },
+              skills: ["kuma-picker"],
+            },
+          ],
+        },
+      },
+    });
+
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"]);
+    expect(command).toContain('codex -m gpt-5.4-mini');
+    expect(command).toContain("developer_instructions=");
+    expect(command).toContain("Wait\\ for\\ dispatched\\ task");
+    expect(command).not.toContain("kuma-picker");
+  });
+
+  it("builds a team-node startup command with persistent dispatch policy in system instructions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            {
+              id: "howl",
+              name: "하울",
+              team: "dev",
+              nodeType: "team",
+              spawnType: "codex",
+              spawnModel: "gpt-5.4",
+              spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+              roleLabel: { en: "Operator. Task decomposition, dispatch, aggregation" },
+            },
+          ],
+        },
+      },
+    });
+
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"]);
+    expect(command).toContain("developer_instructions=");
+    expect(command).toContain("Do\\ not\\ implement\\ directly\\ except\\ for\\ trivial\\ one-line\\ fixes.");
+    expect(command).toContain("Delegate\\ implementation\\ work\\ with\\ kuma-task.");
+    expect(command).toContain("Do\\ not\\ use\\ --trust-worker\\ when\\ dispatching\\ worker\\ tasks");
+  });
+
   it("resolves a registered member surface through the shell helper", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);

@@ -79,8 +79,8 @@ interface TeamStatusState {
 
 /** Default project derived from team.json when API is unavailable */
 const DEFAULT_PROJECT: ProjectTeamStatus = {
-  projectId: "kuma-studio",
-  projectName: "kuma-studio",
+  projectId: "workspace",
+  projectName: "workspace",
   members: KUMA_TEAM.map((agent: Agent) => ({
     id: agent.id,
     surface: null,
@@ -94,7 +94,7 @@ const DEFAULT_PROJECT: ProjectTeamStatus = {
 
 export const useTeamStatusStore = create<TeamStatusState>((set) => ({
   projects: [DEFAULT_PROJECT],
-  activeProjectId: "kuma-studio",
+  activeProjectId: null,
   memberStatus: new Map(),
   loading: false,
   error: null,

@@ -27,10 +27,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
+const CLAUDE_HOOKS_DIR = join(CLAUDE_DIR, "hooks");
 const CLAUDE_SKILLS_DIR = join(CLAUDE_DIR, "skills");
 const KUMA_DIR = join(HOME, ".kuma");
 const KUMA_CMUX_DIR = join(KUMA_DIR, "cmux");
 const KUMA_BIN_DIR = join(KUMA_DIR, "bin");
+const KUMA_PROJECTS_PATH = join(KUMA_DIR, "projects.json");
 const KUMA_TEAM_JSON_PATH = join(KUMA_DIR, "team.json");
 const STATE_DIR = join(HOME, ".kuma-picker");
 const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.json");
@@ -165,6 +167,36 @@ async function installSkills() {
   }
 }
 
+async function installHooks() {
+  header("Installing hooks");
+  const srcDir = resolve(ROOT, "scripts", "hooks");
+  await ensureDirWithSummary(CLAUDE_DIR);
+  await ensureDirWithSummary(CLAUDE_HOOKS_DIR);
+
+  if (!(await pathExists(srcDir))) {
+    warn(`hook source not found: ${summarizePath(srcDir)} — skipping`);
+    addSummary("missing", `Missing hook source ${summarizePath(srcDir)}`);
+    return;
+  }
+
+  const entries = await readdir(srcDir);
+  const hooks = entries.filter((file) => file.endsWith(".sh"));
+
+  for (const hook of hooks) {
+    const src = resolve(srcDir, hook);
+    const dest = resolve(CLAUDE_HOOKS_DIR, hook);
+    const result = await copyFileIfChanged(src, dest);
+    if (result === "skipped") {
+      log(`${hook} already up to date`);
+      addSummary("skipped", `Skipped existing ${hook}`);
+    } else {
+      await chmod(dest, 0o755);
+      log(`${result} ${hook} → ${summarizePath(dest)}`);
+      addSummary(result, `${result} ${summarizePath(src)} → ${summarizePath(dest)}`);
+    }
+  }
+}
+
 async function findRepoTeamMetadata(dir = ROOT) {
   const candidates = [
     BUNDLED_TEAM_METADATA_PATH,
@@ -251,6 +283,36 @@ async function setupTeamJsonLink() {
   addSummary(result, `${result} symlink ${summarizePath(KUMA_TEAM_JSON_PATH)} → ${summarizePath(BUNDLED_TEAM_METADATA_PATH)}`);
 }
 
+async function ensureProjectsRegistryEntry() {
+  header("Registering projects.json");
+  await ensureDirWithSummary(KUMA_DIR);
+
+  let projects = {};
+  if (await pathExists(KUMA_PROJECTS_PATH)) {
+    try {
+      projects = JSON.parse(await readFile(KUMA_PROJECTS_PATH, "utf8"));
+    } catch {
+      projects = {};
+    }
+  }
+
+  const previous = typeof projects?.["kuma-studio"] === "string" ? resolve(projects["kuma-studio"]) : null;
+  const next = resolve(ROOT);
+  if (previous === next) {
+    log(`${summarizePath(KUMA_PROJECTS_PATH)} already maps kuma-studio → ${summarizePath(next)}`);
+    addSummary("skipped", `Skipped existing project mapping in ${summarizePath(KUMA_PROJECTS_PATH)}`);
+    return;
+  }
+
+  const merged = {
+    ...(projects && typeof projects === "object" && !Array.isArray(projects) ? projects : {}),
+    "kuma-studio": next,
+  };
+  await writeFile(KUMA_PROJECTS_PATH, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  log(`Updated ${summarizePath(KUMA_PROJECTS_PATH)} with kuma-studio → ${summarizePath(next)}`);
+  addSummary(previous ? "updated" : "created", `Registered kuma-studio in ${summarizePath(KUMA_PROJECTS_PATH)}`);
+}
+
 function installDeps(flags) {
   if (flags.has("skip-deps")) {
     warn("Skipping npm install (--skip-deps)");
@@ -287,7 +349,7 @@ function buildStudio(flags) {
 
 async function installCmux() {
   header("Installing cmux scripts");
-  const srcDir = resolve(ROOT, "cmux");
+  const srcDir = resolve(ROOT, "scripts", "cmux");
   await ensureDirWithSummary(KUMA_DIR);
   await ensureDirWithSummary(KUMA_CMUX_DIR);
 
@@ -394,8 +456,10 @@ async function main() {
 
   installDeps(flags);
   await installSkills();
+  await installHooks();
   await installCmux();
   await installBinScripts();
+  await ensureProjectsRegistryEntry();
   await setupTeamJsonLink();
   await setupStateDir();
   await registerSettings();
@@ -409,7 +473,7 @@ async function main() {
     npm run kuma-studio:dashboard # Open studio in browser
 
   Skills installed:
-${SKILLS.map((s) => `    /claude ${s}`).join("\n")}
+${SKILLS.map((s) => `    /claude ${s.id}`).join("\n")}
 
   Chrome extension:
     1. Open chrome://extensions

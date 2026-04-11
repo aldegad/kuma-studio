@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 
 import { resolveVaultDir } from "./memo-store.mjs";
+import { inferProjectIdFromSlugPrefix } from "./project-defaults.mjs";
 
 const VAULT_SECTION_DIRS = ["domains", "projects", "learnings", "inbox"];
 const DEFAULT_SCHEMA_CONTENT = `---
@@ -327,11 +328,7 @@ export async function findMatchingTaskMetadata(resultPath, taskDir) {
 }
 
 function inferProjectFromSourceName(sourceSlug) {
-  if (sourceSlug.startsWith("kuma-studio-")) {
-    return "kuma-studio";
-  }
-
-  return null;
+  return inferProjectIdFromSlugPrefix(sourceSlug);
 }
 
 function inferTargetDescriptor(resultMeta, options = {}) {

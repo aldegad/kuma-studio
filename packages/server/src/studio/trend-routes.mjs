@@ -1,4 +1,5 @@
 import { readJsonBody, sendJson } from "../server-support.mjs";
+import { getConfiguredDefaultProjectId } from "./project-defaults.mjs";
 import { startResearchForContent } from "./research-workflow.mjs";
 import { scoreTrendForResearch } from "./trend-research-scorer.mjs";
 
@@ -26,7 +27,7 @@ function parseIngestPayload(body) {
   }
 
   return {
-    project: normalizeOptionalString(payload.project) ?? "kuma-studio",
+    project: normalizeOptionalString(payload.project) ?? getConfiguredDefaultProjectId({ fallback: "workspace" }),
     items: payload.items,
   };
 }

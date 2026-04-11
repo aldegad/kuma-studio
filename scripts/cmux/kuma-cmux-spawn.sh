@@ -61,8 +61,10 @@ fi
 
 sleep 1
 
-COMMAND="$(build_member_command_from_record "$DIR" "$LAUNCH_RECORD")"
-SEND_SCRIPT_ARGS=("$SURFACE" "$COMMAND")
+# Spawn only boots an idle worker session. Actual work must arrive later via dispatch.
+STARTUP_COMMAND="$(build_member_command_from_record "$DIR" "$LAUNCH_RECORD")"
+assert_idle_safe_startup_command "${RESOLVED_TYPE:-unknown}" "$STARTUP_COMMAND" "$NORMALIZED_NAME"
+SEND_SCRIPT_ARGS=("$SURFACE" "$STARTUP_COMMAND")
 if [ -n "$WORKSPACE" ]; then
   SEND_SCRIPT_ARGS+=(--workspace "$WORKSPACE")
 fi

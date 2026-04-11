@@ -27,7 +27,7 @@ KUMA_PROJECTS_PATH="${KUMA_PROJECTS_PATH:-$KUMA_HOME_DIR/projects.json}"
 KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 KUMA_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
 KUMA_RESULT_DIR="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
-KUMA_DEFAULT_PROJECT="${KUMA_DEFAULT_PROJECT:-kuma-studio}"
+KUMA_DEFAULT_PROJECT="${KUMA_DEFAULT_PROJECT:-}"
 KUMA_DEFAULT_QA_MEMBER="${KUMA_DEFAULT_QA_MEMBER:-밤토리}"
 KUMA_DAEMON_URL="${KUMA_DAEMON_URL:-http://127.0.0.1:4312}"
 KUMA_WAIT_POLL_INTERVAL="${KUMA_WAIT_POLL_INTERVAL:-5}"
@@ -98,6 +98,15 @@ ensure_json_object_file() {
 
 ensure_project_registry() {
   ensure_json_object_file "$KUMA_PROJECTS_PATH"
+}
+
+resolve_default_project() {
+  if [ -n "${KUMA_DEFAULT_PROJECT:-}" ]; then
+    printf '%s\n' "$KUMA_DEFAULT_PROJECT"
+    return 0
+  fi
+
+  resolve_project_from_dir "$(pwd)" 2>/dev/null || return 1
 }
 
 ensure_surface_registry() {

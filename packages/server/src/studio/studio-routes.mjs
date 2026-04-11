@@ -20,6 +20,7 @@ import { execGitSync } from "./git-command.mjs";
 import { createTeamConfigRuntime, findMemberStatus } from "./team-config-runtime.mjs";
 import { createStudioExplorerRouteHandler } from "./studio-explorer-routes.mjs";
 import { createStudioMemoRouteHandler } from "./studio-memo-routes.mjs";
+import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { readStudioPlugins, readStudioSkills } from "./studio-skill-catalog.mjs";
 import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
 
@@ -72,6 +73,7 @@ export function createStudioRouteHandler({
   vaultSkillSyncFn,
   teamConfigRuntime,
   workspaceRoot,
+  explorerGlobalRoots,
   studioDevDelegate = null,
 }) {
   const handleContentRoute = createContentRouteHandler({
@@ -91,6 +93,7 @@ export function createStudioRouteHandler({
   const configRuntime = teamConfigRuntime ?? createTeamConfigRuntime();
   const handleExplorerRoute = createStudioExplorerRouteHandler({
     workspaceRoot,
+    globalRoots: explorerGlobalRoots,
   });
   const handleMemoRoute = createStudioMemoRouteHandler({
     memoStore,
@@ -395,7 +398,9 @@ export function createStudioRouteHandler({
       const project =
         (typeof body?.project === "string" && body.project.trim()) ||
         memberContext?.project ||
-        (updatedEntry.member.team === "system" ? "system" : "kuma-studio");
+        getDefaultProjectIdForTeam(updatedEntry.member.team, {
+          workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")),
+        });
       const memberId = updatedEntry.member.id || memberName;
 
       try {

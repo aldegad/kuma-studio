@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-import { afterEach, assert, describe, it } from "vitest";
+import { afterEach, assert, describe, expect, it } from "vitest";
 
 import { TeamConfigStore, watchTeamConfig } from "./team-config-store.mjs";
 import { createStudioRouteHandler } from "./studio-routes.mjs";
@@ -48,6 +48,11 @@ function createMinimalTeamSchema(overrides = {}) {
             name: "밤토리",
             emoji: "🦔",
             role: "QA",
+            roleLabel: {
+              ko: "QA",
+              en: "CoS. Bash execution, cmux worker management",
+            },
+            skills: ["kuma-picker"],
             team: "dev",
             nodeType: "worker",
             spawnType: "codex",
@@ -687,9 +692,14 @@ describe("studio-routes team-config", () => {
     const log = readFileSync(fakeCmux.logPath, "utf8");
     assert.match(log, /send --workspace workspace:9 --surface surface:123/u);
     assert.match(log, /KUMA_ROLE=worker codex -m gpt-5\.4-mini/u);
+    assert.match(log, /-c developer_instructions=/u);
+    assert.match(log, /CoS\.\\ Bash\\ execution\\,\\ cmux\\ worker\\ management/u);
+    assert.match(log, /Wait\\ for\\ dispatched\\ task/u);
     assert.match(log, /--dangerously-bypass-approvals-and-sandbox/u);
     assert.match(log, /-c service_tier=fast/u);
     assert.match(log, /-c model_reasoning_effort="xhigh"/u);
+    expect(log).not.toMatch(/model_reasoning_effort="xhigh" CoS/u);
+    expect(log).not.toMatch(/kuma-picker/u);
   }, 30_000);
 
   it("passes workspace and title to tab rename and surfaces rename failures on stderr", () => {

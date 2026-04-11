@@ -31,7 +31,7 @@ fi
 # ============================================================
 
 # --- 항상 허용: 신뢰된 래퍼 ---
-if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-task(\s|$)'; then
+if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-(task|dispatch)(\s|$)'; then
   echo '{"continue": true}'; exit 0
 fi
 
@@ -73,7 +73,7 @@ dispatch_lock_valid() {
 
 if dispatch_lock_valid; then
   # kuma CLI 래퍼
-  if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-(task|spawn|read|kill|project-init)(\s|$)'; then
+  if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-(task|dispatch|spawn|read|kill|project-init)(\s|$)'; then
     echo '{"continue": true}'; exit 0
   fi
 

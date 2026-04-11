@@ -19,7 +19,7 @@ EOF
 MEMBER_QUERY="$1"
 shift
 
-PROJECT="$KUMA_DEFAULT_PROJECT"
+PROJECT="$(resolve_default_project || true)"
 LINES=40
 
 while [ $# -gt 0 ]; do
