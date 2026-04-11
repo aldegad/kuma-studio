@@ -182,6 +182,10 @@ export function createTeamConfigRuntime(options = {}) {
     let cleanupFailed = false;
     let cleanupError = null;
 
+    // Capture workspace/pane BEFORE kill — the surface must be alive to resolve these.
+    const workspace = currentSurface ? resolveWorkspaceForSurfaceFn(currentSurface) : null;
+    const pane = currentSurface ? resolvePaneForSurfaceFn(currentSurface) : null;
+
     if (currentSurface) {
       try {
         killRunner(killScriptPath, currentSurface);
@@ -212,8 +216,6 @@ export function createTeamConfigRuntime(options = {}) {
     ];
 
     if (currentSurface) {
-      const workspace = resolveWorkspaceForSurfaceFn(currentSurface);
-      const pane = resolvePaneForSurfaceFn(currentSurface);
       if (workspace) {
         spawnArgs.push("--workspace", workspace);
       }
