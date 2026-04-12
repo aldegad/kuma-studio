@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { useTeamConfigStore } from "../../stores/use-team-config-store";
 import { getTeamGroups, useTeamStatusStore } from "../../stores/use-team-status-store";
@@ -121,6 +122,7 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"office" | "team">("office");
+  const [popoverPosition, setPopoverPosition] = useState({ top: 48, left: 16 });
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamError, setTeamError] = useState<string | null>(null);
   const [changingMember, setChangingMember] = useState<string | null>(null);
@@ -129,6 +131,8 @@ export function SettingsPanel({
     memberName: string;
     selection: ModelCatalogEntry;
   } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   const fetchTeamConfigFromStore = useTeamConfigStore((s) => s.fetch);
   const teamMembers = useTeamConfigStore((s) => s.members);
@@ -212,10 +216,72 @@ export function SettingsPanel({
     }
   }, [refreshTeamConfig]);
 
+  const syncPopoverPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) {
+      return;
+    }
+
+    const rect = trigger.getBoundingClientRect();
+    const width = 320;
+    const margin = 16;
+    const nextLeft = Math.min(
+      Math.max(margin, rect.right - width),
+      window.innerWidth - width - margin,
+    );
+
+    setPopoverPosition({
+      top: rect.bottom + 8,
+      left: nextLeft,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    syncPopoverPosition();
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+      }
+    };
+
+    const handleViewportChange = () => {
+      syncPopoverPosition();
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
+    };
+  }, [open, syncPopoverPosition]);
+
   return (
-    <div className={`relative z-[70] ${className}`}>
+    <div className={className}>
       <button
-        onClick={() => setOpen(!open)}
+        ref={triggerRef}
+        onClick={() => setOpen((value) => !value)}
         className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-md transition-colors backdrop-blur-md border"
         style={{ background: "var(--panel-bg)", borderColor: "var(--panel-border)", color: "var(--t-muted)" }}
         title="설정"
@@ -226,10 +292,16 @@ export function SettingsPanel({
         </svg>
       </button>
 
-      {open && (
+      {open && typeof document !== "undefined" && createPortal(
         <div
-          className="absolute top-10 right-0 z-[75] w-80 rounded-2xl backdrop-blur-md border shadow-xl animate-fade-in"
-          style={{ background: "var(--panel-bg-strong)", borderColor: "var(--panel-border)" }}
+          ref={popoverRef}
+          className="fixed z-[70] w-80 rounded-2xl backdrop-blur-md border shadow-xl animate-fade-in"
+          style={{
+            top: popoverPosition.top,
+            left: popoverPosition.left,
+            background: "var(--panel-bg-strong)",
+            borderColor: "var(--panel-border)",
+          }}
         >
           <div className="flex border-b" style={{ borderColor: "var(--border-subtle)" }}>
             <button
@@ -417,7 +489,8 @@ export function SettingsPanel({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <ConfirmDialog
