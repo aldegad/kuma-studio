@@ -806,9 +806,10 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).toContain("Need API confirmation.");
   });
 
-  it("kuma-dispatch complete updates broker status without sending a lifecycle thread notice", async () => {
+  it("kuma-dispatch complete updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
 
     const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
     const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
@@ -819,7 +820,8 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       ["complete", "--task-file", taskFilePath],
       {
         ...sandbox.env,
-        KUMA_INITIATOR_SURFACE: "surface:4",
+        CMUX_SURFACE_ID: "surface:4",
+        KUMA_INITIATOR_SURFACE: "surface:99",
       },
     );
 
@@ -835,14 +837,18 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).not.toContain("Message kind: status update");
-    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).not.toContain("completed work. Result:");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Message kind: status update");
+    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).toContain("Recipient: Kuma (initiator, surface:99)");
+    expect(cmuxLog).toContain("reported worker completion");
+    expect(cmuxLog).toContain("Broker status: worker-done");
   });
 
-  it("kuma-dispatch qa-reject updates broker status without sending a lifecycle thread notice", async () => {
+  it("kuma-dispatch qa-reject updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
 
     const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
     const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
@@ -853,7 +859,8 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       ["qa-reject", "--task-file", taskFilePath, "--blocker", "Selection mismatch"],
       {
         ...sandbox.env,
-        KUMA_INITIATOR_SURFACE: "surface:7",
+        CMUX_SURFACE_ID: "surface:7",
+        KUMA_INITIATOR_SURFACE: "surface:99",
       },
     );
 
@@ -869,14 +876,18 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).not.toContain("Message kind: blocker");
-    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).not.toContain("Selection mismatch. Result:");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Message kind: blocker");
+    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).toContain("Recipient: Kuma (initiator, surface:99)");
+    expect(cmuxLog).toContain("Selection mismatch");
+    expect(cmuxLog).toContain("Broker status: qa-rejected");
   });
 
-  it("kuma-dispatch fail updates broker status without sending a lifecycle thread notice", async () => {
+  it("kuma-dispatch fail updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
 
     const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
     const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
@@ -887,7 +898,8 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       ["fail", "--task-file", taskFilePath, "--blocker", "Build broke"],
       {
         ...sandbox.env,
-        KUMA_INITIATOR_SURFACE: "surface:7",
+        CMUX_SURFACE_ID: "surface:4",
+        KUMA_INITIATOR_SURFACE: "surface:99",
       },
     );
 
@@ -903,14 +915,17 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).not.toContain("Message kind: blocker");
-    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).not.toContain("reported a blocker:");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Message kind: blocker");
+    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).toContain("Build broke");
+    expect(cmuxLog).toContain("Broker status: failed");
   });
 
-  it("kuma-dispatch qa-pass updates broker status without sending a lifecycle thread notice", async () => {
+  it("kuma-dispatch qa-pass updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
 
     const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
     const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
@@ -921,7 +936,8 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       ["qa-pass", "--task-file", taskFilePath],
       {
         ...sandbox.env,
-        KUMA_INITIATOR_SURFACE: "surface:7",
+        CMUX_SURFACE_ID: "surface:7",
+        KUMA_INITIATOR_SURFACE: "surface:99",
       },
     );
 
@@ -937,9 +953,11 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).not.toContain("Message kind: status update");
-    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).not.toContain("passed QA. Result:");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Message kind: status update");
+    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).toContain("passed QA");
+    expect(cmuxLog).toContain("Broker status: qa-passed");
   });
 
   it("kuma-dispatch reply defaults back to the worker surface from the initiator", async () => {

@@ -34,14 +34,14 @@ Dispatch policy:
 - Spawned workers start idle.
 - Actual work begins only after an explicit dispatch.
 - Completion and review outcomes must be reported through `kuma-dispatch`, not by touching ad-hoc signal files.
-- **Kuma team workers (Buri, Howl, Noeuri, Bamdori, etc.) are dispatched exclusively via the `/kuma:dispatch` skill.** That skill is the single abstraction for: dispatch.lock setup → Agent spawn → `kuma-task <worker>` invocation → signal wait → result + cleanup. Never bypass it with a raw `Agent(...)` call for Kuma worker dispatch.
-- When you invoke `/kuma:dispatch`, the skill already handles Agent configuration. Do not override `subagent_type` — the default (general-purpose) is correct. Do NOT use `codex:codex-rescue` or any `codex:*` subagent_type for Kuma worker dispatch, even for Codex-powered workers like Buri. Those `codex:*` agents are Anthropic plugin agents that pair Claude with Codex CLI in the current session — unrelated to Kuma cmux surface workers.
+- **Kuma team workers (Buri, Howl, Noeuri, Bamdori, etc.) are dispatched through the trusted CLI wrappers `kuma-task` and `kuma-dispatch`.** Main thread dispatch is direct `kuma-task <worker>`; completion authority stays with broker status + result file. Never bypass that with a raw `Agent(...)` call for Kuma worker dispatch.
+- If an Agent sub-agent is still used for adjacent orchestration work, do not override `subagent_type` unless the specific workflow requires it. Do NOT use `codex:codex-rescue` or any `codex:*` subagent_type for Kuma worker dispatch; those are unrelated Anthropic plugin agents.
 
 Dispatch entry points (layered, intentionally asymmetric):
-- **Kuma main thread (Claude)** → `/kuma:dispatch` — orchestration wrapper only. Never call `kuma-task` directly from the main thread.
-- **Background Agent spawned by `/kuma:dispatch`** → `kuma-task <worker>` + `kuma-dispatch` broker lifecycle. This is where the CLI layer is actually invoked.
+- **Kuma main thread (Claude)** → `kuma-task <worker>` + `kuma-dispatch` broker lifecycle directly.
+- **Background wait / polling helpers** → explicit `--timeout 300` safety net only. They are not the completion authority.
 - **Worker / QA / Codex sub-worker** → `kuma-task` + `kuma-dispatch ask|reply|complete|fail|qa-pass|qa-reject` directly. No slash-skill equivalent exists or is needed — the CLI is the canonical worker-facing interface.
 
 Sub-agent spawn policy:
 - When spawning any Agent sub-agent or background task that performs work on your behalf, the Agent prompt must inline the contents of `~/.kuma/prompts/subagent-behavior-rules.md` at the top. This keeps fallback/Playwright/SSOT/port/past-tense/raw-cmux rules enforced at the prompt layer even when execution-gate hooks are relaxed via dispatch lock.
-- The dispatch lock at `/tmp/kuma-dispatch.lock` relaxes `kuma-bash-guard`, `kuma-read-guard`, `kuma-agent-guard` for 10 minutes. Lock must be cleaned up by the dispatching agent on completion.
+- The dispatch lock at `/tmp/kuma-dispatch.lock` remains a temporary guard-relaxation mechanism only; it is not the canonical completion path or source of truth.

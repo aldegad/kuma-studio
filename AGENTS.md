@@ -25,7 +25,7 @@ This repo is not the authority for Kuma-main-thread dispatch. Entry-point layeri
 - Kuma main thread (Claude) → `/kuma:dispatch` slash skill (orchestration wrapper only).
 - Worker / QA / Codex sub-worker → `kuma-task` + `kuma-dispatch ask|reply|complete|fail|qa-pass|qa-reject` directly.
 
-The CLI is the canonical worker-facing interface; `/kuma:dispatch` wraps it for Claude-main-only. No Codex slash-skill equivalent exists or is needed — the split is intentional.
+The CLI is the canonical worker-facing interface, and Phase 4 direct main dispatch uses `kuma-task` / `kuma-dispatch` as the canonical main-thread path as well. No Codex slash-skill equivalent exists or is needed — the split is intentional.
 
 ## Conventions
 

@@ -1420,6 +1420,10 @@ SIGNAL="${1:?signal name required}"
 shift
 
 if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
+  if [[ "$1" =~ ^[0-9]+$ ]]; then
+    printf 'ERROR: bare numeric positional argument %s looks like a timeout. Use --timeout %s explicitly.\n' "$1" "$1" >&2
+    exit 1
+  fi
   RESULT_FILE="$1"
   shift
 fi
