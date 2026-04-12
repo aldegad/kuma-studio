@@ -213,7 +213,7 @@ export function SettingsPanel({
   }, [refreshTeamConfig]);
 
   return (
-    <div className={`relative z-50 ${className}`}>
+    <div className={`relative z-[70] ${className}`}>
       <button
         onClick={() => setOpen(!open)}
         className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shadow-md transition-colors backdrop-blur-md border"
@@ -228,7 +228,7 @@ export function SettingsPanel({
 
       {open && (
         <div
-          className="absolute top-10 right-0 w-80 rounded-2xl backdrop-blur-md border shadow-xl animate-fade-in"
+          className="absolute top-10 right-0 z-[75] w-80 rounded-2xl backdrop-blur-md border shadow-xl animate-fade-in"
           style={{ background: "var(--panel-bg-strong)", borderColor: "var(--panel-border)" }}
         >
           <div className="flex border-b" style={{ borderColor: "var(--border-subtle)" }}>

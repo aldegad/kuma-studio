@@ -310,7 +310,7 @@ export function StudioPage() {
       </div>
 
       {/* Top bar — Game HUD */}
-      <div className="game-hud-bar absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-2">
+      <div className="game-hud-bar absolute top-0 left-0 right-0 z-[60] flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-3">
           <span className="text-lg font-black tracking-tight text-amber-200" style={{ textShadow: "0 0 12px rgba(255, 200, 100, 0.4), 0 1px 3px rgba(0,0,0,0.4)" }}>쿠마 스튜디오</span>
           <span className="rounded-full bg-amber-400/20 text-amber-200 text-[10px] font-semibold px-2 py-0.5 border border-amber-400/25">{visibleCharacters.length}명</span>
@@ -361,7 +361,7 @@ export function StudioPage() {
 
       {/* File Explorer */}
       {explorerOpen && (
-        <div className="absolute left-0 top-10 bottom-0 z-50" style={{ maxWidth: "min(1600px, 94vw)" }}>
+        <div className="absolute left-0 top-10 bottom-0 z-[50]" style={{ maxWidth: "min(1600px, 94vw)" }}>
           <FileExplorer onCollapse={() => setExplorerOpen(false)} />
         </div>
       )}
@@ -370,7 +370,7 @@ export function StudioPage() {
       <DraggableDashboard panels={dashboardPanels} />
 
       {/* Zoom controls — game style */}
-      <div className="game-zoom-bar absolute bottom-4 right-4 z-40 flex items-center gap-1 rounded-lg px-2 py-1">
+      <div className="game-zoom-bar absolute bottom-4 right-4 z-[45] flex items-center gap-1 rounded-lg px-2 py-1">
         <button type="button" onClick={() => setZoom(clamp(zoom * 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded hover:bg-white/15 text-amber-200/80 text-sm font-bold" aria-label="줌 인">+</button>
         <span className="text-[10px] text-amber-200/60 font-medium min-w-[32px] text-center">{Math.round(zoom * 100)}%</span>
         <button type="button" onClick={() => setZoom(clamp(zoom / 1.2, ZOOM_MIN, ZOOM_MAX))} className="w-7 h-7 flex items-center justify-center rounded hover:bg-white/15 text-amber-200/80 text-sm font-bold" aria-label="줌 아웃">{"\u2212"}</button>
@@ -380,7 +380,7 @@ export function StudioPage() {
 
       {/* Help overlay */}
       {showHelp && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowHelp(false)}>
+        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={() => setShowHelp(false)}>
           <div role="dialog" aria-modal="true" aria-labelledby="help-title" className="game-panel-frame overflow-hidden rounded-xl max-w-sm" onClick={(e) => e.stopPropagation()}>
             <div className="game-panel-titlebar flex items-center gap-1.5 px-4 py-2">
               <span className="w-1.5 h-1.5 rounded-sm bg-amber-400/50" />
