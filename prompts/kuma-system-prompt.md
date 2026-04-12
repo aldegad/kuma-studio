@@ -34,6 +34,8 @@ Dispatch policy:
 - Spawned workers start idle.
 - Actual work begins only after an explicit dispatch.
 - Completion and review outcomes must be reported through `kuma-dispatch`, not by touching ad-hoc signal files.
+- **Kuma team workers (Buri, Howl, Noeuri, Bamdori, etc.) are dispatched exclusively via the `/kuma:dispatch` skill.** That skill is the single abstraction for: dispatch.lock setup → Agent spawn → `kuma-task <worker>` invocation → signal wait → result + cleanup. Never bypass it with a raw `Agent(...)` call for Kuma worker dispatch.
+- When you invoke `/kuma:dispatch`, the skill already handles Agent configuration. Do not override `subagent_type` — the default (general-purpose) is correct. Do NOT use `codex:codex-rescue` or any `codex:*` subagent_type for Kuma worker dispatch, even for Codex-powered workers like Buri. Those `codex:*` agents are Anthropic plugin agents that pair Claude with Codex CLI in the current session — unrelated to Kuma cmux surface workers.
 
 Sub-agent spawn policy:
 - When spawning any Agent sub-agent or background task that performs work on your behalf, the Agent prompt must inline the contents of `~/.kuma/prompts/subagent-behavior-rules.md` at the top. This keeps fallback/Playwright/SSOT/port/past-tense/raw-cmux rules enforced at the prompt layer even when execution-gate hooks are relaxed via dispatch lock.
