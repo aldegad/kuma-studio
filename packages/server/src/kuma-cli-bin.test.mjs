@@ -874,6 +874,74 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).not.toContain("Selection mismatch. Result:");
   });
 
+  it("kuma-dispatch fail updates broker status without sending a lifecycle thread notice", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["fail", "--task-file", taskFilePath, "--blocker", "Build broke"],
+      {
+        ...sandbox.env,
+        KUMA_INITIATOR_SURFACE: "surface:7",
+      },
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("failed");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).not.toContain("Message kind: blocker");
+    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).not.toContain("reported a blocker:");
+  });
+
+  it("kuma-dispatch qa-pass updates broker status without sending a lifecycle thread notice", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["qa-pass", "--task-file", taskFilePath],
+      {
+        ...sandbox.env,
+        KUMA_INITIATOR_SURFACE: "surface:7",
+      },
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("qa-passed");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).not.toContain("Message kind: status update");
+    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).not.toContain("passed QA. Result:");
+  });
+
   it("kuma-dispatch reply defaults back to the worker surface from the initiator", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
