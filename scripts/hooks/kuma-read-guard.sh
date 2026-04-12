@@ -14,19 +14,17 @@ if [ "$KUMA_ROLE" = "worker" ]; then
   exit 0
 fi
 
-# Dispatch lock 활성 중 (Agent 서브에이전트 실행 창구) — 10분 time-gate 로 통과
-if [ -f /tmp/kuma-dispatch.lock ]; then
-  lock_age=$(($(date +%s) - $(stat -f %m /tmp/kuma-dispatch.lock 2>/dev/null || echo "0")))
-  if [ "$lock_age" -lt 600 ]; then
-    echo '{"continue": true}'
-    exit 0
-  fi
-fi
-
 input=$(cat)
+agent_id=$(echo "$input" | jq -r '.agent_id // ""')
 tool=$(echo "$input" | jq -r '.tool_name // ""')
 file_path=$(echo "$input" | jq -r '.tool_input.file_path // .tool_input.path // ""')
 pattern=$(echo "$input" | jq -r '.tool_input.pattern // ""')
+
+# Claude Code subagents include agent_id on PreToolUse — let them through
+if [ -n "$agent_id" ]; then
+  echo '{"continue": true}'
+  exit 0
+fi
 
 # 허용: vault/plans/memory/설정 파일 읽기 (쿠마 부트/운영에 필요)
 if [ -n "$file_path" ]; then
