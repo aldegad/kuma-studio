@@ -43,7 +43,7 @@ if [ "$KUMA_ROLE" = "worker" ]; then
   exit 0
 fi
 
-# dispatch entrypoint 전용 scoped allow가 있으면 1회 통과
+# trusted wrapper가 만든 single-use scoped allow가 있으면 1회 통과
 if consume_spawn_allow; then
   echo '{"continue": true}'
   exit 0

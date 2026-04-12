@@ -102,4 +102,15 @@ describe.sequential("kuma-agent-guard", () => {
     expect(second.stdout).toBe("");
     expect(second.stderr).toContain("scoped spawn allow");
   });
+
+  it("deletes expired scoped allow files instead of consuming them", async () => {
+    await writeFile(SPAWN_ALLOW_PATH, "kind: kuma-agent-spawn-allow\n", "utf8");
+
+    const result = await runGuard({ KUMA_AGENT_SPAWN_ALLOW_TTL_SECONDS: "0" });
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("scoped spawn allow");
+    expect(existsSync(SPAWN_ALLOW_PATH)).toBe(false);
+  });
 });
