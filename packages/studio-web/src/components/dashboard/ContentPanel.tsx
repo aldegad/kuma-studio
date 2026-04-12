@@ -294,68 +294,67 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
             </div>
           ) : null}
 
-          <div className="grid min-h-[34rem] grid-cols-[minmax(0,1fr),minmax(0,4fr)]">
+          <div className="grid min-h-[34rem] grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]">
             <aside
-              className="border-r px-3 py-3"
+              className="flex min-h-0 flex-col border-r"
               style={{ borderColor: "var(--panel-border)" }}
             >
               <div
-                className="rounded-2xl border"
-                style={{ borderColor: "var(--card-border)", background: "var(--card-bg)" }}
+                className="border-b px-4 py-3"
+                style={{ borderColor: "var(--panel-border)" }}
               >
-                <div
-                  className="border-b px-3 py-2"
-                  style={{ borderColor: "var(--card-border)" }}
-                >
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--t-faint)" }}>
-                    Thread List
-                  </p>
-                </div>
-                <div className="max-h-[36rem] overflow-y-auto">
-                  {loading ? (
-                    <div className="px-3 py-8 text-center text-[13px]" style={{ color: "var(--t-muted)" }}>
-                      목록을 읽는 중입니다.
-                    </div>
-                  ) : sortedItems.length === 0 ? (
-                    <div className="px-3 py-8 text-center text-[13px]" style={{ color: "var(--t-muted)" }}>
-                      아직 저장된 스레드가 없습니다.
-                    </div>
-                  ) : (
-                    sortedItems.map((item) => {
-                      const selected = item.id === selectedId;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          data-panel-no-drag="true"
-                          onClick={() => setSelectedId(item.id)}
-                          className="block w-full border-b px-3 py-3 text-left transition-colors last:border-b-0"
-                          style={{
-                            borderColor: "var(--card-border)",
-                            background: selected ? "color-mix(in srgb, var(--color-kuma-orange) 11%, transparent)" : "transparent",
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={statusPillStyle(item.status)}>
-                              {STATUS_META[item.status].label}
-                            </span>
-                            <p className="truncate text-[14px] font-semibold leading-6">
-                              {item.title || item.fileName}
-                            </p>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
+                <p className="text-[13px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--t-faint)" }}>
+                  Thread List
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {loading ? (
+                  <div className="px-4 py-8 text-center text-[14px]" style={{ color: "var(--t-muted)" }}>
+                    목록을 읽는 중입니다.
+                  </div>
+                ) : sortedItems.length === 0 ? (
+                  <div className="px-4 py-8 text-center text-[14px]" style={{ color: "var(--t-muted)" }}>
+                    아직 저장된 스레드가 없습니다.
+                  </div>
+                ) : (
+                  sortedItems.map((item) => {
+                    const selected = item.id === selectedId;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-panel-no-drag="true"
+                        onClick={() => setSelectedId(item.id)}
+                        aria-current={selected ? "true" : undefined}
+                        className="block w-full border-b px-4 py-3 text-left transition-colors last:border-b-0"
+                        style={{
+                          borderColor: "var(--card-border)",
+                          background: selected ? "color-mix(in srgb, var(--color-kuma-orange) 14%, transparent)" : "transparent",
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-semibold" style={statusPillStyle(item.status)}>
+                            {STATUS_META[item.status].label}
+                          </span>
+                          <p className="truncate text-[15px] font-semibold leading-6">
+                            {item.title || item.fileName}
+                          </p>
+                        </div>
+                        <p className="mt-1 truncate text-[12px]" style={{ color: "var(--t-faint)" }}>
+                          {formatDateTime(item.updated)}
+                        </p>
+                      </button>
+                    );
+                  })
+                )}
               </div>
             </aside>
 
-            <div>
+            <div className="min-w-0">
               {!selectedItem ? (
                 <div className="flex h-full min-h-[34rem] flex-col items-center justify-center px-6 py-12 text-center">
-                  <p className="text-[18px] font-semibold">선택된 스레드가 없습니다.</p>
-                  <p className="mt-3 max-w-md text-[14px] leading-6" style={{ color: "var(--t-secondary)" }}>
+                  <p className="text-[19px] font-semibold">선택된 스레드가 없습니다.</p>
+                  <p className="mt-3 max-w-md text-[15px] leading-6" style={{ color: "var(--t-secondary)" }}>
                     왼쪽 목록에서 파일을 고르거나 새 초안을 만들어 Vault 기반 스레드 초안을 시작하세요.
                   </p>
                 </div>
@@ -366,7 +365,7 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                     style={{ borderColor: "var(--panel-border)" }}
                   >
                     <div className="min-w-0">
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--t-faint)" }}>
+                      <p className="text-[13px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--t-faint)" }}>
                         Detail
                       </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -375,28 +374,28 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                           data-panel-no-drag="true"
                           onClick={() => void cycleStatus()}
                           disabled={savingField === "status"}
-                          className="rounded-full px-2 py-0.5 text-[12px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
+                          className="rounded-full px-2 py-0.5 text-[13px] font-semibold transition-opacity hover:opacity-80 disabled:opacity-50"
                           style={{ ...statusPillStyle(selectedItem.status), cursor: "pointer" }}
                           title="클릭하여 상태 변경"
                         >
                           {savingField === "status" ? "..." : STATUS_META[selectedItem.status].label}
                         </button>
-                        <span className="text-[12px]" style={{ color: "var(--t-secondary)" }}>
+                        <span className="text-[13px]" style={{ color: "var(--t-secondary)" }}>
                           {selectedItem.fileName}
                         </span>
-                        <span className="text-[12px]" style={{ color: "var(--t-faint)" }}>
+                        <span className="text-[13px]" style={{ color: "var(--t-faint)" }}>
                           수정 {formatDateTime(selectedItem.updated)}
                         </span>
                       </div>
                     </div>
-                    <span className="text-[12px]" style={{ color: "var(--t-faint)" }}>
+                    <span className="text-[13px]" style={{ color: "var(--t-faint)" }}>
                       {savingField ? "저장 중" : "텍스트 클릭 후 수정"}
                     </span>
                   </div>
 
                   <div className="grid gap-5 px-5 py-5">
                     <div>
-                      <p className="text-[12px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--t-faint)" }}>
+                      <p className="text-[13px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--t-faint)" }}>
                         Title
                       </p>
                       {editingField === "title" ? (
@@ -416,7 +415,7 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                               void saveField("title");
                             }
                           }}
-                          className="mt-2 w-full resize-none rounded-2xl border px-4 py-3 text-[16px] font-semibold"
+                          className="mt-2 w-full resize-none rounded-2xl border px-4 py-3 text-[17px] font-semibold"
                           style={{
                             borderColor: "var(--input-border)",
                             background: "var(--input-bg)",
@@ -428,7 +427,7 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                           type="button"
                           data-panel-no-drag="true"
                           onClick={() => setEditingField("title")}
-                          className="mt-2 block w-full rounded-2xl border px-4 py-3 text-left text-[16px] font-semibold transition-colors"
+                          className="mt-2 block w-full rounded-2xl border px-4 py-3 text-left text-[17px] font-semibold transition-colors"
                           style={{
                             borderColor: "var(--card-border)",
                             background: "var(--card-bg)",
@@ -442,10 +441,10 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
 
                     <div>
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-[12px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--t-faint)" }}>
+                        <p className="text-[13px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--t-faint)" }}>
                           Body
                         </p>
-                        <span className="text-[12px]" style={{ color: "var(--t-faint)" }}>
+                        <span className="text-[13px]" style={{ color: "var(--t-faint)" }}>
                           포커스를 벗어나면 저장됩니다
                         </span>
                       </div>
@@ -467,7 +466,7 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                               void saveField("body");
                             }
                           }}
-                          className="mt-2 w-full resize-none rounded-2xl border px-4 py-3 text-[14px] leading-6"
+                          className="mt-2 w-full resize-none rounded-2xl border px-4 py-3 text-[15px] leading-7"
                           style={{
                             borderColor: "var(--input-border)",
                             background: "var(--input-bg)",
@@ -479,7 +478,7 @@ export function ContentPanel({ activeProjectId: _activeProjectId }: ContentPanel
                           type="button"
                           data-panel-no-drag="true"
                           onClick={() => setEditingField("body")}
-                          className="mt-2 block min-h-[20rem] w-full rounded-2xl border px-4 py-4 text-left text-[14px] leading-6 transition-colors"
+                          className="mt-2 block min-h-[20rem] w-full rounded-2xl border px-4 py-4 text-left text-[15px] leading-7 transition-colors"
                           style={{
                             borderColor: "var(--card-border)",
                             background: "var(--card-bg)",
