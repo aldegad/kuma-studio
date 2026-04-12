@@ -16,6 +16,7 @@ const PLAN_STATUS_COLOR_BY_STATUS = {
   hold: "yellow",
   blocked: "orange",
   completed: "green",
+  cancelled: "green",
   failed: "red",
 };
 
@@ -190,6 +191,9 @@ export function normalizePlanStatus(rawStatus) {
     case "completed":
     case "done":
       return "completed";
+    case "cancelled":
+    case "canceled":
+      return "cancelled";
     case "failed":
     case "error":
       return "failed";
@@ -200,6 +204,11 @@ export function normalizePlanStatus(rawStatus) {
 
 export function getPlanStatusColor(status) {
   return PLAN_STATUS_COLOR_BY_STATUS[normalizePlanStatus(status)] ?? "gray";
+}
+
+function isCompletedFamilyStatus(status) {
+  const normalized = normalizePlanStatus(status);
+  return normalized === "completed" || normalized === "cancelled";
 }
 
 function normalizePlanId(filePath) {
@@ -256,10 +265,14 @@ async function loadPlansFromDisk(source) {
       const status = normalizePlanStatus(frontmatter.status || "active");
 
       const planTotal = sections.reduce((sum, section) => sum + section.items.length, 0);
-      const planChecked = sections.reduce(
+      const rawPlanChecked = sections.reduce(
         (sum, section) => sum + section.items.filter((item) => item.checked).length,
         0,
       );
+      const planChecked = isCompletedFamilyStatus(status) ? planTotal : rawPlanChecked;
+      const completionRate = planTotal > 0
+        ? (planChecked / planTotal) * 100
+        : isCompletedFamilyStatus(status) ? 100 : 0;
 
       plans.push({
         id: planId,
@@ -272,7 +285,7 @@ async function loadPlansFromDisk(source) {
         sections,
         totalItems: planTotal,
         checkedItems: planChecked,
-        completionRate: planTotal > 0 ? (planChecked / planTotal) * 100 : 0,
+        completionRate,
         warnings,
       });
 

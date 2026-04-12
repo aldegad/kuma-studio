@@ -5,6 +5,7 @@ export type PlanStatus =
   | "hold"
   | "blocked"
   | "completed"
+  | "cancelled"
   | "archived"
   | "failed"
   | "error"

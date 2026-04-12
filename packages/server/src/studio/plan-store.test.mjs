@@ -84,6 +84,18 @@ status: hold
 `,
       "utf8",
     );
+    await writeFile(
+      join(plansDir, "kuma-studio", "cancelled-plan.md"),
+      `---
+title: Cancelled Plan
+status: cancelled
+---
+
+## Cancelled
+- [ ] do not ship this
+`,
+      "utf8",
+    );
 
     const snapshot = await readPlans();
 
@@ -115,6 +127,28 @@ status: hold
       { status: holdPlan?.status, statusColor: holdPlan?.statusColor },
       { status: "hold", statusColor: "yellow" },
     );
+
+    const cancelledPlan = snapshot.plans.find((plan) => plan.id === "kuma-studio/cancelled-plan");
+    assert.deepStrictEqual(
+      {
+        status: cancelledPlan?.status,
+        statusColor: cancelledPlan?.statusColor,
+        checkedItems: cancelledPlan?.checkedItems,
+        totalItems: cancelledPlan?.totalItems,
+        completionRate: cancelledPlan?.completionRate,
+      },
+      {
+        status: "cancelled",
+        statusColor: "green",
+        checkedItems: 1,
+        totalItems: 1,
+        completionRate: 100,
+      },
+    );
+
+    assert.strictEqual(snapshot.totalItems, 4);
+    assert.strictEqual(snapshot.checkedItems, 1);
+    assert.strictEqual(snapshot.overallCompletionRate, 25);
   });
 
   it("refreshes the cached snapshot on markdown changes with debounce", async () => {

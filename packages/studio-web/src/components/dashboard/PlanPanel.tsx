@@ -7,6 +7,7 @@ import { PlanDetailModal } from "./PlanDetailModal";
 /** Status → color mapping for plan status dots */
 const PLAN_STATUS_COLORS: Record<string, { dot: string; glow: string; label: string }> = {
   completed: { dot: "#22c55e", glow: "rgba(34, 197, 94, 0.4)", label: "완료" },
+  cancelled: { dot: "#4ade80", glow: "rgba(134, 239, 172, 0.3)", label: "취소" },
   active:    { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)", label: "진행 중" },
   in_progress: { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)", label: "진행 중" },
   hold:      { dot: "#eab308", glow: "rgba(234, 179, 8, 0.4)", label: "보류" },
@@ -17,6 +18,59 @@ const PLAN_STATUS_COLORS: Record<string, { dot: string; glow: string; label: str
   archived:  { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "보관됨" },
 };
 const DEFAULT_STATUS_COLOR = { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "" };
+
+const STATUS_FILTER_STORAGE_KEY = "kuma-studio.plan-panel.hidden-statuses.v1";
+
+/** cancelled is treated as part of the completed filter family. */
+export function canonicalFilterStatus(status: PlanStatus): string {
+  return status === "cancelled" ? "completed" : status;
+}
+
+export function filterPlansByStatus(
+  plans: Plan[],
+  hidden: ReadonlySet<string>,
+): Plan[] {
+  if (hidden.size === 0) return plans;
+  return plans.filter((plan) => !hidden.has(canonicalFilterStatus(plan.status)));
+}
+
+export function collectVisibleFilterStatuses(plans: Plan[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const plan of plans) {
+    const key = canonicalFilterStatus(plan.status);
+    if (!seen.has(key)) {
+      seen.add(key);
+      ordered.push(key);
+    }
+  }
+  return ordered;
+}
+
+export function loadHiddenStatuses(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(STATUS_FILTER_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((value): value is string => typeof value === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveHiddenStatuses(hidden: ReadonlySet<string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      STATUS_FILTER_STORAGE_KEY,
+      JSON.stringify([...hidden]),
+    );
+  } catch {
+    // storage unavailable; filter still works in-memory
+  }
+}
 
 type PlanSourceStatus = "ready" | "missing_dir" | "misconfigured";
 type PlanSourceInfo = {
@@ -86,6 +140,7 @@ export function PlanPanel() {
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => loadHiddenStatuses());
 
   useEffect(() => {
     void fetchPlans();
@@ -109,10 +164,30 @@ export function PlanPanel() {
     [plans?.plans],
   );
 
-  const groupedPlans = useMemo(
-    () => groupByProject(sortedPlans),
+  const visibleFilterStatuses = useMemo(
+    () => collectVisibleFilterStatuses(sortedPlans),
     [sortedPlans],
   );
+
+  const filteredPlans = useMemo(
+    () => filterPlansByStatus(sortedPlans, hiddenStatuses),
+    [sortedPlans, hiddenStatuses],
+  );
+
+  const groupedPlans = useMemo(
+    () => groupByProject(filteredPlans),
+    [filteredPlans],
+  );
+
+  function toggleStatusFilter(status: string) {
+    setHiddenStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      saveHiddenStatuses(next);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!selectedPlan) return;
@@ -236,6 +311,53 @@ export function PlanPanel() {
                 style={{ width: `${rate}%` }}
               />
             </div>
+
+            {/* Status filters */}
+            {visibleFilterStatuses.length > 0 && (
+              <div
+                className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 border-t pt-1.5"
+                style={{ borderColor: "var(--border-subtle)" }}
+                role="group"
+                aria-label="상태별 필터"
+              >
+                {visibleFilterStatuses.map((status) => {
+                  const sc = getStatusColor(status);
+                  const checked = !hiddenStatuses.has(status);
+                  const label = sc.label || status;
+                  return (
+                    <label
+                      key={status}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 transition-colors"
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleStatusFilter(status)}
+                        aria-label={`${label} 상태 표시`}
+                        className="h-3 w-3 shrink-0 cursor-pointer accent-green-600"
+                      />
+                      <span
+                        className="shrink-0 rounded-full"
+                        style={{
+                          width: 6,
+                          height: 6,
+                          backgroundColor: sc.dot,
+                          opacity: checked ? 1 : 0.4,
+                        }}
+                      />
+                      <span
+                        className="text-[9px]"
+                        style={{ color: checked ? "var(--t-secondary)" : "var(--t-faint)" }}
+                      >
+                        {label}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Project tree */}
             <div
