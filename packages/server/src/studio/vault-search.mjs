@@ -7,6 +7,28 @@ import { parseFrontmatterDocument } from "./vault-ingest.mjs";
 
 const MARKDOWN_EXTENSION = ".md";
 const WALK_SKIP_DIRS = new Set([".git", "images", "node_modules"]);
+const SEARCH_QUERY_PREFIX_STOPWORDS = new Set(["내", "내가", "내것", "제", "제가", "제것", "우리", "우리의", "나", "저", "저의"]);
+const SEARCH_QUERY_SUFFIX_STOPWORDS = new Set([
+  "알려",
+  "알려줘",
+  "알려줘요",
+  "알려주세요",
+  "알려주라",
+  "찾아",
+  "찾아줘",
+  "찾아줘요",
+  "찾아주세요",
+  "보여",
+  "보여줘",
+  "보여줘요",
+  "보여주세요",
+  "말해",
+  "말해줘",
+  "말해줘요",
+  "말해주세요",
+  "궁금해",
+  "궁금합니다",
+]);
 
 function normalizeLineEndings(value) {
   return String(value ?? "").replace(/\r\n/gu, "\n").replace(/\r/gu, "\n");
@@ -18,6 +40,52 @@ function normalizeSearchText(value) {
 
 function normalizeRelativePath(value) {
   return String(value ?? "").replace(/\\/gu, "/");
+}
+
+function normalizeSearchToken(value) {
+  return String(value ?? "")
+    .replace(/^[^\p{L}\p{N}\p{Extended_Pictographic}@._-]+/gu, "")
+    .replace(/[^\p{L}\p{N}\p{Extended_Pictographic}@._-]+$/gu, "")
+    .trim();
+}
+
+function extractSearchTerms(query) {
+  const normalizedQuery = normalizeSearchText(query).replace(/[^\p{L}\p{N}\p{Extended_Pictographic}@._-]+/gu, " ").trim();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const tokens = normalizedQuery
+    .split(/\s+/u)
+    .map(normalizeSearchToken)
+    .filter(Boolean);
+
+  let start = 0;
+  while (start < tokens.length && SEARCH_QUERY_PREFIX_STOPWORDS.has(tokens[start])) {
+    start += 1;
+  }
+
+  let end = tokens.length;
+  while (end > start && SEARCH_QUERY_SUFFIX_STOPWORDS.has(tokens[end - 1])) {
+    end -= 1;
+  }
+
+  const coreTokens = tokens.slice(start, end);
+  if (coreTokens.length === 0) {
+    return [normalizedQuery];
+  }
+
+  const terms = [normalizedQuery];
+  const corePhrase = coreTokens.join(" ");
+  if (corePhrase && corePhrase !== normalizedQuery) {
+    terms.push(corePhrase);
+  }
+
+  if ((start > 0 || end < tokens.length) && coreTokens.length > 1) {
+    terms.push(coreTokens[0]);
+  }
+
+  return Array.from(new Set(terms.filter(Boolean)));
 }
 
 function trimExcerpt(value) {
@@ -98,6 +166,11 @@ function normalizeFrontmatterSearchValue(value) {
   return String(value ?? "").trim();
 }
 
+function matchesAnySearchTerm(value, searchTerms) {
+  const normalizedValue = normalizeSearchText(value);
+  return searchTerms.some((term) => term && normalizedValue.includes(term));
+}
+
 // Search still needs original line numbers/excerpts even though parsing now comes from the shared ingest parser.
 function parseFrontmatterSearchBridge(content = "") {
   const normalized = normalizeLineEndings(content);
@@ -176,13 +249,13 @@ function parseFrontmatterSearchBridge(content = "") {
   };
 }
 
-function analyzeVaultDocument(relativePath, content, normalizedQuery) {
+function analyzeVaultDocument(relativePath, content, searchTerms) {
   const canonicalId = basename(relativePath, extname(relativePath));
   const { lines, bodyStartIndex, frontmatterFields } = parseFrontmatterSearchBridge(content);
   const entityMatches = [];
   const contentMatches = [];
 
-  if (normalizeSearchText(canonicalId).includes(normalizedQuery)) {
+  if (matchesAnySearchTerm(canonicalId, searchTerms)) {
     entityMatches.push({
       path: relativePath,
       lineNumber: 1,
@@ -192,7 +265,7 @@ function analyzeVaultDocument(relativePath, content, normalizedQuery) {
   }
 
   for (const field of frontmatterFields) {
-    if (!field.value || !normalizeSearchText(field.value).includes(normalizedQuery)) {
+    if (!field.value || !matchesAnySearchTerm(field.value, searchTerms)) {
       continue;
     }
 
@@ -206,7 +279,7 @@ function analyzeVaultDocument(relativePath, content, normalizedQuery) {
 
   for (let index = bodyStartIndex; index < lines.length; index += 1) {
     const line = lines[index];
-    if (!line.trim() || !normalizeSearchText(line).includes(normalizedQuery)) {
+    if (!line.trim() || !matchesAnySearchTerm(line, searchTerms)) {
       continue;
     }
 
@@ -241,11 +314,11 @@ export async function searchVault({ query, vaultDir = resolveVaultDir() } = {}) 
   const files = await walkVaultMarkdownFiles(resolvedVaultDir);
   const entityMatches = [];
   const contentMatches = [];
-  const comparableQuery = normalizeSearchText(normalizedQuery);
+  const searchTerms = extractSearchTerms(normalizedQuery);
 
   for (const file of files) {
     const content = await readFile(file.fullPath, "utf8");
-    const matches = analyzeVaultDocument(file.relativePath, content, comparableQuery);
+    const matches = analyzeVaultDocument(file.relativePath, content, searchTerms);
     entityMatches.push(...matches.entityMatches);
     contentMatches.push(...matches.contentMatches);
   }

@@ -51,6 +51,35 @@ Lotus rollout notes are tracked here.
     "utf8",
   );
 
+  await writeFile(
+    join(vaultDir, "domains", "alex-accounts.md"),
+    `---
+title: 알렉스 SNS/플랫폼 계정 레지스트리
+aliases:
+  - 내 계정
+  - 내 아이디
+  - 알렉스 계정
+  - 권효성
+  - hyoseoung
+  - hyoseoung2002
+---
+
+알렉스(수홍, 쿠마 스튜디오 운영자)의 개인/운영 SNS 계정과 핸들 모음.
+`,
+    "utf8",
+  );
+
+  await writeFile(
+    join(vaultDir, "learnings", "generic-id-note.md"),
+    `---
+title: Generic ID Note
+---
+
+아이디만 적힌 메모.
+`,
+    "utf8",
+  );
+
   return vaultDir;
 }
 
@@ -161,5 +190,23 @@ describe("vault search", () => {
     expect(formatted).toContain("## Content Matches");
     expect(formatted).toContain("[canonical_id]");
     expect(formatted).toContain("[body]");
+  });
+
+  it("recalls alias pages from framed natural-language queries", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const result = await searchVault({
+      vaultDir,
+      query: "내 권효성 아이디 알려줘",
+    });
+
+    expect(result.entityMatches).toEqual([
+      expect.objectContaining({
+        path: "domains/alex-accounts.md",
+        fieldKind: "frontmatter:aliases",
+      }),
+    ]);
+    expect(result.contentMatches).toEqual([]);
   });
 });
