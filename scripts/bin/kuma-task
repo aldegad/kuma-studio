@@ -8,6 +8,7 @@ source "$SCRIPT_DIR/kuma-cli-common.sh"
 usage() {
   cat <<'EOF'
 Usage: kuma-task <멤버이름> "<지시>" [--project <프로젝트>] [--qa <멤버|self|kuma-direct>] [--trust-worker]
+       kuma-task decisions promote <inboxId> "<resolvedText>" [--context <ref>]
 
 Options:
   --qa <멤버>        QA 담당 멤버 override. 우선순위는 --qa > member.defaultQa > KUMA_DEFAULT_QA_MEMBER > 밤토리
@@ -16,10 +17,115 @@ Options:
 EOF
 }
 
+decisions_usage() {
+  cat <<'EOF'
+Usage: kuma-task decisions promote <inboxId> "<resolvedText>" [--context <ref>]
+EOF
+}
+
+run_decisions_promote() {
+  local inbox_id="${1:-}"
+  local resolved_text="${2:-}"
+  shift 2 || true
+
+  [ -n "$inbox_id" ] || {
+    decisions_usage >&2
+    exit 1
+  }
+  [ -n "$resolved_text" ] || {
+    decisions_usage >&2
+    exit 1
+  }
+
+  local context_ref=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --context)
+        context_ref="${2:?context required}"
+        shift 2
+        ;;
+      -h|--help)
+        decisions_usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1"
+        ;;
+    esac
+  done
+
+  require_cmd node
+
+  KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
+  KUMA_DECISION_RUNTIME_ROOT="${KUMA_DECISION_RUNTIME_ROOT:-$KUMA_REPO_ROOT}" \
+  KUMA_VAULT_DIR="$KUMA_VAULT_DIR" \
+  node --input-type=module - "$inbox_id" "$resolved_text" "$context_ref" <<'NODE'
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const [, , inboxIdRaw, resolvedTextRaw, contextRefRaw] = process.argv;
+const inboxId = typeof inboxIdRaw === "string" ? inboxIdRaw.trim() : "";
+const resolvedText = typeof resolvedTextRaw === "string" ? resolvedTextRaw.trim() : "";
+const contextRef = typeof contextRefRaw === "string" ? contextRefRaw.trim() : "";
+const repoRoot = process.env.KUMA_DECISION_RUNTIME_ROOT
+  ? resolve(process.env.KUMA_DECISION_RUNTIME_ROOT)
+  : process.env.KUMA_REPO_ROOT
+    ? resolve(process.env.KUMA_REPO_ROOT)
+    : process.cwd();
+const vaultDir = process.env.KUMA_VAULT_DIR;
+
+if (!inboxId) {
+  throw new Error("inboxId is required");
+}
+if (!resolvedText) {
+  throw new Error("resolvedText is required");
+}
+if (!vaultDir) {
+  throw new Error("KUMA_VAULT_DIR is required");
+}
+
+const storeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/decisions-store.mjs")).href);
+if (typeof storeModule?.promoteToLedger !== "function") {
+  throw new Error("decisions-store.promoteToLedger() is not available");
+}
+
+const result = await storeModule.promoteToLedger({
+  vaultDir,
+  inboxId,
+  resolvedText,
+  writer: "user-direct",
+  contextRef,
+});
+
+process.stdout.write(`${JSON.stringify(result)}\n`);
+NODE
+}
+
+run_decisions_command() {
+  case "${1:-}" in
+    promote)
+      shift
+      run_decisions_promote "$@"
+      ;;
+    -h|--help|"")
+      decisions_usage
+      ;;
+    *)
+      die "unknown decisions subcommand: $1"
+      ;;
+  esac
+}
+
 [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] && {
   usage
   exit 0
 }
+
+if [ "${1:-}" = "decisions" ]; then
+  shift
+  run_decisions_command "$@"
+  exit $?
+fi
 
 [ $# -ge 2 ] || {
   usage >&2
@@ -295,6 +401,7 @@ if (!originalText) {
 await appendDecision({
   vaultDir,
   entry: {
+    layer: "inbox",
     action: decision.action.trim(),
     scope: project ? `project:${project}` : "global",
     writer: "lifecycle-emitter",

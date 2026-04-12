@@ -67,9 +67,12 @@ describe("studio-routes decision endpoints", () => {
           return { ok: true, id: "decision-1" };
         },
         async listOpenDecisions() {
-          return [];
+          return { ledger: [], inbox: [] };
         },
         async resolveDecision() {
+          return { ok: true };
+        },
+        async promoteToLedger() {
           return { ok: true };
         },
       },
@@ -78,6 +81,7 @@ describe("studio-routes decision endpoints", () => {
     const res = createResponse();
     await handler(createRequest("POST", "/studio/decisions/append", {
       vaultDir,
+      layer: "inbox",
       entry: {
         action: "approve",
         scope: "project:kuma-studio",
@@ -97,6 +101,7 @@ describe("studio-routes decision endpoints", () => {
           action: "approve",
           scope: "project:kuma-studio",
           writer: "kuma-detect",
+          layer: "inbox",
           original_text: "이걸로 가",
           context_ref: "turn-1",
         },
@@ -119,9 +124,15 @@ describe("studio-routes decision endpoints", () => {
         },
         async listOpenDecisions(input) {
           calls.push(input);
-          return [{ id: "decision-1", action: "hold" }];
+          return {
+            ledger: [{ id: "decision-1", action: "hold" }],
+            inbox: [{ id: "inbox-1", action: "approve" }],
+          };
         },
         async resolveDecision() {
+          return { ok: true };
+        },
+        async promoteToLedger() {
           return { ok: true };
         },
       },
@@ -135,7 +146,10 @@ describe("studio-routes decision endpoints", () => {
 
     assert.strictEqual(res.statusCode, 200);
     assert.deepStrictEqual(res.json, {
-      decisions: [{ id: "decision-1", action: "hold" }],
+      decisions: {
+        ledger: [{ id: "decision-1", action: "hold" }],
+        inbox: [{ id: "inbox-1", action: "approve" }],
+      },
     });
     assert.deepStrictEqual(calls, [{ vaultDir }]);
   });
@@ -154,11 +168,14 @@ describe("studio-routes decision endpoints", () => {
           return { ok: true };
         },
         async listOpenDecisions() {
-          return [];
+          return { ledger: [], inbox: [] };
         },
         async resolveDecision(input) {
           calls.push(input);
           return { ok: true, resolved: "decision-7" };
+        },
+        async promoteToLedger() {
+          return { ok: true };
         },
       },
     });
@@ -172,5 +189,51 @@ describe("studio-routes decision endpoints", () => {
     assert.strictEqual(res.statusCode, 200);
     assert.deepStrictEqual(res.json, { ok: true, resolved: "decision-7" });
     assert.deepStrictEqual(calls, [{ vaultDir, id: "decision-7" }]);
+  });
+
+  it("promotes an inbox decision through the injected runtime", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-decisions-route-"));
+    tempRoots.push(root);
+    const vaultDir = join(root, "vault");
+    const calls = [];
+    const handler = createStudioRouteHandler({
+      staticDir: process.cwd(),
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      decisionRuntime: {
+        async appendDecision() {
+          return { ok: true };
+        },
+        async listOpenDecisions() {
+          return { ledger: [], inbox: [] };
+        },
+        async resolveDecision() {
+          return { ok: true };
+        },
+        async promoteToLedger(input) {
+          calls.push(input);
+          return { inboxId: "inbox-7", ledgerId: "ledger-3" };
+        },
+      },
+    });
+
+    const res = createResponse();
+    await handler(createRequest("POST", "/studio/decisions/promote", {
+      vaultDir,
+      inboxId: "inbox-7",
+      resolvedText: "앞으로는 plan body 인용을 ledger 로 승격하지 않는다.",
+      writer: "user-direct",
+      contextRef: "task:demo",
+    }), res);
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(res.json, { inboxId: "inbox-7", ledgerId: "ledger-3" });
+    assert.deepStrictEqual(calls, [{
+      vaultDir,
+      inboxId: "inbox-7",
+      resolvedText: "앞으로는 plan body 인용을 ledger 로 승격하지 않는다.",
+      writer: "user-direct",
+      contextRef: "task:demo",
+    }]);
   });
 });

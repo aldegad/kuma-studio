@@ -44,7 +44,8 @@ import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
  * @param {(options?: { vaultDir?: string }) => Promise<object>} [options.vaultSkillSyncFn]
  * @param {{
  *   appendDecision: (input: { vaultDir?: string, entry: object }) => Promise<object>,
- *   listOpenDecisions: (input: { vaultDir?: string }) => Promise<object[]>,
+ *   listOpenDecisions: (input: { vaultDir?: string }) => Promise<{ ledger: object[], inbox: object[] }>,
+ *   promoteToLedger?: (input: { vaultDir?: string, inboxId: string, resolvedText: string, writer?: string, contextRef?: string }) => Promise<object>,
  *   resolveDecision: (input: { vaultDir?: string, id: string }) => Promise<object>,
  * }} [options.decisionRuntime]
  * @param {{

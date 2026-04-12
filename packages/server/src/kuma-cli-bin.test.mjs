@@ -545,10 +545,20 @@ export async function appendDecision({ vaultDir, entry }) {
   mkdirSync(dirname(process.env.KUMA_STUB_DECISION_LOG), { recursive: true });
   appendFileSync(
     process.env.KUMA_STUB_DECISION_LOG,
-    JSON.stringify({ vaultDir, entry }) + "\\n",
+    JSON.stringify({ kind: "append", vaultDir, entry }) + "\\n",
     "utf8",
   );
   return { ok: true };
+}
+
+export async function promoteToLedger(input) {
+  mkdirSync(dirname(process.env.KUMA_STUB_DECISION_LOG), { recursive: true });
+  appendFileSync(
+    process.env.KUMA_STUB_DECISION_LOG,
+    JSON.stringify({ kind: "promote", ...input }) + "\\n",
+    "utf8",
+  );
+  return { inboxId: input.inboxId, ledgerId: "ledger-1" };
 }
 `,
     "utf8",
@@ -683,8 +693,10 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       .map((line) => JSON.parse(line));
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
+      kind: "append",
       vaultDir: join(sandbox.env.HOME, ".kuma", "vault"),
       entry: {
+        layer: "inbox",
         action: "priority",
         scope: "project:kuma-studio",
         writer: "lifecycle-emitter",
@@ -710,6 +722,44 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(stdout).toContain("TASK_FILE:");
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
     expect(cmuxLog).toContain("send-wrapper|surface:4");
+  });
+
+  it("kuma-task decisions promote calls promoteToLedger directly without dispatching work", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+    const runtimeRoot = join(sandbox.root, "decision-runtime");
+    const decisionLog = join(sandbox.root, "decision-log.jsonl");
+    await createDecisionRuntimeModules(runtimeRoot, decisionLog);
+
+    const { stdout } = await runScript(
+      KUMA_TASK_PATH,
+      ["decisions", "promote", "inbox-7", "결정 문장", "--context", "thread:7"],
+      {
+        ...sandbox.env,
+        KUMA_DECISION_RUNTIME_ROOT: runtimeRoot,
+        KUMA_STUB_DECISION_LOG: decisionLog,
+      },
+    );
+
+    expect(JSON.parse(stdout)).toEqual({ inboxId: "inbox-7", ledgerId: "ledger-1" });
+    const entries = (await readFile(decisionLog, "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    expect(entries).toContainEqual({
+      kind: "promote",
+      vaultDir: join(sandbox.env.HOME, ".kuma", "vault"),
+      inboxId: "inbox-7",
+      resolvedText: "결정 문장",
+      writer: "user-direct",
+      contextRef: "thread:7",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8").catch(() => "");
+    expect(cmuxLog).not.toContain("send-wrapper|");
+    const dispatchLog = await readFile(sandbox.dispatchLog, "utf8").catch(() => "");
+    expect(dispatchLog).not.toContain("dispatch-register|");
   });
 
   it("kuma-dispatch ask appends a thread message and sends it to the initiator surface", async () => {

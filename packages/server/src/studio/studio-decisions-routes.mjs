@@ -19,11 +19,23 @@ function normalizeEntryPayload(body) {
   }
 
   if (body.entry && typeof body.entry === "object" && !Array.isArray(body.entry)) {
-    return body.entry;
+    const entry = { ...body.entry };
+    if (typeof body.layer === "string" && body.layer.trim() && typeof entry.layer !== "string") {
+      entry.layer = body.layer.trim();
+    }
+    return entry;
   }
 
   const { vaultDir: _ignoredVaultDir, ...entry } = body;
   return Object.keys(entry).length > 0 ? entry : null;
+}
+
+function normalizePromotePayload(body) {
+  const inboxId = typeof body?.inboxId === "string" ? body.inboxId.trim() : "";
+  const resolvedText = typeof body?.resolvedText === "string" ? body.resolvedText.trim() : "";
+  const writer = typeof body?.writer === "string" && body.writer.trim() ? body.writer.trim() : undefined;
+  const contextRef = typeof body?.contextRef === "string" && body.contextRef.trim() ? body.contextRef.trim() : undefined;
+  return { inboxId, resolvedText, writer, contextRef };
 }
 
 function describeError(error) {
@@ -72,7 +84,8 @@ export function createStudioDecisionsRouteHandler({
   return async (req, res, url) => {
     if (url.pathname !== "/studio/decisions/open" &&
         url.pathname !== "/studio/decisions/append" &&
-        url.pathname !== "/studio/decisions/resolve") {
+        url.pathname !== "/studio/decisions/resolve" &&
+        url.pathname !== "/studio/decisions/promote") {
       return false;
     }
 
@@ -151,6 +164,40 @@ export function createStudioDecisionsRouteHandler({
       } catch (error) {
         sendJson(res, 500, {
           error: "Failed to resolve decision.",
+          details: describeError(error),
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/decisions/promote" && req.method === "POST") {
+      if (typeof runtime.promoteToLedger !== "function") {
+        sendJson(res, 503, { error: "Decision runtime cannot promote inbox entries." });
+        return true;
+      }
+
+      const { inboxId, resolvedText, writer, contextRef } = normalizePromotePayload(body);
+      if (!inboxId) {
+        sendJson(res, 400, { error: "Missing inboxId." });
+        return true;
+      }
+      if (!resolvedText) {
+        sendJson(res, 400, { error: "Missing resolvedText." });
+        return true;
+      }
+
+      try {
+        const result = await runtime.promoteToLedger({
+          vaultDir: normalizeVaultDir(body?.vaultDir, vaultDir),
+          inboxId,
+          resolvedText,
+          writer,
+          contextRef,
+        });
+        sendJson(res, 200, result);
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to promote decision.",
           details: describeError(error),
         });
       }
