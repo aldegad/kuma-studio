@@ -1,5 +1,6 @@
 const FILLER_PATTERN = /^(?:아+|오+|어+|응+|엉+|음+|흠+|ㅋ+|ㅎㅎ+|하하+|lol|ok|ㅇ+)$|^(?:ㅇㅋ|오케이)\s*$/iu;
-const QUESTION_ENDING_PATTERN = /(?:\?$|[?？]|(?:할까|갈까|말까|둘까|볼까|할까요|갈까요|말까요|둘까요|볼까요)\s*$)/u;
+const QUESTION_ENDING_PATTERN = /(?:\?$|[?？]|(?:할까|갈까|말까|둘까|볼까|할까요|갈까요|말까요|둘까요|볼까요)(?:[.!。！？…]+)?\s*$)/u;
+const TRAILING_SENTENCE_PUNCTUATION_PATTERN = /[.!。！？…]+$/u;
 const APPROVE_PATTERNS = [
   /^(?:ㄱㄱ|ㄱ|ㅇㅋ|오케이|좋아|가자|확정|콜|진행해)$/u,
   /^(?:이걸로|이거로|그걸로|그거로)\s*(?:가|가자|확정|진행해)$/u,
@@ -8,22 +9,27 @@ const APPROVE_PATTERNS = [
 const REJECT_PATTERNS = [
   /^(?:ㄴㄴ|아냐|아니야|아님|그건 아님|하지 마|그건 말고|삭제)$/u,
   /^(?:이건|그건|저건)\s*(?:아냐|아님|말고)$/u,
+  /^(?:이건|그건|저건)\s+말고\s+삭제$/u,
 ];
 const HOLD_PATTERNS = [
-  /^(?:보류|나중에|일단 냅둬|일단 두자|미뤄|홀드)$/u,
+  /^(?:(?:이건|그건|저건)\s+)?(?:일단\s+)?(?:보류|나중에|냅둬|일단 냅둬|일단 두자|미뤄|홀드)$/u,
 ];
 const PRIORITY_PATTERNS = [
-  /^(?:이거|이게|이걸)\s*(?:먼저|우선)$/u,
+  /^(?:이거|이게|이걸)(?:를|는|은)?\s+먼저(?:\s+(?:해|하자|진행해|가자))?$/u,
   /^.+보다\s+.+먼저$/u,
   /^(?:이게 급함|이거 우선)$/u,
 ];
 const PREFERENCE_PATTERNS = [
   /^(?:앞으로 이렇게|다음부터 이렇게|항상 이렇게|절대 이렇게|기본값은 .+)$/u,
-  /^(?:다음부터|앞으로|항상|절대)\s+.+$/u,
+  /^(?:다음부터(?:는)?|앞으로(?:는)?|항상|절대)\s+.+$/u,
 ];
 
 function normalizeText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function stripTrailingSentencePunctuation(text) {
+  return typeof text === "string" ? text.replace(TRAILING_SENTENCE_PUNCTUATION_PATTERN, "").trimEnd() : "";
 }
 
 function looksLikeQuestion(text) {
@@ -108,9 +114,10 @@ export function detectDecision({ text, precedingContext = null }) {
     return null;
   }
 
-  const matched = matchAction(originalText);
+  const canonicalText = stripTrailingSentencePunctuation(originalText);
+  const matched = matchAction(canonicalText);
   if (!matched && hasExplicitResponseContext(precedingContext)) {
-    const contextual = matchContextualAction(originalText);
+    const contextual = matchContextualAction(canonicalText);
     if (contextual) {
       return {
         matched: true,
