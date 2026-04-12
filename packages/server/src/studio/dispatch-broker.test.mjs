@@ -143,4 +143,28 @@ describe("dispatch-broker", () => {
     expect(completed.status).toBe("qa-passed");
     expect(hookCalls.map((entry) => entry.event)).toEqual(["dispatched", "worker-done", "qa-passed"]);
   });
+
+  it("ignores late completion events after a dispatch already reached a terminal state", async () => {
+    const { broker, hookCalls } = await createBroker();
+    await broker.registerDispatch(demoDispatch());
+
+    await broker.reportEvent("demo-20260411-120000", {
+      type: "complete",
+      source: "worker",
+    });
+    const passed = await broker.reportEvent("demo-20260411-120000", {
+      type: "qa-pass",
+      note: "QA PASS",
+      source: "bamdori",
+    });
+    expect(passed.status).toBe("qa-passed");
+
+    const lateComplete = await broker.reportEvent("demo-20260411-120000", {
+      type: "complete",
+      source: "worker",
+    });
+    expect(lateComplete.status).toBe("qa-passed");
+    expect(lateComplete.lastEvent).toBe("qa-pass");
+    expect(hookCalls.map((entry) => entry.event)).toEqual(["dispatched", "worker-done", "qa-passed"]);
+  });
 });

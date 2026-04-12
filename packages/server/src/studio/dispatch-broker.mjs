@@ -322,6 +322,10 @@ export class DispatchBroker {
     const note = normalizeString(input?.note);
     const directCompletion = current.qa === "worker-self-report" || current.qa === "kuma-direct";
 
+    if (isTerminalStatus(current.status)) {
+      return cloneRecord(current);
+    }
+
     const next = normalizeDispatchRecord({
       ...current,
       source: source || current.source,
