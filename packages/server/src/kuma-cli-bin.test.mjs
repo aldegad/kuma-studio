@@ -116,6 +116,8 @@ printf '%q ' "$@" >> "${cmuxLog}"
 printf '\\n' >> "${cmuxLog}"
 if [ "$command" = "wait-for" ]; then
   echo "OK"
+elif [ "$command" = "tree" ] && [ -n "\${KUMA_STUB_CMUX_TREE:-}" ]; then
+  printf '%s\n' "$KUMA_STUB_CMUX_TREE"
 fi
 `,
   );
@@ -626,6 +628,37 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
     expect(cmuxLog).toContain("send-wrapper|surface:16");
     expect(cmuxLog).not.toContain("send|--surface surface:16");
+  });
+
+  it("kuma-task adopts a live worker surface when the registry misses it", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦫 뚝딱이");
+
+    const { stdout } = await runScript(
+      KUMA_TASK_PATH,
+      ["뚝딱이", "echo test", "--project", "kuma-studio"],
+      {
+        ...sandbox.env,
+        KUMA_STUB_CMUX_TREE: [
+          "workspace workspace:2",
+          '│   ├── surface surface:4 [terminal] "🦫 뚝딱이" tty=ttys007',
+        ].join("\n"),
+      },
+    );
+
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    const taskFile = await readFile(taskFilePath, "utf8");
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    const spawnLog = await readFile(sandbox.spawnLog, "utf8").catch(() => "");
+
+    expect(taskFile).toContain("worker: surface:4");
+    expect(cmuxLog).toContain("tree|");
+    expect(cmuxLog).toContain("send-wrapper|surface:4");
+    expect(spawnLog).toBe("");
   });
 
   it("kuma-task keeps dispatch prompts lean when role and skill already come from bootstrap", async () => {

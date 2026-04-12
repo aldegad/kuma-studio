@@ -62,7 +62,11 @@ for link in "$HOME"/.kuma/cmux/*.sh; do
   esac
 done
 
-# 4. 프로젝트 맵 (없으면 복사, 있으면 스킵)
+# 4. ~/.kuma/bin canonical install path 보장
+node "$KUMA_STUDIO/scripts/install.mjs" --skip-deps --skip-build
+echo "  ✓ bin/install: scripts/install.mjs (--skip-deps --skip-build)"
+
+# 5. 프로젝트 맵 (없으면 복사, 있으면 스킵)
 mkdir -p ~/.kuma
 if [ ! -f ~/.kuma/projects.json ]; then
   node - "$HOME/.kuma/projects.json" "$KUMA_STUDIO" <<'NODE'
@@ -75,7 +79,7 @@ else
   echo "  ⊘ config: projects.json (기존 유지)"
 fi
 
-# 5. 플랜 디렉토리
+# 6. 플랜 디렉토리
 mkdir -p ~/.kuma/plans
 
 echo ""

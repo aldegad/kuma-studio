@@ -482,7 +482,46 @@ resolve_surface_json() {
   local project="${1:?project required}"
   local member_json="${2:?member json required}"
 
-  run_surface_registry_cli resolve-member-context "$KUMA_SURFACES_PATH" "$project" "$member_json"
+  node --input-type=module - "$KUMA_REPO_ROOT" "$project" "$member_json" <<'NODE'
+import { pathToFileURL } from "node:url";
+import { join } from "node:path";
+
+const [, , repoRootRaw, projectRaw, memberJsonRaw] = process.argv;
+const repoRoot = typeof repoRootRaw === "string" ? repoRootRaw.trim() : "";
+const project = typeof projectRaw === "string" ? projectRaw.trim() : "";
+const memberJson = typeof memberJsonRaw === "string" ? memberJsonRaw : "";
+
+let runtime = null;
+
+try {
+  if (!repoRoot || !project || !memberJson) {
+    process.exitCode = 1;
+  } else {
+    const runtimeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/team-config-runtime.mjs")).href);
+    runtime = runtimeModule.createTeamConfigRuntime({
+      queuePollMs: 0,
+      registryPath: process.env.KUMA_SURFACES_PATH || "/tmp/kuma-surfaces.json",
+    });
+    const member = JSON.parse(memberJson);
+    const memberName =
+      (typeof member.displayName === "string" && member.displayName.trim()) ||
+      (typeof member.name === "string" && member.name.trim()) ||
+      (typeof member.id === "string" && member.id.trim()) ||
+      "";
+    const memberEmoji = typeof member.emoji === "string" ? member.emoji.trim() : "";
+    const memberTeam = typeof member.team === "string" ? member.team.trim() : "";
+    const context = runtime.resolveMemberContext(memberName, memberEmoji, project, memberTeam);
+
+    if (context && typeof context.surface === "string" && context.surface.trim()) {
+      process.stdout.write(`${JSON.stringify(context)}\n`);
+    } else {
+      process.exitCode = 1;
+    }
+  }
+} finally {
+  runtime?.close?.();
+}
+NODE
 }
 
 resolve_project_member_lines() {
