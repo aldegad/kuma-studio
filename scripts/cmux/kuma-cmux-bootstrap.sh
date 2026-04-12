@@ -372,6 +372,12 @@ echo ""
 echo "→ 쿠마 CTO 세션 시작..."
 cd "$WORKSPACE_DIR"
 KUMA_SYSTEM_PROMPT="$(cat "$KUMA_SYSTEM_PROMPT_PATH")"
+KUMA_DECISIONS_BOOT_PACK="$(build_decisions_boot_pack_prompt)"
+if [ -n "$KUMA_DECISIONS_BOOT_PACK" ]; then
+  KUMA_SYSTEM_PROMPT="${KUMA_SYSTEM_PROMPT}
+
+${KUMA_DECISIONS_BOOT_PACK}"
+fi
 KUMA_BOOTSTRAP_BRIEF_PROMPT="$(cat <<'EOF'
 쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.
 

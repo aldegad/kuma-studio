@@ -15,6 +15,43 @@ import { createTeamConfigWatcherHandler } from "./team-config-watcher.mjs";
 
 const CMUX_SPAWN_SCRIPT_PATH = fileURLToPath(new URL("../../../../scripts/cmux/kuma-cmux-spawn.sh", import.meta.url));
 const CMUX_TEAM_CONFIG_SCRIPT_PATH = fileURLToPath(new URL("../../../../scripts/cmux/kuma-cmux-team-config.sh", import.meta.url));
+const DECISIONS_FIXTURE = `---
+title: Decisions Ledger
+type: special/decisions
+updated: 2026-04-13T01:00:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Open Decisions
+
+- 20260413-010000-identity: preference · global · "에이전트 이름/결정사항은 startup prompt에 넣는다"
+
+## Ledger
+
+### 2026-04-13 01:00 KST · preference · global
+
+- id: 20260413-010000-identity
+- action: preference
+- scope: global
+- writer: user-direct
+- resolved_text: "에이전트 이름과 결정사항은 startup/system prompt에 직접 넣는다."
+
+## Inbox
+
+fixture
+
+### 20260413-010500-inbox · user-direct
+
+- action: priority
+- scope: project:kuma-studio
+- original_text: "decision 사항이 프롬프트에도 들어가야 해."
+- status: unresolved
+`;
 
 async function waitFor(assertion, timeoutMs = 4_000) {
   const startedAt = Date.now();
@@ -36,6 +73,13 @@ function sleepSync(ms) {
 function writeExecutable(path, content) {
   writeFileSync(path, content, "utf8");
   chmodSync(path, 0o755);
+}
+
+function writeDecisionsFixture(root) {
+  const vaultDir = join(root, "vault");
+  mkdirSync(vaultDir, { recursive: true });
+  writeFileSync(join(vaultDir, "decisions.md"), DECISIONS_FIXTURE, "utf8");
+  return vaultDir;
 }
 
 function createMinimalTeamSchema(overrides = {}) {
@@ -763,6 +807,7 @@ describe("studio-routes team-config", () => {
   it("spawns a system codex worker with member identity in developer instructions", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
+    const vaultDir = writeDecisionsFixture(root);
 
     const fakeCmux = createFakeCmuxEnvironment(
       root,
@@ -797,7 +842,7 @@ describe("studio-routes team-config", () => {
       ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "노을이" "" "${root}"`],
       {
         encoding: "utf8",
-        env: fakeCmux.spawnEnv(),
+        env: fakeCmux.spawnEnv({ KUMA_VAULT_DIR: vaultDir }),
       },
     );
 
@@ -806,11 +851,14 @@ describe("studio-routes team-config", () => {
     assert.match(command, /KUMA_ROLE=worker codex -m gpt-5\.4-mini/u);
     assert.match(command, /노을이야\./u);
     assert.match(command, /Vault Curator\./u);
+    assert.match(command, /Decision Ledger Boot Pack:/u);
+    assert.match(command, /에이전트 이름과 결정사항은 startup\/system prompt에 직접 넣는다\./u);
   }, 30_000);
 
   it("spawns the exact claude command with member identity in the startup prompt", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
+    const vaultDir = writeDecisionsFixture(root);
 
     const fakeCmux = createFakeCmuxEnvironment(
       root,
@@ -836,7 +884,7 @@ describe("studio-routes team-config", () => {
       ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "쿤" "" "${root}"`],
       {
         encoding: "utf8",
-        env: fakeCmux.spawnEnv(),
+        env: fakeCmux.spawnEnv({ KUMA_VAULT_DIR: vaultDir }),
       },
     );
 
@@ -846,6 +894,8 @@ describe("studio-routes team-config", () => {
     assert.match(command, /--append-system-prompt/u);
     assert.match(command, /쿤야\./u);
     assert.match(command, /Publisher \/ Designer\./u);
+    assert.match(command, /Decision Ledger Boot Pack:/u);
+    assert.match(command, /decision 사항이 프롬프트에도 들어가야 해\./u);
     assert.match(command, /Do not respond unless there is a startup problem\./u);
   }, 30_000);
 

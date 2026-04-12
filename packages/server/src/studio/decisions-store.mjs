@@ -663,6 +663,36 @@ export async function listOpenDecisions({ vaultDir }) {
   };
 }
 
+export async function loadDecisionBootPack({
+  vaultDir,
+  openLedgerLimit = 10,
+  latestResolvedLimit = 10,
+  unresolvedInboxLimit = 10,
+} = {}) {
+  const activeVaultDir = resolve(vaultDir ?? join(process.env.HOME ?? ".", ".kuma", "vault"));
+  const filePath = join(activeVaultDir, DECISIONS_FILE_NAME);
+
+  if (!existsSync(filePath)) {
+    return {
+      ledger_open: [],
+      latest_resolved: [],
+      inbox_unresolved: [],
+    };
+  }
+
+  const document = await readDecisionsDocument(activeVaultDir);
+  const ledgerEntries = document.ledgerEntries.map(toPublicLedgerEntry);
+  const unresolvedInboxEntries = document.inboxEntries
+    .filter((entry) => trimString(entry.status || "unresolved") === "unresolved")
+    .map(toPublicInboxEntry);
+
+  return {
+    ledger_open: ledgerEntries.slice(-openLedgerLimit).reverse(),
+    latest_resolved: ledgerEntries.slice(-latestResolvedLimit).reverse(),
+    inbox_unresolved: unresolvedInboxEntries.slice(-unresolvedInboxLimit).reverse(),
+  };
+}
+
 export async function resolveDecision({ vaultDir, id, resolvedText, writer = "user-direct", contextRef = "" }) {
   return promoteToLedger({
     vaultDir,

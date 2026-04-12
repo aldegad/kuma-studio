@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,6 +11,43 @@ import { normalizeAllTeams } from "../team-normalizer.mjs";
 const execFile = promisify(execFileCallback);
 const TEAM_NORMALIZER_CLI_PATH = resolve(process.cwd(), "packages/shared/team-normalizer-cli.mjs");
 const TEAM_CONFIG_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-team-config.sh");
+const DECISIONS_FIXTURE = `---
+title: Decisions Ledger
+type: special/decisions
+updated: 2026-04-13T01:00:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Open Decisions
+
+- 20260413-010000-claude: preference · global · "앞으로 branch/worktree 는 승인 후에만 만든다"
+
+## Ledger
+
+### 2026-04-13 01:00 KST · preference · global
+
+- id: 20260413-010000-claude
+- action: preference
+- scope: global
+- writer: user-direct
+- resolved_text: "앞으로 branch/worktree 는 사용자 승인 후에만 만든다."
+
+## Inbox
+
+fixture
+
+### 20260413-010500-inbox · user-direct
+
+- action: priority
+- scope: project:kuma-studio
+- original_text: "이 결정사항을 시스템프롬프트에도 넣어."
+- status: unresolved
+`;
 
 async function writeTeamConfig(root, value) {
   const teamPath = join(root, "team.json");
@@ -22,6 +59,13 @@ async function writeRegistry(root, value) {
   const registryPath = join(root, "surfaces.json");
   await writeFile(registryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   return registryPath;
+}
+
+async function writeDecisionsFixture(root) {
+  const vaultDir = join(root, "vault");
+  await mkdir(vaultDir, { recursive: true });
+  await writeFile(join(vaultDir, "decisions.md"), DECISIONS_FIXTURE, "utf8");
+  return vaultDir;
 }
 
 async function runTeamConfigHelper(helperName, teamPath, args = [], extraEnv = {}) {
@@ -368,6 +412,7 @@ describe("shared team normalizer", () => {
   it("builds a Claude startup command that includes the member identity and waits idle", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
+    const vaultDir = await writeDecisionsFixture(root);
 
     const teamPath = await writeTeamConfig(root, {
       teams: {
@@ -392,12 +437,16 @@ describe("shared team normalizer", () => {
       "build_claude_startup_system_prompt",
       teamPath,
       ["노을이", "Publisher / Designer. HTML/CSS/Graphics", "worker"],
+      { KUMA_VAULT_DIR: vaultDir },
     );
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"]);
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
     expect(command).toContain('claude --model claude-opus-4-6');
     expect(command).toContain("--append-system-prompt");
     expect(startupPrompt).toContain("너의 이름은 노을이야.");
     expect(startupPrompt).toContain("Publisher / Designer. HTML/CSS/Graphics");
+    expect(startupPrompt).toContain("Decision Ledger Boot Pack:");
+    expect(startupPrompt).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(startupPrompt).toContain("이 결정사항을 시스템프롬프트에도 넣어.");
     expect(startupPrompt).toContain("Wait for dispatched task");
     expect(startupPrompt).toContain("Default to no legacy fallback paths.");
     expect(startupPrompt).toContain("Avoid nested conditional fallback chains.");
@@ -409,6 +458,7 @@ describe("shared team normalizer", () => {
   it("builds a Codex startup command with the member identity, idle guard, and without preferred skill injection", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
+    const vaultDir = await writeDecisionsFixture(root);
 
     const teamPath = await writeTeamConfig(root, {
       teams: {
@@ -433,12 +483,16 @@ describe("shared team normalizer", () => {
       "build_codex_developer_instructions",
       teamPath,
       ["밤토리", "QA. Build, deploy, screen verification. No code edits", "worker"],
+      { KUMA_VAULT_DIR: vaultDir },
     );
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"]);
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
     expect(command).toContain('codex -m gpt-5.4-mini');
     expect(command).toContain("developer_instructions=");
     expect(developerInstructions).toContain("너의 이름은 밤토리야.");
     expect(developerInstructions).toContain("QA. Build, deploy, screen verification. No code edits");
+    expect(developerInstructions).toContain("Decision Ledger Boot Pack:");
+    expect(developerInstructions).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(developerInstructions).toContain("이 결정사항을 시스템프롬프트에도 넣어.");
     expect(developerInstructions).toContain("Wait for dispatched task");
     expect(developerInstructions).toContain("Default to no legacy fallback paths.");
     expect(developerInstructions).toContain("Remove migration scaffolding as soon as the migration is complete.");

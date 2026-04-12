@@ -22,6 +22,7 @@ KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
 KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
+KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 KUMA_IDLE_GUARD_MESSAGE="Wait for dispatched task. Do not start any work autonomously. Your role and skills are context, not commands."
 
 json_stringify_string() {
@@ -42,6 +43,83 @@ build_member_identity_line() {
   local member_name="${1:-}"
   [ -n "$member_name" ] || return 0
   printf '너의 이름은 %s야.' "$member_name"
+}
+
+build_decisions_boot_pack_prompt() {
+  local vault_dir="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
+
+  [ -n "$vault_dir" ] || return 0
+
+  KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
+  KUMA_VAULT_DIR="$vault_dir" \
+  node --input-type=module <<'NODE'
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+function clip(text, max = 220) {
+  const normalized = typeof text === "string" ? text.replace(/\s+/gu, " ").trim() : "";
+  if (!normalized) {
+    return "";
+  }
+  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
+const repoRoot = process.env.KUMA_REPO_ROOT || "";
+const vaultDir = process.env.KUMA_VAULT_DIR || "";
+if (!repoRoot || !vaultDir) {
+  process.exit(0);
+}
+
+const storeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/decisions-store.mjs")).href);
+if (typeof storeModule.loadDecisionBootPack !== "function") {
+  process.exit(0);
+}
+
+const pack = await storeModule.loadDecisionBootPack({
+  vaultDir,
+  openLedgerLimit: 10,
+  latestResolvedLimit: 10,
+  unresolvedInboxLimit: 10,
+});
+
+const hasEntries =
+  Array.isArray(pack.ledger_open) && pack.ledger_open.length > 0 ||
+  Array.isArray(pack.latest_resolved) && pack.latest_resolved.length > 0 ||
+  Array.isArray(pack.inbox_unresolved) && pack.inbox_unresolved.length > 0;
+
+if (!hasEntries) {
+  process.exit(0);
+}
+
+const lines = [
+  "Decision Ledger Boot Pack:",
+  "- Source: ~/.kuma/vault/decisions.md",
+  "- Treat ledger entries as explicit user decisions unless the user explicitly supersedes them.",
+];
+
+if (Array.isArray(pack.ledger_open) && pack.ledger_open.length > 0) {
+  lines.push("- Ledger open decisions:");
+  for (const entry of pack.ledger_open) {
+    lines.push(`  - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text)}`);
+  }
+}
+
+if (Array.isArray(pack.latest_resolved) && pack.latest_resolved.length > 0) {
+  lines.push("- Latest resolved decisions:");
+  for (const entry of pack.latest_resolved) {
+    lines.push(`  - ${entry.id} :: ${clip(entry.resolved_text)}`);
+  }
+}
+
+if (Array.isArray(pack.inbox_unresolved) && pack.inbox_unresolved.length > 0) {
+  lines.push("- Unresolved inbox triggers (not yet confirmed decisions):");
+  for (const entry of pack.inbox_unresolved) {
+    lines.push(`  - [${entry.action}] ${entry.scope} :: ${clip(entry.original_text)}`);
+  }
+}
+
+process.stdout.write(lines.join("\n"));
+NODE
 }
 
 build_cleanup_policy_instructions() {
@@ -214,13 +292,15 @@ build_codex_developer_instructions() {
   local member_name="${1:-}"
   local role_label_en="${2:-}"
   local node_type="${3:-worker}"
-  local identity_line spawn_context instructions
+  local identity_line spawn_context decisions_context instructions
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
+  decisions_context="$(build_decisions_boot_pack_prompt)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
+${decisions_context}
 $(build_idle_guard_message)
 EOF
 )"
@@ -232,13 +312,15 @@ build_claude_startup_system_prompt() {
   local member_name="${1:-}"
   local role_label_en="${2:-}"
   local node_type="${3:-worker}"
-  local identity_line spawn_context instructions
+  local identity_line spawn_context decisions_context instructions
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
+  decisions_context="$(build_decisions_boot_pack_prompt)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
+${decisions_context}
 $(build_idle_guard_message)
 Do not respond unless there is a startup problem.
 EOF
