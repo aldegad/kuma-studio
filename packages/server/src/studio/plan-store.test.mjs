@@ -232,4 +232,68 @@ status: active
       },
     });
   });
+
+  it("preserves frontmatter warning semantics while using the shared parser", async () => {
+    const plansDir = await mkdtemp(join(tmpdir(), "kuma-plan-warnings-"));
+    tempDirs.push(plansDir);
+    process.env.KUMA_PLANS_DIR = plansDir;
+
+    await mkdir(join(plansDir, "kuma-studio"), { recursive: true });
+    await writeFile(
+      join(plansDir, "kuma-studio", "malformed-plan.md"),
+      `---
+title: Malformed Plan
+bad frontmatter line
+status: active
+---
+
+## Todo
+- [x] keep warning shape
+`,
+      "utf8",
+    );
+    await writeFile(
+      join(plansDir, "kuma-studio", "open-frontmatter.md"),
+      `---
+title: Missing Closing Delimiter
+status: active
+
+## Todo
+- [ ] still readable
+`,
+      "utf8",
+    );
+    await writeFile(join(plansDir, "kuma-studio", "empty.md"), "", "utf8");
+
+    const snapshot = await readPlans();
+
+    const malformedPlan = snapshot.plans.find((plan) => plan.id === "kuma-studio/malformed-plan");
+    assert.deepStrictEqual(malformedPlan?.warnings, [
+      {
+        code: "frontmatter-malformed",
+        message: "Ignoring malformed frontmatter at line 3.",
+      },
+    ]);
+    assert.strictEqual(malformedPlan?.title, "Malformed Plan");
+    assert.strictEqual(malformedPlan?.checkedItems, 1);
+
+    const openFrontmatterPlan = snapshot.plans.find((plan) => plan.id === "kuma-studio/open-frontmatter");
+    assert.deepStrictEqual(openFrontmatterPlan?.warnings, [
+      {
+        code: "frontmatter-not-closed",
+        message: "Frontmatter start delimiter was found without a closing delimiter.",
+      },
+    ]);
+    assert.strictEqual(openFrontmatterPlan?.title, "kuma-studio/open-frontmatter");
+    assert.strictEqual(openFrontmatterPlan?.checkedItems, 0);
+
+    const emptyPlan = snapshot.plans.find((plan) => plan.id === "kuma-studio/empty");
+    assert.deepStrictEqual(emptyPlan?.warnings, [
+      {
+        code: "empty-file",
+        message: "Plan file is empty.",
+      },
+    ]);
+    assert.strictEqual(emptyPlan?.title, "kuma-studio/empty");
+  });
 });

@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import { basename, extname, join, normalize, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 
+import { parseFrontmatterDocument } from "./vault-ingest.mjs";
+
 const MEMO_IMAGE_ROUTE_PREFIX = "/studio/memo-images/";
 const USER_MEMORY_INDEX_FILE_NAME = "MEMORY.md";
 const VAULT_SYSTEM_FILE_NAMES = new Set(["index.md", "schema.md", "log.md"]);
@@ -83,67 +85,6 @@ const SEED_MEMOS = [
     ],
   },
 ];
-
-function normalizeFrontmatterValue(rawValue) {
-  const value = rawValue.trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function parseMemoFrontmatter(content = "") {
-  const safeContent = typeof content === "string" ? content : "";
-  if (safeContent.trim().length === 0) {
-    return { frontmatter: {}, body: "" };
-  }
-
-  const lines = safeContent.split(/\r?\n/u);
-  if (lines[0]?.trim() !== "---") {
-    return { frontmatter: {}, body: safeContent.trim() };
-  }
-
-  const closingIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
-  if (closingIndex === -1) {
-    return { frontmatter: {}, body: safeContent.trim() };
-  }
-
-  const frontmatter = Object.create(null);
-  let currentArrayKey = null;
-
-  for (const rawLine of lines.slice(1, closingIndex)) {
-    const line = rawLine.trimEnd();
-    const arrayItem = line.match(/^\s*-\s*(.+)$/u);
-    if (currentArrayKey && arrayItem) {
-      frontmatter[currentArrayKey].push(normalizeFrontmatterValue(arrayItem[1]));
-      continue;
-    }
-
-    const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/u);
-    if (!match) {
-      currentArrayKey = null;
-      continue;
-    }
-
-    const [, key, rawValue] = match;
-    if (rawValue.trim() === "") {
-      frontmatter[key] = [];
-      currentArrayKey = key;
-      continue;
-    }
-
-    currentArrayKey = null;
-    frontmatter[key] = normalizeFrontmatterValue(rawValue);
-  }
-
-  return {
-    frontmatter,
-    body: lines.slice(closingIndex + 1).join("\n").trim(),
-  };
-}
 
 function toMemoImageFilename(image) {
   if (typeof image !== "string") {
@@ -329,7 +270,7 @@ export class MemoStore {
     const content = await readFile(fullPath, "utf8");
 
     if (extension === ".md") {
-      const { frontmatter, body } = parseMemoFrontmatter(content);
+      const { frontmatter, body } = parseFrontmatterDocument(content);
       const rawImages = Array.isArray(frontmatter.images) ? frontmatter.images : [];
       return {
         id: entryId,

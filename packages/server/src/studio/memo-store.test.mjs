@@ -133,6 +133,63 @@ describe("memo-store", () => {
     expect(memos.every((memo) => memo.source === "user-memo")).toBe(true);
   });
 
+  it("parses frontmatter arrays, quoted values, and trims body when reading user memos", async () => {
+    await setupMemoEnv();
+    const store = new MemoStore(process.cwd());
+    await store.list();
+
+    const memoPath = join(process.env.KUMA_USER_MEMO_DIR, "shared-parser.md");
+    const content = [
+      "---",
+      'title: "Quoted 제목"',
+      "created: 2026-04-11T09:00:00.000Z",
+      "images:",
+      "  - first.png",
+      '  - "second.png"',
+      "---",
+      "",
+      "",
+      "  body content  ",
+      "",
+      "",
+    ].join("\n");
+    await writeFile(memoPath, content, "utf8");
+
+    const memos = await store.list();
+    const parsed = memos.find((memo) => memo.id === "shared-parser.md");
+
+    expect(parsed).toBeDefined();
+    expect(parsed?.title).toBe("Quoted 제목");
+    expect(parsed?.createdAt).toBe("2026-04-11T09:00:00.000Z");
+    expect(parsed?.text).toBe("body content");
+    expect(parsed?.images).toEqual([
+      "/studio/memo-images/first.png",
+      "/studio/memo-images/second.png",
+    ]);
+  });
+
+  it("falls back to derived title and mtime when frontmatter is missing, and trims bare body", async () => {
+    await setupMemoEnv();
+    const store = new MemoStore(process.cwd());
+    await store.list();
+
+    await writeFile(
+      join(process.env.KUMA_USER_MEMO_DIR, "no-frontmatter_note.md"),
+      "\n\nplain body only\n\n",
+      "utf8",
+    );
+
+    const memos = await store.list();
+    const bare = memos.find((memo) => memo.id === "no-frontmatter_note.md");
+
+    expect(bare).toBeDefined();
+    expect(bare?.title).toBe("no frontmatter note");
+    expect(bare?.text).toBe("plain body only");
+    expect(bare?.images).toEqual([]);
+    expect(typeof bare?.createdAt).toBe("string");
+    expect(bare?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
+  });
+
   it("seeds user-memo files only once even when list() runs multiple times", async () => {
     await setupMemoEnv();
     const store = new MemoStore(process.cwd());

@@ -9,6 +9,8 @@ import fs, { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { parseFrontmatterDocument } from "./vault-ingest.mjs";
+
 const PLAN_STATUS_COLOR_BY_STATUS = {
   active: "blue",
   hold: "yellow",
@@ -93,17 +95,6 @@ function createWarning(code, message) {
   return { code, message };
 }
 
-function normalizeFrontmatterValue(rawValue) {
-  const value = rawValue.trim();
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
 function parseFrontmatter(content = "") {
   const safeContent = typeof content === "string" ? content : "";
   const warnings = [];
@@ -115,7 +106,7 @@ function parseFrontmatter(content = "") {
 
   const lines = safeContent.split(/\r?\n/u);
   if (lines[0]?.trim() !== "---") {
-    return { frontmatter: {}, body: safeContent, warnings };
+    return { ...parseFrontmatterDocument(safeContent), warnings };
   }
 
   const closingIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
@@ -126,10 +117,9 @@ function parseFrontmatter(content = "") {
         "Frontmatter start delimiter was found without a closing delimiter.",
       ),
     );
-    return { frontmatter: {}, body: safeContent, warnings };
+    return { ...parseFrontmatterDocument(safeContent), warnings };
   }
 
-  const frontmatter = Object.create(null);
   for (const [index, rawLine] of lines.slice(1, closingIndex).entries()) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
@@ -142,18 +132,10 @@ function parseFrontmatter(content = "") {
           `Ignoring malformed frontmatter at line ${index + 2}.`,
         ),
       );
-      continue;
     }
-
-    const [, key, value] = match;
-    frontmatter[key] = normalizeFrontmatterValue(value);
   }
 
-  return {
-    frontmatter,
-    body: lines.slice(closingIndex + 1).join("\n"),
-    warnings,
-  };
+  return { ...parseFrontmatterDocument(safeContent), warnings };
 }
 
 function parseChecklist(body = "") {

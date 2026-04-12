@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, extname, join, relative, resolve } from "node:path";
 
 import { resolveVaultDir } from "./memo-store.mjs";
+import { parseFrontmatterDocument } from "./vault-ingest.mjs";
 
 const MARKDOWN_EXTENSION = ".md";
 const WALK_SKIP_DIRS = new Set([".git", "images", "node_modules"]);
@@ -13,22 +14,6 @@ function normalizeLineEndings(value) {
 
 function normalizeSearchText(value) {
   return normalizeLineEndings(value).toLowerCase();
-}
-
-function normalizeFrontmatterValue(rawValue) {
-  const value = String(rawValue ?? "").trim();
-  if (!value) {
-    return "";
-  }
-
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-
-  return value;
 }
 
 function normalizeRelativePath(value) {
@@ -80,25 +65,59 @@ async function walkVaultMarkdownFiles(rootDir, currentDir = rootDir) {
   return files;
 }
 
-function parseFrontmatterLines(content = "") {
-  const normalized = normalizeLineEndings(content);
-  const lines = normalized.split("\n");
-
+function resolveFrontmatterBoundary(lines) {
   if (lines[0]?.trim() !== "---") {
     return {
-      lines,
+      closingIndex: -1,
       bodyStartIndex: 0,
-      frontmatterFields: [],
     };
   }
 
   const closingIndex = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
   if (closingIndex === -1) {
     return {
-      lines,
+      closingIndex: -1,
       bodyStartIndex: 0,
+    };
+  }
+
+  return {
+    closingIndex,
+    bodyStartIndex: closingIndex + 1,
+  };
+}
+
+function normalizeFrontmatterSearchValue(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item ?? "").trim())
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  return String(value ?? "").trim();
+}
+
+// Search still needs original line numbers/excerpts even though parsing now comes from the shared ingest parser.
+function parseFrontmatterSearchBridge(content = "") {
+  const normalized = normalizeLineEndings(content);
+  const lines = normalized.split("\n");
+  const { frontmatter } = parseFrontmatterDocument(normalized);
+  const { closingIndex, bodyStartIndex } = resolveFrontmatterBoundary(lines);
+
+  if (closingIndex === -1) {
+    return {
+      lines,
+      bodyStartIndex,
       frontmatterFields: [],
     };
+  }
+
+  const arrayValueQueues = new Map();
+  for (const [key, value] of Object.entries(frontmatter)) {
+    if (Array.isArray(value)) {
+      arrayValueQueues.set(key, [...value]);
+    }
   }
 
   const frontmatterFields = [];
@@ -109,9 +128,14 @@ function parseFrontmatterLines(content = "") {
     const trimmedLine = rawLine.trimEnd();
     const arrayItem = trimmedLine.match(/^\s*-\s*(.+)$/u);
     if (currentArrayKey && arrayItem) {
+      const normalizedValue = normalizeFrontmatterSearchValue(arrayValueQueues.get(currentArrayKey)?.shift());
+      if (!normalizedValue) {
+        continue;
+      }
+
       frontmatterFields.push({
         key: currentArrayKey,
-        value: normalizeFrontmatterValue(arrayItem[1]),
+        value: normalizedValue,
         lineNumber: index + 1,
         excerpt: trimmedLine.trim(),
       });
@@ -125,15 +149,21 @@ function parseFrontmatterLines(content = "") {
     }
 
     const [, key, rawValue] = keyMatch;
+    const parsedValue = frontmatter[key];
     if (rawValue.trim() === "") {
-      currentArrayKey = key;
+      currentArrayKey = Array.isArray(parsedValue) ? key : null;
       continue;
     }
 
     currentArrayKey = null;
+    const normalizedValue = normalizeFrontmatterSearchValue(parsedValue);
+    if (!normalizedValue) {
+      continue;
+    }
+
     frontmatterFields.push({
       key,
-      value: normalizeFrontmatterValue(rawValue),
+      value: normalizedValue,
       lineNumber: index + 1,
       excerpt: trimmedLine.trim(),
     });
@@ -148,7 +178,7 @@ function parseFrontmatterLines(content = "") {
 
 function analyzeVaultDocument(relativePath, content, normalizedQuery) {
   const canonicalId = basename(relativePath, extname(relativePath));
-  const { lines, bodyStartIndex, frontmatterFields } = parseFrontmatterLines(content);
+  const { lines, bodyStartIndex, frontmatterFields } = parseFrontmatterSearchBridge(content);
   const entityMatches = [];
   const contentMatches = [];
 

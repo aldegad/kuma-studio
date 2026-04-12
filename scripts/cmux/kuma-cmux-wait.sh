@@ -23,6 +23,7 @@ find_repo_root() {
 }
 
 REPO_ROOT="${KUMA_REPO_ROOT:-$(find_repo_root || pwd)}"
+SOURCE_REPO_ROOT="${KUMA_SOURCE_REPO_ROOT:-$(find_repo_root || pwd)}"
 KUMA_SURFACE_CLASSIFIER_CLI="${KUMA_SURFACE_CLASSIFIER_CLI:-$REPO_ROOT/packages/shared/surface-classifier-cli.mjs}"
 AUTO_INGEST_ENABLED="${KUMA_AUTO_VAULT_INGEST:-1}"
 AUTO_INGEST_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
@@ -145,43 +146,17 @@ warn_once() {
 parse_task_file_json() {
   local task_file="${1:?task file required}"
 
-  node --input-type=module - "$task_file" <<'NODE'
+  node --input-type=module - "$SOURCE_REPO_ROOT" "$task_file" <<'NODE'
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const [, , taskFile] = process.argv;
+const [, , repoRoot, taskFile] = process.argv;
+const vaultIngestModuleUrl = pathToFileURL(resolve(repoRoot, "packages/server/src/studio/vault-ingest.mjs")).href;
+const { parseFrontmatterDocument } = await import(vaultIngestModuleUrl);
 
 function normalize(value) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function parseFrontmatterAndBody(contents) {
-  const lines = contents.split(/\r?\n/u);
-  if (lines[0] !== "---") {
-    return null;
-  }
-
-  const data = {};
-  let index = 1;
-  for (; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line === "---") {
-      index += 1;
-      break;
-    }
-    const separator = line.indexOf(":");
-    if (separator === -1) {
-      continue;
-    }
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1).trim();
-    data[key] = value === "null" ? "" : value;
-  }
-
-  return {
-    frontmatter: data,
-    body: lines.slice(index).join("\n"),
-  };
 }
 
 function summarize(body) {
@@ -198,11 +173,13 @@ if (!existsSync(taskFile)) {
   process.exit(1);
 }
 
-const parsed = parseFrontmatterAndBody(readFileSync(taskFile, "utf8"));
-if (!parsed) {
+const content = readFileSync(taskFile, "utf8");
+const normalizedLines = String(content ?? "").replace(/\r/gu, "").split("\n");
+if (normalizedLines[0] !== "---" || normalizedLines.findIndex((line, index) => index > 0 && line === "---") === -1) {
   process.exit(1);
 }
 
+const parsed = parseFrontmatterDocument(content);
 const frontmatter = parsed.frontmatter;
 process.stdout.write(JSON.stringify({
   taskFile: resolve(taskFile),
@@ -223,43 +200,17 @@ NODE
 }
 
 resolve_task_metadata_json() {
-  node --input-type=module - "$AUTO_INGEST_TASK_DIR" "$RESULT_FILE" "$SIGNAL" <<'NODE'
+  node --input-type=module - "$SOURCE_REPO_ROOT" "$AUTO_INGEST_TASK_DIR" "$RESULT_FILE" "$SIGNAL" <<'NODE'
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const [, , taskDir, rawResultPath, signal] = process.argv;
+const [, , repoRoot, taskDir, rawResultPath, signal] = process.argv;
+const vaultIngestModuleUrl = pathToFileURL(resolve(repoRoot, "packages/server/src/studio/vault-ingest.mjs")).href;
+const { parseFrontmatterDocument } = await import(vaultIngestModuleUrl);
 
 function normalize(value) {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function parseFrontmatterAndBody(contents) {
-  const lines = contents.split(/\r?\n/u);
-  if (lines[0] !== "---") {
-    return null;
-  }
-
-  const data = {};
-  let index = 1;
-  for (; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line === "---") {
-      index += 1;
-      break;
-    }
-    const separator = line.indexOf(":");
-    if (separator === -1) {
-      continue;
-    }
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1).trim();
-    data[key] = value === "null" ? "" : value;
-  }
-
-  return {
-    frontmatter: data,
-    body: lines.slice(index).join("\n"),
-  };
 }
 
 function summarize(body) {
@@ -283,11 +234,13 @@ const files = readdirSync(taskDir)
 
 for (const entry of files) {
   const taskFile = join(taskDir, entry);
-  const parsed = parseFrontmatterAndBody(readFileSync(taskFile, "utf8"));
-  if (!parsed) {
+  const content = readFileSync(taskFile, "utf8");
+  const normalizedLines = String(content ?? "").replace(/\r/gu, "").split("\n");
+  if (normalizedLines[0] !== "---" || normalizedLines.findIndex((line, index) => index > 0 && line === "---") === -1) {
     continue;
   }
 
+  const parsed = parseFrontmatterDocument(content);
   const frontmatter = parsed.frontmatter;
   const taskResult = normalize(frontmatter.result);
   const taskSignal = normalize(frontmatter.signal);
@@ -418,8 +371,8 @@ run_vault_lifecycle_hook() {
     flock "$lock_fd"
   fi
 
-  if ! response="$(
-    node --input-type=module - "$REPO_ROOT" "$KUMA_VAULT_DIR" "$event" "$task_json" "$summary" "$blocker" "$note" <<'NODE'
+if ! response="$(
+    node --input-type=module - "$SOURCE_REPO_ROOT" "$KUMA_VAULT_DIR" "$event" "$task_json" "$summary" "$blocker" "$note" <<'NODE'
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -427,6 +380,8 @@ import { pathToFileURL } from "node:url";
 const [, , repoRoot, vaultDir, event, rawTaskJson, summaryArg, blockerArg, noteArg] = process.argv;
 const warnings = [];
 const now = new Date().toISOString();
+const vaultIngestModuleUrl = pathToFileURL(join(repoRoot, "packages/server/src/studio/vault-ingest.mjs")).href;
+const { parseFrontmatterDocument } = await import(vaultIngestModuleUrl);
 
 function normalize(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -439,37 +394,13 @@ function addWarning(filePath, reason, message) {
   });
 }
 
-function splitFrontmatter(contents) {
+function hasFrontmatterBlock(contents) {
   const lines = String(contents ?? "").replace(/\r/gu, "").split("\n");
   if (lines[0] !== "---") {
-    return null;
+    return false;
   }
 
-  const frontmatter = {};
-  let index = 1;
-  for (; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line === "---") {
-      index += 1;
-      break;
-    }
-    const separator = line.indexOf(":");
-    if (separator === -1) {
-      continue;
-    }
-    const key = line.slice(0, separator).trim();
-    const value = line.slice(separator + 1).trim();
-    frontmatter[key] = value;
-  }
-
-  if (index > lines.length) {
-    return null;
-  }
-
-  return {
-    frontmatter,
-    body: lines.slice(index).join("\n").replace(/^\n+/u, ""),
-  };
+  return lines.findIndex((line, index) => index > 0 && line === "---") !== -1;
 }
 
 function parseSections(body) {
@@ -589,12 +520,13 @@ function loadManagedFile(path) {
     return null;
   }
 
-  const parsed = splitFrontmatter(readFileSync(path, "utf8"));
-  if (!parsed) {
+  const content = readFileSync(path, "utf8");
+  if (!hasFrontmatterBlock(content)) {
     addWarning(path, "invalid-frontmatter", `${path} has no YAML frontmatter; skipping lifecycle hook update`);
     return null;
   }
 
+  const parsed = parseFrontmatterDocument(content);
   return {
     path,
     frontmatter: parsed.frontmatter,

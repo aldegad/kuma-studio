@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { parseFrontmatterDocument } from "./studio/vault-ingest.mjs";
+
 const execFile = promisify(execFileCallback);
 
 const WAIT_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-wait.sh");
@@ -98,24 +100,6 @@ boot_priority: 3
 (비어 있음 — 유저 명시 발화만 기록)
 `,
     "utf8",
-  );
-}
-
-function parseFrontmatter(contents) {
-  const match = contents.match(/^---\n([\s\S]*?)\n---\n/m);
-  if (!match) {
-    throw new Error("missing frontmatter");
-  }
-
-  return Object.fromEntries(
-    match[1]
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const separator = line.indexOf(":");
-        return [line.slice(0, separator).trim(), line.slice(separator + 1).trim()];
-      }),
   );
 }
 
@@ -541,9 +525,9 @@ Implement lifecycle hook
     expect(threadMap).toContain("thread_id: discord:thread-123");
     expect(threadMap).toContain("status: closed");
 
-    expect(parseFrontmatter(currentFocus).type).toBe("special/current-focus");
-    expect(parseFrontmatter(dispatchLog).type).toBe("special/dispatch-log");
-    expect(parseFrontmatter(threadMap).type).toBe("special/thread-map");
+    expect(parseFrontmatterDocument(currentFocus).frontmatter.type).toBe("special/current-focus");
+    expect(parseFrontmatterDocument(dispatchLog).frontmatter.type).toBe("special/dispatch-log");
+    expect(parseFrontmatterDocument(threadMap).frontmatter.type).toBe("special/thread-map");
   });
 
   it("records qa-rejected state and blocker when the result contains a QA reject marker", async () => {
@@ -627,9 +611,9 @@ Implement lifecycle hook
     expect(dispatchLog).toContain("state=qa-rejected");
     expect(threadMap).toContain("status: qa-rejected");
 
-    expect(parseFrontmatter(currentFocus).type).toBe("special/current-focus");
-    expect(parseFrontmatter(dispatchLog).type).toBe("special/dispatch-log");
-    expect(parseFrontmatter(threadMap).type).toBe("special/thread-map");
+    expect(parseFrontmatterDocument(currentFocus).frontmatter.type).toBe("special/current-focus");
+    expect(parseFrontmatterDocument(dispatchLog).frontmatter.type).toBe("special/dispatch-log");
+    expect(parseFrontmatterDocument(threadMap).frontmatter.type).toBe("special/thread-map");
   });
 
   it("records failed state and blocker when liveness detects a dead worker surface", async () => {
@@ -724,9 +708,9 @@ Implement lifecycle hook
     expect(dispatchLog).toContain("state=failed");
     expect(threadMap).toContain("status: failed");
 
-    expect(parseFrontmatter(currentFocus).type).toBe("special/current-focus");
-    expect(parseFrontmatter(dispatchLog).type).toBe("special/dispatch-log");
-    expect(parseFrontmatter(threadMap).type).toBe("special/thread-map");
+    expect(parseFrontmatterDocument(currentFocus).frontmatter.type).toBe("special/current-focus");
+    expect(parseFrontmatterDocument(dispatchLog).frontmatter.type).toBe("special/dispatch-log");
+    expect(parseFrontmatterDocument(threadMap).frontmatter.type).toBe("special/thread-map");
   });
 
   it("treats prompt plus bypass footer surfaces as idle during liveness checks", async () => {

@@ -113,6 +113,25 @@ describe("vault search", () => {
     ]);
   });
 
+  it("keeps block-array frontmatter hits on the original array item line", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const result = await searchVault({
+      vaultDir,
+      query: "misc",
+    });
+
+    expect(result.entityMatches).toEqual([
+      expect.objectContaining({
+        path: "learnings/plain-notes.md",
+        lineNumber: 4,
+        fieldKind: "frontmatter:tags",
+      }),
+    ]);
+    expect(result.contentMatches).toEqual([]);
+  });
+
   it("returns both entity and content hits when the same query matches both", async () => {
     const vaultDir = await createVaultFixture();
     tempDirs.push(vaultDir);
