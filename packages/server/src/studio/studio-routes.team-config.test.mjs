@@ -388,6 +388,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
     });
 
     try {
@@ -446,6 +447,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner(scriptPath, args) {
@@ -518,6 +520,7 @@ describe("studio-routes team-config", () => {
     const runtime = createTeamConfigRuntime({
       queuePollMs: 0,
       selfWriteTtlMs: 10,
+      resolveLiveMemberSurfacesFn: () => [],
     });
 
     try {
@@ -578,6 +581,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner() {
@@ -630,6 +634,7 @@ describe("studio-routes team-config", () => {
     const runtime = createTeamConfigRuntime({
       registryPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       killRunner(_scriptPath, surface) {
@@ -657,6 +662,65 @@ describe("studio-routes team-config", () => {
 
       assert.deepStrictEqual(calls, ["kill:surface:74", "spawn:🦔 밤토리"]);
       assert.strictEqual(result.surface, "surface:87");
+    } finally {
+      runtime.close();
+    }
+  });
+
+  it("falls back to live cmux surfaces for system member respawn when the registry misses", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-runtime-"));
+    tempDirs.push(root);
+
+    const registryPath = join(root, "surfaces.json");
+    writeFileSync(registryPath, `${JSON.stringify({ system: { "🐻 쿠마": "surface:1" } }, null, 2)}\n`, "utf8");
+
+    const calls = [];
+    const runtime = createTeamConfigRuntime({
+      registryPath,
+      queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => ["surface:24", "surface:25"],
+      resolveWorkspaceForSurfaceFn: () => "workspace:5",
+      resolvePaneForSurfaceFn: () => "pane:9",
+      killRunner(_scriptPath, surface) {
+        calls.push(`kill:${surface}`);
+      },
+      spawnRunner(_scriptPath, args) {
+        calls.push(`spawn:${args.join(" ")}`);
+        return { status: 0, stdout: "surface:26\n", stderr: "", error: null };
+      },
+    });
+
+    try {
+      const result = runtime.respawnMember({
+        memberName: "노을이",
+        memberConfig: {
+          id: "noeuri",
+          emoji: "🦌",
+          team: "system",
+          type: "claude",
+        },
+        project: "system",
+        workspaceRoot: root,
+      });
+
+      assert.deepStrictEqual(calls, [
+        "kill:surface:24",
+        "kill:surface:25",
+        "spawn:🦌 노을이 claude " + root + " system --workspace workspace:5 --pane pane:9",
+      ]);
+      assert.deepStrictEqual(result, {
+        project: "system",
+        surface: "surface:26",
+        cleanupFailed: false,
+        cleanupError: null,
+        queued: false,
+      });
+      assert.deepStrictEqual(JSON.parse(readFileSync(registryPath, "utf8")), {
+        system: {
+          "🐻 쿠마": "surface:1",
+          "🦌 노을이": "surface:26",
+        },
+      });
     } finally {
       runtime.close();
     }
@@ -752,6 +816,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner() {
