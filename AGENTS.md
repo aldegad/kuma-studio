@@ -32,6 +32,9 @@ The CLI is the canonical worker-facing interface, and Phase 4 direct main dispat
 - Server boot/restart is standardized on `npm run kuma-server:reload` for human/operator reuse of shared infra surfaces, and `npm run server:reload` as the raw in-surface/local entrypoint.
 - If the managed `kuma-server` surface already exists, restart the daemon there with `npm run kuma-server:reload` instead of starting a second server elsewhere.
 - If the managed `kuma-frontend` surface already exists, reuse it for `npm run dev:studio` instead of starting a second Vite dev server elsewhere.
+- Do not create or switch git branches unless the user explicitly instructs it.
+- Do not create git worktrees unless the user explicitly instructs it.
+- If branch/worktree isolation seems necessary to avoid conflicts, stop and ask for approval first.
 - Server code uses `.mjs` (ESM).
 - Frontend code uses TypeScript (`.ts`, `.tsx`).
 - Browser extension is vanilla JS, no build step.

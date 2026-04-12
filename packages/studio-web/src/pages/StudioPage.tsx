@@ -310,7 +310,7 @@ export function StudioPage() {
       </div>
 
       {/* Top bar — Game HUD */}
-      <div className="game-hud-bar absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-4 py-2">
+      <div className="game-hud-bar absolute top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-2">
         <div className="flex items-center gap-3">
           <span className="text-lg font-black tracking-tight text-amber-200" style={{ textShadow: "0 0 12px rgba(255, 200, 100, 0.4), 0 1px 3px rgba(0,0,0,0.4)" }}>쿠마 스튜디오</span>
           <span className="rounded-full bg-amber-400/20 text-amber-200 text-[10px] font-semibold px-2 py-0.5 border border-amber-400/25">{visibleCharacters.length}명</span>

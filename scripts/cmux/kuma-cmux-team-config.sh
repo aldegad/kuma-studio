@@ -53,6 +53,10 @@ Code cleanup policy:
 - Remove migration scaffolding as soon as the migration is complete.
 - Actively delete dead code and legacy code.
 - Preserve SSOT and SRP: keep one source of truth and one responsibility per module.
+Git branch/worktree policy:
+- Do not create or switch git branches unless the user explicitly instructs it.
+- Do not create git worktrees unless the user explicitly instructs it.
+- If branch/worktree isolation seems necessary to avoid conflicts, stop and ask for approval first.
 EOF
 }
 

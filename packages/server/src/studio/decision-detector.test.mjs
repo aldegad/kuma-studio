@@ -8,15 +8,20 @@ describe("decision-detector", () => {
     ["좋아", "approve"],
     ["이걸로 가", "approve"],
     ["이 방향으로 확정", "approve"],
+    ["이걸로 가.", "approve"],
     ["ㄴㄴ", "reject"],
     ["그건 말고", "reject"],
     ["하지 마", "reject"],
+    ["그건 말고 삭제.", "reject"],
     ["보류", "hold"],
     ["나중에", "hold"],
+    ["이건 일단 보류.", "hold"],
     ["이거 먼저", "priority"],
     ["A 보다 B 먼저", "priority"],
+    ["이거 먼저 해.", "priority"],
     ["앞으로 이렇게", "preference"],
     ["다음부터 이렇게", "preference"],
+    ["앞으로는 항상 kuma-picker 먼저 써.", "preference"],
   ])("detects %s as %s", (text, action) => {
     expect(detectDecision({ text })).toMatchObject({
       matched: true,
@@ -35,6 +40,7 @@ describe("decision-detector", () => {
     "이 함수를 호출한 다음 가자",
     "이거 먼저 볼까",
     "좋아?",
+    "앞으로는 이렇게 할까?",
     "다음부터 이렇게 할까",
   ])("filters anti-pattern or question text: %s", (text) => {
     expect(detectDecision({ text })).toBeNull();

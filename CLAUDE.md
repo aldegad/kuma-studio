@@ -28,6 +28,8 @@
 - **fallback/backfill 패턴 절대 금지.** 실패하면 실패로 보고. 자동 재전달/auto-redispatch/다른 소스에서 보충 절대 금지. SSOT 하나만 사용.
 - **서버 포트는 4312.** 3000/3001 아님. 확인 없이 포트 추측 금지.
 - **관리형 infra surface 우선.** `kuma-server`/`kuma-frontend` 가 있으면 거기서만 서버/프론트를 재시작한다. 현재 터미널에서 중복 기동 금지.
+- **브랜치/워크트리 임의 생성 금지.** 알렉스가 명시적으로 지시한 경우에만 새 git branch 또는 git worktree 를 만든다.
+- **충돌 회피 목적의 branch/worktree 도 사전 승인 필수.** 작업 충돌이 예상되면 이유를 먼저 보고하고 허가를 받은 뒤에만 분리한다.
 
 ## Dispatch Entry Points
 

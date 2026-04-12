@@ -25,6 +25,11 @@ Code cleanup policy:
 - Actively delete dead code and legacy code.
 - Preserve SSOT and SRP: keep one source of truth and one responsibility per module.
 
+Git branch/worktree policy:
+- Do not create or switch git branches unless 알렉스 explicitly instructs it.
+- Do not create git worktrees unless 알렉스 explicitly instructs it.
+- If branch/worktree isolation seems necessary to avoid conflicts, report the reason first and wait for approval.
+
 QA and browser policy:
 - Kuma Picker is the default path for screenshots and QA.
 - Playwright is only for Kuma Picker capability work or when the Kuma Picker policy explicitly allows it.

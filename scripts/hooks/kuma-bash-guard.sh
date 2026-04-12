@@ -3,8 +3,10 @@
 # 쿠마 모드에서 Bash 직접 호출을 원칙적으로 금지
 # 워커/메인 dispatch는 trusted kuma-task / kuma-dispatch wrapper를 통해 실행
 
+KUMA_MODE_LOCK_PATH="${KUMA_MODE_LOCK_PATH:-/tmp/kuma-mode.lock}"
+
 # 쿠마 모드 아니면 통과
-if [ ! -f /tmp/kuma-mode.lock ]; then
+if [ ! -f "$KUMA_MODE_LOCK_PATH" ]; then
   echo '{"continue": true}'
   exit 0
 fi

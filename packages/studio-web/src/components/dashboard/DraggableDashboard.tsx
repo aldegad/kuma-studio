@@ -357,10 +357,6 @@ export function DraggableDashboard({
       bodyUserSelectRef.current = document.body.style.userSelect;
       document.body.style.userSelect = "none";
       setDraggingId(dragSession.id);
-      setZIndices((currentZIndices) => ({
-        ...currentZIndices,
-        [dragSession.id]: nextZIndexRef.current++,
-      }));
     }
 
     const rect = container.getBoundingClientRect();
@@ -411,7 +407,19 @@ export function DraggableDashboard({
 
   const handlePanelMouseDown = useCallback(
     (id: string, event: ReactMouseEvent<HTMLDivElement>) => {
-      if (event.button !== 0 || shouldIgnoreDragStart(event.target as HTMLElement | null)) {
+      if (event.button !== 0) {
+        return;
+      }
+
+      // Raise this panel above its siblings on any interaction — a click on
+      // the body (e.g. expanding the CMUX dropdown) must not be covered by
+      // panels below. Without this, z-index only bumped after drag threshold.
+      setZIndices((current) => ({
+        ...current,
+        [id]: nextZIndexRef.current++,
+      }));
+
+      if (shouldIgnoreDragStart(event.target as HTMLElement | null)) {
         return;
       }
 
