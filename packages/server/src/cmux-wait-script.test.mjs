@@ -415,6 +415,99 @@ printf '\\n' >> "${sendLog}"
     expect(sendLogContents).toContain("/tmp/kuma-signals/noeuri-auto-kuma-task-allowlist-noeuri-phase4-done");
   });
 
+  it("runs qa-passed vault-hook post-processing without waiting for a signal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-wait-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const taskDir = join(root, "tasks");
+    const resultDir = join(root, "results");
+    const surfacesPath = join(root, "surfaces.json");
+    const sendLog = join(root, "send.log");
+    const resultPath = join(resultDir, "broker.result.md");
+    const taskPath = join(taskDir, "broker.task.md");
+
+    await mkdir(binDir, { recursive: true });
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+
+    await writeFile(
+      resultPath,
+      `trusted: worker-self-report
+# broker complete
+`,
+      "utf8",
+    );
+    await writeFile(
+      taskPath,
+      `---
+id: tookdaki-20260413-045000
+project: kuma-studio
+worker: surface:37
+qa: worker-self-report
+signal: kuma-studio-broker-done
+result: ${resultPath}
+plan: ${join(root, ".kuma", "plans", "kuma-studio", "dispatch-broker-cleanup.md")}
+---
+`,
+      "utf8",
+    );
+    await writeFile(
+      surfacesPath,
+      `${JSON.stringify({
+        system: {
+          "🦌 노을이": "surface:46",
+        },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    await writeExecutable(
+      join(binDir, "npm"),
+      `#!/bin/bash
+set -euo pipefail
+cat <<'JSON'
+{
+  "status": "ingested",
+  "taskId": "tookdaki-20260413-045000",
+  "ingest": {
+    "relativePagePath": "projects/kuma-studio.md"
+  }
+}
+JSON
+`,
+    );
+
+    const sendScriptPath = join(root, "kuma-cmux-send.sh");
+    await writeExecutable(
+      sendScriptPath,
+      `#!/bin/bash
+set -euo pipefail
+printf '%q ' "$@" > "${sendLog}"
+printf '\\n' >> "${sendLog}"
+`,
+    );
+
+    const { stderr } = await execFile("bash", [WAIT_SCRIPT_PATH, "--vault-hook", "qa-passed", "--task-file", taskPath, "--note", "worker-self-report broker completion"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_TASK_DIR: taskDir,
+        KUMA_SURFACES_PATH: surfacesPath,
+        KUMA_CMUX_SEND_SCRIPT: sendScriptPath,
+        KUMA_REPO_ROOT: root,
+        KUMA_USER_MEMO_DIR: join(root, "user-memo"),
+      },
+    });
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    expect(stderr).toContain("AUTO_INGEST:");
+    expect(stderr).toContain("NOEURI_TRIGGER: surface=surface:46");
+    expect(sendLogContents).toContain("surface:46");
+    expect(sendLogContents).toContain("task: tookdaki-20260413-045000.");
+    expect(sendLogContents).toContain(`task-file: ${taskPath}.`);
+  });
+
   it("prints the Noeuri audit report when a noeuri-auto signal completes", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-cmux-wait-"));
     tempRoots.push(root);
@@ -447,6 +540,66 @@ printf '\\n' >> "${sendLog}"
     expect(stderr).toContain(`NOEURI_AUDIT_REPORT: file=${resultPath}`);
     expect(stderr).toContain("NOEURI_AUDIT_REPORT: ## Input Context");
     expect(stderr).toContain("NOEURI_AUDIT_REPORT: - audit body");
+  });
+
+  it("treats broker qa-passed plus a result file as terminal completion even without a signal file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-wait-"));
+    tempRoots.push(root);
+
+    const taskDir = join(root, "tasks");
+    const resultDir = join(root, "results");
+    const signalDir = join(root, "signals");
+    const resultPath = join(resultDir, "broker-terminal.result.md");
+    const taskPath = join(taskDir, "broker-terminal.task.md");
+    const serverCliPath = join(root, "dispatch-status-stub.mjs");
+    const signalName = "kuma-studio-broker-terminal-done";
+
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+    await mkdir(signalDir, { recursive: true });
+
+    await writeFile(
+      resultPath,
+      `trusted: worker-self-report
+# broker terminal
+`,
+      "utf8",
+    );
+    await writeFile(
+      taskPath,
+      `---
+id: tookdaki-20260413-045100
+project: kuma-studio
+worker: surface:18
+qa: worker-self-report
+signal: ${signalName}
+result: ${resultPath}
+---
+`,
+      "utf8",
+    );
+    await writeFile(
+      serverCliPath,
+      `process.stdout.write(JSON.stringify({ dispatch: { status: "qa-passed" } }));\n`,
+      "utf8",
+    );
+
+    const { stdout, stderr } = await execFile("bash", [WAIT_SCRIPT_PATH, signalName, resultPath, "--timeout", "2"], {
+      env: {
+        ...process.env,
+        KUMA_AUTO_VAULT_INGEST: "0",
+        KUMA_AUTO_NOEURI_TRIGGER: "0",
+        KUMA_DISABLE_VAULT_HOOK: "1",
+        KUMA_SIGNAL_DIR: signalDir,
+        KUMA_TASK_DIR: taskDir,
+        KUMA_SERVER_CLI: serverCliPath,
+        KUMA_WAIT_POLL_INTERVAL: "1",
+      },
+    });
+
+    expect(stdout).toContain(`RESULT_FILE: ${resultPath}`);
+    expect(stdout).toContain("# broker terminal");
+    expect(stderr).not.toContain("SIGNAL_TIMEOUT");
   });
 
   it("records the dispatched -> worker-done -> qa-passed lifecycle in vault special files", async () => {

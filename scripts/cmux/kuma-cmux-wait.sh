@@ -282,6 +282,69 @@ current_task_metadata_json() {
   printf '%s' "$TASK_METADATA_JSON_CACHE"
 }
 
+prime_task_runtime_from_json() {
+  local task_json="${1:-}"
+  [ -n "$task_json" ] || return 0
+
+  TASK_METADATA_JSON_CACHE="$task_json"
+
+  local task_result=""
+  local task_signal=""
+  local task_surface=""
+
+  task_result="$(json_field "$task_json" result)"
+  task_signal="$(json_field "$task_json" signal)"
+  task_surface="$(json_field "$task_json" worker)"
+
+  if [ -n "$task_result" ]; then
+    RESULT_FILE="$task_result"
+  fi
+
+  if [ -n "$task_signal" ]; then
+    SIGNAL="$task_signal"
+  fi
+
+  if [ -z "$SURFACE" ] && [ -n "$task_surface" ]; then
+    SURFACE="$task_surface"
+  fi
+}
+
+current_dispatch_status() {
+  local task_json=""
+  local task_file=""
+  local dispatch_json=""
+
+  task_json="$(current_task_metadata_json)"
+  [ -n "$task_json" ] || return 1
+
+  task_file="$(json_field "$task_json" taskFile)"
+  [ -n "$task_file" ] || return 1
+  [ -f "$task_file" ] || return 1
+
+  dispatch_json="$(node "$KUMA_SERVER_CLI" dispatch-status --task-file "$task_file" 2>/dev/null || true)"
+  [ -n "$dispatch_json" ] || return 1
+
+  printf '%s' "$dispatch_json" | node -e '
+const fs = require("node:fs");
+const raw = fs.readFileSync(0, "utf8").trim();
+if (!raw) process.exit(1);
+const parsed = JSON.parse(raw);
+const status = typeof parsed?.dispatch?.status === "string" ? parsed.dispatch.status.trim() : "";
+if (!status) process.exit(1);
+process.stdout.write(status);
+' 2>/dev/null || return 1
+}
+
+broker_terminal_completion_ready() {
+  local dispatch_status=""
+
+  dispatch_status="$(current_dispatch_status 2>/dev/null || true)"
+  [ "$dispatch_status" = "qa-passed" ] || return 1
+  [ -n "$RESULT_FILE" ] || return 1
+  [ -f "$RESULT_FILE" ] || return 1
+  return 0
+}
+
 resolve_noeuri_surface() {
   node --input-type=module - "$KUMA_SURFACES_PATH" <<'NODE'
 import { existsSync, readFileSync } from "node:fs";
@@ -1078,6 +1141,14 @@ completion_handler_finish_success() {
 
   completion_handler_refresh_state
   task_json="$(current_task_metadata_json)"
+  if broker_terminal_completion_ready; then
+    auto_ingest_result || true
+    dispatch_noeuri_trigger
+    emit_noeuri_audit_report
+    print_result
+    exit 0
+  fi
+
   completion_note="$(task_completion_note "$task_json")"
   run_vault_lifecycle_hook "qa-passed" "$task_json" "" "" "$completion_note"
 
@@ -1192,6 +1263,10 @@ liveness_receiver_wait_once() {
     return 0
   fi
 
+  if broker_terminal_completion_ready; then
+    return 0
+  fi
+
   while [ "$elapsed" -lt "$timeout" ]; do
     local remaining=$((timeout - elapsed))
     local wait_time=$((interval < remaining ? interval : remaining))
@@ -1201,6 +1276,10 @@ liveness_receiver_wait_once() {
     fi
 
     if signal_file_is_fresh; then
+      return 0
+    fi
+
+    if broker_terminal_completion_ready; then
       return 0
     fi
 
@@ -1333,7 +1412,14 @@ run_vault_hook_cli() {
   }
 
   hook_task_json="$(parse_task_file_json "$hook_task_file" 2>/dev/null || true)"
+  prime_task_runtime_from_json "$hook_task_json"
   run_vault_lifecycle_hook "$hook_event" "$hook_task_json" "$hook_summary" "$hook_blocker" "$hook_note"
+
+  if [ "$hook_event" = "qa-passed" ]; then
+    auto_ingest_result || true
+    dispatch_noeuri_trigger
+    emit_noeuri_audit_report
+  fi
 }
 
 if [ "${RAW_ARGS[0]:-}" = "--vault-hook" ]; then

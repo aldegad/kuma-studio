@@ -89,7 +89,7 @@ READ_ARGS+=(--surface "$SURFACE" --lines 12)
 INTERACTIVE_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])'
 SUGGESTION_LINE_PATTERN='^[[:space:]]*›[[:space:]]+[^[:space:]]'
 EMPTY_PROMPT_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])[[:space:]]*$'
-CMUX_TRANSIENT_SEND_ERROR_PATTERN='timed out|terminal surface not found|surface not found|internal_error'
+CMUX_TRANSIENT_SEND_ERROR_PATTERN='timed out|terminal surface not found|surface not found|internal_error|broken pipe|failed to write to socket'
 
 read_input_view() {
   local screen
@@ -119,6 +119,11 @@ prompt_ready_for_send() {
   local last_line
   last_line="$(last_interactive_line "${1-}")"
   printf '%s\n' "$last_line" | grep -Eq "$EMPTY_PROMPT_LINE_PATTERN"
+}
+
+view_contains_transport_error() {
+  local view="${1-}"
+  printf '%s\n' "$view" | grep -Eiq "$CMUX_TRANSIENT_SEND_ERROR_PATTERN"
 }
 
 dismiss_blocking_suggestion() {
@@ -219,6 +224,10 @@ for enter_try in 1 2 3; do
   cmux_send_key_with_retry Enter
   sleep 0.5
   EARLY_VIEW="$(read_input_view)"
+  if view_contains_transport_error "$EARLY_VIEW"; then
+    log_send "enter-transport-error-$enter_try" "$EARLY_VIEW"
+    continue
+  fi
   if echo "$EARLY_VIEW" | grep -qE "Working \([0-9]+s"; then
     log_send "enter-accepted-try-$enter_try" "$EARLY_VIEW"
     break
@@ -236,7 +245,11 @@ for i in $(seq 1 $MAX_RETRIES); do
   sleep 1.2
   INPUT_VIEW="$(read_input_view)"
 
-  if ! views_differ "$PRE_SEND_VIEW" "$INPUT_VIEW"; then
+  if view_contains_transport_error "$INPUT_VIEW"; then
+    echo "RETRY $i: transport error after send, retrying..." >&2
+    log_send "retry-transport-error" "$INPUT_VIEW"
+    cmux_send_key_with_retry Enter
+  elif ! views_differ "$PRE_SEND_VIEW" "$INPUT_VIEW"; then
     echo "RETRY $i: screen unchanged after send, retrying..." >&2
     log_send "retry-unchanged" "$INPUT_VIEW"
     cmux_send_key_with_retry Enter

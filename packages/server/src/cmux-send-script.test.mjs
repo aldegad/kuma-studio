@@ -221,6 +221,68 @@ esac
     expect(sendLogContents).toContain("\tdelivered\t");
   });
 
+  it("does not treat broken-pipe transport errors as delivered prompts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const sendLog = join(root, "kuma-send.log");
+    const readCountPath = join(root, "read-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '❯\\n'
+    else
+      printf 'Error: Failed to write to socket (Broken pipe, errno 32)\\n'
+    fi
+    ;;
+  send|send-key)
+    ;;
+esac
+`,
+    );
+
+    let failure;
+    try {
+      await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "retry broken pipe"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+          KUMA_SEND_LOG_PATH: sendLog,
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(failure.code).toBe(1);
+    expect(`${failure.stderr}`).toContain("ERROR: Prompt delivery failed");
+    expect(`${failure.stderr}`).toContain("transport error after send");
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    expect(sendLogContents).toContain("\tenter-transport-error-1\t");
+    expect(sendLogContents).toContain("\tretry-transport-error\t");
+    expect(sendLogContents).toContain("\tfailed\t");
+    expect(sendLogContents).not.toContain("\tdelivered\t");
+  });
+
   it("routes helper scripts and kuma-task through the send wrapper instead of raw cmux send", async () => {
     for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH, KUMA_SERVER_RELOAD_PATH]) {
       const source = await readFile(filePath, "utf8");
