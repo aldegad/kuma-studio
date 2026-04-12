@@ -52,6 +52,9 @@ QA_REJECT_RECORDED=0
 SIGNAL_DIR="${KUMA_SIGNAL_DIR:-/tmp/kuma-signals}"
 AUTO_INGEST_STATUS=""
 WAIT_REFERENCE_TIMESTAMP_MS="0"
+LIVENESS_TIMEOUT_STATUS=""
+LIVENESS_TIMEOUT_PREVIEW=""
+LIVENESS_TIMEOUT_NORMALIZED_PREVIEW=""
 
 signal_file_exists() {
   [ -f "$SIGNAL_DIR/$SIGNAL" ]
@@ -1133,11 +1136,15 @@ print_result() {
   echo "DISCORD_REPORT_NEEDED"
 }
 
-finish_success() {
+completion_handler_refresh_state() {
+  observe_result_state
+}
+
+completion_handler_finish_success() {
   local task_json=""
   local completion_note=""
 
-  observe_result_state
+  completion_handler_refresh_state
   task_json="$(current_task_metadata_json)"
   completion_note="$(task_completion_note "$task_json")"
   run_vault_lifecycle_hook "qa-passed" "$task_json" "" "" "$completion_note"
@@ -1236,12 +1243,15 @@ preview: ${normalized_preview:-n/a}
 EOF
 }
 
-wait_once() {
+liveness_receiver_wait_once() {
   local timeout="$1"
+  local observer_callback="${2:-}"
   local elapsed=0
   local interval="${KUMA_WAIT_POLL_INTERVAL:-5}"
 
-  observe_result_state
+  if [ -n "$observer_callback" ]; then
+    "$observer_callback"
+  fi
 
   # Exact signal-file polling is the canonical receiver path. We ignore stale
   # files that predate the current dispatch/task metadata and never rely on
@@ -1262,14 +1272,16 @@ wait_once() {
       return 0
     fi
 
-    observe_result_state
+    if [ -n "$observer_callback" ]; then
+      "$observer_callback"
+    fi
     elapsed=$((elapsed + wait_time))
   done
 
   return 1
 }
 
-liveness_check_after_timeout() {
+liveness_receiver_probe_timeout() {
   local status_json=""
   local status=""
   local preview=""
@@ -1288,18 +1300,45 @@ liveness_check_after_timeout() {
     return 0
   fi
 
+  LIVENESS_TIMEOUT_STATUS="$status"
+  LIVENESS_TIMEOUT_PREVIEW="$preview"
+  LIVENESS_TIMEOUT_NORMALIZED_PREVIEW="$normalized_preview"
+
   case "$status" in
     working)
-      printf 'SIGNAL_TIMEOUT_CONTINUE: signal=%s surface=%s timeout=%ss status=working preview=%s\n' \
-        "$SIGNAL" \
-        "$SURFACE" \
-        "$TIMEOUT" \
-        "${normalized_preview:-n/a}" >&2
       return 3
       ;;
     idle)
+      return 2
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+completion_handler_handle_timeout() {
+  local timeout_rc="${1:?timeout result required}"
+  local preview="${LIVENESS_TIMEOUT_PREVIEW:-}"
+  local normalized_preview="${LIVENESS_TIMEOUT_NORMALIZED_PREVIEW:-n/a}"
+  local task_json=""
+
+  completion_handler_refresh_state
+
+  case "$timeout_rc" in
+    3)
+      printf 'SIGNAL_TIMEOUT_CONTINUE: signal=%s surface=%s timeout=%ss status=%s preview=%s\n' \
+        "$SIGNAL" \
+        "$SURFACE" \
+        "$TIMEOUT" \
+        "${LIVENESS_TIMEOUT_STATUS:-working}" \
+        "${normalized_preview:-n/a}" >&2
+      return 3
+      ;;
+    2)
+      task_json="$(current_task_metadata_json)"
       write_worker_idle_error "$preview"
-      run_vault_lifecycle_hook "failed" "$(current_task_metadata_json)" "worker idle without signal" "worker idle without signal: ${normalized_preview:-n/a}" "worker idle without signal"
+      run_vault_lifecycle_hook "failed" "$task_json" "worker idle without signal" "worker idle without signal: ${normalized_preview:-n/a}" "worker idle without signal"
       printf 'WORKER_IDLE_NO_SIGNAL: signal=%s surface=%s timeout=%ss preview=%s\n' \
         "$SIGNAL" \
         "$SURFACE" \
@@ -1308,8 +1347,9 @@ liveness_check_after_timeout() {
       return 2
       ;;
     *)
+      task_json="$(current_task_metadata_json)"
       write_worker_down_error "$preview"
-      run_vault_lifecycle_hook "failed" "$(current_task_metadata_json)" "worker down" "worker down: ${normalized_preview:-n/a}" "worker down"
+      run_vault_lifecycle_hook "failed" "$task_json" "worker down" "worker down: ${normalized_preview:-n/a}" "worker down"
       printf 'WORKER_DOWN: signal=%s surface=%s timeout=%ss preview=%s\n' \
         "$SIGNAL" \
         "$SURFACE" \
@@ -1404,8 +1444,8 @@ done
 initialize_signal_wait_reference
 
 if [ -z "$SURFACE" ]; then
-  if wait_once "$TIMEOUT"; then
-    finish_success
+  if liveness_receiver_wait_once "$TIMEOUT" completion_handler_refresh_state; then
+    completion_handler_finish_success
   fi
 
   echo "SIGNAL_TIMEOUT: $SIGNAL (timeout=${TIMEOUT}s)" >&2
@@ -1413,21 +1453,29 @@ if [ -z "$SURFACE" ]; then
 fi
 
 while true; do
-  if wait_once "$TIMEOUT"; then
-    finish_success
+  if liveness_receiver_wait_once "$TIMEOUT" completion_handler_refresh_state; then
+    completion_handler_finish_success
   fi
 
   set +e
-  liveness_check_after_timeout
+  liveness_receiver_probe_timeout
   rc=$?
   set -e
 
   case "$rc" in
     0)
-      finish_success
+      completion_handler_finish_success
       ;;
-    3)
-      continue
+    3|2|1)
+      completion_handler_handle_timeout "$rc"
+      case "$rc" in
+        3)
+          continue
+          ;;
+        *)
+          exit "$rc"
+          ;;
+      esac
       ;;
     *)
       exit "$rc"
