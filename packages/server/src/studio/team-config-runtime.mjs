@@ -3,6 +3,8 @@ import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { dirname } from "node:path";
 
 import {
+  buildRegistryLabel,
+  parseRegistryLabel,
   readSurfaceRegistryFile,
   removeRegistryMemberSurface,
   resolveRegistryMemberContext,
@@ -20,6 +22,52 @@ const DEFAULT_TEAM_RESPAWN_QUEUE_PATH = "/tmp/kuma-team-respawn-queue.json";
 const DEFAULT_TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
 const DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS = 5_000;
 const SURFACE_NOT_FOUND_PATTERN = /(?:\bno such surface\b|\bsurface(?::\d+|\s+[^\n\r]+)?\s+not found\b)/iu;
+const CMUX_TREE_SURFACE_LINE_PATTERN = /surface\s+(surface:\d+)\s+\[[^\]]+\](?:\s+"([^"]*)")?/u;
+
+function titleMatchesMember(title, memberName, emoji = "") {
+  const normalizedTitle = String(title ?? "").trim();
+  const normalizedMemberName = String(memberName ?? "").trim();
+  const normalizedEmoji = String(emoji ?? "").trim();
+
+  if (!normalizedTitle || !normalizedMemberName) {
+    return false;
+  }
+
+  const parsed = parseRegistryLabel(normalizedTitle);
+  const canonicalLabel = buildRegistryLabel(normalizedMemberName, normalizedEmoji);
+
+  return (
+    normalizedTitle === normalizedMemberName
+    || normalizedTitle === canonicalLabel
+    || parsed.name === normalizedMemberName
+    || (normalizedEmoji && parsed.emoji === normalizedEmoji && parsed.name === normalizedMemberName)
+  );
+}
+
+function readLiveMemberSurfacesFromCmux(memberName, emoji = "") {
+  try {
+    const output = String(execSync("cmux tree 2>&1", withCmuxEnv({ encoding: "utf8" })));
+    const surfaces = [];
+
+    for (const line of output.split(/\r?\n/u)) {
+      const match = line.match(CMUX_TREE_SURFACE_LINE_PATTERN);
+      if (!match) {
+        continue;
+      }
+
+      const [, surface, title = ""] = match;
+      if (!titleMatchesMember(title, memberName, emoji)) {
+        continue;
+      }
+
+      surfaces.push(surface);
+    }
+
+    return Array.from(new Set(surfaces));
+  } catch {
+    return [];
+  }
+}
 
 function resolveWorkspaceForSurface(surface) {
   if (!/^surface:\d+$/u.test(surface)) {
@@ -143,10 +191,11 @@ export function createTeamConfigRuntime(options = {}) {
     queuePath = DEFAULT_TEAM_RESPAWN_QUEUE_PATH,
     logPath = DEFAULT_TEAM_WATCHER_LOG_PATH,
     queuePollMs = DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS,
-    selfWriteTtlMs = 3_000,
+    selfWriteTtlMs = 30_000,
     now = () => Date.now(),
     spawnRunner = defaultSpawnRunner,
     killRunner = defaultKillRunner,
+    resolveLiveMemberSurfacesFn = readLiveMemberSurfacesFromCmux,
     resolveWorkspaceForSurfaceFn = resolveWorkspaceForSurface,
     resolvePaneForSurfaceFn = resolvePaneForSurface,
   } = options;
@@ -179,25 +228,36 @@ export function createTeamConfigRuntime(options = {}) {
   };
   const getMemberStatus = (memberName) => findMemberStatus(teamStatusStore?.getSnapshot() ?? { projects: {} }, memberName);
   const logEvent = (message) => appendTeamWatcherLog(logPath, message);
-  const performRespawn = ({ memberName, memberConfig, project, currentSurface, workspaceRoot }) => {
+  const performRespawn = ({ memberName, memberConfig, project, currentSurface, cleanupSurfaces, workspaceRoot }) => {
     let cleanupFailed = false;
     let cleanupError = null;
+    const normalizedCleanupSurfaces = Array.from(
+      new Set(
+        [
+          currentSurface,
+          ...(Array.isArray(cleanupSurfaces) ? cleanupSurfaces : []),
+        ].filter((surface) => /^surface:\d+$/u.test(surface ?? "")),
+      ),
+    );
+    const primarySurface = normalizedCleanupSurfaces[0] ?? null;
 
     // Capture workspace/pane BEFORE kill — the surface must be alive to resolve these.
-    const workspace = currentSurface ? resolveWorkspaceForSurfaceFn(currentSurface) : null;
-    const pane = currentSurface ? resolvePaneForSurfaceFn(currentSurface) : null;
+    const workspace = primarySurface ? resolveWorkspaceForSurfaceFn(primarySurface) : null;
+    const pane = primarySurface ? resolvePaneForSurfaceFn(primarySurface) : null;
 
-    if (currentSurface) {
-      try {
-        killRunner(killScriptPath, currentSurface);
-      } catch (error) {
-        if (!isMissingSurfaceError(error)) {
-          cleanupFailed = true;
-          cleanupError = error instanceof Error ? error.message : "unknown error";
-          logEvent(
-            `RESPAWN_CLEANUP_FAILED: member=${memberName} surface=${currentSurface} details=${cleanupError}`,
-          );
-          throw error;
+    if (normalizedCleanupSurfaces.length > 0) {
+      for (const surface of normalizedCleanupSurfaces) {
+        try {
+          killRunner(killScriptPath, surface);
+        } catch (error) {
+          if (!isMissingSurfaceError(error)) {
+            cleanupFailed = true;
+            cleanupError = error instanceof Error ? error.message : "unknown error";
+            logEvent(
+              `RESPAWN_CLEANUP_FAILED: member=${memberName} surface=${surface} details=${cleanupError}`,
+            );
+            throw error;
+          }
         }
       }
 
@@ -209,40 +269,63 @@ export function createTeamConfigRuntime(options = {}) {
       writeSurfaceRegistryFile(registryPath, registryWithoutCurrent);
     }
 
-    const spawnArgs = [
+    const memberId = memberConfig?.id ?? memberName;
+    const baseSpawnArgs = [
       `${memberConfig?.emoji ? `${memberConfig.emoji} ` : ""}${memberName}`.trim(),
       memberConfig?.type ?? "",
       workspaceRoot,
       project,
     ];
 
-    if (currentSurface) {
-      if (workspace) {
-        spawnArgs.push("--workspace", workspace);
+    const runSpawn = (extraArgs) => {
+      const result = spawnRunner(spawnScriptPath, [...baseSpawnArgs, ...extraArgs]);
+      const stdout = String(result?.stdout ?? "").trim();
+      const stderr = String(result?.stderr ?? "").trim();
+      if (stderr) {
+        for (const line of stderr.split(/\r?\n/u).map((entry) => entry.trim()).filter(Boolean)) {
+          logEvent(line);
+        }
       }
-      if (pane) {
-        spawnArgs.push("--pane", pane);
-      }
+      const failed = result?.error != null || result?.status !== 0;
+      const nextSurface = stdout.match(/surface:\d+/u)?.[0] ?? "";
+      return { failed, error: result?.error ?? null, stdout, stderr, nextSurface };
+    };
+
+    const locationArgs = [];
+    if (primarySurface) {
+      if (workspace) locationArgs.push("--workspace", workspace);
+      if (pane) locationArgs.push("--pane", pane);
     }
 
-    const spawnResult = spawnRunner(spawnScriptPath, spawnArgs);
-    if (spawnResult?.error) {
-      throw spawnResult.error;
+    let attempt = runSpawn(locationArgs);
+    // If the placed spawn fails (stale workspace/pane after kill collapsed it), retry fresh.
+    if (attempt.failed && locationArgs.length > 0) {
+      logEvent(
+        `RESPAWN_FALLBACK: member=${memberName} reason=retry-without-location prev=${attempt.stderr || attempt.stdout || attempt.error?.message || "unknown"}`,
+      );
+      attempt = runSpawn([]);
     }
-    const output = String(spawnResult?.stdout ?? "").trim();
-    const stderr = String(spawnResult?.stderr ?? "").trim();
-    if (stderr) {
-      for (const line of stderr.split(/\r?\n/u).map((entry) => entry.trim()).filter(Boolean)) {
-        logEvent(line);
-      }
+
+    if (attempt.failed || !/^surface:\d+$/u.test(attempt.nextSurface)) {
+      // Old surface is dead and spawn failed. Queue for background retry
+      // (fresh spawn, no location) so the member isn't permanently orphaned.
+      queue[memberId] = {
+        memberId,
+        memberName,
+        project,
+        currentSurface: null,
+        requestedAt: new Date().toISOString(),
+        workspaceRoot,
+      };
+      persistQueue();
+      logEvent(
+        `RESPAWN_QUEUED_AFTER_FAILURE: member=${memberName} reason=spawn-failed details=${attempt.stderr || attempt.stdout || attempt.error?.message || "unknown"}`,
+      );
+      if (attempt.error) throw attempt.error;
+      throw new Error(`Failed to respawn ${memberName}: ${attempt.stderr || attempt.stdout || "spawn failed"}`);
     }
-    if (spawnResult?.status !== 0) {
-      throw new Error(`Failed to respawn ${memberName}: ${stderr || output || "spawn failed"}`);
-    }
-    const nextSurface = output.match(/surface:\d+/u)?.[0] ?? output;
-    if (!/^surface:\d+$/u.test(nextSurface)) {
-      throw new Error(`Failed to respawn ${memberName}: ${output || "missing surface id"}`);
-    }
+
+    const nextSurface = attempt.nextSurface;
 
     const nextRegistry = updateRegistryMemberSurface(
       readSurfaceRegistryFile(registryPath),
@@ -264,14 +347,35 @@ export function createTeamConfigRuntime(options = {}) {
   };
 
   const runtime = {
-    resolveMemberContext(memberName, emoji) {
-      return resolveRegistryMemberContext(
+    resolveLiveMemberSurfaces(memberName, emoji = "") {
+      return resolveLiveMemberSurfacesFn(memberName, emoji);
+    },
+    resolveMemberContext(memberName, emoji, requestedProject = "", team = "") {
+      const registryContext = resolveRegistryMemberContext(
         readSurfaceRegistryFile(registryPath),
         {
           displayName: memberName,
           emoji,
+          team,
         },
+        requestedProject,
       );
+
+      if (registryContext) {
+        return registryContext;
+      }
+
+      const liveSurfaces = runtime.resolveLiveMemberSurfaces(memberName, emoji);
+      const liveSurface = liveSurfaces[0] ?? null;
+      if (!liveSurface) {
+        return null;
+      }
+
+      return {
+        project: requestedProject || team || null,
+        label: buildRegistryLabel(memberName, emoji) || String(memberName ?? "").trim(),
+        surface: liveSurface,
+      };
     },
     registerPendingSelfWrite({ memberId, memberConfig, ttlMs = selfWriteTtlMs }) {
       if (!memberId) {
@@ -359,9 +463,12 @@ export function createTeamConfigRuntime(options = {}) {
       const nextRegistry = removeRegistryMemberSurface(readSurfaceRegistryFile(registryPath), memberName, emoji);
       writeSurfaceRegistryFile(registryPath, nextRegistry);
 
-      if (memberContext?.surface) {
+      for (const surface of Array.from(new Set([
+        memberContext?.surface ?? null,
+        ...runtime.resolveLiveMemberSurfaces(memberName, emoji),
+      ].filter(Boolean)))) {
         try {
-          killRunner(killScriptPath, memberContext.surface);
+          killRunner(killScriptPath, surface);
         } catch {
           // If the surface is already gone we still want the registry cleanup to stick.
         }
@@ -375,9 +482,19 @@ export function createTeamConfigRuntime(options = {}) {
       };
     },
     respawnMember({ memberName, memberConfig, project, currentSurface, workspaceRoot, deferIfWorking = true }) {
-      const memberContext = runtime.resolveMemberContext(memberName, memberConfig?.emoji);
+      const memberContext = runtime.resolveMemberContext(
+        memberName,
+        memberConfig?.emoji,
+        project,
+        memberConfig?.team,
+      );
       const nextProject = resolveProjectId(project, memberConfig, memberContext, workspaceRoot);
-      const nextCurrentSurface = currentSurface ?? memberContext?.surface ?? null;
+      const liveSurfaces = runtime.resolveLiveMemberSurfaces(memberName, memberConfig?.emoji);
+      const nextCurrentSurface = currentSurface ?? memberContext?.surface ?? liveSurfaces[0] ?? null;
+      const cleanupSurfaces = Array.from(new Set([
+        nextCurrentSurface,
+        ...liveSurfaces,
+      ].filter(Boolean)));
       const memberStatus = getMemberStatus(memberName);
       const memberId = memberConfig?.id ?? memberName;
 
@@ -404,6 +521,7 @@ export function createTeamConfigRuntime(options = {}) {
         memberConfig,
         project: nextProject,
         currentSurface: nextCurrentSurface,
+        cleanupSurfaces,
         workspaceRoot,
       });
       removeQueuedRespawn(memberId);

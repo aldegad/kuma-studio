@@ -43,6 +43,22 @@ async function runTeamConfigHelper(helperName, teamPath, args = [], extraEnv = {
     .filter(Boolean);
 }
 
+async function runTeamConfigHelperRaw(helperName, teamPath, args = [], extraEnv = {}) {
+  const { stdout } = await execFile(
+    "bash",
+    ["-lc", 'source "$1"; shift; "$@"', "bash", TEAM_CONFIG_SCRIPT_PATH, helperName, ...args],
+    {
+      env: {
+        ...process.env,
+        KUMA_TEAM_JSON_PATH: teamPath,
+        ...extraEnv,
+      },
+    },
+  );
+
+  return stdout.trimEnd();
+}
+
 describe("shared team normalizer", () => {
   const tempRoots = [];
 
@@ -349,18 +365,18 @@ describe("shared team normalizer", () => {
     await expect(runTeamConfigHelper("list_team_members", teamPath, ["dev", "worker"])).resolves.toEqual(["뚝딱이", "쿤"]);
   });
 
-  it("builds a Claude startup command that waits idle instead of auto-running a skill", async () => {
+  it("builds a Claude startup command that includes the member identity and waits idle", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
 
     const teamPath = await writeTeamConfig(root, {
       teams: {
-        dev: {
+        system: {
           members: [
             {
-              id: "koon",
-              name: "쿤",
-              team: "dev",
+              id: "noeuri",
+              name: "노을이",
+              team: "system",
               spawnType: "claude",
               spawnModel: "claude-opus-4-6",
               spawnOptions: "--dangerously-skip-permissions",
@@ -372,18 +388,25 @@ describe("shared team normalizer", () => {
       },
     });
 
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["쿤", "", "/tmp/work"]);
+    const startupPrompt = await runTeamConfigHelperRaw(
+      "build_claude_startup_system_prompt",
+      teamPath,
+      ["노을이", "Publisher / Designer. HTML/CSS/Graphics", "worker"],
+    );
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"]);
     expect(command).toContain('claude --model claude-opus-4-6');
     expect(command).toContain("--append-system-prompt");
-    expect(command).toContain("Wait for dispatched task");
-    expect(command).toContain("Default to no legacy fallback paths.");
-    expect(command).toContain("Avoid nested conditional fallback chains.");
-    expect(command).toContain("Preserve SSOT and SRP:");
+    expect(startupPrompt).toContain("너의 이름은 노을이야.");
+    expect(startupPrompt).toContain("Publisher / Designer. HTML/CSS/Graphics");
+    expect(startupPrompt).toContain("Wait for dispatched task");
+    expect(startupPrompt).toContain("Default to no legacy fallback paths.");
+    expect(startupPrompt).toContain("Avoid nested conditional fallback chains.");
+    expect(startupPrompt).toContain("Preserve SSOT and SRP:");
     expect(command).not.toContain('"/frontend-design"');
-    expect(command).not.toContain('--\\ "/frontend-design"');
+    expect(command).not.toContain('-- "/frontend-design"');
   });
 
-  it("builds a Codex startup command with idle guard and without preferred skill injection", async () => {
+  it("builds a Codex startup command with the member identity, idle guard, and without preferred skill injection", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
 
@@ -406,13 +429,20 @@ describe("shared team normalizer", () => {
       },
     });
 
+    const developerInstructions = await runTeamConfigHelperRaw(
+      "build_codex_developer_instructions",
+      teamPath,
+      ["밤토리", "QA. Build, deploy, screen verification. No code edits", "worker"],
+    );
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"]);
     expect(command).toContain('codex -m gpt-5.4-mini');
     expect(command).toContain("developer_instructions=");
-    expect(command).toContain("Wait\\ for\\ dispatched\\ task");
-    expect(command).toContain("Default\\ to\\ no\\ legacy\\ fallback\\ paths.");
-    expect(command).toContain("Remove\\ migration\\ scaffolding\\ as\\ soon\\ as\\ the\\ migration\\ is\\ complete.");
-    expect(command).toContain("Actively\\ delete\\ dead\\ code\\ and\\ legacy\\ code.");
+    expect(developerInstructions).toContain("너의 이름은 밤토리야.");
+    expect(developerInstructions).toContain("QA. Build, deploy, screen verification. No code edits");
+    expect(developerInstructions).toContain("Wait for dispatched task");
+    expect(developerInstructions).toContain("Default to no legacy fallback paths.");
+    expect(developerInstructions).toContain("Remove migration scaffolding as soon as the migration is complete.");
+    expect(developerInstructions).toContain("Actively delete dead code and legacy code.");
     expect(command).not.toContain("kuma-picker");
   });
 
@@ -439,11 +469,17 @@ describe("shared team normalizer", () => {
       },
     });
 
+    const developerInstructions = await runTeamConfigHelperRaw(
+      "build_codex_developer_instructions",
+      teamPath,
+      ["하울", "Operator. Task decomposition, dispatch, aggregation", "team"],
+    );
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"]);
     expect(command).toContain("developer_instructions=");
-    expect(command).toContain("Do\\ not\\ implement\\ directly\\ except\\ for\\ trivial\\ one-line\\ fixes.");
-    expect(command).toContain("Delegate\\ implementation\\ work\\ with\\ kuma-task.");
-    expect(command).toContain("Do\\ not\\ use\\ --trust-worker\\ when\\ dispatching\\ worker\\ tasks");
+    expect(developerInstructions).toContain("너의 이름은 하울야.");
+    expect(developerInstructions).toContain("Do not implement directly except for trivial one-line fixes.");
+    expect(developerInstructions).toContain("Delegate implementation work with kuma-task.");
+    expect(developerInstructions).toContain("Do not use --trust-worker when dispatching worker tasks");
   });
 
   it("resolves a registered member surface through the shell helper", async () => {

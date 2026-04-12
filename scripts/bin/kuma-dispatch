@@ -37,8 +37,18 @@ json_field() {
     const fs = require("node:fs");
     const field = process.argv[1];
     const data = JSON.parse(fs.readFileSync(0, "utf8"));
-    const value = typeof data?.[field] === "string" ? data[field] : "";
-    process.stdout.write(`${value}\n`);
+    const segments = field.split(".").filter(Boolean);
+    let value = data;
+    for (const segment of segments) {
+      if (value == null || typeof value !== "object" || !(segment in value)) {
+        value = "";
+        break;
+      }
+      value = value[segment];
+    }
+    if (typeof value === "string") {
+      process.stdout.write(`${value}\n`);
+    }
   ' "$field"
 }
 
@@ -123,6 +133,33 @@ format_dispatch_party() {
   else
     printf '%s' "$display_label"
   fi
+}
+
+send_dispatch_prompt() {
+  local surface="${1:?surface required}"
+  local task_id="${2:?task id required}"
+  local speaker_label="${3:?speaker label required}"
+  local recipient_label="${4:?recipient label required}"
+  local kind_label="${5:?kind label required}"
+  local body_source_label="${6:?body source label required}"
+  local message_text="${7:?message text required}"
+  local footer="${8:-}"
+
+  local prompt
+  prompt="$(cat <<EOF
+[Kuma Studio Dispatch] ${task_id}
+Speaker: ${speaker_label}
+Recipient: ${recipient_label}
+Message kind: ${kind_label}
+Body source: ${body_source_label}
+
+${message_text}
+
+${footer}
+EOF
+)"
+
+  "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$surface" "$prompt"
 }
 
 resolve_dispatch_message_context() {
@@ -453,24 +490,18 @@ send_thread_message() {
   kind_label="$(dispatch_message_kind_label "$kind")"
   body_source_label="$(dispatch_body_source_label "$body_source")"
 
-  local prompt
-  prompt="$(cat <<EOF
-[Kuma Studio Dispatch] ${task_id}
-Speaker: ${speaker_label}
-Recipient: ${recipient_label}
-Message kind: ${kind_label}
-Body source: ${body_source_label}
-
-${message_text}
-
-Tracked task file: ${task_file}
+  send_dispatch_prompt \
+    "$to_surface" \
+    "$task_id" \
+    "$speaker_label" \
+    "$recipient_label" \
+    "$kind_label" \
+    "$body_source_label" \
+    "$message_text" \
+    "Tracked task file: ${task_file}
 Continue in-thread with:
-- ~/.kuma/bin/kuma-dispatch ask --task-file ${task_file} --message "..."
-- ~/.kuma/bin/kuma-dispatch reply --task-file ${task_file} --message "..."
-EOF
-)"
-
-  "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$to_surface" "$prompt"
+- ~/.kuma/bin/kuma-dispatch ask --task-file ${task_file} --message \"...\"
+- ~/.kuma/bin/kuma-dispatch reply --task-file ${task_file} --message \"...\""
 
   printf 'TASK_FILE: %s\n' "$task_file"
   printf 'TASK_ID: %s\n' "$task_id"
@@ -478,110 +509,129 @@ EOF
   printf 'TO: %s (%s)\n' "$to_role" "$to_surface"
 }
 
-event_source_label() {
+dispatch_event_kind() {
   case "${1:-}" in
-    complete)
-      printf 'worker'
-      ;;
-    fail)
-      printf 'worker'
-      ;;
-    qa-pass)
-      printf 'qa'
-      ;;
-    qa-reject)
-      printf 'qa'
+    fail|qa-reject)
+      printf 'blocker'
       ;;
     *)
-      printf 'dispatch'
+      printf 'status'
       ;;
   esac
 }
 
 format_lifecycle_notice() {
+  local dispatch_json="${1:?dispatch json required}"
+
+  printf '%s' "$dispatch_json" | node -e '
+    const fs = require("node:fs");
+    const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+    const dispatch = payload?.dispatch ?? payload ?? {};
+
+    const normalize = (value) => (typeof value === "string" ? value.trim() : "");
+    const status = normalize(dispatch.status);
+    const lastEvent = normalize(dispatch.lastEvent);
+    const workerName = normalize(dispatch.workerName) || "Worker";
+    const qaMember = normalize(dispatch.qaMember) || "QA";
+    const blocker = normalize(dispatch.blocker) || normalize(dispatch.note);
+
+    let text = "";
+    if (status === "worker-done") {
+      text = `${workerName} reported worker completion. QA handoff target: ${qaMember}. Read the result file and continue QA handoff.`;
+    } else if (status === "qa-passed" && lastEvent === "complete") {
+      text = `${workerName} completed work and broker recorded direct completion. Read the result file for the final report.`;
+    } else if (status === "qa-passed") {
+      text = `${qaMember} passed QA. Read the result file for the final report.`;
+    } else if (status === "qa-rejected") {
+      text = blocker
+        ? `${qaMember} rejected QA: ${blocker}. Read the result file and decide next action.`
+        : `${qaMember} rejected QA. Read the result file and decide next action.`;
+    } else if (status === "failed") {
+      text = blocker
+        ? `${workerName} reported a blocker: ${blocker}. Read the result file and decide next action.`
+        : `${workerName} reported a blocker. Read the result file and decide next action.`;
+    } else {
+      text = `${workerName} reported lifecycle status ${status || "unknown"}. Read the result file and broker status.`;
+    }
+
+    process.stdout.write(`${text}\n`);
+  '
+}
+
+emit_lifecycle_event_to_initiator() {
   local event_type="${1:?event type required}"
   local dispatch_json="${2:?dispatch json required}"
 
-  node -e '
-const fs = require("node:fs");
-const [, eventType, dispatchRaw] = process.argv;
-const payload = JSON.parse(dispatchRaw);
-const dispatch = payload?.dispatch ?? payload ?? {};
+  if [ ! -f "$KUMA_CMUX_DIR/kuma-cmux-send.sh" ]; then
+    printf 'LIFECYCLE_NOTICE_WARN: missing send wrapper %s\n' "$KUMA_CMUX_DIR/kuma-cmux-send.sh" >&2
+    return 0
+  fi
 
-const normalize = (value) => (typeof value === "string" ? value.trim() : "");
-const event = normalize(eventType);
-const workerName = normalize(dispatch.workerName) || "Worker";
-const qaMember = normalize(dispatch.qaMember) || "QA";
-const blocker = normalize(dispatch.blocker);
-const note = normalize(dispatch.note);
-const resultFile = normalize(dispatch.resultFile);
-const hasResult = Boolean(resultFile);
-const resultSuffix = hasResult ? ` Result: ${resultFile}` : "";
+  local current_surface
+  local kind
+  local context_json
+  local task_id
+  local task_file
+  local result_file
+  local broker_status
+  local from_role
+  local from_label
+  local from_surface
+  local to_role
+  local to_label
+  local to_surface
+  local speaker_label
+  local recipient_label
+  local kind_label
+  local body_source_label
+  local message_text
 
-let text = "";
-if (event === "complete") {
-  text = `${workerName} completed work.${resultSuffix}`;
-} else if (event === "fail") {
-  text = blocker
-    ? `${workerName} reported a blocker: ${blocker}.${resultSuffix}`
-    : `${workerName} reported a blocker.${resultSuffix}`;
-} else if (event === "qa-pass") {
-  text = `${qaMember} passed QA.${resultSuffix}`;
-} else if (event === "qa-reject") {
-  text = blocker
-    ? `${qaMember} rejected QA: ${blocker}.${resultSuffix}`
-    : `${qaMember} rejected QA.${resultSuffix}`;
-} else {
-  process.exit(1);
+  current_surface="$(resolve_dispatch_sender_surface)"
+  kind="$(dispatch_event_kind "$event_type")"
+  context_json="$(printf '%s' "$dispatch_json" | resolve_dispatch_message_context "$current_surface" "initiator" "$kind")"
+
+  task_id="$(printf '%s' "$context_json" | json_field taskId)"
+  task_file="$(printf '%s' "$dispatch_json" | json_field dispatch.taskFile)"
+  result_file="$(printf '%s' "$dispatch_json" | json_field dispatch.resultFile)"
+  broker_status="$(printf '%s' "$dispatch_json" | json_field dispatch.status)"
+  from_role="$(printf '%s' "$context_json" | json_field from)"
+  from_label="$(printf '%s' "$context_json" | json_field fromLabel)"
+  from_surface="$(printf '%s' "$context_json" | json_field fromSurface)"
+  to_role="$(printf '%s' "$context_json" | json_field to)"
+  to_label="$(printf '%s' "$context_json" | json_field toLabel)"
+  to_surface="$(printf '%s' "$context_json" | json_field toSurface)"
+
+  [ -n "$task_id" ] || return 0
+  [ -n "$to_surface" ] || return 0
+
+  speaker_label="$(format_dispatch_party "$from_label" "$from_role" "$from_surface")"
+  recipient_label="$(format_dispatch_party "$to_label" "$to_role" "$to_surface")"
+  kind_label="$(dispatch_message_kind_label "$kind")"
+  body_source_label="$(dispatch_body_source_label lifecycle-event)"
+  message_text="$(format_lifecycle_notice "$dispatch_json")"
+
+  send_dispatch_prompt \
+    "$to_surface" \
+    "$task_id" \
+    "$speaker_label" \
+    "$recipient_label" \
+    "$kind_label" \
+    "$body_source_label" \
+    "$message_text" \
+    "Tracked task file: ${task_file}
+Result file: ${result_file:-n/a}
+Broker status: ${broker_status:-unknown}
+Primary completion authority: broker status + result file"
 }
 
-process.stdout.write(`${text}\n`);
-' "$event_type" "$dispatch_json"
-}
-
-run_dispatch_event_with_notice() {
+run_dispatch_event() {
   local event_type="${1:?event type required}"
   shift
 
   local dispatch_json=""
   dispatch_json="$(node "$KUMA_SERVER_CLI" "dispatch-${event_type}" "$@")"
+  emit_lifecycle_event_to_initiator "$event_type" "$dispatch_json"
   printf '%s\n' "$dispatch_json"
-
-  local task_file=""
-  local source_label=""
-  local message_kind=""
-  local lifecycle_message=""
-  local current_source=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --task-file)
-        task_file="${2:-}"
-        shift 2
-        ;;
-      --source)
-        current_source="${2:-}"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-
-  [ -n "$task_file" ] || return 0
-
-  source_label="$(event_source_label "$event_type")"
-  message_kind="status"
-  if [ "$event_type" = "fail" ] || [ "$event_type" = "qa-reject" ]; then
-    message_kind="blocker"
-  fi
-
-  lifecycle_message="$(format_lifecycle_notice "$event_type" "$dispatch_json" 2>/dev/null || true)"
-  [ -n "$lifecycle_message" ] || return 0
-
-  if ! send_thread_message "$message_kind" --task-file "$task_file" --message "$lifecycle_message" --from "$source_label" --to initiator --source "${current_source:-$source_label}" --body-source lifecycle-event > /dev/null; then
-    printf 'WARN: failed to send lifecycle notice for %s (%s)\n' "$event_type" "$task_file" >&2
-  fi
 }
 
 case "$COMMAND" in
@@ -598,19 +648,19 @@ case "$COMMAND" in
     send_thread_message note "$@"
     ;;
   done)
-    run_dispatch_event_with_notice complete "$@"
+    run_dispatch_event complete "$@"
     ;;
   complete)
-    run_dispatch_event_with_notice complete "$@"
+    run_dispatch_event complete "$@"
     ;;
   fail)
-    run_dispatch_event_with_notice fail "$@"
+    run_dispatch_event fail "$@"
     ;;
   qa-pass)
-    run_dispatch_event_with_notice qa-pass "$@"
+    run_dispatch_event qa-pass "$@"
     ;;
   qa-reject)
-    run_dispatch_event_with_notice qa-reject "$@"
+    run_dispatch_event qa-reject "$@"
     ;;
   status)
     exec node "$KUMA_SERVER_CLI" dispatch-status "$@"

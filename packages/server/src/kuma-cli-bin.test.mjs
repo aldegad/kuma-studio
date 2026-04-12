@@ -495,6 +495,16 @@ async function addSurfaceLabel(sandbox, projectId, label, surface) {
   await writeJson(sandbox.surfacesPath, registry);
 }
 
+async function removeSurfaceLabel(sandbox, projectId, label) {
+  const registry = await readJson(sandbox.surfacesPath);
+  if (!registry[projectId]) {
+    return;
+  }
+
+  delete registry[projectId][label];
+  await writeJson(sandbox.surfacesPath, registry);
+}
+
 async function setMemberDefaultQa(sandbox, memberId, defaultQa) {
   const team = await readJson(sandbox.teamPath);
   const member = team?.teams?.dev?.members?.find((entry) => entry.id === memberId);
@@ -503,6 +513,17 @@ async function setMemberDefaultQa(sandbox, memberId, defaultQa) {
   }
 
   member.defaultQa = defaultQa;
+  await writeJson(sandbox.teamPath, team);
+}
+
+async function setMemberQaFallback(sandbox, memberId, qaFallback) {
+  const team = await readJson(sandbox.teamPath);
+  const member = team?.teams?.dev?.members?.find((entry) => entry.id === memberId);
+  if (!member) {
+    throw new Error(`member not found in sandbox team.json: ${memberId}`);
+  }
+
+  member.qaFallback = qaFallback;
   await writeJson(sandbox.teamPath, team);
 }
 
@@ -806,9 +827,10 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).toContain("Need API confirmation.");
   });
 
-  it("kuma-dispatch complete appends and sends an immediate lifecycle status message to the initiator", async () => {
+  it("kuma-dispatch complete updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
 
     const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
     const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
@@ -819,33 +841,36 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       ["complete", "--task-file", taskFilePath],
       {
         ...sandbox.env,
-        KUMA_INITIATOR_SURFACE: "surface:4",
+        CMUX_SURFACE_ID: "surface:4",
+        KUMA_INITIATOR_SURFACE: "surface:99",
       },
     );
 
     const dispatchState = await readJson(sandbox.dispatchStatePath);
     const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("worker-done");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
     expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
-      kind: "status",
-      bodySource: "lifecycle-event",
-      from: "worker",
-      to: "initiator",
-      text: expect.stringContaining("뚝딱이 completed work."),
-      source: "worker",
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
     expect(cmuxLog).toContain("send-wrapper|surface:99");
-    expect(cmuxLog).not.toContain("Speaker: surface peer");
-    expect(cmuxLog).toContain("(worker, surface:4)");
     expect(cmuxLog).toContain("Message kind: status update");
     expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).toContain("completed work. Result:");
+    expect(cmuxLog).toContain("Recipient: Kuma (initiator, surface:99)");
+    expect(cmuxLog).toContain("reported worker completion");
+    expect(cmuxLog).toContain("QA handoff target:");
+    expect(cmuxLog).toContain("Broker status: worker-done");
   });
 
-  it("kuma-dispatch qa-reject appends and sends an immediate lifecycle blocker message to the initiator", async () => {
+  it("kuma-dispatch qa-reject updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
 
     const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
     const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
@@ -856,28 +881,105 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
       ["qa-reject", "--task-file", taskFilePath, "--blocker", "Selection mismatch"],
       {
         ...sandbox.env,
-        KUMA_INITIATOR_SURFACE: "surface:7",
+        CMUX_SURFACE_ID: "surface:7",
+        KUMA_INITIATOR_SURFACE: "surface:99",
       },
     );
 
     const dispatchState = await readJson(sandbox.dispatchStatePath);
     const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("qa-rejected");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
     expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
-      kind: "blocker",
-      bodySource: "lifecycle-event",
-      from: "qa",
-      to: "initiator",
-      text: expect.stringContaining("밤토리 rejected QA: Selection mismatch."),
-      source: "qa",
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
     expect(cmuxLog).toContain("send-wrapper|surface:99");
-    expect(cmuxLog).not.toContain("Speaker: surface peer");
-    expect(cmuxLog).toContain("(QA, surface:7)");
     expect(cmuxLog).toContain("Message kind: blocker");
     expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).toContain("Selection mismatch. Result:");
+    expect(cmuxLog).toContain("Recipient: Kuma (initiator, surface:99)");
+    expect(cmuxLog).toContain("Selection mismatch");
+    expect(cmuxLog).toContain("Broker status: qa-rejected");
+  });
+
+  it("kuma-dispatch fail updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["fail", "--task-file", taskFilePath, "--blocker", "Build broke"],
+      {
+        ...sandbox.env,
+        CMUX_SURFACE_ID: "surface:4",
+        KUMA_INITIATOR_SURFACE: "surface:99",
+      },
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("failed");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Message kind: blocker");
+    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).toContain("Build broke");
+    expect(cmuxLog).toContain("Broker status: failed");
+  });
+
+  it("kuma-dispatch qa-pass updates broker status and sends a direct lifecycle receive to the initiator without appending a thread notice", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+    await addSurfaceLabel(sandbox, "kuma-studio", "Kuma", "surface:99");
+
+    const { stdout } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    expect(taskFilePath).toBeTruthy();
+
+    await runScript(
+      KUMA_DISPATCH_PATH,
+      ["qa-pass", "--task-file", taskFilePath],
+      {
+        ...sandbox.env,
+        CMUX_SURFACE_ID: "surface:7",
+        KUMA_INITIATOR_SURFACE: "surface:99",
+      },
+    );
+
+    const dispatchState = await readJson(sandbox.dispatchStatePath);
+    const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("qa-passed");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
+    expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
+    });
+
+    const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
+    expect(cmuxLog).toContain("send-wrapper|surface:99");
+    expect(cmuxLog).toContain("Message kind: status update");
+    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).toContain("passed QA");
+    expect(cmuxLog).toContain("Broker status: qa-passed");
   });
 
   it("kuma-dispatch reply defaults back to the worker surface from the initiator", async () => {
@@ -1234,6 +1336,71 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(stdout).toContain("QA: 밤토리 (surface:7)");
   });
 
+  it("kuma-task auto-spawns the primary QA reviewer when their surface is unregistered", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberDefaultQa(sandbox, "tookdaki", "bamdori");
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦔 밤토리");
+
+    const { stdout, stderr } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    const taskFile = await readFile(taskFilePath, "utf8");
+    const spawnLog = await readFile(sandbox.spawnLog, "utf8");
+    const registry = await readJson(sandbox.surfacesPath);
+    expect(taskFile).toContain("qa: surface:55");
+    expect(stdout).toContain("QA: 밤토리 (surface:55)");
+    expect(stderr).toContain("QA_ROUTE: 🦔 밤토리 -> auto-spawned surface:55");
+    expect(spawnLog).toContain("kuma-studio");
+    expect(registry["kuma-studio"]["🦔 밤토리"]).toBe("surface:55");
+  });
+
+  it("kuma-task reroutes busy QA reviewers to a fallback and auto-spawns the fallback when needed", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberDefaultQa(sandbox, "tookdaki", "bamdori");
+    await setMemberQaFallback(sandbox, "tookdaki", "saemi");
+    await writeFile(join(sandbox.outputDir, "surface_7.txt"), "Investigating QA queue\n", "utf8");
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦅 새미");
+
+    const { stdout, stderr } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    const taskFile = await readFile(taskFilePath, "utf8");
+    const spawnLog = await readFile(sandbox.spawnLog, "utf8");
+    const registry = await readJson(sandbox.surfacesPath);
+    expect(taskFile).toContain("qa: surface:55");
+    expect(stdout).toContain("QA: 새미 (surface:55)");
+    expect(stderr).toContain("QA_ROUTE: 밤토리 unavailable (state=working) -> rerouting to alternate reviewer saemi");
+    expect(stderr).toContain("QA_ROUTE: 🦅 새미 -> auto-spawned surface:55");
+    expect(spawnLog).toContain("kuma-studio");
+    expect(registry["kuma-studio"]["🦅 새미"]).toBe("surface:55");
+  });
+
+  it("kuma-task errors with primary and fallback QA states when both reviewers are unavailable", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberDefaultQa(sandbox, "tookdaki", "bamdori");
+    await setMemberQaFallback(sandbox, "tookdaki", "saemi");
+    await writeFile(join(sandbox.outputDir, "surface_7.txt"), "Investigating QA queue\n", "utf8");
+    await writeFile(join(sandbox.outputDir, "surface_5.txt"), "Investigating fallback QA queue\n", "utf8");
+
+    let failure;
+    try {
+      await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(failure.stderr).toContain(
+      "qa route unavailable: primary 밤토리 (surface=surface:7, state=working); fallback 새미 (surface=surface:5, state=working)",
+    );
+  });
+
   it("kuma-task does not prepend vault domain hints into the worker prompt by default", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
@@ -1303,6 +1470,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating sofa bug\n", "utf8");
     await writeFile(join(sandbox.outputDir, "surface_16.txt"), "❯\n", "utf8");
     await writeFile(join(sandbox.outputDir, "surface_7.txt"), "new task? /clear to save 12k tokens\n", "utf8");
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦅 새미");
 
     const { stdout } = await runScript(KUMA_STATUS_PATH, ["--project", "kuma-studio"], sandbox.env);
 
@@ -1310,6 +1478,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(stdout).toContain("kuma-studio\t🦫 뚝딱이\tsurface:4\tworking\tInvestigating sofa bug");
     expect(stdout).toContain("kuma-studio\t🦝 쿤\tsurface:16\tidle");
     expect(stdout).toContain("kuma-studio\t🦔 밤토리\tsurface:7\tidle");
+    expect(stdout).toContain("kuma-studio\t🦅 새미\t-\toffline\t");
   });
 
   it("kuma-status treats bypass-permissions footers as idle instead of working", async () => {

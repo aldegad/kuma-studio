@@ -28,8 +28,20 @@ json_stringify_string() {
   node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? ""))' "${1-}"
 }
 
+shell_single_quote() {
+  local value="${1-}"
+  value="${value//\'/\'\\\'\'}"
+  printf "'%s'" "$value"
+}
+
 build_idle_guard_message() {
   printf '%s' "$KUMA_IDLE_GUARD_MESSAGE"
+}
+
+build_member_identity_line() {
+  local member_name="${1:-}"
+  [ -n "$member_name" ] || return 0
+  printf '너의 이름은 %s야.' "$member_name"
 }
 
 build_cleanup_policy_instructions() {
@@ -195,24 +207,38 @@ resolve_member_launch_record() {
 }
 
 build_codex_developer_instructions() {
-  local role_label_en="${1:-}"
-  local node_type="${2:-worker}"
-  local instructions
+  local member_name="${1:-}"
+  local role_label_en="${2:-}"
+  local node_type="${3:-worker}"
+  local identity_line spawn_context instructions
 
-  instructions="$(build_spawn_context_instructions "$role_label_en" "$node_type")
-$(build_idle_guard_message)"
+  identity_line="$(build_member_identity_line "$member_name")"
+  spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
+  instructions="$(cat <<EOF
+${identity_line}
+${spawn_context}
+$(build_idle_guard_message)
+EOF
+)"
 
   printf '%s' "$instructions"
 }
 
 build_claude_startup_system_prompt() {
-  local role_label_en="${1:-}"
-  local node_type="${2:-worker}"
-  local instructions
+  local member_name="${1:-}"
+  local role_label_en="${2:-}"
+  local node_type="${3:-worker}"
+  local identity_line spawn_context instructions
 
-  instructions="$(build_spawn_context_instructions "$role_label_en" "$node_type")
+  identity_line="$(build_member_identity_line "$member_name")"
+  spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
+  instructions="$(cat <<EOF
+${identity_line}
+${spawn_context}
 $(build_idle_guard_message)
-Do not respond unless there is a startup problem."
+Do not respond unless there is a startup problem.
+EOF
+)"
 
   printf '%s' "$instructions"
 }
@@ -220,26 +246,29 @@ Do not respond unless there is a startup problem."
 build_member_command_from_record() {
   local dir="$1"
   local record="${2:?launch record required}"
-  local _name type model options _emoji skill role_label_en node_type developer_instructions developer_instructions_json startup_context command
-  IFS=$'\x1f' read -r _name type model options _emoji skill role_label_en node_type <<< "$record"
+  local member_name type model options _emoji skill role_label_en node_type developer_instructions developer_instructions_json startup_context command startup_context_quoted developer_instructions_setting
+  IFS=$'\x1f' read -r member_name type model options _emoji skill role_label_en node_type <<< "$record"
 
   case "$type" in
     claude)
-      startup_context="$(build_claude_startup_system_prompt "$role_label_en" "$node_type")"
-      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt %q' "$dir" "$model" "$options" "$startup_context"
+      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type")"
+      startup_context_quoted="$(shell_single_quote "$startup_context")"
+      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt %s' "$dir" "$model" "$options" "$startup_context_quoted"
       ;;
     codex)
-      developer_instructions="$(build_codex_developer_instructions "$role_label_en" "$node_type")"
+      developer_instructions="$(build_codex_developer_instructions "$member_name" "$role_label_en" "$node_type")"
       if [ -n "$developer_instructions" ]; then
         developer_instructions_json="$(json_stringify_string "$developer_instructions")"
-        printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s -c %q' "$dir" "$model" "$options" "developer_instructions=$developer_instructions_json"
+        developer_instructions_setting="$(shell_single_quote "developer_instructions=$developer_instructions_json")"
+        printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s -c %s' "$dir" "$model" "$options" "$developer_instructions_setting"
       else
         printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
       fi
       ;;
     sonnet)
-      startup_context="$(build_claude_startup_system_prompt "$role_label_en")"
-      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions --append-system-prompt %q' "$dir" "$startup_context"
+      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type")"
+      startup_context_quoted="$(shell_single_quote "$startup_context")"
+      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions --append-system-prompt %s' "$dir" "$startup_context_quoted"
       ;;
     *)
       echo "ERROR: Unknown type '$type'" >&2

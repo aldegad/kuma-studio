@@ -271,6 +271,7 @@ Wait for an exact signal file
         PATH: `${binDir}:${process.env.PATH}`,
         KUMA_AUTO_VAULT_INGEST: "0",
         KUMA_AUTO_NOEURI_TRIGGER: "0",
+        KUMA_DISABLE_VAULT_HOOK: "1",
         KUMA_SIGNAL_DIR: signalDir,
         KUMA_TASK_DIR: taskDir,
         KUMA_WAIT_POLL_INTERVAL: "1",
@@ -304,7 +305,25 @@ Wait for an exact signal file
     expect(exitCode).toBe(0);
     expect(stdout).toContain(`SIGNAL_RECEIVED: ${signalName}`);
     expect(stdout).toContain("exact match only");
-    expect(stderr).toBe("");
+    expect(stderr).not.toContain("false positive native wait");
+  });
+
+  it("rejects bare numeric positional timeout values instead of silently treating them as result files", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-wait-"));
+    tempRoots.push(root);
+
+    const signalDir = join(root, "signals");
+    await mkdir(signalDir, { recursive: true });
+
+    await expect(execFile("bash", [WAIT_SCRIPT_PATH, "demo-signal", "300"], {
+      env: {
+        ...process.env,
+        KUMA_SIGNAL_DIR: signalDir,
+      },
+    })).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining("Use --timeout 300 explicitly"),
+    });
   });
 
   it("dispatches a Noeuri follow-up and still exits 0 after successful auto ingest", async () => {

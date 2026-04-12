@@ -14,6 +14,7 @@ import { createTeamConfigRuntime } from "./team-config-runtime.mjs";
 import { createTeamConfigWatcherHandler } from "./team-config-watcher.mjs";
 
 const CMUX_SPAWN_SCRIPT_PATH = fileURLToPath(new URL("../../../../scripts/cmux/kuma-cmux-spawn.sh", import.meta.url));
+const CMUX_TEAM_CONFIG_SCRIPT_PATH = fileURLToPath(new URL("../../../../scripts/cmux/kuma-cmux-team-config.sh", import.meta.url));
 
 async function waitFor(assertion, timeoutMs = 4_000) {
   const startedAt = Date.now();
@@ -38,6 +39,11 @@ function writeExecutable(path, content) {
 }
 
 function createMinimalTeamSchema(overrides = {}) {
+  const { teams, ...memberOverrides } = overrides;
+  if (teams) {
+    return { teams };
+  }
+
   return {
     teams: {
       dev: {
@@ -58,7 +64,7 @@ function createMinimalTeamSchema(overrides = {}) {
             spawnType: "codex",
             spawnModel: "gpt-5.4-mini",
             spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
-            ...overrides,
+            ...memberOverrides,
           },
         ],
       },
@@ -89,7 +95,7 @@ function createIdleTeamStatusStore() {
   };
 }
 
-function createFakeCmuxEnvironment(root, tempDirs) {
+function createFakeCmuxEnvironment(root, teamSchema = createMinimalTeamSchema()) {
   const binDir = join(root, "bin");
   mkdirSync(binDir, { recursive: true });
   const logPath = join(root, "cmux.log");
@@ -145,7 +151,7 @@ esac
   );
 
   const teamJsonPath = join(root, "team.json");
-  writeFileSync(teamJsonPath, `${JSON.stringify(createMinimalTeamSchema(), null, 2)}\n`, "utf8");
+  writeFileSync(teamJsonPath, `${JSON.stringify(teamSchema, null, 2)}\n`, "utf8");
 
   return {
     binDir,
@@ -388,6 +394,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
     });
 
     try {
@@ -446,6 +453,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner(scriptPath, args) {
@@ -518,6 +526,7 @@ describe("studio-routes team-config", () => {
     const runtime = createTeamConfigRuntime({
       queuePollMs: 0,
       selfWriteTtlMs: 10,
+      resolveLiveMemberSurfacesFn: () => [],
     });
 
     try {
@@ -578,6 +587,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner() {
@@ -630,6 +640,7 @@ describe("studio-routes team-config", () => {
     const runtime = createTeamConfigRuntime({
       registryPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       killRunner(_scriptPath, surface) {
@@ -662,6 +673,65 @@ describe("studio-routes team-config", () => {
     }
   });
 
+  it("falls back to live cmux surfaces for system member respawn when the registry misses", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-runtime-"));
+    tempDirs.push(root);
+
+    const registryPath = join(root, "surfaces.json");
+    writeFileSync(registryPath, `${JSON.stringify({ system: { "🐻 쿠마": "surface:1" } }, null, 2)}\n`, "utf8");
+
+    const calls = [];
+    const runtime = createTeamConfigRuntime({
+      registryPath,
+      queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => ["surface:24", "surface:25"],
+      resolveWorkspaceForSurfaceFn: () => "workspace:5",
+      resolvePaneForSurfaceFn: () => "pane:9",
+      killRunner(_scriptPath, surface) {
+        calls.push(`kill:${surface}`);
+      },
+      spawnRunner(_scriptPath, args) {
+        calls.push(`spawn:${args.join(" ")}`);
+        return { status: 0, stdout: "surface:26\n", stderr: "", error: null };
+      },
+    });
+
+    try {
+      const result = runtime.respawnMember({
+        memberName: "노을이",
+        memberConfig: {
+          id: "noeuri",
+          emoji: "🦌",
+          team: "system",
+          type: "claude",
+        },
+        project: "system",
+        workspaceRoot: root,
+      });
+
+      assert.deepStrictEqual(calls, [
+        "kill:surface:24",
+        "kill:surface:25",
+        "spawn:🦌 노을이 claude " + root + " system --workspace workspace:5 --pane pane:9",
+      ]);
+      assert.deepStrictEqual(result, {
+        project: "system",
+        surface: "surface:26",
+        cleanupFailed: false,
+        cleanupError: null,
+        queued: false,
+      });
+      assert.deepStrictEqual(JSON.parse(readFileSync(registryPath, "utf8")), {
+        system: {
+          "🐻 쿠마": "surface:1",
+          "🦌 노을이": "surface:26",
+        },
+      });
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("spawns the exact codex command with model and options for 밤토리", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
@@ -669,17 +739,7 @@ describe("studio-routes team-config", () => {
     const fakeCmux = createFakeCmuxEnvironment(root);
     const result = spawnSync(
       "bash",
-      [
-        String(CMUX_SPAWN_SCRIPT_PATH),
-        "밤토리",
-        "",
-        root,
-        "kuma-studio",
-        "--workspace",
-        "workspace:9",
-        "--pane",
-        "pane:3",
-      ],
+      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "밤토리" "" "${root}"`],
       {
         encoding: "utf8",
         env: fakeCmux.spawnEnv(),
@@ -687,19 +747,106 @@ describe("studio-routes team-config", () => {
     );
 
     assert.strictEqual(result.status, 0);
-    assert.match(result.stdout, /surface:123/u);
+    const command = result.stdout;
+    assert.match(command, /KUMA_ROLE=worker codex -m gpt-5\.4-mini/u);
+    assert.match(command, /developer_instructions=/u);
+    assert.match(command, /밤토리야\./u);
+    assert.match(command, /CoS\..*cmux worker management/u);
+    assert.match(command, /Wait for dispatched task/u);
+    assert.match(command, /--dangerously-bypass-approvals-and-sandbox/u);
+    assert.match(command, /-c service_tier=fast/u);
+    assert.match(command, /-c model_reasoning_effort="xhigh"/u);
+    expect(command).not.toMatch(/model_reasoning_effort="xhigh" CoS/u);
+    expect(command).not.toMatch(/kuma-picker/u);
+  }, 30_000);
 
-    const log = readFileSync(fakeCmux.logPath, "utf8");
-    assert.match(log, /send --workspace workspace:9 --surface surface:123/u);
-    assert.match(log, /KUMA_ROLE=worker codex -m gpt-5\.4-mini/u);
-    assert.match(log, /-c developer_instructions=/u);
-    assert.match(log, /CoS\.\\ Bash\\ execution\\,\\ cmux\\ worker\\ management/u);
-    assert.match(log, /Wait\\ for\\ dispatched\\ task/u);
-    assert.match(log, /--dangerously-bypass-approvals-and-sandbox/u);
-    assert.match(log, /-c service_tier=fast/u);
-    assert.match(log, /-c model_reasoning_effort="xhigh"/u);
-    expect(log).not.toMatch(/model_reasoning_effort="xhigh" CoS/u);
-    expect(log).not.toMatch(/kuma-picker/u);
+  it("spawns a system codex worker with member identity in developer instructions", () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
+    tempDirs.push(root);
+
+    const fakeCmux = createFakeCmuxEnvironment(
+      root,
+      createMinimalTeamSchema({
+        teams: {
+          system: {
+            name: "시스템",
+            members: [
+              {
+                id: "noeuri",
+                name: "노을이",
+                emoji: "🦌",
+                role: "vault-manager",
+                roleLabel: {
+                  ko: "Vault 큐레이터",
+                  en: "Vault Curator. Knowledge management, curation, sync",
+                },
+                skills: ["kuma-vault"],
+                team: "system",
+                nodeType: "worker",
+                spawnType: "codex",
+                spawnModel: "gpt-5.4-mini",
+                spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="high"',
+              },
+            ],
+          },
+        },
+      }),
+    );
+    const result = spawnSync(
+      "bash",
+      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "노을이" "" "${root}"`],
+      {
+        encoding: "utf8",
+        env: fakeCmux.spawnEnv(),
+      },
+    );
+
+    assert.strictEqual(result.status, 0);
+    const command = result.stdout;
+    assert.match(command, /KUMA_ROLE=worker codex -m gpt-5\.4-mini/u);
+    assert.match(command, /노을이야\./u);
+    assert.match(command, /Vault Curator\./u);
+  }, 30_000);
+
+  it("spawns the exact claude command with member identity in the startup prompt", () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
+    tempDirs.push(root);
+
+    const fakeCmux = createFakeCmuxEnvironment(
+      root,
+      createMinimalTeamSchema({
+        id: "koon",
+        name: "쿤",
+        emoji: "🦝",
+        role: "ui",
+        roleLabel: {
+          ko: "퍼블리셔/디자이너",
+          en: "Publisher / Designer. HTML/CSS/Graphics",
+        },
+        skills: ["frontend-design"],
+        team: "dev",
+        nodeType: "worker",
+        spawnType: "claude",
+        spawnModel: "claude-opus-4-6",
+        spawnOptions: "--dangerously-skip-permissions",
+      }),
+    );
+    const result = spawnSync(
+      "bash",
+      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "쿤" "" "${root}"`],
+      {
+        encoding: "utf8",
+        env: fakeCmux.spawnEnv(),
+      },
+    );
+
+    assert.strictEqual(result.status, 0);
+    const command = result.stdout;
+    assert.match(command, /KUMA_ROLE=worker claude --model claude-opus-4-6/u);
+    assert.match(command, /--append-system-prompt/u);
+    assert.match(command, /쿤야\./u);
+    assert.match(command, /Publisher \/ Designer\./u);
+    assert.match(command, /Do not respond unless there is a startup problem\./u);
   }, 30_000);
 
   it("passes workspace and title to tab rename and surfaces rename failures on stderr", () => {
@@ -752,6 +899,7 @@ describe("studio-routes team-config", () => {
       queuePath,
       logPath,
       queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
       resolveWorkspaceForSurfaceFn: () => "workspace:2",
       resolvePaneForSurfaceFn: () => "pane:4",
       spawnRunner() {
