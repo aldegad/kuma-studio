@@ -29,6 +29,13 @@
 - **서버 포트는 4312.** 3000/3001 아님. 확인 없이 포트 추측 금지.
 - **관리형 infra surface 우선.** `kuma-server`/`kuma-frontend` 가 있으면 거기서만 서버/프론트를 재시작한다. 현재 터미널에서 중복 기동 금지.
 
+## Dispatch Entry Points
+
+Entry-point layering (intentional, not drift):
+- Kuma main thread (Claude) → `/kuma:dispatch` slash skill (orchestration wrapper only — never call `kuma-task` directly from main thread).
+- Background Agent spawned by `/kuma:dispatch` → `kuma-task` + `kuma-dispatch` broker lifecycle.
+- Worker / QA / Codex sub-worker → `kuma-task` + `kuma-dispatch ask|reply|complete|fail|qa-pass|qa-reject` directly. CLI is canonical; no slash-skill equivalent exists.
+
 ## Conventions
 
 - Server boot/restart is standardized on `npm run kuma-server:reload` for human/operator reuse of shared infra surfaces, and `npm run server:reload` as the raw in-surface/local entrypoint.

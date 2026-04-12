@@ -19,6 +19,14 @@
 - `packages/server/src/studio/` -- Studio-specific modules (stats, events, agent state, image gen)
 - `packages/studio-web/` -- Dashboard & Virtual Office (React 19, Vite, Tailwind v4, Zustand)
 
+## Dispatch Entry Points
+
+This repo is not the authority for Kuma-main-thread dispatch. Entry-point layering:
+- Kuma main thread (Claude) → `/kuma:dispatch` slash skill (orchestration wrapper only).
+- Worker / QA / Codex sub-worker → `kuma-task` + `kuma-dispatch ask|reply|complete|fail|qa-pass|qa-reject` directly.
+
+The CLI is the canonical worker-facing interface; `/kuma:dispatch` wraps it for Claude-main-only. No Codex slash-skill equivalent exists or is needed — the split is intentional.
+
 ## Conventions
 
 - Server boot/restart is standardized on `npm run kuma-server:reload` for human/operator reuse of shared infra surfaces, and `npm run server:reload` as the raw in-surface/local entrypoint.

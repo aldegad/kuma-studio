@@ -37,6 +37,11 @@ Dispatch policy:
 - **Kuma team workers (Buri, Howl, Noeuri, Bamdori, etc.) are dispatched exclusively via the `/kuma:dispatch` skill.** That skill is the single abstraction for: dispatch.lock setup → Agent spawn → `kuma-task <worker>` invocation → signal wait → result + cleanup. Never bypass it with a raw `Agent(...)` call for Kuma worker dispatch.
 - When you invoke `/kuma:dispatch`, the skill already handles Agent configuration. Do not override `subagent_type` — the default (general-purpose) is correct. Do NOT use `codex:codex-rescue` or any `codex:*` subagent_type for Kuma worker dispatch, even for Codex-powered workers like Buri. Those `codex:*` agents are Anthropic plugin agents that pair Claude with Codex CLI in the current session — unrelated to Kuma cmux surface workers.
 
+Dispatch entry points (layered, intentionally asymmetric):
+- **Kuma main thread (Claude)** → `/kuma:dispatch` — orchestration wrapper only. Never call `kuma-task` directly from the main thread.
+- **Background Agent spawned by `/kuma:dispatch`** → `kuma-task <worker>` + `kuma-dispatch` broker lifecycle. This is where the CLI layer is actually invoked.
+- **Worker / QA / Codex sub-worker** → `kuma-task` + `kuma-dispatch ask|reply|complete|fail|qa-pass|qa-reject` directly. No slash-skill equivalent exists or is needed — the CLI is the canonical worker-facing interface.
+
 Sub-agent spawn policy:
 - When spawning any Agent sub-agent or background task that performs work on your behalf, the Agent prompt must inline the contents of `~/.kuma/prompts/subagent-behavior-rules.md` at the top. This keeps fallback/Playwright/SSOT/port/past-tense/raw-cmux rules enforced at the prompt layer even when execution-gate hooks are relaxed via dispatch lock.
 - The dispatch lock at `/tmp/kuma-dispatch.lock` relaxes `kuma-bash-guard`, `kuma-read-guard`, `kuma-agent-guard` for 10 minutes. Lock must be cleaned up by the dispatching agent on completion.

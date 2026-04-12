@@ -60,7 +60,6 @@
     "system": {
       "name": "시스템",
       "nameEn": "System",
-      "skill": "/kuma",
       "leadId": null,
       "office": {
         "origin": {
@@ -93,7 +92,6 @@
             "team-routing"
           ],
           "skills": [
-            "kuma",
             "dev-team",
             "analytics-team",
             "strategy-team"
