@@ -140,6 +140,15 @@ status: blocked
     await handler(createRequest("GET", "/studio/plans"), res);
 
     assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(res.json.source, {
+      mode: "explicit-plans-dir",
+      status: "ready",
+      configured: true,
+      workspaceRoot: null,
+      plansDir: tempRoot,
+      exists: true,
+      message: null,
+    });
     assert.deepStrictEqual(res.json.plans[0], {
       id: "kuma-studio/approval-flow",
       project: "kuma-studio",

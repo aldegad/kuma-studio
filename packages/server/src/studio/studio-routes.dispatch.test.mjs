@@ -76,6 +76,7 @@ describe("studio-routes dispatch endpoints", () => {
       taskFile,
       project: "kuma-studio",
       initiator: "surface:1",
+      initiatorLabel: "쿠마",
       worker: "surface:4",
       workerId: "tookdaki",
       workerName: "뚝딱이",
@@ -89,6 +90,9 @@ describe("studio-routes dispatch endpoints", () => {
     assert.strictEqual(registerRes.statusCode, 200);
     assert.strictEqual(registerRes.json.dispatch.status, "dispatched");
     assert.strictEqual(registerRes.json.dispatch.messages.length, 1);
+    assert.strictEqual(registerRes.json.dispatch.messages[0].bodySource, "forwarded-summary");
+    assert.strictEqual(registerRes.json.dispatch.messages[0].fromLabel, "쿠마");
+    assert.strictEqual(registerRes.json.dispatch.messages[0].toLabel, "뚝딱이");
 
     const statusRes = createResponse();
     await handler(createRequest("GET", "/studio/dispatches/demo-task"), statusRes);
@@ -99,13 +103,19 @@ describe("studio-routes dispatch endpoints", () => {
     await handler(createRequest("POST", "/studio/dispatches/demo-task/messages", {
       kind: "question",
       text: "Can Kuma confirm the expected output?",
+      bodySource: "lifecycle-event",
       from: "worker",
       to: "initiator",
+      fromLabel: "뚝딱이",
+      toLabel: "쿠마",
       fromSurface: "surface:4",
       toSurface: "surface:1",
     }), messageRes);
     assert.strictEqual(messageRes.statusCode, 200);
     assert.strictEqual(messageRes.json.dispatch.messages.length, 2);
+    assert.strictEqual(messageRes.json.dispatch.messages[1].bodySource, "lifecycle-event");
+    assert.strictEqual(messageRes.json.dispatch.messages[1].fromLabel, "뚝딱이");
+    assert.strictEqual(messageRes.json.dispatch.messages[1].toLabel, "쿠마");
 
     const listMessagesRes = createResponse();
     await handler(createRequest("GET", "/studio/dispatches/demo-task/messages"), listMessagesRes);

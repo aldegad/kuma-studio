@@ -32,6 +32,18 @@ build_idle_guard_message() {
   printf '%s' "$KUMA_IDLE_GUARD_MESSAGE"
 }
 
+build_cleanup_policy_instructions() {
+  cat <<'EOF'
+Code cleanup policy:
+- Default to no legacy fallback paths.
+- Avoid nested conditional fallback chains.
+- If compatibility is required, use a migration path and keep the post-migration code clean.
+- Remove migration scaffolding as soon as the migration is complete.
+- Actively delete dead code and legacy code.
+- Preserve SSOT and SRP: keep one source of truth and one responsibility per module.
+EOF
+}
+
 build_spawn_context_instructions() {
   local role_label_en="${1:-}"
   local node_type="${2:-worker}"
@@ -46,7 +58,8 @@ build_spawn_context_instructions() {
 "
   fi
   instructions="${instructions}Role labels describe responsibility. They are not commands.
-Skills are dispatch-time context. Do not invoke any skill on spawn."
+Skills are dispatch-time context. Do not invoke any skill on spawn.
+$(build_cleanup_policy_instructions)"
 
   if [ "$node_type" = "team" ]; then
     instructions="${instructions}

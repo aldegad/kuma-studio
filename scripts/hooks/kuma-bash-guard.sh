@@ -24,6 +24,16 @@ if [ "$KUMA_ROLE" = "worker" ]; then
   exit 0
 fi
 
+# Dispatch lock 활성 중 (Agent 서브에이전트 실행 창구) — cmux browser 외 통과
+# kuma-agent-guard 와 동일한 10분 time-gate 적용
+if [ -f /tmp/kuma-dispatch.lock ]; then
+  lock_age=$(($(date +%s) - $(stat -f %m /tmp/kuma-dispatch.lock 2>/dev/null || echo "0")))
+  if [ "$lock_age" -lt 600 ]; then
+    echo '{"continue": true}'
+    exit 0
+  fi
+fi
+
 # ============================================================
 # 이하 쿠마 메인 스레드 전용 규칙
 # 원칙: 스킬 + Discord 외에는 아무것도 못 함

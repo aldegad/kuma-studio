@@ -89,8 +89,9 @@ Kuma Picker resolves its shared state directory in this priority order:
    ```
 2. If missing or stale, start the daemon:
    ```bash
-   node packages/server/src/cli.mjs serve
+   npm run kuma-server:reload
    ```
+   - If you are already inside the managed `kuma-server` surface or intentionally using a one-off local shell, `npm run server:reload` remains the raw entrypoint.
 3. Prefer targeted tab commands (`--tab-id`, `--url`, `--url-contains`).
 4. Use the narrowest command that answers the question. See [references/commands.md](references/commands.md).
 5. When the task matches a bundled smoke surface, prefer the reusable scripts under `scripts/run/` before inventing a one-off flow.
@@ -104,10 +105,11 @@ Kuma Picker resolves its shared state directory in this priority order:
     - This is the manual recovery path after extension code changes or when Chrome dropped the unpacked build.
     - Tell the user to open `chrome://extensions`, enable Developer Mode if needed, and press the extension's reload button.
   - Extension self-reload while the daemon is running
-    - Start or restart the daemon:
+    - Start or restart the daemon with the managed path when `kuma-server` exists:
       ```bash
-      npm run server:reload
+      npm run kuma-server:reload
       ```
+    - `npm run server:reload` is only the raw in-surface or local entrypoint.
     - While that daemon is watching `packages/browser-extension/`, saving a file under that directory triggers the watcher in `packages/server/src/server.mjs`, which broadcasts `extension.reload`.
     - The extension receives that socket message in `packages/browser-extension/background/socket-client.js` and runs `chrome.runtime.reload()`.
 - There is no dedicated public `kuma-cli extension-reload` subcommand today. The supported entrypoints are:

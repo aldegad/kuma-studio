@@ -1,0 +1,141 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+PROJECT_ID="kuma-studio"
+SERVER_LABEL="server"
+PORT="${KUMA_STUDIO_PORT:-4312}"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-server-reload
+
+Reload the managed Kuma Studio daemon inside the existing `kuma-server` surface.
+This command never starts a new unmanaged local server.
+EOF
+}
+
+[ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ] && {
+  usage
+  exit 0
+}
+
+[ $# -eq 0 ] || {
+  usage >&2
+  exit 1
+}
+
+resolve_listener_pid() {
+  lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n 1 || true
+}
+
+resolve_workspace_binding_from_pid() {
+  local pid="${1:?pid required}"
+  local proc_env=""
+
+  if [ -r "/proc/$pid/environ" ]; then
+    proc_env="$(tr '\0' '\n' < "/proc/$pid/environ" | grep '^KUMA_STUDIO_WORKSPACE=' | head -n 1 || true)"
+    proc_env="${proc_env#KUMA_STUDIO_WORKSPACE=}"
+    [ -n "$proc_env" ] || return 1
+    resolve_path_if_possible "$proc_env" || printf '%s\n' "$proc_env"
+    return 0
+  fi
+
+  proc_env="$(ps eww -p "$pid" -o command= 2>/dev/null || true)"
+  [ -n "$proc_env" ] || return 1
+
+  node --input-type=module - "$proc_env" <<'NODE'
+const [, , line = ""] = process.argv;
+const match = line.match(/(?:^|\s)KUMA_STUDIO_WORKSPACE=([^\s]+)/u);
+if (!match) {
+  process.exit(1);
+}
+process.stdout.write(`${match[1]}\n`);
+NODE
+}
+
+resolve_managed_workspace_anchor_binding() {
+  local repo_root="${1:-$KUMA_REPO_ROOT}"
+  local anchor_surface=""
+  local anchor_cwd=""
+
+  anchor_surface="$(resolve_label_surface "system" "🐻 쿠마" 2>/dev/null || resolve_project_anchor_surface "system" 2>/dev/null || true)"
+  [ -n "$anchor_surface" ] || return 1
+
+  ensure_surface_alive "$anchor_surface" || return 1
+
+  anchor_cwd="$(resolve_surface_cwd "$anchor_surface" 2>/dev/null || true)"
+  [ -n "$anchor_cwd" ] || return 1
+
+  resolve_runtime_workspace_anchor_candidate "$anchor_cwd" "$repo_root"
+}
+
+ensure_surface_alive() {
+  local surface="${1:?surface required}"
+  cmux read-screen --surface "$surface" --lines 1 > /dev/null 2>&1
+}
+
+create_surface_in_slot() {
+  local workspace="${1:?workspace required}"
+  local pane="${2:?pane required}"
+  local result=""
+  local surface=""
+
+  result="$(cmux new-surface --pane "$pane" --workspace "$workspace" 2>&1 || true)"
+  surface="$(printf '%s\n' "$result" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+  [ -n "$surface" ] || die "failed to create replacement kuma-server surface: $result"
+  printf '%s\n' "$surface"
+}
+
+ensure_runtime_requirements
+require_cmd lsof
+require_cmd ps
+require_file "$KUMA_CMUX_DIR/kuma-cmux-send.sh"
+
+SERVER_SURFACE="$(resolve_label_surface "$PROJECT_ID" "$SERVER_LABEL" 2>/dev/null || true)"
+[ -n "$SERVER_SURFACE" ] || die "managed kuma-server surface not found for project '$PROJECT_ID'; bootstrap Kuma Studio first"
+
+ensure_surface_alive "$SERVER_SURFACE" || die "managed kuma-server surface is unavailable: $SERVER_SURFACE"
+
+SERVER_WORKSPACE_ID="$(resolve_workspace_for_surface "$SERVER_SURFACE" 2>/dev/null || true)"
+[ -n "$SERVER_WORKSPACE_ID" ] || die "failed to resolve workspace for managed kuma-server surface: $SERVER_SURFACE"
+
+SERVER_PANE_ID="$(resolve_pane_for_surface "$SERVER_SURFACE" 2>/dev/null || true)"
+[ -n "$SERVER_PANE_ID" ] || die "failed to resolve pane for managed kuma-server surface: $SERVER_SURFACE"
+
+WORKSPACE_BINDING="$(resolve_requested_workspace_binding "$KUMA_REPO_ROOT" 2>/dev/null || true)"
+WORKSPACE_BINDING="$(resolve_reload_workspace_binding_candidate "$WORKSPACE_BINDING" "$KUMA_REPO_ROOT" 2>/dev/null || true)"
+if [ -z "$WORKSPACE_BINDING" ]; then
+  LISTENER_PID="$(resolve_listener_pid)"
+  if [ -n "$LISTENER_PID" ]; then
+    WORKSPACE_BINDING="$(resolve_workspace_binding_from_pid "$LISTENER_PID" 2>/dev/null || true)"
+    WORKSPACE_BINDING="$(resolve_reload_workspace_binding_candidate "$WORKSPACE_BINDING" "$KUMA_REPO_ROOT" 2>/dev/null || true)"
+  fi
+fi
+if [ -z "$WORKSPACE_BINDING" ]; then
+  WORKSPACE_BINDING="$(resolve_managed_workspace_anchor_binding "$KUMA_REPO_ROOT" 2>/dev/null || true)"
+fi
+
+[ -n "$WORKSPACE_BINDING" ] || die "unable to resolve workspace binding; run from the workspace root, set KUMA_STUDIO_WORKSPACE, keep the managed daemon running with KUMA_STUDIO_WORKSPACE, or keep the managed Kuma orchestrator surface anchored to the runtime workspace"
+
+WORKSPACE_BINDING="$(resolve_path_if_possible "$WORKSPACE_BINDING" || printf '%s' "$WORKSPACE_BINDING")"
+printf -v RELOAD_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q npm run server:reload' "$KUMA_REPO_ROOT" "$WORKSPACE_BINDING"
+
+cmux close-surface --workspace "$SERVER_WORKSPACE_ID" --surface "$SERVER_SURFACE" > /dev/null
+remove_surface_from_registry "$SERVER_SURFACE" "$PROJECT_ID"
+
+NEW_SERVER_SURFACE="$(create_surface_in_slot "$SERVER_WORKSPACE_ID" "$SERVER_PANE_ID")"
+cmux tab-action --action rename --workspace "$SERVER_WORKSPACE_ID" --surface "$NEW_SERVER_SURFACE" --title "kuma-server" > /dev/null 2>&1 || true
+register_surface_label "$PROJECT_ID" "$SERVER_LABEL" "$NEW_SERVER_SURFACE"
+
+"$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$NEW_SERVER_SURFACE" "$RELOAD_COMMAND" --workspace "$SERVER_WORKSPACE_ID"
+
+printf 'SURFACE: %s\n' "$NEW_SERVER_SURFACE"
+printf 'REPLACED_SURFACE: %s\n' "$SERVER_SURFACE"
+printf 'CMUX_WORKSPACE: %s\n' "$SERVER_WORKSPACE_ID"
+printf 'CMUX_PANE: %s\n' "$SERVER_PANE_ID"
+printf 'WORKSPACE: %s\n' "$WORKSPACE_BINDING"
+printf 'COMMAND: %s\n' "$RELOAD_COMMAND"

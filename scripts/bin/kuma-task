@@ -129,6 +129,182 @@ member_status_field() {
   ' "$field"
 }
 
+dispatch_role_label() {
+  case "${1:-}" in
+    initiator)
+      printf 'initiator'
+      ;;
+    worker)
+      printf 'worker'
+      ;;
+    qa)
+      printf 'QA'
+      ;;
+    surface)
+      printf 'surface peer'
+      ;;
+    *)
+      printf 'participant'
+      ;;
+  esac
+}
+
+resolve_surface_display_name() {
+  local surface="${1:-}"
+  local preferred_project="${2:-}"
+
+  [ -n "$surface" ] || return 0
+
+  node - "$KUMA_SURFACES_PATH" "$surface" "$preferred_project" <<'NODE'
+const fs = require("node:fs");
+
+const [, , registryPath, surfaceRaw, preferredProjectRaw] = process.argv;
+const surface = typeof surfaceRaw === "string" ? surfaceRaw.trim() : "";
+const preferredProject = typeof preferredProjectRaw === "string" ? preferredProjectRaw.trim() : "";
+if (!surface || !registryPath || !fs.existsSync(registryPath)) {
+  process.exit(0);
+}
+
+function normalize(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseRegistryLabel(label) {
+  const text = normalize(label);
+  const name = text.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim();
+  return name || text;
+}
+
+const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+const projectOrder = preferredProject
+  ? [preferredProject, ...Object.keys(registry).filter((key) => key !== preferredProject)]
+  : Object.keys(registry);
+
+for (const projectId of projectOrder) {
+  const entries = registry?.[projectId];
+  if (!entries || typeof entries !== "object") {
+    continue;
+  }
+  for (const [label, candidateSurface] of Object.entries(entries)) {
+    if (normalize(candidateSurface) === surface) {
+      process.stdout.write(`${parseRegistryLabel(label)}\n`);
+      process.exit(0);
+    }
+  }
+}
+NODE
+}
+
+format_dispatch_party() {
+  local display_label="${1:-}"
+  local role="${2:-}"
+  local surface="${3:-}"
+  local detail="${4:-}"
+
+  local role_label
+  role_label="$(dispatch_role_label "$role")"
+  display_label="${display_label:-$role_label}"
+  local meta=""
+  if [ "$display_label" != "$role_label" ]; then
+    meta="$role_label"
+  fi
+  if [ -n "$detail" ]; then
+    if [ -n "$meta" ]; then
+      meta="${meta}, ${detail}"
+    else
+      meta="$detail"
+    fi
+  fi
+
+  if [ -n "$meta" ] && [ -n "$surface" ]; then
+    printf '%s (%s, %s)' "$display_label" "$meta" "$surface"
+  elif [ -n "$meta" ]; then
+    printf '%s (%s)' "$display_label" "$meta"
+  elif [ -n "$surface" ]; then
+    printf '%s (%s)' "$display_label" "$surface"
+  else
+    printf '%s' "$display_label"
+  fi
+}
+
+emit_task_decision_capture() {
+  local instruction="${1:-}"
+  local task_token="${2:-}"
+  local project="${3:-}"
+  local task_file="${4:-}"
+
+  [ -n "$instruction" ] || return 0
+
+  KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
+  KUMA_DECISION_RUNTIME_ROOT="${KUMA_DECISION_RUNTIME_ROOT:-$KUMA_REPO_ROOT}" \
+  KUMA_VAULT_DIR="$KUMA_VAULT_DIR" \
+  node --input-type=module - "$task_token" "$project" "$task_file" "$instruction" <<'NODE' >/dev/null 2>&1 || true
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+const [, , taskTokenRaw, projectRaw, taskFileRaw, instructionRaw] = process.argv;
+const taskToken = typeof taskTokenRaw === "string" ? taskTokenRaw.trim() : "";
+const project = typeof projectRaw === "string" ? projectRaw.trim() : "";
+const taskFile = typeof taskFileRaw === "string" ? taskFileRaw.trim() : "";
+const instruction = typeof instructionRaw === "string" ? instructionRaw.trim() : "";
+const repoRoot = process.env.KUMA_DECISION_RUNTIME_ROOT
+  ? resolve(process.env.KUMA_DECISION_RUNTIME_ROOT)
+  : process.env.KUMA_REPO_ROOT
+    ? resolve(process.env.KUMA_REPO_ROOT)
+    : process.cwd();
+const vaultDir = process.env.KUMA_VAULT_DIR;
+
+if (!instruction || !vaultDir) {
+  process.exit(0);
+}
+
+async function importModule(relativePath) {
+  return import(pathToFileURL(join(repoRoot, relativePath)).href);
+}
+
+let detectorModule;
+let storeModule;
+try {
+  [detectorModule, storeModule] = await Promise.all([
+    importModule("packages/server/src/studio/decision-detector.mjs"),
+    importModule("packages/server/src/studio/decisions-store.mjs"),
+  ]);
+} catch {
+  process.exit(0);
+}
+
+const detectDecision = detectorModule?.detectDecision;
+const appendDecision = storeModule?.appendDecision;
+if (typeof detectDecision !== "function" || typeof appendDecision !== "function") {
+  process.exit(0);
+}
+
+const decision = detectDecision({ text: instruction, precedingContext: null });
+if (!decision || decision.matched === false || typeof decision.action !== "string" || !decision.action.trim()) {
+  process.exit(0);
+}
+
+const originalText =
+  (typeof decision.original_text === "string" && decision.original_text.trim()) ||
+  (typeof decision.originalText === "string" && decision.originalText.trim()) ||
+  instruction;
+if (!originalText) {
+  process.exit(0);
+}
+
+await appendDecision({
+  vaultDir,
+  entry: {
+    action: decision.action.trim(),
+    scope: project ? `project:${project}` : "global",
+    writer: "lifecycle-emitter",
+    original_text: originalText,
+    context_ref: taskToken ? `task:${taskToken}` : taskFile || "kuma-task",
+  },
+});
+NODE
+}
+
 QA_SURFACE=""
 QA_LABEL=""
 QA_FRONTMATTER=""
@@ -169,7 +345,7 @@ else
       QA_DISPATCH_TARGET="$QA_LABEL"
       QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || QA_SURFACE_JSON=""
 
-      # QA fallback: surface 없거나 busy면 fallback 멤버로 전환
+      # QA reroute: surface 가 없거나 busy 면 alternate QA 멤버로 전환
       QA_BUSY=0
       if [ -z "$QA_SURFACE_JSON" ]; then
         QA_BUSY=1
@@ -184,30 +360,30 @@ else
       fi
 
       if [ "$QA_BUSY" = "1" ]; then
-        # fallback 멤버 조회 (worker의 qaFallback 필드)
+        # alternate QA 대상 조회 (worker의 qaFallback 필드)
         MEMBER_QA_FALLBACK="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const m=JSON.parse(fs.readFileSync(0,"utf8")); console.log(m.qaFallback || "");' 2>/dev/null || echo "")"
         if [ -n "$MEMBER_QA_FALLBACK" ] && [ "$MEMBER_QA_FALLBACK" != "$QA_TARGET_QUERY" ]; then
-          printf 'QA_FALLBACK: %s busy → trying %s\n' "$QA_TARGET_QUERY" "$MEMBER_QA_FALLBACK" >&2
+          printf 'QA_ROUTE: %s busy -> rerouting to alternate reviewer %s\n' "$QA_TARGET_QUERY" "$MEMBER_QA_FALLBACK" >&2
           case "$MEMBER_QA_FALLBACK" in
             self)
               QA_MODE="self"
-              QA_LABEL="worker-self-report (fallback)"
+              QA_LABEL="worker-self-report"
               QA_FRONTMATTER="worker-self-report"
               QA_SURFACE=""
               QA_DISPATCH_TARGET=""
               ;;
             kuma-direct)
               QA_MODE="kuma-direct"
-              QA_LABEL="kuma-direct (fallback)"
+              QA_LABEL="kuma-direct"
               QA_FRONTMATTER="kuma-direct"
               QA_SURFACE=""
               QA_DISPATCH_TARGET=""
               ;;
             *)
-              QA_MEMBER_JSON="$(resolve_member_json "$MEMBER_QA_FALLBACK")" || die "qa fallback member not found: $MEMBER_QA_FALLBACK"
+              QA_MEMBER_JSON="$(resolve_member_json "$MEMBER_QA_FALLBACK")" || die "qa reroute member not found: $MEMBER_QA_FALLBACK"
               QA_DISPATCH_TARGET="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
-              QA_LABEL="${QA_DISPATCH_TARGET} (fallback)"
-              QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || die "qa fallback surface not found for $MEMBER_QA_FALLBACK"
+              QA_LABEL="${QA_DISPATCH_TARGET}"
+              QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || die "qa reroute surface not found for $MEMBER_QA_FALLBACK"
               QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
               QA_FRONTMATTER="$QA_SURFACE"
               ;;
@@ -229,6 +405,10 @@ TASK_FILE="$KUMA_TASK_DIR/${TASK_BASENAME}.task.md"
 RESULT_FILE="$KUMA_RESULT_DIR/${TASK_BASENAME}.result.md"
 SIGNAL="${TASK_BASENAME}-done"
 INITIATOR_SURFACE="$(resolve_initiator_surface)"
+WORKER_DETAIL="$MEMBER_TYPE"
+INITIATOR_NAME="$(resolve_surface_display_name "$INITIATOR_SURFACE" "$PROJECT")"
+INITIATOR_LABEL="$(format_dispatch_party "$INITIATOR_NAME" initiator "$INITIATOR_SURFACE")"
+WORKER_LABEL="$(format_dispatch_party "$MEMBER_NAME" worker "$WORKER_SURFACE" "$WORKER_DETAIL")"
 
 WORKER_STATUS_JSON="$(read_project_member_status_json "$TEAM_STATUS_SNAPSHOT_JSON" "$MEMBER_ID")"
 WORKER_STATUS="$(member_status_field "$WORKER_STATUS_JSON" state 2>/dev/null || echo "unknown")"
@@ -252,10 +432,13 @@ result: ${RESULT_FILE}
 ${INSTRUCTION}
 EOF
 
+emit_task_decision_capture "$INSTRUCTION" "$TASK_TOKEN" "$PROJECT" "$TASK_FILE"
+
 node "$KUMA_SERVER_CLI" dispatch-register \
   --task-file "$TASK_FILE" \
   --instruction "$INSTRUCTION" \
   --summary "$INSTRUCTION" \
+  --initiator-label "$INITIATOR_NAME" \
   --worker-id "$MEMBER_ID" \
   --worker-name "$MEMBER_NAME" \
   --worker-type "$MEMBER_TYPE" \
@@ -265,6 +448,12 @@ node "$KUMA_SERVER_CLI" dispatch-register \
 
 if [ "$QA_MODE" = "self" ]; then
   PROMPT="$(cat <<EOF
+[Kuma Studio Dispatch] ${TASK_TOKEN}
+Speaker: ${INITIATOR_LABEL}
+Recipient: ${WORKER_LABEL}
+Message kind: assigned task
+Body source: forwarded/orchestrated summary
+
 ${INSTRUCTION}
 
 Tracked task file: ${TASK_FILE}
@@ -281,6 +470,12 @@ EOF
 )"
 elif [ "$QA_MODE" = "kuma-direct" ]; then
   PROMPT="$(cat <<EOF
+[Kuma Studio Dispatch] ${TASK_TOKEN}
+Speaker: ${INITIATOR_LABEL}
+Recipient: ${WORKER_LABEL}
+Message kind: assigned task
+Body source: forwarded/orchestrated summary
+
 ${INSTRUCTION}
 
 Tracked task file: ${TASK_FILE}
@@ -296,6 +491,12 @@ EOF
 )"
 else
   PROMPT="$(cat <<EOF
+[Kuma Studio Dispatch] ${TASK_TOKEN}
+Speaker: ${INITIATOR_LABEL}
+Recipient: ${WORKER_LABEL}
+Message kind: assigned task
+Body source: forwarded/orchestrated summary
+
 ${INSTRUCTION}
 
 Tracked task file: ${TASK_FILE}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import hljs from "highlight.js/lib/core";
 import typescript from "highlight.js/lib/languages/typescript";
 import javascript from "highlight.js/lib/languages/javascript";
@@ -33,6 +33,32 @@ interface CodeViewerProps {
   inline?: boolean;
 }
 
+// Map server-reported language tokens to the hljs identifiers we registered above.
+const LANG_ALIAS: Record<string, string> = {
+  ts: "typescript",
+  tsx: "typescript",
+  js: "javascript",
+  jsx: "javascript",
+  mjs: "javascript",
+  cjs: "javascript",
+  py: "python",
+  sh: "bash",
+  zsh: "bash",
+  shell: "bash",
+  md: "markdown",
+  mdx: "markdown",
+  yml: "yaml",
+  htm: "html",
+};
+
+function normalizeLang(raw: string): string | null {
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (lower === "plaintext" || lower === "text" || lower === "txt") return null;
+  const mapped = LANG_ALIAS[lower] ?? lower;
+  return hljs.getLanguage(mapped) ? mapped : null;
+}
+
 // Language badge color
 const LANG_COLOR: Record<string, string> = {
   typescript: "bg-blue-100 text-blue-700",
@@ -47,11 +73,20 @@ const LANG_COLOR: Record<string, string> = {
   sql: "bg-indigo-100 text-indigo-700",
 };
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 export function CodeViewer({ content, language, filePath, onClose, onSave, inline }: CodeViewerProps) {
-  const codeRef = useRef<HTMLElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
   const [saving, setSaving] = useState(false);
+  const [wrap, setWrap] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement>(null);
   const fileName = filePath.split("/").pop() || filePath;
   const badgeColor = LANG_COLOR[language] || "bg-stone-100 text-stone-500";
 
@@ -75,18 +110,35 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
     setSaving(false);
   };
 
-  useEffect(() => {
-    if (codeRef.current) {
-      codeRef.current.removeAttribute("data-highlighted");
-      try {
-        hljs.highlightElement(codeRef.current);
-      } catch {
-        // language not registered — show plain text
-      }
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch { /* ignore */ }
+  };
+
+  // Highlight the whole buffer once, then pair per-line HTML with a gutter so
+  // span state across multi-line strings/comments stays intact.
+  const highlightedHtml = useMemo(() => {
+    const lang = normalizeLang(language);
+    if (!lang) return escapeHtml(content);
+    try {
+      return hljs.highlight(content, { language: lang, ignoreIllegals: true }).value;
+    } catch {
+      return escapeHtml(content);
     }
   }, [content, language]);
 
-  const lines = content.split("\n");
+  const lineCount = useMemo(() => {
+    if (!content) return 1;
+    // A trailing newline should not render an extra empty gutter row.
+    const raw = content.split("\n");
+    if (raw.length > 1 && raw[raw.length - 1] === "") raw.pop();
+    return Math.max(raw.length, 1);
+  }, [content]);
+
+  const gutterWidth = `${Math.max(2, String(lineCount).length) * 0.62 + 1.2}rem`;
 
   const viewer = (
     <div
@@ -115,6 +167,28 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
           </span>
         </div>
         <div className="flex-1" />
+        {!isEditing && (
+          <>
+            <button
+              type="button"
+              onClick={() => setWrap((v) => !v)}
+              className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+              style={{ color: wrap ? "var(--t-primary)" : "var(--t-faint)", background: wrap ? "var(--badge-bg)" : "transparent" }}
+              title={wrap ? "줄바꿈 끄기" : "줄바꿈 켜기"}
+            >
+              {wrap ? "↵ 줄바꿈" : "→ 한 줄"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCopy()}
+              className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+              style={{ color: copied ? "#10b981" : "var(--t-faint)" }}
+              title="전체 복사"
+            >
+              {copied ? "✓ 복사됨" : "복사"}
+            </button>
+          </>
+        )}
         {isEditing ? (
           <div className="flex items-center gap-1 mr-2">
             <button type="button" onClick={() => { setEditContent(content); setIsEditing(false); }} className="rounded px-2 py-0.5 text-[10px] font-medium transition-colors" style={{ color: "var(--t-muted)" }}>취소</button>
@@ -143,29 +217,44 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             className="w-full h-full min-h-[200px] p-4 font-mono text-[12px] leading-[1.65] outline-none resize-none"
-            style={{ background: "var(--ide-bg-alt)", color: "var(--t-primary)" }}
+            style={{ background: "var(--ide-bg-alt)", color: "var(--t-primary)", tabSize: 2 }}
             spellCheck={false}
           />
         </div>
       ) : (
-        <div className="flex-1 overflow-auto" style={{ background: "var(--ide-bg-alt)" }}>
-          <table className="w-full border-collapse text-[12px] leading-[1.65]" style={{ color: "var(--t-primary)" }}>
-            <tbody>
-              {lines.map((line, i) => (
-                <tr key={i} className="transition-colors duration-75">
-                  <td
-                    className="select-none border-r px-3 py-0 text-right font-mono text-[10px] align-top"
-                    style={{ minWidth: 44, width: 44, borderColor: "var(--border-subtle)", color: "var(--t-faint)" }}
-                  >
-                    {i + 1}
-                  </td>
-                  <td className="px-4 py-0 font-mono whitespace-pre">
-                    {line || " "}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div
+          ref={scrollerRef}
+          className="kuma-code-scroll flex-1 overflow-auto"
+          style={{ background: "var(--ide-bg-alt)" }}
+        >
+          <div className="flex min-h-full items-stretch">
+            {/* Line-number gutter — sticky on horizontal scroll so numbers stay visible. */}
+            <pre
+              aria-hidden="true"
+              className="kuma-code-gutter sticky left-0 z-[1] select-none text-right font-mono text-[11px] leading-[1.65] py-3 pl-3 pr-3 border-r"
+              style={{
+                width: gutterWidth,
+                minWidth: gutterWidth,
+                color: "var(--t-faint)",
+                borderColor: "var(--border-subtle)",
+                background: "var(--ide-bg)",
+                margin: 0,
+              }}
+            >
+              {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
+            </pre>
+            {/* Highlighted code */}
+            <pre
+              className={`kuma-code-body flex-1 font-mono text-[12px] leading-[1.65] py-3 px-4 ${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"}`}
+              style={{ margin: 0, tabSize: 2, color: "var(--t-primary)" }}
+            >
+              <code
+                className="hljs"
+                style={{ background: "transparent", padding: 0 }}
+                dangerouslySetInnerHTML={{ __html: highlightedHtml || "&nbsp;" }}
+              />
+            </pre>
+          </div>
         </div>
       )}
 
@@ -174,10 +263,45 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
         <span className="text-[10px] truncate" style={{ color: "var(--t-faint)" }}>{filePath}</span>
         <div className="flex items-center gap-3 text-[10px]" style={{ color: "var(--t-faint)" }}>
           {isEditing && <span className="text-amber-500 font-medium">편집 중</span>}
-          <span>{(isEditing ? editContent : content).split("\n").length} lines</span>
+          <span>{lineCount} lines</span>
           <span>{new Blob([isEditing ? editContent : content]).size.toLocaleString()} bytes</span>
         </div>
       </div>
+
+      {/* Scoped dark-theme overrides for highlight.js (github.css is tuned for light). */}
+      <style>{`
+        .kuma-code-scroll pre { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+        .kuma-code-scroll ::selection { background: rgba(245, 158, 11, 0.25); }
+        .kuma-code-body code.hljs { display: block; }
+        [data-theme="night"] .kuma-code-scroll .hljs { color: #e2e8f0; background: transparent; }
+        [data-theme="night"] .kuma-code-scroll .hljs-comment,
+        [data-theme="night"] .kuma-code-scroll .hljs-quote { color: #7a8aa3; font-style: italic; }
+        [data-theme="night"] .kuma-code-scroll .hljs-keyword,
+        [data-theme="night"] .kuma-code-scroll .hljs-selector-tag,
+        [data-theme="night"] .kuma-code-scroll .hljs-literal,
+        [data-theme="night"] .kuma-code-scroll .hljs-meta-keyword { color: #c4b5fd; }
+        [data-theme="night"] .kuma-code-scroll .hljs-string,
+        [data-theme="night"] .kuma-code-scroll .hljs-regexp,
+        [data-theme="night"] .kuma-code-scroll .hljs-addition { color: #86efac; }
+        [data-theme="night"] .kuma-code-scroll .hljs-number,
+        [data-theme="night"] .kuma-code-scroll .hljs-symbol,
+        [data-theme="night"] .kuma-code-scroll .hljs-meta { color: #fcd34d; }
+        [data-theme="night"] .kuma-code-scroll .hljs-title,
+        [data-theme="night"] .kuma-code-scroll .hljs-title.function_,
+        [data-theme="night"] .kuma-code-scroll .hljs-section { color: #93c5fd; }
+        [data-theme="night"] .kuma-code-scroll .hljs-attr,
+        [data-theme="night"] .kuma-code-scroll .hljs-attribute,
+        [data-theme="night"] .kuma-code-scroll .hljs-name,
+        [data-theme="night"] .kuma-code-scroll .hljs-variable,
+        [data-theme="night"] .kuma-code-scroll .hljs-template-variable { color: #fca5a5; }
+        [data-theme="night"] .kuma-code-scroll .hljs-type,
+        [data-theme="night"] .kuma-code-scroll .hljs-built_in,
+        [data-theme="night"] .kuma-code-scroll .hljs-class .hljs-title { color: #67e8f9; }
+        [data-theme="night"] .kuma-code-scroll .hljs-deletion { color: #fca5a5; }
+        [data-theme="night"] .kuma-code-scroll .hljs-tag,
+        [data-theme="night"] .kuma-code-scroll .hljs-punctuation { color: #cbd5e1; }
+        [data-theme="night"] .kuma-code-scroll ::selection { background: rgba(251, 191, 36, 0.30); }
+      `}</style>
     </div>
   );
 

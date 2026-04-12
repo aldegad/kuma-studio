@@ -25,16 +25,16 @@ user-invocable: true
 
 ## 호출 방법
 
-태스크 파일에 라우팅 정보 포함 (initiator/worker/signal).
+전략 과제도 canonical dispatch flow 하나만 사용한다.
 
 ```bash
-# 1. 시그널 대기 먼저 등록 (background — 시그널 유실 방지)
-Bash (run_in_background): ~/.kuma/cmux/kuma-cmux-wait.sh {task-id}-done /tmp/kuma-results/{task-id}.result.md --surface {surface}
-⚠️ 반드시 send 전에 등록.
-
-# 2. 태스크 전달
-~/.kuma/cmux/kuma-cmux-send.sh {surface} \
-  "You are 🐹 뭉치. Read /tmp/kuma-tasks/{task-id}.task.md and execute. Write result to /tmp/kuma-results/{task-id}.result.md then run: mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/{task-id}-done"
+~/.kuma/bin/kuma-task "뭉치" "<instruction>" --project "<project>"
 ```
 
-모든 워커는 cmux 상주 세션으로 스폰한다.
+- 생성된 task file 을 기준으로 워커가 작업한다.
+- 진행 중 clarification 이 필요하면 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 같은 스레드를 이어간다.
+- 구현/기획 산출물은 result file 작성 후 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
+- QA 가 필요한 경우 initiator 가 밤토리에게 별도 QA task 를 dispatch 하고, 밤토리는 같은 task file 기준으로 `qa-pass|qa-reject` 를 보고한다.
+- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다.
+
+모든 워커는 cmux 상주 세션으로 스폰하지만, 완료 신호는 dispatch broker 가 canonical 이다.

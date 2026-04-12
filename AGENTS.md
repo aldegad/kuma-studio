@@ -1,6 +1,7 @@
 # Codex Workflow
 
-- `npm run server:reload` is the one standard way to start or restart the daemon server on port 4312.
+- `npm run kuma-server:reload` is the standard human/operator reload path when the managed `kuma-server` surface exists. It must reuse that surface instead of starting a duplicate local daemon.
+- `npm run server:reload` remains the raw in-surface/local daemon reload entrypoint on port 4312.
 - `npm run server:start` exists as the raw non-reloading entrypoint for scripts, but human/operator workflows should use `server:reload`.
 - `npm run kuma-studio:get-selection` reads the latest browser selection.
 - `npm run kuma-studio:set-job-status -- --status in_progress --message "..."` updates a job card.
@@ -20,8 +21,8 @@
 
 ## Conventions
 
-- Server boot/restart is standardized on `npm run server:reload`.
-- If the managed `kuma-server` surface already exists, restart the daemon there with `npm run server:reload` instead of starting a second server elsewhere.
+- Server boot/restart is standardized on `npm run kuma-server:reload` for human/operator reuse of shared infra surfaces, and `npm run server:reload` as the raw in-surface/local entrypoint.
+- If the managed `kuma-server` surface already exists, restart the daemon there with `npm run kuma-server:reload` instead of starting a second server elsewhere.
 - If the managed `kuma-frontend` surface already exists, reuse it for `npm run dev:studio` instead of starting a second Vite dev server elsewhere.
 - Server code uses `.mjs` (ESM).
 - Frontend code uses TypeScript (`.ts`, `.tsx`).

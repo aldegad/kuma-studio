@@ -27,21 +27,19 @@ user-invocable: true
 
 ### Step 2: 부리 디스패치
 
-태스크 파일에 라우팅 정보 포함 (initiator/worker/signal).
-
 ```bash
-# 1. 시그널 대기 먼저 등록 (background — 시그널 유실 방지)
-Bash (run_in_background): ~/.kuma/cmux/kuma-cmux-wait.sh {task-id}-done /tmp/kuma-results/{task-id}.result.md --surface {surface}
-⚠️ 반드시 send 전에 등록.
-
-# 2. 태스크 전달
-~/.kuma/cmux/kuma-cmux-send.sh {surface} \
-  "You are 🦉 부리. Read /tmp/kuma-tasks/{task-id}.task.md and execute. Write result to /tmp/kuma-results/{task-id}.result.md then run: mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/{task-id}-done"
+~/.kuma/bin/kuma-task "부리" "<research instruction>" --project "<project>"
 ```
+
+- task file 에 initiator/worker/qa/result 경로가 함께 기록된다.
+- 루미가 추가 질문이나 방향 수정이 필요하면 같은 task file 기준으로 `~/.kuma/bin/kuma-dispatch ask|reply` 를 사용한다.
+- 부리는 result file 작성 후 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
+- QA 가 필요한 경우 밤토리 검수 후 동일 task file 로 `qa-pass|qa-reject` 를 기록한다.
+- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 다시 사용하지 않는다.
 
 ### Step 3: 검증 게이트
 - 부리 결과에서 출처 URL과 주장 매칭을 확인
-- 불충분하면 같은 wrapper로 수정 지시
+- 불충분하면 같은 dispatch thread 에서 수정 지시
 - 후속 코드 작업은 `/dev-team`으로 분리
 
 ## 핵심 원칙
@@ -51,4 +49,4 @@ Bash (run_in_background): ~/.kuma/cmux/kuma-cmux-wait.sh {task-id}-done /tmp/kum
 - 쿠마 모드에서 `/analytics-team` 호출 시 루미 프로토콜을 따른다
 - 루미는 오케스트레이션과 검증을 맡는다
 - 부리는 외부 조사와 출처 수집을 맡는다
-- 모든 워커는 cmux 상주 세션으로 스폰
+- 모든 워커는 cmux 상주 세션으로 스폰하지만, 완료/QA 상태 보고는 dispatch flow 로만 처리한다

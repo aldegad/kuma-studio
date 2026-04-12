@@ -391,7 +391,9 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
         style={{
           background: "var(--ide-bg)",
           borderColor: "var(--card-border)",
-          ...(hasViewer ? { width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX } : { width: "100%" }),
+          ...(hasViewer
+            ? { width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX }
+            : { width: TREE_WIDTH_INITIAL, minWidth: TREE_WIDTH_INITIAL, maxWidth: TREE_WIDTH_INITIAL }),
         }}
       >
         {/* Header */}

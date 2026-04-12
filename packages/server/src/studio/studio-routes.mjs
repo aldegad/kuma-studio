@@ -19,6 +19,7 @@ import { isNightModeEnabled, setNightModeEnabled } from "./nightmode-store.mjs";
 import { execGitSync } from "./git-command.mjs";
 import { createTeamConfigRuntime, findMemberStatus } from "./team-config-runtime.mjs";
 import { createStudioExplorerRouteHandler } from "./studio-explorer-routes.mjs";
+import { createStudioDecisionsRouteHandler } from "./studio-decisions-routes.mjs";
 import { createStudioMemoRouteHandler } from "./studio-memo-routes.mjs";
 import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { readStudioPlugins, readStudioSkills } from "./studio-skill-catalog.mjs";
@@ -41,6 +42,11 @@ import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
  * @param {import("./agent-history-store.mjs").AgentHistoryStore} [options.agentHistoryStore]
  * @param {import("./dispatch-broker.mjs").DispatchBroker} [options.dispatchBroker]
  * @param {(options?: { vaultDir?: string }) => Promise<object>} [options.vaultSkillSyncFn]
+ * @param {{
+ *   appendDecision: (input: { vaultDir?: string, entry: object }) => Promise<object>,
+ *   listOpenDecisions: (input: { vaultDir?: string }) => Promise<object[]>,
+ *   resolveDecision: (input: { vaultDir?: string, id: string }) => Promise<object>,
+ * }} [options.decisionRuntime]
  * @param {{
  *   resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null,
  *   registerPendingSelfWrite?: (input: { memberId: string, memberConfig: object, ttlMs?: number }) => void,
@@ -71,6 +77,7 @@ export function createStudioRouteHandler({
   agentHistoryStore,
   dispatchBroker,
   vaultSkillSyncFn,
+  decisionRuntime,
   teamConfigRuntime,
   workspaceRoot,
   explorerGlobalRoots,
@@ -99,6 +106,10 @@ export function createStudioRouteHandler({
     memoStore,
     vaultSkillSyncFn,
   });
+  const handleDecisionsRoute = createStudioDecisionsRouteHandler({
+    vaultDir: resolve(process.env.KUMA_VAULT_DIR || join(homedir(), ".kuma", "vault")),
+    decisionRuntime,
+  });
   const handleStaticRoute = createStudioStaticRouteHandler({
     staticDir,
     studioDevDelegate,
@@ -124,6 +135,10 @@ export function createStudioRouteHandler({
     }
 
     if (await handleMemoRoute(req, res, url)) {
+      return true;
+    }
+
+    if (await handleDecisionsRoute(req, res, url)) {
       return true;
     }
 

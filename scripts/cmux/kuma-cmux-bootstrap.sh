@@ -8,7 +8,9 @@ set -uo pipefail
 SCRIPT_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 KUMA_STUDIO_DIR="${KUMA_STUDIO_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-WORKSPACE_DIR="${KUMA_STUDIO_WORKSPACE:-$KUMA_STUDIO_DIR}"
+BOOTSTRAP_CALLER_DIR="${INIT_CWD:-$(pwd -P)}"
+WORKSPACE_DIR="${KUMA_STUDIO_WORKSPACE:-$BOOTSTRAP_CALLER_DIR}"
+WORKSPACE_DIR="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "$WORKSPACE_DIR")"
 KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_STUDIO_DIR/prompts/kuma-system-prompt.md}"
 
 source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
@@ -283,7 +285,12 @@ else
 
     INFRA_P="$(get_pane "$SERVER_SURFACE")"
     echo "→ 쿠마 서버 시작 중..."
-    "$SCRIPT_DIR/kuma-cmux-send.sh" "$SERVER_SURFACE" "cd \"$KUMA_STUDIO_DIR\" && npm run server:reload" > /dev/null
+    if [ -n "${KUMA_STUDIO_WORKSPACE:-}" ] || [ "$WORKSPACE_DIR" != "$KUMA_STUDIO_DIR" ]; then
+      printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$WORKSPACE_DIR"
+    else
+      printf -v SERVER_START_COMMAND 'cd "%s" && npm run server:reload' "$KUMA_STUDIO_DIR"
+    fi
+    "$SCRIPT_DIR/kuma-cmux-send.sh" "$SERVER_SURFACE" "$SERVER_START_COMMAND" > /dev/null
     register_surface_label "kuma-studio" "server" "$SERVER_SURFACE" "kuma-server"
 
     echo -n "  기동 대기"

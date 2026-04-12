@@ -93,6 +93,14 @@ audit 결과 문서는 반드시 아래 섹션 순서를 지킨다.
 - Bash
 - `cmux read-screen` / `~/.kuma/cmux/kuma-cmux-read.sh` 같은 화면 조회 도구
 
+## Backfill Decisions Mode
+
+- dispatch 나 plan 에 `--mode backfill-decisions` 가 있으면 기존 audit에 더해 `~/.kuma/vault/decisions.md` 보강 작업으로 해석한다.
+- 스캔 대상은 plan 본문, `dispatch-log.md`, 그리고 명시적 attribution 이 있는 인용 블록뿐이다.
+- 감지는 항상 서버의 `decision-detector` 규칙을 재사용한다. LLM 분류나 추론 요약은 금지한다.
+- append 시에는 원문 키워드가 직접 들어 있는 verbatim 문장만 `writer: noeuri-audit` 로 기록한다.
+- 애매하면 기록하지 말고 Findings 에만 남긴다.
+
 ## 제약
 
 - 행동 skill 의 workflow 자체를 임의로 바꾸지 않는다. 역할이 충돌하면 audit 결과로만 남기고 필요한 최소 수정만 한다.

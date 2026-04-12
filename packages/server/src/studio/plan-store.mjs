@@ -7,7 +7,7 @@
 
 import fs, { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const PLAN_STATUS_COLOR_BY_STATUS = {
   active: "blue",
@@ -17,18 +17,76 @@ const PLAN_STATUS_COLOR_BY_STATUS = {
   failed: "red",
 };
 
-let cachedPlansDir = null;
+let cachedPlansSourceKey = null;
 let cachedPlansSnapshot = null;
 let cachedPlansPromise = null;
 
 /**
  * Resolve the plans directory.
- * Priority: KUMA_PLANS_DIR > KUMA_STUDIO_WORKSPACE/.kuma/plans > <cwd>/.kuma/plans
+ * Priority: KUMA_PLANS_DIR > KUMA_STUDIO_WORKSPACE/.kuma/plans
  */
-function resolvePlansDir() {
-  if (process.env.KUMA_PLANS_DIR) return process.env.KUMA_PLANS_DIR;
-  const workspace = process.env.KUMA_STUDIO_WORKSPACE || process.cwd();
-  return join(workspace, ".kuma", "plans");
+function resolveConfiguredPath(envKey) {
+  const raw = process.env[envKey];
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    return null;
+  }
+  return resolve(raw.trim());
+}
+
+function toPublicPlansSource(source) {
+  return {
+    mode: source.mode,
+    status: source.status,
+    configured: source.configured,
+    workspaceRoot: source.workspaceRoot,
+    plansDir: source.plansDir,
+    exists: source.exists,
+    message: source.message,
+  };
+}
+
+export function resolvePlansSource() {
+  const explicitPlansDir = resolveConfiguredPath("KUMA_PLANS_DIR");
+  if (explicitPlansDir) {
+    const exists = existsSync(explicitPlansDir);
+    return {
+      cacheKey: `plans-dir:${explicitPlansDir}`,
+      mode: "explicit-plans-dir",
+      status: exists ? "ready" : "missing_dir",
+      configured: true,
+      workspaceRoot: null,
+      plansDir: explicitPlansDir,
+      exists,
+      message: exists ? null : `Plan directory does not exist: ${explicitPlansDir}`,
+    };
+  }
+
+  const workspaceRoot = resolveConfiguredPath("KUMA_STUDIO_WORKSPACE");
+  if (workspaceRoot) {
+    const plansDir = join(workspaceRoot, ".kuma", "plans");
+    const exists = existsSync(plansDir);
+    return {
+      cacheKey: `workspace:${workspaceRoot}`,
+      mode: "workspace-root",
+      status: exists ? "ready" : "missing_dir",
+      configured: true,
+      workspaceRoot,
+      plansDir,
+      exists,
+      message: exists ? null : `Workspace plans directory does not exist: ${plansDir}`,
+    };
+  }
+
+  return {
+    cacheKey: "unconfigured",
+    mode: "unconfigured",
+    status: "misconfigured",
+    configured: false,
+    workspaceRoot: null,
+    plansDir: null,
+    exists: false,
+    message: "KUMA_STUDIO_WORKSPACE or KUMA_PLANS_DIR is required to resolve plans.",
+  };
 }
 
 function createWarning(code, message) {
@@ -170,26 +228,32 @@ function normalizePlanId(filePath) {
   return filePath.replace(/\.md$/u, "");
 }
 
-function createEmptyPlansSnapshot() {
-  return { plans: [], totalItems: 0, checkedItems: 0, overallCompletionRate: 0 };
+function createEmptyPlansSnapshot(source = resolvePlansSource()) {
+  return {
+    plans: [],
+    totalItems: 0,
+    checkedItems: 0,
+    overallCompletionRate: 0,
+    source: toPublicPlansSource(source),
+  };
 }
 
-function syncCacheDirectory(plansDir) {
-  if (cachedPlansDir === plansDir) {
+function syncCacheDirectory(sourceKey) {
+  if (cachedPlansSourceKey === sourceKey) {
     return;
   }
 
-  cachedPlansDir = plansDir;
+  cachedPlansSourceKey = sourceKey;
   cachedPlansSnapshot = null;
   cachedPlansPromise = null;
 }
 
-async function loadPlansFromDisk(plansDir) {
-  if (!existsSync(plansDir)) {
-    return createEmptyPlansSnapshot();
+async function loadPlansFromDisk(source) {
+  if (source.status !== "ready" || !source.plansDir || !existsSync(source.plansDir)) {
+    return createEmptyPlansSnapshot(source);
   }
 
-  const files = await readdir(plansDir, { recursive: true });
+  const files = await readdir(source.plansDir, { recursive: true });
   const mdFiles = files
     .filter((f) => f.endsWith(".md") && f !== "index.md")
     .sort();
@@ -204,7 +268,7 @@ async function loadPlansFromDisk(plansDir) {
     const project = slashIndex > 0 ? planId.slice(0, slashIndex) : null;
 
     try {
-      const content = await readFile(join(plansDir, file), "utf8");
+      const content = await readFile(join(source.plansDir, file), "utf8");
       const { frontmatter, body, warnings } = parseFrontmatter(content);
       const sections = parseChecklist(body);
       const status = normalizePlanStatus(frontmatter.status || "active");
@@ -256,6 +320,7 @@ async function loadPlansFromDisk(plansDir) {
     totalItems,
     checkedItems,
     overallCompletionRate: totalItems > 0 ? (checkedItems / totalItems) * 100 : 0,
+    source: toPublicPlansSource(source),
   };
 }
 
@@ -265,14 +330,18 @@ export function invalidatePlansCache() {
 }
 
 export async function refreshPlans() {
-  const plansDir = resolvePlansDir();
-  syncCacheDirectory(plansDir);
+  const source = resolvePlansSource();
+  syncCacheDirectory(source.cacheKey);
+
+  if (source.status !== "ready") {
+    return loadPlansFromDisk(source);
+  }
 
   if (cachedPlansPromise) {
     return cachedPlansPromise;
   }
 
-  const loadPromise = loadPlansFromDisk(plansDir)
+  const loadPromise = loadPlansFromDisk(source)
     .then((snapshot) => {
       cachedPlansSnapshot = snapshot;
       return snapshot;
@@ -289,8 +358,12 @@ export async function refreshPlans() {
 
 /** Read all plan documents and return a cached snapshot. */
 export async function readPlans() {
-  const plansDir = resolvePlansDir();
-  syncCacheDirectory(plansDir);
+  const source = resolvePlansSource();
+  syncCacheDirectory(source.cacheKey);
+
+  if (source.status !== "ready") {
+    return loadPlansFromDisk(source);
+  }
 
   if (cachedPlansSnapshot) {
     return cachedPlansSnapshot;
@@ -310,10 +383,10 @@ export async function readPlans() {
  */
 export function watchPlans(options = {}) {
   const { debounceMs = 500, onChange, onError } = options;
-  const plansDir = resolvePlansDir();
-  syncCacheDirectory(plansDir);
+  const source = resolvePlansSource();
+  syncCacheDirectory(source.cacheKey);
 
-  if (!existsSync(plansDir)) {
+  if (source.status !== "ready" || !source.plansDir || !existsSync(source.plansDir)) {
     return () => {};
   }
 
@@ -334,7 +407,7 @@ export function watchPlans(options = {}) {
   };
 
   try {
-    watcher = fs.watch(plansDir, { recursive: true }, (_eventType, filename) => {
+    watcher = fs.watch(source.plansDir, { recursive: true }, (_eventType, filename) => {
       if (closed) {
         return;
       }

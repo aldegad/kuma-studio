@@ -500,7 +500,7 @@ describe("team-status-store", () => {
 
   it("uses live project membership as an overlay while keeping team.json as the roster source", () => {
     const snapshot = toStudioTeamStatusSnapshot(
-      new Map([["surface:18", { status: "working", lastOutput: "Reviewing mobile playback" }]]),
+      new Map([["surface:18", { status: "working", lastOutput: "Working on mobile playback" }]]),
       {
         updatedAt: "2026-04-10T00:00:00.000Z",
         registry: { "other-project": { "🦉 부리": "surface:18" } },
@@ -513,8 +513,8 @@ describe("team-status-store", () => {
       id: "buri",
       surface: "surface:18",
       state: "working",
-      lastOutputLines: ["Reviewing mobile playback"],
-      task: "Reviewing mobile playback",
+      lastOutputLines: ["Working on mobile playback"],
+      task: "Working on mobile playback",
       modelInfo: null,
       updatedAt: "2026-04-10T00:00:00.000Z",
     });
@@ -540,6 +540,26 @@ describe("team-status-store", () => {
     assert.deepEqual(getStudioProjectMember(suggestionSnapshot, "kuma-studio", "tookdaki")?.lastOutputLines, []);
     assert.strictEqual(getStudioProjectMember(promptSnapshot, "kuma-studio", "tookdaki")?.task, null);
     assert.strictEqual(getStudioProjectMember(suggestionSnapshot, "kuma-studio", "tookdaki")?.task, null);
+  });
+
+  it("suppresses ambiguous plain-text working output in studio snapshots to avoid office flicker", () => {
+    const snapshot = toStudioTeamStatusSnapshot(
+      new Map([["surface:10", { status: "working", lastOutput: "Reviewing dashboard sync" }]]),
+      {
+        updatedAt: "2026-04-12T00:00:00.000Z",
+        registry: { "kuma-studio": { "🐰 콩콩이": "surface:10" } },
+      },
+    );
+
+    assert.deepEqual(getStudioProjectMember(snapshot, "kuma-studio", "kongkongi"), {
+      id: "kongkongi",
+      surface: "surface:10",
+      state: "idle",
+      lastOutputLines: [],
+      task: null,
+      modelInfo: null,
+      updatedAt: "2026-04-12T00:00:00.000Z",
+    });
   });
 
   it("drops stale output lines when the surface ends with idle footer hints", () => {

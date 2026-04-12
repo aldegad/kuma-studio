@@ -20,6 +20,18 @@ const THINKING_ONLY_SURFACE_PATTERNS = [
 const ACTIVE_TOOL_WORK_LINE_PATTERNS = [
   /^(?:[⏺●•]\s*)?(?:bash|read|edit)\(/iu,
 ];
+const ACTIVE_TEXT_WORK_LINE_PATTERNS = [
+  /^working on\b/iu,
+  /^applying patch\b/iu,
+  /^investigating\b/iu,
+  /^implementing\b/iu,
+  /^fixing\b/iu,
+  /^updating\b/iu,
+  /^writing\b/iu,
+  /^testing\b/iu,
+  /^building\b/iu,
+  /^qa in progress\b/iu,
+];
 const STATUS_BAR_LINE_PATTERNS = [
   /⏵⏵\s*bypass(?:\s+permissions?)?(?: on\b.*)?/iu,
   /⏵⏵.*bypa\s*·.*permissions.*$/iu,
@@ -168,6 +180,47 @@ function hasActiveWorkingSurfaceSignal(lines) {
 
     return SURFACE_SPINNER_PATTERN.test(line) && /(?:\.\.\.|…)/u.test(line);
   });
+}
+
+/**
+ * Returns true when the surface would only be considered "working" because
+ * of leftover meaningful text, not because of a current spinner/tool/status
+ * signal. Studio can treat these as stale/ambiguous to avoid false activity
+ * flicker in the office.
+ *
+ * @param {string} output
+ * @returns {boolean}
+ */
+export function isAmbiguousWorkingSurfaceOutput(output) {
+  const normalized = String(output ?? "").replace(/\r/gu, "").trim();
+
+  if (!normalized || DEAD_OUTPUT_PATTERN.test(normalized)) {
+    return false;
+  }
+
+  const lines = getOutputLines(normalized);
+  if (hasCompletedSurfaceSignal(lines) || hasActiveWorkingSurfaceSignal(lines)) {
+    return false;
+  }
+
+  const lastInteractiveLine = getLastInteractiveLine(normalized);
+  if (
+    lastInteractiveLine &&
+    (isPromptLine(lastInteractiveLine) || isCodexSuggestionLine(lastInteractiveLine) || isIdlePromptHintLine(lastInteractiveLine))
+  ) {
+    return false;
+  }
+
+  const meaningfulLines = getMeaningfulOutputLines(normalized);
+  if (meaningfulLines.length === 0) {
+    return false;
+  }
+
+  const hasStableTextWorkSignal = meaningfulLines.some((line) =>
+    ACTIVE_TEXT_WORK_LINE_PATTERNS.some((pattern) => pattern.test(line)),
+  );
+
+  return !hasStableTextWorkSignal;
 }
 
 /**

@@ -1,6 +1,6 @@
 ---
 name: tmux-ops
-description: Reference the Kuma cmux operations protocol for surfaces, sends, waits, and registration.
+description: Reference the Kuma cmux operations protocol for surfaces, sends, registration, and dispatch reporting.
 ---
 
 # /tmux-ops — cmux 운영 프로토콜
@@ -9,7 +9,7 @@ description: Reference the Kuma cmux operations protocol for surfaces, sends, wa
 
 ## 목적
 
-- cmux surface 스폰, 등록, 상태 확인, 시그널 대기 흐름을 일관되게 유지
+- cmux surface 스폰, 등록, 상태 확인, dispatch 보고 흐름을 일관되게 유지
 - `/tmp/kuma-surfaces.json` 레지스트리와 `~/.kuma/cmux/*.sh` 스크립트 사용 규칙을 한곳에 모음
 - 프로젝트별 전담 팀의 surface 운영을 재현 가능한 방식으로 유지
 
@@ -17,7 +17,9 @@ description: Reference the Kuma cmux operations protocol for surfaces, sends, wa
 
 - surface 생성/종료/등록은 `~/.kuma/cmux/` 스크립트를 우선 사용
 - 작업 전달은 반드시 `~/.kuma/cmux/kuma-cmux-send.sh` 사용 (raw `cmux send` / `send-key` 금지)
-- QA 태스크는 밤토리에게 전달하고, 통과 시에는 `mkdir -p /tmp/kuma-signals && touch /tmp/kuma-signals/{signal}` 로 신호를 남김
+- 진행 중 추가 지시는 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 이어간다
+- 완료/실패/QA 결과는 `~/.kuma/bin/kuma-dispatch complete|fail|qa-pass|qa-reject` 로 보고한다
+- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다
 - 브라우저 작업은 `cmux browser`가 아니라 Chrome + Playwright 기준으로 수행
 
 ## 기본 명령
@@ -28,7 +30,9 @@ description: Reference the Kuma cmux operations protocol for surfaces, sends, wa
 ~/.kuma/cmux/kuma-cmux-spawn.sh <name> <type> <dir> <project>
 ~/.kuma/cmux/kuma-cmux-register.sh <project> <role> <surface>
 ~/.kuma/cmux/kuma-cmux-send.sh surface:N "메시지"
-~/.kuma/cmux/kuma-cmux-wait.sh <signal> <result-file> --surface <surface>
+~/.kuma/bin/kuma-task <member> "<instruction>"
+~/.kuma/bin/kuma-dispatch ask --task-file /tmp/kuma-tasks/<task>.task.md --message "..."
+~/.kuma/bin/kuma-dispatch complete --task-file /tmp/kuma-tasks/<task>.task.md
 ```
 
 ## 레지스트리

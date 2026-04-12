@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 export const DISPATCH_STATUSES = ["dispatched", "worker-done", "qa-passed", "qa-rejected", "failed"];
 export const DISPATCH_TERMINAL_STATUSES = new Set(["qa-passed", "qa-rejected", "failed"]);
 export const DISPATCH_MESSAGE_KINDS = ["instruction", "question", "answer", "status", "note", "blocker"];
+export const DISPATCH_MESSAGE_BODY_SOURCES = ["original-user-text", "forwarded-summary", "direct-message", "lifecycle-event"];
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -19,6 +20,10 @@ function isDispatchStatus(value) {
 
 function isDispatchMessageKind(value) {
   return DISPATCH_MESSAGE_KINDS.includes(value);
+}
+
+function isDispatchMessageBodySource(value) {
+  return DISPATCH_MESSAGE_BODY_SOURCES.includes(value);
 }
 
 function isTerminalStatus(status) {
@@ -56,8 +61,15 @@ function normalizeDispatchMessage(input, taskId, index) {
     id,
     kind,
     text,
+    bodySource: isDispatchMessageBodySource(input?.bodySource)
+      ? input.bodySource
+      : kind === "instruction"
+        ? "forwarded-summary"
+        : "direct-message",
     from: normalizeString(input?.from),
     to: normalizeString(input?.to),
+    fromLabel: normalizeString(input?.fromLabel),
+    toLabel: normalizeString(input?.toLabel),
     fromSurface: normalizeString(input?.fromSurface),
     toSurface: normalizeString(input?.toSurface),
     source: normalizeString(input?.source),
@@ -89,6 +101,7 @@ function normalizeDispatchRecord(input, existing = null) {
   const taskFile = normalizeString(input?.taskFile) || normalizeString(existing?.taskFile);
   const project = normalizeString(input?.project) || normalizeString(existing?.project);
   const initiator = normalizeString(input?.initiator) || normalizeString(existing?.initiator);
+  const initiatorLabel = normalizeString(input?.initiatorLabel) || normalizeString(existing?.initiatorLabel);
   const worker = normalizeString(input?.worker) || normalizeString(existing?.worker);
   const workerId = normalizeString(input?.workerId) || normalizeString(existing?.workerId);
   const workerName = normalizeString(input?.workerName) || normalizeString(existing?.workerName);
@@ -121,6 +134,7 @@ function normalizeDispatchRecord(input, existing = null) {
     taskFile,
     project,
     initiator,
+    initiatorLabel,
     worker,
     workerId,
     workerName,
@@ -256,8 +270,11 @@ export class DispatchBroker {
       const initialMessage = createDispatchMessage(normalizeString(input?.taskId), seedMessages, {
         kind: "instruction",
         text: input.instruction,
+        bodySource: "forwarded-summary",
         from: "initiator",
         to: "worker",
+        fromLabel: input?.initiatorLabel,
+        toLabel: input?.workerName,
         fromSurface: input?.initiator,
         toSurface: input?.worker,
         source: "kuma-task",

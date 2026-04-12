@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { classifySurfaceOutput, classifySurfaceStatus } from "../surface-classifier.mjs";
+import {
+  classifySurfaceOutput,
+  classifySurfaceStatus,
+  isAmbiguousWorkingSurfaceOutput,
+} from "../surface-classifier.mjs";
 
 describe("shared surface classifier", () => {
   it("treats bypass permissions banners as idle footer noise", () => {
@@ -53,5 +57,11 @@ describe("shared surface classifier", () => {
         "Reading packages/server/src/index.mjs",
       ],
     });
+  });
+
+  it("flags plain-text output without a live work signal as ambiguous", () => {
+    expect(isAmbiguousWorkingSurfaceOutput("Reviewing dashboard sync")).toBe(true);
+    expect(isAmbiguousWorkingSurfaceOutput("• Working (34s • esc to interr…)")).toBe(false);
+    expect(isAmbiguousWorkingSurfaceOutput("Reviewing dashboard sync\n❯")).toBe(false);
   });
 });

@@ -38,6 +38,10 @@ KUMA_STUDIO_WORKSPACE="$PWD" npm run --prefix /path/to/kuma-studio server:reload
 4. Run `npm run --prefix /path/to/kuma-studio kuma-studio:dashboard`
 5. If something looks off, run `npm run --prefix /path/to/kuma-studio skill:doctor`
 
+After you bootstrap shared infra surfaces, use `npm run kuma-server:reload` to
+reload the daemon inside the existing managed `kuma-server` surface instead of
+starting a duplicate local server.
+
 ## Workspace Root Model
 
 Kuma Studio is designed to be installed from this repository, but operated
@@ -65,6 +69,7 @@ vault contents, review artifacts, screenshots, or machine-specific paths.
 
 ## Main Commands
 
+- `npm run kuma-server:reload`: reload the daemon inside the managed `kuma-server` surface
 - `npm run server:reload`: restart the daemon on port `4312`
 - `npm run dev:studio`: run the Studio web UI in Vite dev mode
 - `npm run build:studio`: build the production Studio bundle

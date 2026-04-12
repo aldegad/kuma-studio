@@ -31,6 +31,7 @@
   "scripts": {
     "server:start": "node ./packages/server/src/cli.mjs serve --root .",
     "server:reload": "bash ./scripts/server-reload.sh",
+    "kuma-server:reload": "bash ./scripts/bin/kuma-server-reload",
     "kuma-studio": "node ./packages/server/src/cli.mjs",
     "kuma-studio:get-selection": "node ./packages/server/src/cli.mjs get-selection",
     "kuma-studio:get-job-card": "node ./packages/server/src/cli.mjs get-job-card",

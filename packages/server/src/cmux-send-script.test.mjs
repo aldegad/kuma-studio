@@ -13,6 +13,7 @@ const SPAWN_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-spawn.s
 const PROJECT_INIT_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-project-init.sh");
 const BOOTSTRAP_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-bootstrap.sh");
 const KUMA_TASK_PATH = resolve(process.cwd(), "scripts/bin/kuma-task");
+const KUMA_SERVER_RELOAD_PATH = resolve(process.cwd(), "scripts/bin/kuma-server-reload");
 
 async function writeExecutable(path, content) {
   await writeFile(path, content, "utf8");
@@ -148,11 +149,14 @@ esac
   });
 
   it("routes helper scripts and kuma-task through the send wrapper instead of raw cmux send", async () => {
-    for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH]) {
+    for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH, KUMA_SERVER_RELOAD_PATH]) {
       const source = await readFile(filePath, "utf8");
       expect(source).toContain("kuma-cmux-send.sh");
       expect(source).not.toMatch(/^\s*cmux send\b/mu);
       expect(source).not.toMatch(/^\s*cmux send-key\b/mu);
+      if (filePath === BOOTSTRAP_SCRIPT_PATH) {
+        expect(source).toContain("KUMA_STUDIO_WORKSPACE=%q npm run server:reload");
+      }
     }
   });
 });

@@ -24,30 +24,51 @@ interface FileTreeNodeProps {
 }
 
 // --- SVG-style icon colors by extension ---
-const EXT_META: Record<string, { label: string; color: string }> = {
-  ts:   { label: "TS", color: "text-blue-600" },
-  tsx:  { label: "TX", color: "text-blue-500" },
-  js:   { label: "JS", color: "text-yellow-600" },
-  jsx:  { label: "JX", color: "text-yellow-500" },
-  json: { label: "{}", color: "text-emerald-600" },
-  md:   { label: "M",  color: "text-stone-500" },
-  html: { label: "<>", color: "text-orange-500" },
-  css:  { label: "#",  color: "text-purple-500" },
-  py:   { label: "Py", color: "text-sky-600" },
-  sh:   { label: "$",  color: "text-lime-600" },
-  yml:  { label: "Y",  color: "text-rose-500" },
-  yaml: { label: "Y",  color: "text-rose-500" },
-  png:  { label: "Im", color: "text-teal-500" },
-  jpg:  { label: "Im", color: "text-teal-500" },
-  jpeg: { label: "Im", color: "text-teal-500" },
-  gif:  { label: "Im", color: "text-teal-500" },
-  svg:  { label: "Sv", color: "text-amber-500" },
-  webp: { label: "Im", color: "text-teal-500" },
+type FileKind = "code" | "image" | "data" | "markdown" | "style" | "shell" | "doc" | "default";
+
+const EXT_META: Record<string, { label: string; color: string; kind: FileKind }> = {
+  ts:   { label: "TS", color: "text-blue-600",    kind: "code" },
+  tsx:  { label: "TX", color: "text-blue-500",    kind: "code" },
+  js:   { label: "JS", color: "text-yellow-600",  kind: "code" },
+  jsx:  { label: "JX", color: "text-yellow-500",  kind: "code" },
+  mjs:  { label: "MJ", color: "text-yellow-600",  kind: "code" },
+  cjs:  { label: "CJ", color: "text-yellow-600",  kind: "code" },
+  json: { label: "{}", color: "text-emerald-600", kind: "data" },
+  jsonc:{ label: "{}", color: "text-emerald-600", kind: "data" },
+  toml: { label: "TM", color: "text-emerald-700", kind: "data" },
+  env:  { label: "EV", color: "text-emerald-500", kind: "data" },
+  md:   { label: "MD", color: "text-stone-500",   kind: "markdown" },
+  mdx:  { label: "MX", color: "text-stone-500",   kind: "markdown" },
+  txt:  { label: "TX", color: "text-stone-400",   kind: "doc" },
+  html: { label: "<>", color: "text-orange-500",  kind: "code" },
+  htm:  { label: "<>", color: "text-orange-500",  kind: "code" },
+  css:  { label: "#",  color: "text-purple-500",  kind: "style" },
+  scss: { label: "#",  color: "text-pink-500",    kind: "style" },
+  sass: { label: "#",  color: "text-pink-500",    kind: "style" },
+  py:   { label: "Py", color: "text-sky-600",     kind: "code" },
+  sh:   { label: "$",  color: "text-lime-600",    kind: "shell" },
+  bash: { label: "$",  color: "text-lime-600",    kind: "shell" },
+  zsh:  { label: "$",  color: "text-lime-600",    kind: "shell" },
+  yml:  { label: "Y",  color: "text-rose-500",    kind: "data" },
+  yaml: { label: "Y",  color: "text-rose-500",    kind: "data" },
+  png:  { label: "Im", color: "text-teal-500",    kind: "image" },
+  jpg:  { label: "Im", color: "text-teal-500",    kind: "image" },
+  jpeg: { label: "Im", color: "text-teal-500",    kind: "image" },
+  gif:  { label: "Im", color: "text-teal-500",    kind: "image" },
+  svg:  { label: "Sv", color: "text-amber-500",   kind: "image" },
+  webp: { label: "Im", color: "text-teal-500",    kind: "image" },
+  ico:  { label: "Ic", color: "text-teal-500",    kind: "image" },
 };
 
-function getFileMeta(name: string) {
-  const ext = name.split(".").pop()?.toLowerCase() || "";
-  return EXT_META[ext] || { label: "F", color: "text-stone-400" };
+function getFileMeta(name: string): { label: string; color: string; kind: FileKind } {
+  const lower = name.toLowerCase();
+  if (lower === "dockerfile") return { label: "Dk", color: "text-sky-500", kind: "shell" };
+  if (lower === "makefile")   return { label: "Mk", color: "text-lime-600", kind: "shell" };
+  if (lower === ".gitignore" || lower === ".dockerignore") {
+    return { label: "Ig", color: "text-stone-400", kind: "data" };
+  }
+  const ext = lower.split(".").pop() || "";
+  return EXT_META[ext] || { label: "F", color: "text-stone-400", kind: "default" };
 }
 
 // --- Chevron SVG ---
@@ -93,12 +114,76 @@ function FolderIcon({ open, skipped }: { open: boolean; skipped?: boolean }) {
   );
 }
 
-// --- File SVG icon ---
-function FileIcon({ color }: { color: string }) {
+// --- File SVG icons (by kind) ---
+// Shared document outline used as base for code/doc/markdown variants.
+function DocOutline() {
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" className={`shrink-0 ${color}`} fill="none" stroke="currentColor" strokeWidth="1.2">
+    <>
       <path d="M4.5 1.5h5l3 3v9.5a1 1 0 01-1 1h-7a1 1 0 01-1-1v-11.5a1 1 0 011-1z" />
       <path d="M9.5 1.5v3h3" />
+    </>
+  );
+}
+
+function FileIcon({ color, kind }: { color: string; kind: FileKind }) {
+  const base = `shrink-0 ${color}`;
+  // All icons share a 16×16 canvas so row metrics stay stable.
+  if (kind === "image") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="currentColor">
+        <rect x="2" y="3" width="12" height="10" rx="1.5" opacity="0.18" />
+        <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.1" />
+        <circle cx="6" cy="7" r="1" />
+        <path d="M3.5 12l2.5-3 2 2 2.5-3 2 4" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (kind === "code") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <DocOutline />
+        <path d="M6.7 8.8L5.4 10l1.3 1.2M9.3 8.8L10.6 10l-1.3 1.2" />
+      </svg>
+    );
+  }
+  if (kind === "data") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <DocOutline />
+        <path d="M6.4 8.5c-.6 0-.9.3-.9.9v.4c0 .4-.2.6-.5.6M6.4 11.8c-.6 0-.9-.3-.9-.9v-.4c0-.4-.2-.6-.5-.6" />
+        <path d="M9.6 8.5c.6 0 .9.3.9.9v.4c0 .4.2.6.5.6M9.6 11.8c.6 0 .9-.3.9-.9v-.4c0-.4.2-.6.5-.6" />
+      </svg>
+    );
+  }
+  if (kind === "markdown") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <DocOutline />
+        <path d="M5.5 11V9l1 1.2L7.5 9v2M9 9v2M9 9.6l1-1 1 1" />
+      </svg>
+    );
+  }
+  if (kind === "style") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <DocOutline />
+        <circle cx="6.2" cy="10.2" r="1.1" fill="currentColor" opacity="0.7" stroke="none" />
+        <circle cx="9.1" cy="9.3" r="0.9" fill="currentColor" opacity="0.45" stroke="none" />
+        <circle cx="10.3" cy="11.1" r="0.7" fill="currentColor" opacity="0.3" stroke="none" />
+      </svg>
+    );
+  }
+  if (kind === "shell") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3.5" width="12" height="9" rx="1.5" />
+        <path d="M4.5 7l1.5 1.2-1.5 1.2M7.5 10h3" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" className={base} fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <DocOutline />
     </svg>
   );
 }
@@ -239,7 +324,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           ) : (
             <>
               <span className="w-4 shrink-0" />
-              <FileIcon color={fileMeta?.color || "text-stone-400"} />
+              <FileIcon color={fileMeta?.color || "text-stone-400"} kind={fileMeta?.kind || "default"} />
             </>
           )}
           <span className={`truncate ${isDir ? "font-medium text-stone-700" : "text-stone-600"} ${gitStyle ? gitStyle.color : ""} ${dirHasChanges ? "text-amber-600" : ""}`}>
@@ -255,7 +340,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
             <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400 opacity-60" />
           )}
           {!isDir && fileMeta && !confirmDelete && !gitStyle && (
-            <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-0 group-hover:opacity-60 transition-opacity`}>
+            <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-30 group-hover:opacity-80 transition-opacity`}>
               {fileMeta.label}
             </span>
           )}

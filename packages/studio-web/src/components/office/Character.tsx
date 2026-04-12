@@ -17,12 +17,18 @@ interface CharacterProps {
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
-const SPEECH_BUBBLE_MAX_LINES = 5;
+const SPEECH_BUBBLE_MAX_LINES = 2;
+
+export function getVisibleSpeechBubbleLines(lines?: string[]): string[] {
+  return (lines ?? [])
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(-SPEECH_BUBBLE_MAX_LINES);
+}
 
 export function Character({ character, isDragging = false, isSelected = false, speechBubbleLines, onClick, onDragStart, onDoubleClick }: CharacterProps) {
-  const visibleSpeechLines = speechBubbleLines?.slice(0, SPEECH_BUBBLE_MAX_LINES) ?? [];
+  const visibleSpeechLines = getVisibleSpeechBubbleLines(speechBubbleLines);
   const hasSpeechBubble = visibleSpeechLines.length > 0;
-  const hasMoreSpeechLines = (speechBubbleLines?.length ?? 0) > SPEECH_BUBBLE_MAX_LINES;
   const [hovered, setHovered] = useState(false);
   const randomEmote = useRandomEmote(character.id, character.state === "idle");
   const stateColor = STATE_COLORS[character.state] ?? STATE_COLORS.idle;
@@ -81,25 +87,22 @@ export function Character({ character, isDragging = false, isSelected = false, s
           </div>
         )}
 
-        {/* Speech bubble — absolute so it doesn't push card down. Up to 5 lines of recent worker output. */}
+        {/* Speech bubble — absolute so it doesn't push card down. Shows the latest two meaningful lines. */}
         {hasSpeechBubble && (
           <div
-            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-[18rem] max-w-[min(18rem,60vw)] rounded-lg bg-white/95 border border-stone-200 px-2 py-1.5 shadow-md z-10"
+            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-[18rem] min-h-[3rem] max-w-[min(18rem,60vw)] rounded-lg border border-stone-200 bg-white/95 px-2.5 py-2 shadow-md z-10"
             data-kuma-agent-overlay="speech"
           >
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {visibleSpeechLines.map((line, i) => (
                 <p
                   key={i}
-                  className="text-[8px] text-stone-600 leading-snug font-mono truncate"
+                  className="font-mono text-[9px] leading-4 text-stone-600 whitespace-pre-wrap break-words"
                   title={line}
                 >
                   {line}
                 </p>
               ))}
-              {hasMoreSpeechLines && (
-                <p className="text-[8px] text-stone-400 leading-snug text-right">…</p>
-              )}
             </div>
             <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-white/95 border-r border-b border-stone-200 rotate-45" />
           </div>

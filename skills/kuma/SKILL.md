@@ -90,7 +90,8 @@ user-invocable: true
 
 - `kuma-studio` 프로젝트에서는 `kuma-server` 와 `kuma-frontend` surface 를 관리형 infra 로 간주한다.
 - 작업 시작 전에는 새 서버를 띄운다고 가정하지 말고, 먼저 `~/.kuma/bin/kuma-status` 또는 `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` 로 기존 surface 를 확인한다.
-- 서버 재시작이 필요하면 기존 `kuma-server` surface 에서 `npm run server:reload` 를 사용한다.
+- 서버 재시작이 필요하고 기존 `kuma-server` surface 가 있으면 `npm run kuma-server:reload` 를 사용한다.
+- `npm run server:reload` 는 기존 `kuma-server` surface 내부나 단일 로컬 셸에서 쓰는 raw entrypoint 로만 본다.
 - 프론트 재시작이 필요하면 기존 `kuma-frontend` surface 를 재사용한다.
 - 관리형 surface 가 살아 있는데 현재 터미널에서 새 서버나 새 Vite dev server 를 중복 기동하는 것은 금지한다.
 
@@ -101,6 +102,14 @@ user-invocable: true
 3. 결과 검토 (맞는지 판단만, 재분석 X)
 4. 유저에게 보고 또는 파일에 적용 (Write/Edit)
 5. 추가 작업 필요 시 다시 팀에게 위임
+
+## Decision Capture
+
+- 유저 메시지를 읽을 때 명시적 승인/거절/보류/우선순위/선호 고정 표현이 보이면 내부 decision 감지 로직으로 먼저 스캔한다.
+- 감지가 명확하면 응답 전에 `POST /studio/decisions/append` 로 verbatim 원문만 기록한다.
+- 기록 payload 는 `writer: kuma-detect` 를 사용하고, `original_text` 는 유저 원문을 그대로 넣는다. 해석·요약·재표현 금지.
+- 경계선 케이스는 추론하지 말고 `"이거 decision 으로 남길까?"` 처럼 확인을 먼저 받는다.
+- 기록이 성공했으면 응답 본문에 `(decisions.md 에 기록됨: "<원문>")` 한 줄만 덧붙인다.
 
 ## 모드 종료
 

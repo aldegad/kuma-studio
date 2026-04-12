@@ -57,11 +57,13 @@ const href = await page.evaluate(() => window.location.href);
 - `kuma-cli get-browser-session`
 - Browser control uses the daemon WebSocket endpoint only.
 - If missing or stale, start the daemon and repoint the extension popup.
+- If the managed `kuma-server` surface exists, use `npm run kuma-server:reload`.
+- `npm run server:reload` remains only the raw in-surface or local entrypoint.
 - If `tabCount > 1`, inspect `tabs[]` and pick the right `tabId`.
 - After extension code changes, reloading the unpacked extension in `chrome://extensions` is supported and remains the simplest manual recovery path.
 - Daemon-driven extension self-reload is also supported:
   ```bash
-  npm run server:reload
+  npm run kuma-server:reload
   ```
   - with the daemon running, saving a file under `packages/browser-extension/` triggers the watcher in `packages/server/src/server.mjs`
   - the daemon broadcasts `extension.reload`

@@ -5,12 +5,16 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { afterEach, assert, describe, it } from "vitest";
 
-import { readPlans, watchPlans } from "./plan-store.mjs";
+import { invalidatePlansCache, readPlans, watchPlans } from "./plan-store.mjs";
 
 const tempDirs = [];
+const originalCwd = process.cwd();
 
 afterEach(async () => {
   delete process.env.KUMA_PLANS_DIR;
+  delete process.env.KUMA_STUDIO_WORKSPACE;
+  invalidatePlansCache();
+  process.chdir(originalCwd);
   while (tempDirs.length > 0) {
     const dir = tempDirs.pop();
     if (dir) {
@@ -33,10 +37,13 @@ async function waitFor(assertion, timeoutMs = 4_000) {
 }
 
 describe("plan-store", () => {
-  it("normalizes plan statuses and exposes statusColor", async () => {
-    const plansDir = await mkdtemp(join(tmpdir(), "kuma-plan-store-"));
-    tempDirs.push(plansDir);
-    process.env.KUMA_PLANS_DIR = plansDir;
+  it("normalizes plan statuses and reads plans from the bound workspace root", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "kuma-plan-store-"));
+    tempDirs.push(workspaceRoot);
+    process.env.KUMA_STUDIO_WORKSPACE = workspaceRoot;
+
+    const plansDir = join(workspaceRoot, ".kuma", "plans");
+    await mkdir(plansDir, { recursive: true });
 
     await writeFile(join(plansDir, "index.md"), "# Root Index\n", "utf8");
     await mkdir(join(plansDir, "kuma-studio", "blocked-plan"), { recursive: true });
@@ -81,6 +88,15 @@ status: hold
     const snapshot = await readPlans();
 
     assert.strictEqual(snapshot.plans.some((plan) => plan.id === "index"), false);
+    assert.deepStrictEqual(snapshot.source, {
+      mode: "workspace-root",
+      status: "ready",
+      configured: true,
+      workspaceRoot,
+      plansDir,
+      exists: true,
+      message: null,
+    });
 
     const activePlan = snapshot.plans.find((plan) => plan.id === "kuma-studio/active-plan");
     assert.deepStrictEqual(
@@ -176,5 +192,44 @@ status: active
     } finally {
       stopWatching();
     }
+  });
+
+  it("does not fall back to the current working directory when no workspace is bound", async () => {
+    const fakeCwd = await mkdtemp(join(tmpdir(), "kuma-plan-cwd-"));
+    tempDirs.push(fakeCwd);
+    process.chdir(fakeCwd);
+
+    const plansDir = join(fakeCwd, ".kuma", "plans", "kuma-studio");
+    await mkdir(plansDir, { recursive: true });
+    await writeFile(
+      join(plansDir, "repo-cwd-plan.md"),
+      `---
+title: Repo Cwd Plan
+status: active
+---
+
+## Hidden
+- [ ] should not load from cwd
+`,
+      "utf8",
+    );
+
+    const snapshot = await readPlans();
+
+    assert.deepStrictEqual(snapshot, {
+      plans: [],
+      totalItems: 0,
+      checkedItems: 0,
+      overallCompletionRate: 0,
+      source: {
+        mode: "unconfigured",
+        status: "misconfigured",
+        configured: false,
+        workspaceRoot: null,
+        plansDir: null,
+        exists: false,
+        message: "KUMA_STUDIO_WORKSPACE or KUMA_PLANS_DIR is required to resolve plans.",
+      },
+    });
   });
 });

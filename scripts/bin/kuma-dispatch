@@ -42,18 +42,105 @@ json_field() {
   ' "$field"
 }
 
+dispatch_role_label() {
+  case "${1:-}" in
+    initiator)
+      printf 'initiator'
+      ;;
+    worker)
+      printf 'worker'
+      ;;
+    qa)
+      printf 'QA'
+      ;;
+    surface)
+      printf 'surface peer'
+      ;;
+    *)
+      printf 'participant'
+      ;;
+  esac
+}
+
+dispatch_message_kind_label() {
+  case "${1:-}" in
+    question)
+      printf 'question'
+      ;;
+    answer)
+      printf 'reply'
+      ;;
+    status)
+      printf 'status update'
+      ;;
+    blocker)
+      printf 'blocker'
+      ;;
+    note)
+      printf 'note'
+      ;;
+    instruction)
+      printf 'assigned task'
+      ;;
+    *)
+      printf 'message'
+      ;;
+  esac
+}
+
+dispatch_body_source_label() {
+  case "${1:-}" in
+    forwarded-summary)
+      printf 'forwarded/orchestrated summary'
+      ;;
+    lifecycle-event)
+      printf 'dispatch lifecycle event'
+      ;;
+    *)
+      printf 'direct thread message'
+      ;;
+  esac
+}
+
+format_dispatch_party() {
+  local display_label="${1:-}"
+  local role="${2:-}"
+  local surface="${3:-}"
+  local role_label
+  local meta=""
+
+  role_label="$(dispatch_role_label "$role")"
+  display_label="${display_label:-$role_label}"
+  if [ "$display_label" != "$role_label" ]; then
+    meta="$role_label"
+  fi
+  if [ -n "$meta" ] && [ -n "$surface" ]; then
+    printf '%s (%s, %s)' "$display_label" "$meta" "$surface"
+  elif [ -n "$meta" ]; then
+    printf '%s (%s)' "$display_label" "$meta"
+  elif [ -n "$surface" ]; then
+    printf '%s (%s)' "$display_label" "$surface"
+  else
+    printf '%s' "$display_label"
+  fi
+}
+
 resolve_dispatch_message_context() {
   local current_surface="${1:?current surface required}"
   local target="${2:-auto}"
   local kind="${3:-note}"
+  local explicit_from="${4:-}"
+  local explicit_from_surface="${5:-}"
 
   node -e '
 const fs = require("node:fs");
 
-const [, currentSurfaceRaw, targetRaw, kindRaw] = process.argv;
+const [, currentSurfaceRaw, targetRaw, kindRaw, explicitFromRaw, explicitFromSurfaceRaw] = process.argv;
 const currentSurface = typeof currentSurfaceRaw === "string" ? currentSurfaceRaw.trim() : "";
 const target = typeof targetRaw === "string" ? targetRaw.trim() : "auto";
 const kind = typeof kindRaw === "string" ? kindRaw.trim() : "";
+const explicitFrom = typeof explicitFromRaw === "string" ? explicitFromRaw.trim() : "";
+const explicitFromSurface = typeof explicitFromSurfaceRaw === "string" ? explicitFromSurfaceRaw.trim() : "";
 const payload = JSON.parse(fs.readFileSync(0, "utf8"));
 const dispatch = payload?.dispatch ?? payload ?? {};
 
@@ -67,12 +154,110 @@ function normalizeRole(value) {
 }
 
 const initiator = normalize(dispatch.initiator);
+const initiatorLabel = normalize(dispatch.initiatorLabel);
 const worker = normalize(dispatch.worker);
+const workerName = normalize(dispatch.workerName);
 const qaSurface = normalize(dispatch.qaSurface) || (normalize(dispatch.qa).startsWith("surface:") ? normalize(dispatch.qa) : "");
+const qaMember = normalize(dispatch.qaMember);
+const projectId = normalize(dispatch.project);
 const messages = Array.isArray(dispatch.messages) ? dispatch.messages : [];
 const latestMessage = messages.length > 0 && typeof messages[messages.length - 1] === "object"
   ? messages[messages.length - 1]
   : null;
+const registryPath = normalize(process.env.KUMA_SURFACES_PATH);
+
+function parseRegistryLabel(label) {
+  const text = normalize(label);
+  const name = text.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim();
+  return name || text;
+}
+
+function reverseLookupSurfaceLabel(surface) {
+  if (!surface || !registryPath || !fs.existsSync(registryPath)) {
+    return "";
+  }
+
+  try {
+    const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+    const projectOrder = projectId
+      ? [projectId, ...Object.keys(registry).filter((key) => key !== projectId)]
+      : Object.keys(registry);
+    for (const candidateProject of projectOrder) {
+      const entries = registry?.[candidateProject];
+      if (!entries || typeof entries !== "object") {
+        continue;
+      }
+      for (const [label, candidateSurface] of Object.entries(entries)) {
+        if (normalize(candidateSurface) === surface) {
+          return parseRegistryLabel(label);
+        }
+      }
+    }
+  } catch {}
+
+  return "";
+}
+
+function rememberedLabelForRole(role, surface) {
+  const targetSurface = normalize(surface);
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || typeof message !== "object") {
+      continue;
+    }
+
+    const fromRole = normalizeRole(message.from);
+    const toRole = normalizeRole(message.to);
+    const fromLabel = normalize(message.fromLabel);
+    const toLabel = normalize(message.toLabel);
+    const fromSurface = normalize(message.fromSurface);
+    const toSurface = normalize(message.toSurface);
+
+    if (
+      role === fromRole &&
+      fromLabel &&
+      (!targetSurface || !fromSurface || fromSurface === targetSurface)
+    ) {
+      return fromLabel;
+    }
+
+    if (
+      role === toRole &&
+      toLabel &&
+      (!targetSurface || !toSurface || toSurface === targetSurface)
+    ) {
+      return toLabel;
+    }
+  }
+
+  return "";
+}
+
+function labelForRole(role, surface) {
+  if (role === "initiator") {
+    return (
+      initiatorLabel ||
+      rememberedLabelForRole(role, surface || initiator) ||
+      reverseLookupSurfaceLabel(surface || initiator)
+    );
+  }
+  if (role === "worker") {
+    return (
+      workerName ||
+      rememberedLabelForRole(role, surface || worker) ||
+      reverseLookupSurfaceLabel(surface || worker)
+    );
+  }
+  if (role === "qa") {
+    return (
+      qaMember ||
+      rememberedLabelForRole(role, surface || qaSurface) ||
+      reverseLookupSurfaceLabel(surface || qaSurface)
+    );
+  }
+  return rememberedLabelForRole(role, surface) || reverseLookupSurfaceLabel(surface);
+}
 
 function surfaceForRole(role) {
   if (role === "initiator") return initiator;
@@ -83,7 +268,10 @@ function surfaceForRole(role) {
 
 let from = "initiator";
 let fromSurface = initiator || currentSurface;
-if (currentSurface && currentSurface === worker) {
+if (normalizeRole(explicitFrom)) {
+  from = normalizeRole(explicitFrom);
+  fromSurface = explicitFromSurface || surfaceForRole(from) || currentSurface || initiator;
+} else if (currentSurface && currentSurface === worker) {
   from = "worker";
   fromSurface = worker;
 } else if (currentSurface && currentSurface === qaSurface) {
@@ -135,15 +323,20 @@ if (to === "auto") {
   to = "surface";
 }
 
+const fromLabel = labelForRole(from, fromSurface);
+const toLabel = labelForRole(to, toSurface);
+
 process.stdout.write(`${JSON.stringify({
   taskId: normalize(dispatch.taskId),
   taskFile: normalize(dispatch.taskFile),
   from,
+  fromLabel,
   fromSurface,
   to,
+  toLabel,
   toSurface,
 }, null, 2)}\n`);
-' "$current_surface" "$target" "$kind"
+' "$current_surface" "$target" "$kind" "$explicit_from" "$explicit_from_surface"
 }
 
 send_thread_message() {
@@ -154,6 +347,9 @@ send_thread_message() {
   local message_text=""
   local target="auto"
   local source="kuma-dispatch"
+  local body_source="direct-message"
+  local explicit_from=""
+  local explicit_from_surface=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -173,8 +369,20 @@ send_thread_message() {
         target="${2:?target required}"
         shift 2
         ;;
+      --from)
+        explicit_from="${2:?from role required}"
+        shift 2
+        ;;
+      --from-surface)
+        explicit_from_surface="${2:?from surface required}"
+        shift 2
+        ;;
       --source)
         source="${2:?source required}"
+        shift 2
+        ;;
+      --body-source)
+        body_source="${2:?body source required}"
         shift 2
         ;;
       -h|--help)
@@ -194,7 +402,7 @@ send_thread_message() {
   require_file "$KUMA_CMUX_DIR/kuma-cmux-send.sh"
 
   local current_surface
-  current_surface="$(resolve_initiator_surface)"
+  current_surface="$(resolve_dispatch_sender_surface)"
 
   local dispatch_json
   dispatch_json="$(node "$KUMA_SERVER_CLI" dispatch-status \
@@ -202,17 +410,21 @@ send_thread_message() {
     --daemon-url "$KUMA_DAEMON_URL")"
 
   local context_json
-  context_json="$(printf '%s' "$dispatch_json" | resolve_dispatch_message_context "$current_surface" "$target" "$kind")"
+  context_json="$(printf '%s' "$dispatch_json" | resolve_dispatch_message_context "$current_surface" "$target" "$kind" "$explicit_from" "$explicit_from_surface")"
 
   local task_id
   local from_role
+  local from_label
   local from_surface
   local to_role
+  local to_label
   local to_surface
   task_id="$(printf '%s' "$context_json" | json_field taskId)"
   from_role="$(printf '%s' "$context_json" | json_field from)"
+  from_label="$(printf '%s' "$context_json" | json_field fromLabel)"
   from_surface="$(printf '%s' "$context_json" | json_field fromSurface)"
   to_role="$(printf '%s' "$context_json" | json_field to)"
+  to_label="$(printf '%s' "$context_json" | json_field toLabel)"
   to_surface="$(printf '%s' "$context_json" | json_field toSurface)"
 
   [ -n "$task_id" ] || die "dispatch not found for task file: $task_file"
@@ -222,37 +434,32 @@ send_thread_message() {
     --task-file "$task_file" \
     --kind "$kind" \
     --text "$message_text" \
+    --body-source "$body_source" \
     --from "$from_role" \
     --to "$to_role" \
+    --from-label "$from_label" \
+    --to-label "$to_label" \
     --from-surface "$from_surface" \
     --to-surface "$to_surface" \
     --source "$source" \
     --daemon-url "$KUMA_DAEMON_URL" > /dev/null
 
-  local header="Dispatch message"
-  case "$kind" in
-    question)
-      header="Dispatch question"
-      ;;
-    answer)
-      header="Dispatch reply"
-      ;;
-    status)
-      header="Dispatch status"
-      ;;
-    blocker)
-      header="Dispatch blocker"
-      ;;
-    note)
-      header="Dispatch note"
-      ;;
-  esac
+  local speaker_label
+  local recipient_label
+  local kind_label
+  local body_source_label
+  speaker_label="$(format_dispatch_party "$from_label" "$from_role" "$from_surface")"
+  recipient_label="$(format_dispatch_party "$to_label" "$to_role" "$to_surface")"
+  kind_label="$(dispatch_message_kind_label "$kind")"
+  body_source_label="$(dispatch_body_source_label "$body_source")"
 
   local prompt
   prompt="$(cat <<EOF
-[${header}] ${task_id}
-From: ${from_role}${from_surface:+ (${from_surface})}
-To: ${to_role}${to_surface:+ (${to_surface})}
+[Kuma Studio Dispatch] ${task_id}
+Speaker: ${speaker_label}
+Recipient: ${recipient_label}
+Message kind: ${kind_label}
+Body source: ${body_source_label}
 
 ${message_text}
 
@@ -271,6 +478,112 @@ EOF
   printf 'TO: %s (%s)\n' "$to_role" "$to_surface"
 }
 
+event_source_label() {
+  case "${1:-}" in
+    complete)
+      printf 'worker'
+      ;;
+    fail)
+      printf 'worker'
+      ;;
+    qa-pass)
+      printf 'qa'
+      ;;
+    qa-reject)
+      printf 'qa'
+      ;;
+    *)
+      printf 'dispatch'
+      ;;
+  esac
+}
+
+format_lifecycle_notice() {
+  local event_type="${1:?event type required}"
+  local dispatch_json="${2:?dispatch json required}"
+
+  node -e '
+const fs = require("node:fs");
+const [, eventType, dispatchRaw] = process.argv;
+const payload = JSON.parse(dispatchRaw);
+const dispatch = payload?.dispatch ?? payload ?? {};
+
+const normalize = (value) => (typeof value === "string" ? value.trim() : "");
+const event = normalize(eventType);
+const workerName = normalize(dispatch.workerName) || "Worker";
+const qaMember = normalize(dispatch.qaMember) || "QA";
+const blocker = normalize(dispatch.blocker);
+const note = normalize(dispatch.note);
+const resultFile = normalize(dispatch.resultFile);
+const hasResult = Boolean(resultFile);
+const resultSuffix = hasResult ? ` Result: ${resultFile}` : "";
+
+let text = "";
+if (event === "complete") {
+  text = `${workerName} completed work.${resultSuffix}`;
+} else if (event === "fail") {
+  text = blocker
+    ? `${workerName} reported a blocker: ${blocker}.${resultSuffix}`
+    : `${workerName} reported a blocker.${resultSuffix}`;
+} else if (event === "qa-pass") {
+  text = `${qaMember} passed QA.${resultSuffix}`;
+} else if (event === "qa-reject") {
+  text = blocker
+    ? `${qaMember} rejected QA: ${blocker}.${resultSuffix}`
+    : `${qaMember} rejected QA.${resultSuffix}`;
+} else {
+  process.exit(1);
+}
+
+process.stdout.write(`${text}\n`);
+' "$event_type" "$dispatch_json"
+}
+
+run_dispatch_event_with_notice() {
+  local event_type="${1:?event type required}"
+  shift
+
+  local dispatch_json=""
+  dispatch_json="$(node "$KUMA_SERVER_CLI" "dispatch-${event_type}" "$@")"
+  printf '%s\n' "$dispatch_json"
+
+  local task_file=""
+  local source_label=""
+  local message_kind=""
+  local lifecycle_message=""
+  local current_source=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --task-file)
+        task_file="${2:-}"
+        shift 2
+        ;;
+      --source)
+        current_source="${2:-}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  [ -n "$task_file" ] || return 0
+
+  source_label="$(event_source_label "$event_type")"
+  message_kind="status"
+  if [ "$event_type" = "fail" ] || [ "$event_type" = "qa-reject" ]; then
+    message_kind="blocker"
+  fi
+
+  lifecycle_message="$(format_lifecycle_notice "$event_type" "$dispatch_json" 2>/dev/null || true)"
+  [ -n "$lifecycle_message" ] || return 0
+
+  if ! send_thread_message "$message_kind" --task-file "$task_file" --message "$lifecycle_message" --from "$source_label" --to initiator --source "${current_source:-$source_label}" --body-source lifecycle-event > /dev/null; then
+    printf 'WARN: failed to send lifecycle notice for %s (%s)\n' "$event_type" "$task_file" >&2
+  fi
+}
+
 case "$COMMAND" in
   send)
     exec "$SCRIPT_DIR/kuma-task" "$@"
@@ -285,19 +598,19 @@ case "$COMMAND" in
     send_thread_message note "$@"
     ;;
   done)
-    exec node "$KUMA_SERVER_CLI" dispatch-complete "$@"
+    run_dispatch_event_with_notice complete "$@"
     ;;
   complete)
-    exec node "$KUMA_SERVER_CLI" dispatch-complete "$@"
+    run_dispatch_event_with_notice complete "$@"
     ;;
   fail)
-    exec node "$KUMA_SERVER_CLI" dispatch-fail "$@"
+    run_dispatch_event_with_notice fail "$@"
     ;;
   qa-pass)
-    exec node "$KUMA_SERVER_CLI" dispatch-qa-pass "$@"
+    run_dispatch_event_with_notice qa-pass "$@"
     ;;
   qa-reject)
-    exec node "$KUMA_SERVER_CLI" dispatch-qa-reject "$@"
+    run_dispatch_event_with_notice qa-reject "$@"
     ;;
   status)
     exec node "$KUMA_SERVER_CLI" dispatch-status "$@"

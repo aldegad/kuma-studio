@@ -5,6 +5,7 @@ import {
   classifySurfaceOutput,
   classifySurfaceStatus,
   getOutputLines,
+  isAmbiguousWorkingSurfaceOutput,
   isIgnoredSurfaceLine,
   isPromptLine,
 } from "../../../shared/surface-classifier.mjs";
@@ -446,9 +447,12 @@ export function toStudioTeamStatusSnapshot(surfaceStates, options = {}) {
     }
 
     const surfaceState = surface ? (surfaceStates?.get(surface) ?? null) : null;
-    const status = surfaceState?.status ?? "idle";
+    const rawStatus = surfaceState?.status ?? "idle";
     const lastOutput = surfaceState?.lastOutput ?? "";
-    const { lastOutputLines } = classifySurfaceOutput(lastOutput);
+    const ambiguousWorking = rawStatus === "working" && isAmbiguousWorkingSurfaceOutput(lastOutput);
+    const status = ambiguousWorking ? "idle" : rawStatus;
+    const { lastOutputLines: rawLastOutputLines } = classifySurfaceOutput(lastOutput);
+    const lastOutputLines = ambiguousWorking ? [] : rawLastOutputLines;
 
     const project = projects.get(assignedProjectId) ?? {
       projectId: assignedProjectId,

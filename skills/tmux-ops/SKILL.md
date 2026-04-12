@@ -1,6 +1,6 @@
 ---
 name: tmux-ops
-description: Reference the Kuma cmux operations protocol for surfaces, sends, waits, and registration.
+description: Reference the Kuma cmux operations protocol for surfaces, sends, registration, and dispatch reporting.
 user-invocable: true
 ---
 
@@ -18,8 +18,10 @@ user-invocable: true
 
 - surface 생성/종료/등록은 `~/.kuma/cmux/` 스크립트를 우선 사용
 - 작업 전달은 반드시 `~/.kuma/cmux/kuma-cmux-send.sh` 사용 (raw `cmux send` / `send-key` 금지)
+- 진행 중 clarification/progress 는 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 이어간다
 - 태스크 완료/실패/QA 결과는 `~/.kuma/bin/kuma-dispatch complete|fail|qa-pass|qa-reject` 로 보고
 - QA 태스크는 밤토리에게 전달하고, 검수 결과는 동일한 task file 기준으로 `kuma-dispatch qa-pass|qa-reject` 로 보고
+- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다
 - 브라우저 작업은 `cmux browser`가 아니라 Chrome + Playwright 기준으로 수행
 
 ## 기본 명령
@@ -31,6 +33,7 @@ user-invocable: true
 ~/.kuma/cmux/kuma-cmux-register.sh <project> <role> <surface>
 ~/.kuma/cmux/kuma-cmux-send.sh surface:N "메시지"
 ~/.kuma/bin/kuma-task <member> "<instruction>"
+~/.kuma/bin/kuma-dispatch ask --task-file /tmp/kuma-tasks/<task>.task.md --message "..."
 ~/.kuma/bin/kuma-dispatch complete --task-file /tmp/kuma-tasks/<task>.task.md
 ~/.kuma/bin/kuma-dispatch qa-pass --task-file /tmp/kuma-tasks/<task>.task.md
 ```

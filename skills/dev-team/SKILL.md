@@ -25,11 +25,12 @@ user-invocable: true
 
 1. 요구사항을 짧은 실행 플랜으로 정리한다.
 2. 각 워커에게 분리 가능한 작업을 `kuma-task` 로 전달한다.
-3. 필요하면 `kuma-task --wait --wait-timeout <sec>` 로 완료까지 감시한다.
-4. 워커 결과를 모아 통합 판단과 최종 보고만 하울이 담당한다.
+3. clarification, progress, unblock 요청은 같은 task file 기준으로 `kuma-dispatch ask|reply` 스레드에서 이어간다.
+4. 워커 결과와 QA 상태를 모아 통합 판단과 최종 보고만 하울이 담당한다.
 
 ## Dispatch Report Rules
 
 - 구현 워커는 result 파일을 쓴 뒤 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
 - QA 워커는 같은 task file 기준으로 `~/.kuma/bin/kuma-dispatch qa-pass|qa-reject` 로 최종 상태를 보고한다.
-- `cmux wait-for -S` 나 `/tmp/kuma-signals` 파일은 더 이상 canonical completion flow 가 아니다.
+- 오케스트레이터는 필요 시 별도 QA task 를 dispatch 하되, 상태 전이는 기존 task file 의 `complete -> qa-pass|qa-reject` 흐름으로 유지한다.
+- `kuma-task --wait`, `kuma-cmux-wait.sh`, `cmux wait-for -S`, `/tmp/kuma-signals` 는 더 이상 canonical flow 가 아니다.

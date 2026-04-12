@@ -32,6 +32,7 @@ function demoDispatch(overrides = {}) {
     taskFile: "/tmp/demo.task.md",
     project: "kuma-studio",
     initiator: "surface:1",
+    initiatorLabel: "쿠마",
     worker: "surface:4",
     workerId: "tookdaki",
     workerName: "뚝딱이",
@@ -56,7 +57,16 @@ describe("dispatch-broker", () => {
     expect(stored.dispatches).toHaveLength(1);
     expect(stored.dispatches[0].taskId).toBe("demo-20260411-120000");
     expect(stored.dispatches[0].messages).toHaveLength(1);
-    expect(stored.dispatches[0].messages[0].kind).toBe("instruction");
+    expect(stored.dispatches[0].messages[0]).toMatchObject({
+      kind: "instruction",
+      text: "Implement the dispatch broker",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
+      fromLabel: "쿠마",
+      toLabel: "뚝딱이",
+      source: "kuma-task",
+    });
     expect(hookCalls.map((entry) => entry.event)).toEqual(["dispatched"]);
 
     const reloaded = new DispatchBroker({ storagePath });
@@ -75,6 +85,8 @@ describe("dispatch-broker", () => {
       text: "Need clarification on the QA path.",
       from: "worker",
       to: "initiator",
+      fromLabel: "뚝딱이",
+      toLabel: "쿠마",
       fromSurface: "surface:4",
       toSurface: "surface:1",
       source: "kuma-dispatch",
@@ -84,8 +96,11 @@ describe("dispatch-broker", () => {
     expect(updated.messages[1]).toMatchObject({
       kind: "question",
       text: "Need clarification on the QA path.",
+      bodySource: "direct-message",
       from: "worker",
       to: "initiator",
+      fromLabel: "뚝딱이",
+      toLabel: "쿠마",
     });
 
     const reloaded = new DispatchBroker({ storagePath });

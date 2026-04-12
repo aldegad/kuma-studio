@@ -88,6 +88,20 @@ resolve_initiator_surface() {
   printf 'surface:1\n'
 }
 
+resolve_dispatch_sender_surface() {
+  if [ -n "${CMUX_SURFACE_ID:-}" ]; then
+    normalize_surface "$CMUX_SURFACE_ID"
+    return
+  fi
+
+  if [ -n "${KUMA_INITIATOR_SURFACE:-}" ]; then
+    normalize_surface "$KUMA_INITIATOR_SURFACE"
+    return
+  fi
+
+  printf 'surface:1\n'
+}
+
 ensure_json_object_file() {
   local path="${1:?json path required}"
   if [ ! -f "$path" ]; then
@@ -254,6 +268,211 @@ resolve_project_anchor_surface() {
   local project="${1:?project required}"
 
   run_surface_registry_cli resolve-project-anchor-surface "$KUMA_SURFACES_PATH" "$project"
+}
+
+resolve_label_surface() {
+  local project="${1:?project required}"
+  local label="${2:?label required}"
+
+  node --input-type=module - "$KUMA_SURFACES_PATH" "$project" "$label" <<'NODE'
+import { existsSync, readFileSync } from "node:fs";
+
+const [, , registryPath, projectId, label] = process.argv;
+if (!existsSync(registryPath)) {
+  process.exit(1);
+}
+
+const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+const surface = registry?.[projectId]?.[label];
+if (typeof surface !== "string" || !surface.trim()) {
+  process.exit(1);
+}
+
+process.stdout.write(`${surface.trim()}\n`);
+NODE
+}
+
+resolve_path_if_possible() {
+  local input="${1:-}"
+  if [ -z "$input" ]; then
+    return 1
+  fi
+
+  (
+    cd "$input" 2>/dev/null && pwd -P
+  )
+}
+
+resolve_requested_workspace_binding() {
+  local repo_root="${1:-$KUMA_REPO_ROOT}"
+  local candidate=""
+  local resolved=""
+
+  if [ -n "${KUMA_STUDIO_WORKSPACE:-}" ]; then
+    candidate="$KUMA_STUDIO_WORKSPACE"
+  elif [ -n "${INIT_CWD:-}" ]; then
+    candidate="$INIT_CWD"
+  else
+    candidate="$(pwd -P)"
+  fi
+
+  [ -n "$candidate" ] || return 1
+  resolved="$(resolve_path_if_possible "$candidate" || printf '%s' "$candidate")"
+  if [ -n "$repo_root" ] && [ "$resolved" = "$repo_root" ]; then
+    return 1
+  fi
+
+  printf '%s\n' "$resolved"
+}
+
+resolve_reload_workspace_binding_candidate() {
+  local candidate="${1:-}"
+  local repo_root="${2:-$KUMA_REPO_ROOT}"
+  local resolved=""
+
+  [ -n "$candidate" ] || return 1
+
+  resolved="$(resolve_path_if_possible "$candidate" || printf '%s' "$candidate")"
+  [ -n "$resolved" ] || return 1
+
+  if [ -n "$repo_root" ] && [ "$resolved" = "$repo_root" ]; then
+    return 1
+  fi
+
+  printf '%s\n' "$resolved"
+}
+
+resolve_runtime_workspace_anchor_candidate() {
+  local candidate="${1:-}"
+  local repo_root="${2:-$KUMA_REPO_ROOT}"
+  local resolved=""
+
+  resolved="$(resolve_reload_workspace_binding_candidate "$candidate" "$repo_root" 2>/dev/null || true)"
+  [ -n "$resolved" ] || return 1
+
+  if [ -d "$resolved/.kuma/plans" ] || [ -d "$resolved/.kuma" ]; then
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+
+  printf '%s\n' "$resolved"
+}
+
+resolve_workspace_for_surface() {
+  local surface="${1:?surface required}"
+
+  cmux tree 2>&1 | awk -v target="$surface" '
+    {
+      if (match($0, /workspace:[0-9]+/)) {
+        current_ws = substr($0, RSTART, RLENGTH)
+      }
+      if (index($0, target) > 0) {
+        print current_ws
+        exit
+      }
+    }
+  '
+}
+
+resolve_pane_for_surface() {
+  local surface="${1:?surface required}"
+
+  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1
+}
+
+resolve_tty_for_surface() {
+  local surface="${1:?surface required}"
+
+  cmux tree 2>&1 | awk -v target="$surface" '
+    index($0, target) > 0 {
+      if (match($0, /tty=[^[:space:]]+/)) {
+        print substr($0, RSTART + 4, RLENGTH - 4)
+        exit
+      }
+    }
+  '
+}
+
+resolve_primary_tty_pid() {
+  local tty="${1:?tty required}"
+  local ps_output=""
+
+  ps_output="$(ps -t "$tty" -o pid=,ppid=,comm= 2>/dev/null || true)"
+  [ -n "$ps_output" ] || return 1
+
+  node --input-type=module - "$ps_output" <<'NODE'
+const [, , raw = ""] = process.argv;
+const shellNames = new Set(["sh", "bash", "zsh", "fish", "ksh", "tcsh", "csh", "dash"]);
+
+const rows = raw
+  .split(/\n+/u)
+  .map((line) => line.trim())
+  .filter(Boolean)
+  .map((line) => {
+    const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/u);
+    if (!match) {
+      return null;
+    }
+
+    const pid = Number.parseInt(match[1], 10);
+    const ppid = Number.parseInt(match[2], 10);
+    const command = match[3].trim();
+    const commandBase = command.split("/").pop()?.replace(/^-+/u, "") ?? "";
+    const isShell = shellNames.has(commandBase);
+    const isLogin = /(^|\/)login$/u.test(command);
+    return { pid, ppid, command, isShell, isLogin };
+  })
+  .filter(Boolean);
+
+if (!rows.length) {
+  process.exit(1);
+}
+
+rows.sort((left, right) => left.pid - right.pid);
+
+const preferred =
+  rows.find((row) => row.isShell) ??
+  rows.find((row) => !row.isLogin) ??
+  rows[0];
+
+if (!preferred?.pid) {
+  process.exit(1);
+}
+
+process.stdout.write(`${preferred.pid}\n`);
+NODE
+}
+
+resolve_process_cwd() {
+  local pid="${1:?pid required}"
+
+  if [ -e "/proc/$pid/cwd" ]; then
+    (
+      cd "/proc/$pid/cwd" 2>/dev/null && pwd -P
+    )
+    return 0
+  fi
+
+  lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | awk '
+    /^n/ {
+      print substr($0, 2)
+      exit
+    }
+  '
+}
+
+resolve_surface_cwd() {
+  local surface="${1:?surface required}"
+  local tty=""
+  local pid=""
+
+  tty="$(resolve_tty_for_surface "$surface" 2>/dev/null || true)"
+  [ -n "$tty" ] || return 1
+
+  pid="$(resolve_primary_tty_pid "$tty" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 1
+
+  resolve_process_cwd "$pid"
 }
 
 resolve_member_json() {

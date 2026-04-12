@@ -376,6 +376,9 @@ describe("shared team normalizer", () => {
     expect(command).toContain('claude --model claude-opus-4-6');
     expect(command).toContain("--append-system-prompt");
     expect(command).toContain("Wait for dispatched task");
+    expect(command).toContain("Default to no legacy fallback paths.");
+    expect(command).toContain("Avoid nested conditional fallback chains.");
+    expect(command).toContain("Preserve SSOT and SRP:");
     expect(command).not.toContain('"/frontend-design"');
     expect(command).not.toContain('--\\ "/frontend-design"');
   });
@@ -407,6 +410,9 @@ describe("shared team normalizer", () => {
     expect(command).toContain('codex -m gpt-5.4-mini');
     expect(command).toContain("developer_instructions=");
     expect(command).toContain("Wait\\ for\\ dispatched\\ task");
+    expect(command).toContain("Default\\ to\\ no\\ legacy\\ fallback\\ paths.");
+    expect(command).toContain("Remove\\ migration\\ scaffolding\\ as\\ soon\\ as\\ the\\ migration\\ is\\ complete.");
+    expect(command).toContain("Actively\\ delete\\ dead\\ code\\ and\\ legacy\\ code.");
     expect(command).not.toContain("kuma-picker");
   });
 

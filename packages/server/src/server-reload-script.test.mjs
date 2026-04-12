@@ -1,0 +1,95 @@
+import { execFile as execFileCallback } from "node:child_process";
+import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
+
+import { afterEach, describe, expect, it } from "vitest";
+
+const execFile = promisify(execFileCallback);
+const SERVER_RELOAD_SCRIPT_PATH = resolve(process.cwd(), "scripts/server-reload.sh");
+
+async function writeExecutable(path, content) {
+  await writeFile(path, content, "utf8");
+  await chmod(path, 0o755);
+}
+
+describe("server-reload.sh", () => {
+  const tempRoots = [];
+
+  afterEach(async () => {
+    await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  });
+
+  it("binds INIT_CWD as the workspace when relaunched from a workspace root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-server-reload-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const nodeLog = join(root, "node.log");
+    const workspaceRoot = join(root, "workspace");
+    await mkdir(binDir, { recursive: true });
+    await mkdir(workspaceRoot, { recursive: true });
+
+    await writeExecutable(
+      join(binDir, "lsof"),
+      "#!/bin/bash\nexit 0\n",
+    );
+    await writeExecutable(
+      join(binDir, "node"),
+      `#!/bin/bash
+set -euo pipefail
+printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
+printf 'argv=' >> "${nodeLog}"
+printf '%q ' "$@" >> "${nodeLog}"
+printf '\\n' >> "${nodeLog}"
+`,
+    );
+
+    await execFile("bash", [SERVER_RELOAD_SCRIPT_PATH], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        INIT_CWD: workspaceRoot,
+        KUMA_STUDIO_PORT: "44312",
+      },
+    });
+
+    const log = await readFile(nodeLog, "utf8");
+    expect(log).toContain(`workspace=${await realpath(workspaceRoot)}`);
+    expect(log).toContain("--root");
+  });
+
+  it("does not silently bind the repo root as the workspace by default", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-server-reload-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const nodeLog = join(root, "node.log");
+    await mkdir(binDir, { recursive: true });
+
+    await writeExecutable(
+      join(binDir, "lsof"),
+      "#!/bin/bash\nexit 0\n",
+    );
+    await writeExecutable(
+      join(binDir, "node"),
+      `#!/bin/bash
+set -euo pipefail
+printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
+`,
+    );
+
+    await execFile("bash", [SERVER_RELOAD_SCRIPT_PATH], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        INIT_CWD: process.cwd(),
+        KUMA_STUDIO_PORT: "44313",
+      },
+    });
+
+    const log = await readFile(nodeLog, "utf8");
+    expect(log).toContain("workspace=<unset>");
+  });
+});
