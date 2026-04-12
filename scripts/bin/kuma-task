@@ -235,6 +235,78 @@ member_status_field() {
   ' "$field"
 }
 
+member_display_name_from_json() {
+  local member_json="${1:?member json required}"
+
+  printf '%s' "$member_json" | node -e '
+    const fs = require("node:fs");
+    const member = JSON.parse(fs.readFileSync(0, "utf8"));
+    process.stdout.write(`${member.displayName || member.name || member.id || ""}\n`);
+  '
+}
+
+member_id_from_json() {
+  local member_json="${1:?member json required}"
+
+  printf '%s' "$member_json" | node -e '
+    const fs = require("node:fs");
+    const member = JSON.parse(fs.readFileSync(0, "utf8"));
+    process.stdout.write(`${member.id || ""}\n`);
+  '
+}
+
+surface_id_from_json() {
+  local surface_json="${1:?surface json required}"
+
+  printf '%s' "$surface_json" | node -e '
+    const fs = require("node:fs");
+    const surface = JSON.parse(fs.readFileSync(0, "utf8"));
+    process.stdout.write(`${surface.surface || ""}\n`);
+  '
+}
+
+format_qa_candidate_summary() {
+  local role="${1:-candidate}"
+  local label="${2:-unknown}"
+  local surface="${3:-}"
+  local state="${4:-unknown}"
+  local reason="${5:-}"
+  local rendered_surface="${surface:--}"
+  local rendered_state="${state:-unknown}"
+
+  if [ -n "$reason" ]; then
+    printf '%s %s (surface=%s, state=%s, reason=%s)' "$role" "$label" "$rendered_surface" "$rendered_state" "$reason"
+  else
+    printf '%s %s (surface=%s, state=%s)' "$role" "$label" "$rendered_surface" "$rendered_state"
+  fi
+}
+
+spawn_member_surface_json() {
+  local project="${1:?project required}"
+  local member_json="${2:?member json required}"
+  local context="${3:-auto-spawn}"
+  local member_name=""
+  local member_label=""
+  local spawn_output=""
+  local surface=""
+
+  member_name="$(member_display_name_from_json "$member_json")"
+  member_label="$(member_display_label_from_json "$member_json")"
+  spawn_output="$("$SCRIPT_DIR/kuma-spawn" "$member_name" --project "$project" 2>&1)" || {
+    printf 'QA_ROUTE_WARN: failed to auto-spawn %s (%s): %s\n' "$member_label" "$context" "$spawn_output" >&2
+    return 1
+  }
+
+  surface="$(printf '%s\n' "$spawn_output" | awk -F': ' '/^SURFACE: /{print $2; exit}')"
+  if [ -z "$surface" ]; then
+    printf 'QA_ROUTE_WARN: auto-spawn for %s (%s) returned no SURFACE line\n' "$member_label" "$context" >&2
+    return 1
+  fi
+
+  printf 'QA_ROUTE: %s -> auto-spawned %s (%s)\n' "$member_label" "$surface" "$context" >&2
+  resolve_surface_json "$project" "$member_json"
+}
+
 dispatch_role_label() {
   case "${1:-}" in
     initiator)
@@ -451,28 +523,44 @@ else
       QA_LABEL="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
       QA_DISPATCH_TARGET="$QA_LABEL"
       QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || QA_SURFACE_JSON=""
+      QA_MEMBER_ID="$(member_id_from_json "$QA_MEMBER_JSON")"
+      QA_STATUS="offline"
+      QA_PRIMARY_SUMMARY=""
+      QA_FALLBACK_SUMMARY="fallback none"
+      QA_NEEDS_FALLBACK=0
+      QA_PRIMARY_READY=0
 
-      # QA reroute: surface 가 없거나 busy 면 alternate QA 멤버로 전환
-      QA_BUSY=0
-      if [ -z "$QA_SURFACE_JSON" ]; then
-        QA_BUSY=1
-      else
-        QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
-        QA_MEMBER_ID="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.id);')"
+      if [ -n "$QA_SURFACE_JSON" ]; then
+        QA_SURFACE="$(surface_id_from_json "$QA_SURFACE_JSON")"
         QA_STATUS_JSON="$(read_project_member_status_json "$TEAM_STATUS_SNAPSHOT_JSON" "$QA_MEMBER_ID")"
         QA_STATUS="$(member_status_field "$QA_STATUS_JSON" state 2>/dev/null || echo "unknown")"
+        QA_PRIMARY_SUMMARY="$(format_qa_candidate_summary primary "$QA_LABEL" "$QA_SURFACE" "$QA_STATUS")"
         if [ "$QA_STATUS" = "working" ]; then
-          QA_BUSY=1
+          QA_NEEDS_FALLBACK=1
+        else
+          QA_PRIMARY_READY=1
+          QA_FRONTMATTER="$QA_SURFACE"
+        fi
+      else
+        QA_PRIMARY_SUMMARY="$(format_qa_candidate_summary primary "$QA_LABEL" "-" "offline" "unregistered")"
+        if QA_SURFACE_JSON="$(spawn_member_surface_json "$PROJECT" "$QA_MEMBER_JSON" "primary QA missing surface")"; then
+          QA_SURFACE="$(surface_id_from_json "$QA_SURFACE_JSON")"
+          QA_FRONTMATTER="$QA_SURFACE"
+          QA_PRIMARY_SUMMARY="$(format_qa_candidate_summary primary "$QA_LABEL" "$QA_SURFACE" "idle" "auto-spawned")"
+          QA_PRIMARY_READY=1
+        else
+          QA_NEEDS_FALLBACK=1
+          QA_PRIMARY_SUMMARY="$(format_qa_candidate_summary primary "$QA_LABEL" "-" "offline" "spawn-failed")"
         fi
       fi
 
-      if [ "$QA_BUSY" = "1" ]; then
-        # alternate QA 대상 조회 (worker의 qaFallback 필드)
+      if [ "$QA_NEEDS_FALLBACK" = "1" ]; then
         MEMBER_QA_FALLBACK="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const m=JSON.parse(fs.readFileSync(0,"utf8")); console.log(m.qaFallback || "");' 2>/dev/null || echo "")"
         if [ -n "$MEMBER_QA_FALLBACK" ] && [ "$MEMBER_QA_FALLBACK" != "$QA_TARGET_QUERY" ]; then
-          printf 'QA_ROUTE: %s busy -> rerouting to alternate reviewer %s\n' "$QA_TARGET_QUERY" "$MEMBER_QA_FALLBACK" >&2
+          printf 'QA_ROUTE: %s unavailable (state=%s) -> rerouting to alternate reviewer %s\n' "$QA_LABEL" "$QA_STATUS" "$MEMBER_QA_FALLBACK" >&2
           case "$MEMBER_QA_FALLBACK" in
             self)
+              QA_FALLBACK_SUMMARY="$(format_qa_candidate_summary fallback worker-self-report "-" "trusted")"
               QA_MODE="self"
               QA_LABEL="worker-self-report"
               QA_FRONTMATTER="worker-self-report"
@@ -480,6 +568,7 @@ else
               QA_DISPATCH_TARGET=""
               ;;
             kuma-direct)
+              QA_FALLBACK_SUMMARY="$(format_qa_candidate_summary fallback kuma-direct "-" "direct")"
               QA_MODE="kuma-direct"
               QA_LABEL="kuma-direct"
               QA_FRONTMATTER="kuma-direct"
@@ -487,15 +576,39 @@ else
               QA_DISPATCH_TARGET=""
               ;;
             *)
-              QA_MEMBER_JSON="$(resolve_member_json "$MEMBER_QA_FALLBACK")" || die "qa reroute member not found: $MEMBER_QA_FALLBACK"
-              QA_DISPATCH_TARGET="$(printf '%s' "$QA_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
-              QA_LABEL="${QA_DISPATCH_TARGET}"
-              QA_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_MEMBER_JSON" 2>/dev/null)" || die "qa reroute surface not found for $MEMBER_QA_FALLBACK"
-              QA_SURFACE="$(printf '%s' "$QA_SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); console.log(surface.surface);')"
+              QA_FALLBACK_MEMBER_JSON="$(resolve_member_json "$MEMBER_QA_FALLBACK")" || die "qa reroute member not found: $MEMBER_QA_FALLBACK"
+              QA_FALLBACK_LABEL="$(printf '%s' "$QA_FALLBACK_MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); console.log(member.displayName);')"
+              QA_FALLBACK_MEMBER_ID="$(member_id_from_json "$QA_FALLBACK_MEMBER_JSON")"
+              QA_FALLBACK_SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$QA_FALLBACK_MEMBER_JSON" 2>/dev/null)" || QA_FALLBACK_SURFACE_JSON=""
+              if [ -n "$QA_FALLBACK_SURFACE_JSON" ]; then
+                QA_FALLBACK_SURFACE="$(surface_id_from_json "$QA_FALLBACK_SURFACE_JSON")"
+                QA_FALLBACK_STATUS_JSON="$(read_project_member_status_json "$TEAM_STATUS_SNAPSHOT_JSON" "$QA_FALLBACK_MEMBER_ID")"
+                QA_FALLBACK_STATUS="$(member_status_field "$QA_FALLBACK_STATUS_JSON" state 2>/dev/null || echo "unknown")"
+                QA_FALLBACK_SUMMARY="$(format_qa_candidate_summary fallback "$QA_FALLBACK_LABEL" "$QA_FALLBACK_SURFACE" "$QA_FALLBACK_STATUS")"
+                if [ "$QA_FALLBACK_STATUS" = "working" ]; then
+                  die "qa route unavailable: ${QA_PRIMARY_SUMMARY}; ${QA_FALLBACK_SUMMARY}"
+                fi
+              elif QA_FALLBACK_SURFACE_JSON="$(spawn_member_surface_json "$PROJECT" "$QA_FALLBACK_MEMBER_JSON" "fallback QA missing surface")"; then
+                QA_FALLBACK_SURFACE="$(surface_id_from_json "$QA_FALLBACK_SURFACE_JSON")"
+                QA_FALLBACK_SUMMARY="$(format_qa_candidate_summary fallback "$QA_FALLBACK_LABEL" "$QA_FALLBACK_SURFACE" "idle" "auto-spawned")"
+              else
+                QA_FALLBACK_SUMMARY="$(format_qa_candidate_summary fallback "$QA_FALLBACK_LABEL" "-" "offline" "spawn-failed")"
+                die "qa route unavailable: ${QA_PRIMARY_SUMMARY}; ${QA_FALLBACK_SUMMARY}"
+              fi
+
+              QA_MEMBER_JSON="$QA_FALLBACK_MEMBER_JSON"
+              QA_DISPATCH_TARGET="$QA_FALLBACK_LABEL"
+              QA_LABEL="$QA_FALLBACK_LABEL"
+              QA_SURFACE_JSON="$QA_FALLBACK_SURFACE_JSON"
+              QA_SURFACE="$QA_FALLBACK_SURFACE"
               QA_FRONTMATTER="$QA_SURFACE"
               ;;
           esac
+        elif [ "$QA_PRIMARY_READY" != "1" ]; then
+          die "qa route unavailable: ${QA_PRIMARY_SUMMARY}; ${QA_FALLBACK_SUMMARY}"
         fi
+      elif [ "$QA_PRIMARY_READY" != "1" ]; then
+        die "qa route unavailable: ${QA_PRIMARY_SUMMARY}; ${QA_FALLBACK_SUMMARY}"
       fi
 
       QA_LABEL="${QA_LABEL:-$QA_TARGET_QUERY}"

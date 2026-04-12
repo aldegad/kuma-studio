@@ -495,6 +495,16 @@ async function addSurfaceLabel(sandbox, projectId, label, surface) {
   await writeJson(sandbox.surfacesPath, registry);
 }
 
+async function removeSurfaceLabel(sandbox, projectId, label) {
+  const registry = await readJson(sandbox.surfacesPath);
+  if (!registry[projectId]) {
+    return;
+  }
+
+  delete registry[projectId][label];
+  await writeJson(sandbox.surfacesPath, registry);
+}
+
 async function setMemberDefaultQa(sandbox, memberId, defaultQa) {
   const team = await readJson(sandbox.teamPath);
   const member = team?.teams?.dev?.members?.find((entry) => entry.id === memberId);
@@ -503,6 +513,17 @@ async function setMemberDefaultQa(sandbox, memberId, defaultQa) {
   }
 
   member.defaultQa = defaultQa;
+  await writeJson(sandbox.teamPath, team);
+}
+
+async function setMemberQaFallback(sandbox, memberId, qaFallback) {
+  const team = await readJson(sandbox.teamPath);
+  const member = team?.teams?.dev?.members?.find((entry) => entry.id === memberId);
+  if (!member) {
+    throw new Error(`member not found in sandbox team.json: ${memberId}`);
+  }
+
+  member.qaFallback = qaFallback;
   await writeJson(sandbox.teamPath, team);
 }
 
@@ -842,6 +863,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
     expect(cmuxLog).toContain("Recipient: Kuma (initiator, surface:99)");
     expect(cmuxLog).toContain("reported worker completion");
+    expect(cmuxLog).toContain("QA handoff target:");
     expect(cmuxLog).toContain("Broker status: worker-done");
   });
 
@@ -1314,6 +1336,71 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(stdout).toContain("QA: 밤토리 (surface:7)");
   });
 
+  it("kuma-task auto-spawns the primary QA reviewer when their surface is unregistered", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberDefaultQa(sandbox, "tookdaki", "bamdori");
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦔 밤토리");
+
+    const { stdout, stderr } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    const taskFile = await readFile(taskFilePath, "utf8");
+    const spawnLog = await readFile(sandbox.spawnLog, "utf8");
+    const registry = await readJson(sandbox.surfacesPath);
+    expect(taskFile).toContain("qa: surface:55");
+    expect(stdout).toContain("QA: 밤토리 (surface:55)");
+    expect(stderr).toContain("QA_ROUTE: 🦔 밤토리 -> auto-spawned surface:55");
+    expect(spawnLog).toContain("kuma-studio");
+    expect(registry["kuma-studio"]["🦔 밤토리"]).toBe("surface:55");
+  });
+
+  it("kuma-task reroutes busy QA reviewers to a fallback and auto-spawns the fallback when needed", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberDefaultQa(sandbox, "tookdaki", "bamdori");
+    await setMemberQaFallback(sandbox, "tookdaki", "saemi");
+    await writeFile(join(sandbox.outputDir, "surface_7.txt"), "Investigating QA queue\n", "utf8");
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦅 새미");
+
+    const { stdout, stderr } = await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+
+    const taskFilePath = stdout.match(/TASK_FILE: (.+)/)?.[1];
+    const taskFile = await readFile(taskFilePath, "utf8");
+    const spawnLog = await readFile(sandbox.spawnLog, "utf8");
+    const registry = await readJson(sandbox.surfacesPath);
+    expect(taskFile).toContain("qa: surface:55");
+    expect(stdout).toContain("QA: 새미 (surface:55)");
+    expect(stderr).toContain("QA_ROUTE: 밤토리 unavailable (state=working) -> rerouting to alternate reviewer saemi");
+    expect(stderr).toContain("QA_ROUTE: 🦅 새미 -> auto-spawned surface:55");
+    expect(spawnLog).toContain("kuma-studio");
+    expect(registry["kuma-studio"]["🦅 새미"]).toBe("surface:55");
+  });
+
+  it("kuma-task errors with primary and fallback QA states when both reviewers are unavailable", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await setMemberDefaultQa(sandbox, "tookdaki", "bamdori");
+    await setMemberQaFallback(sandbox, "tookdaki", "saemi");
+    await writeFile(join(sandbox.outputDir, "surface_7.txt"), "Investigating QA queue\n", "utf8");
+    await writeFile(join(sandbox.outputDir, "surface_5.txt"), "Investigating fallback QA queue\n", "utf8");
+
+    let failure;
+    try {
+      await runScript(KUMA_TASK_PATH, ["뚝딱이", "echo test", "--project", "kuma-studio"], sandbox.env);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(failure.stderr).toContain(
+      "qa route unavailable: primary 밤토리 (surface=surface:7, state=working); fallback 새미 (surface=surface:5, state=working)",
+    );
+  });
+
   it("kuma-task does not prepend vault domain hints into the worker prompt by default", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
@@ -1383,6 +1470,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     await writeFile(join(sandbox.outputDir, "surface_4.txt"), "Investigating sofa bug\n", "utf8");
     await writeFile(join(sandbox.outputDir, "surface_16.txt"), "❯\n", "utf8");
     await writeFile(join(sandbox.outputDir, "surface_7.txt"), "new task? /clear to save 12k tokens\n", "utf8");
+    await removeSurfaceLabel(sandbox, "kuma-studio", "🦅 새미");
 
     const { stdout } = await runScript(KUMA_STATUS_PATH, ["--project", "kuma-studio"], sandbox.env);
 
@@ -1390,6 +1478,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(stdout).toContain("kuma-studio\t🦫 뚝딱이\tsurface:4\tworking\tInvestigating sofa bug");
     expect(stdout).toContain("kuma-studio\t🦝 쿤\tsurface:16\tidle");
     expect(stdout).toContain("kuma-studio\t🦔 밤토리\tsurface:7\tidle");
+    expect(stdout).toContain("kuma-studio\t🦅 새미\t-\toffline\t");
   });
 
   it("kuma-status treats bypass-permissions footers as idle instead of working", async () => {

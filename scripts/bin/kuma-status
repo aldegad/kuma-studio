@@ -62,11 +62,16 @@ printf '%s' "$SNAPSHOT_JSON" | node -e '
     const members = Array.isArray(project?.members) ? project.members : [];
     for (const member of members) {
       const id = typeof member?.id === "string" ? member.id : "";
-      const surface = typeof member?.surface === "string" ? member.surface : "";
-      if (!id || !surface) continue;
+      const surface = typeof member?.surface === "string" && member.surface.trim() ? member.surface : "-";
+      if (!id) continue;
 
       const meta = byId.get(id) ?? { name: id, emoji: "", teamId: "" };
-      const state = typeof member?.state === "string" ? member.state : "idle";
+      const state =
+        typeof member?.state === "string" && member.state.trim()
+          ? member.state
+          : surface === "-"
+            ? "offline"
+            : "idle";
       const preview =
         (typeof member?.task === "string" && member.task.trim()) ||
         (Array.isArray(member?.lastOutputLines) && typeof member.lastOutputLines[0] === "string" ? member.lastOutputLines[0] : "") ||

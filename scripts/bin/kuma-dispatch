@@ -537,7 +537,7 @@ format_lifecycle_notice() {
 
     let text = "";
     if (status === "worker-done") {
-      text = `${workerName} reported worker completion. Read the result file and continue QA handoff.`;
+      text = `${workerName} reported worker completion. QA handoff target: ${qaMember}. Read the result file and continue QA handoff.`;
     } else if (status === "qa-passed" && lastEvent === "complete") {
       text = `${workerName} completed work and broker recorded direct completion. Read the result file for the final report.`;
     } else if (status === "qa-passed") {
