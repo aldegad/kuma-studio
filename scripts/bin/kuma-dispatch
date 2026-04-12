@@ -478,110 +478,13 @@ EOF
   printf 'TO: %s (%s)\n' "$to_role" "$to_surface"
 }
 
-event_source_label() {
-  case "${1:-}" in
-    complete)
-      printf 'worker'
-      ;;
-    fail)
-      printf 'worker'
-      ;;
-    qa-pass)
-      printf 'qa'
-      ;;
-    qa-reject)
-      printf 'qa'
-      ;;
-    *)
-      printf 'dispatch'
-      ;;
-  esac
-}
-
-format_lifecycle_notice() {
-  local event_type="${1:?event type required}"
-  local dispatch_json="${2:?dispatch json required}"
-
-  node -e '
-const fs = require("node:fs");
-const [, eventType, dispatchRaw] = process.argv;
-const payload = JSON.parse(dispatchRaw);
-const dispatch = payload?.dispatch ?? payload ?? {};
-
-const normalize = (value) => (typeof value === "string" ? value.trim() : "");
-const event = normalize(eventType);
-const workerName = normalize(dispatch.workerName) || "Worker";
-const qaMember = normalize(dispatch.qaMember) || "QA";
-const blocker = normalize(dispatch.blocker);
-const note = normalize(dispatch.note);
-const resultFile = normalize(dispatch.resultFile);
-const hasResult = Boolean(resultFile);
-const resultSuffix = hasResult ? ` Result: ${resultFile}` : "";
-
-let text = "";
-if (event === "complete") {
-  text = `${workerName} completed work.${resultSuffix}`;
-} else if (event === "fail") {
-  text = blocker
-    ? `${workerName} reported a blocker: ${blocker}.${resultSuffix}`
-    : `${workerName} reported a blocker.${resultSuffix}`;
-} else if (event === "qa-pass") {
-  text = `${qaMember} passed QA.${resultSuffix}`;
-} else if (event === "qa-reject") {
-  text = blocker
-    ? `${qaMember} rejected QA: ${blocker}.${resultSuffix}`
-    : `${qaMember} rejected QA.${resultSuffix}`;
-} else {
-  process.exit(1);
-}
-
-process.stdout.write(`${text}\n`);
-' "$event_type" "$dispatch_json"
-}
-
-run_dispatch_event_with_notice() {
+run_dispatch_event() {
   local event_type="${1:?event type required}"
   shift
 
   local dispatch_json=""
   dispatch_json="$(node "$KUMA_SERVER_CLI" "dispatch-${event_type}" "$@")"
   printf '%s\n' "$dispatch_json"
-
-  local task_file=""
-  local source_label=""
-  local message_kind=""
-  local lifecycle_message=""
-  local current_source=""
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --task-file)
-        task_file="${2:-}"
-        shift 2
-        ;;
-      --source)
-        current_source="${2:-}"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-
-  [ -n "$task_file" ] || return 0
-
-  source_label="$(event_source_label "$event_type")"
-  message_kind="status"
-  if [ "$event_type" = "fail" ] || [ "$event_type" = "qa-reject" ]; then
-    message_kind="blocker"
-  fi
-
-  lifecycle_message="$(format_lifecycle_notice "$event_type" "$dispatch_json" 2>/dev/null || true)"
-  [ -n "$lifecycle_message" ] || return 0
-
-  if ! send_thread_message "$message_kind" --task-file "$task_file" --message "$lifecycle_message" --from "$source_label" --to initiator --source "${current_source:-$source_label}" --body-source lifecycle-event > /dev/null; then
-    printf 'WARN: failed to send lifecycle notice for %s (%s)\n' "$event_type" "$task_file" >&2
-  fi
 }
 
 case "$COMMAND" in
@@ -598,19 +501,19 @@ case "$COMMAND" in
     send_thread_message note "$@"
     ;;
   done)
-    run_dispatch_event_with_notice complete "$@"
+    run_dispatch_event complete "$@"
     ;;
   complete)
-    run_dispatch_event_with_notice complete "$@"
+    run_dispatch_event complete "$@"
     ;;
   fail)
-    run_dispatch_event_with_notice fail "$@"
+    run_dispatch_event fail "$@"
     ;;
   qa-pass)
-    run_dispatch_event_with_notice qa-pass "$@"
+    run_dispatch_event qa-pass "$@"
     ;;
   qa-reject)
-    run_dispatch_event_with_notice qa-reject "$@"
+    run_dispatch_event qa-reject "$@"
     ;;
   status)
     exec node "$KUMA_SERVER_CLI" dispatch-status "$@"

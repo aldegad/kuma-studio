@@ -806,7 +806,7 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
     expect(cmuxLog).toContain("Need API confirmation.");
   });
 
-  it("kuma-dispatch complete appends and sends an immediate lifecycle status message to the initiator", async () => {
+  it("kuma-dispatch complete updates broker status without sending a lifecycle thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
@@ -825,25 +825,22 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
 
     const dispatchState = await readJson(sandbox.dispatchStatePath);
     const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("worker-done");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
     expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
-      kind: "status",
-      bodySource: "lifecycle-event",
-      from: "worker",
-      to: "initiator",
-      text: expect.stringContaining("뚝딱이 completed work."),
-      source: "worker",
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).toContain("send-wrapper|surface:99");
-    expect(cmuxLog).not.toContain("Speaker: surface peer");
-    expect(cmuxLog).toContain("(worker, surface:4)");
-    expect(cmuxLog).toContain("Message kind: status update");
-    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).toContain("completed work. Result:");
+    expect(cmuxLog).not.toContain("Message kind: status update");
+    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).not.toContain("completed work. Result:");
   });
 
-  it("kuma-dispatch qa-reject appends and sends an immediate lifecycle blocker message to the initiator", async () => {
+  it("kuma-dispatch qa-reject updates broker status without sending a lifecycle thread notice", async () => {
     const sandbox = await setupCliSandbox();
     tempRoots.push(sandbox.root);
 
@@ -862,22 +859,19 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
 
     const dispatchState = await readJson(sandbox.dispatchStatePath);
     const [taskId] = Object.keys(dispatchState.dispatches);
+    expect(dispatchState.dispatches[taskId].status).toBe("qa-rejected");
+    expect(dispatchState.dispatches[taskId].messages).toHaveLength(1);
     expect(dispatchState.dispatches[taskId].messages.at(-1)).toMatchObject({
-      kind: "blocker",
-      bodySource: "lifecycle-event",
-      from: "qa",
-      to: "initiator",
-      text: expect.stringContaining("밤토리 rejected QA: Selection mismatch."),
-      source: "qa",
+      kind: "instruction",
+      bodySource: "forwarded-summary",
+      from: "initiator",
+      to: "worker",
     });
 
     const cmuxLog = await readFile(sandbox.cmuxLog, "utf8");
-    expect(cmuxLog).toContain("send-wrapper|surface:99");
-    expect(cmuxLog).not.toContain("Speaker: surface peer");
-    expect(cmuxLog).toContain("(QA, surface:7)");
-    expect(cmuxLog).toContain("Message kind: blocker");
-    expect(cmuxLog).toContain("Body source: dispatch lifecycle event");
-    expect(cmuxLog).toContain("Selection mismatch. Result:");
+    expect(cmuxLog).not.toContain("Message kind: blocker");
+    expect(cmuxLog).not.toContain("Body source: dispatch lifecycle event");
+    expect(cmuxLog).not.toContain("Selection mismatch. Result:");
   });
 
   it("kuma-dispatch reply defaults back to the worker surface from the initiator", async () => {
