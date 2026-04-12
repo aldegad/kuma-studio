@@ -56,7 +56,7 @@ fi
 # 헬퍼: surface → pane 조회
 get_pane() {
   local surface="$1"
-  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1 || true
+  resolve_surface_pane "$surface" "${WS_ID:-}" 2>/dev/null || true
 }
 
 # 헬퍼: surface에 세션 시작 + 등록 + 타이틀

@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { execFile as execFileCallback } from "node:child_process";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { execFile as execFileCallback, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -66,6 +66,43 @@ async function writeDecisionsFixture(root) {
   await mkdir(vaultDir, { recursive: true });
   await writeFile(join(vaultDir, "decisions.md"), DECISIONS_FIXTURE, "utf8");
   return vaultDir;
+}
+
+async function writeDecisionsFixtureWithSingleQuotes(root) {
+  const vaultDir = join(root, "vault");
+  await mkdir(vaultDir, { recursive: true });
+  await writeFile(
+    join(vaultDir, "decisions.md"),
+    `---
+title: Decisions Ledger
+type: special/decisions
+updated: 2026-04-13T02:40:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Ledger
+
+### 2026-04-13 02:40 KST · approve · global
+
+- id: 20260413-024000-hookrelax
+- action: approve
+- scope: global
+- writer: user-direct
+- resolved_text: "서브에이전트 대상 execution gate 훅 완화. '직접 작업 막는 훅들' 만 해제."
+`,
+    "utf8",
+  );
+  return vaultDir;
+}
+
+async function writeExecutable(path, content) {
+  await writeFile(path, content, "utf8");
+  await chmod(path, 0o755);
 }
 
 async function runTeamConfigHelper(helperName, teamPath, args = [], extraEnv = {}) {
@@ -534,6 +571,105 @@ describe("shared team normalizer", () => {
     expect(developerInstructions).toContain("Do not implement directly except for trivial one-line fixes.");
     expect(developerInstructions).toContain("Delegate implementation work with kuma-task.");
     expect(developerInstructions).toContain("Do not use --trust-worker when dispatching worker tasks");
+  });
+
+  it("builds a Codex startup command that stays shell-parseable when decisions contain single quotes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+    const vaultDir = await writeDecisionsFixtureWithSingleQuotes(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            {
+              id: "howl",
+              name: "하울",
+              team: "dev",
+              nodeType: "team",
+              spawnType: "codex",
+              spawnModel: "gpt-5.4",
+              spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+              roleLabel: { en: "Operator. Task decomposition, dispatch, aggregation" },
+            },
+          ],
+        },
+      },
+    });
+
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"], {
+      KUMA_VAULT_DIR: vaultDir,
+    });
+
+    expect(command).toContain("직접 작업 막는 훅들");
+
+    const bashParse = spawnSync("bash", ["-n"], {
+      encoding: "utf8",
+      input: `${command}\n`,
+    });
+    expect(bashParse.status).toBe(0);
+    expect(bashParse.stderr).toBe("");
+
+    const zshParse = spawnSync("zsh", ["-n"], {
+      encoding: "utf8",
+      input: `${command}\n`,
+    });
+    expect(zshParse.status).toBe(0);
+    expect(zshParse.stderr).toBe("");
+  });
+
+  it("resolves the current pane for a surface using pane surface listings", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+
+    const teamPath = await writeTeamConfig(root, { teams: {} });
+    const binDir = join(root, "bin");
+    await mkdir(binDir, { recursive: true });
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  list-panes)
+    printf 'pane:42\\npane:99\\n'
+    ;;
+  list-pane-surfaces)
+    pane=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --pane) pane="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
+    if [ "$pane" = "pane:42" ]; then
+      printf 'surface:77\\n'
+    elif [ "$pane" = "pane:99" ]; then
+      printf 'surface:1\\n'
+    fi
+    ;;
+  tree)
+    printf 'workspace:7\\n  pane:42\\n    surface:77\\n  pane:99\\n    surface:1\\n'
+    ;;
+esac
+`,
+    );
+
+    const { stdout } = await execFile(
+      "bash",
+      ["-c", 'source "$1"; shift; "$@"', "bash", TEAM_CONFIG_SCRIPT_PATH, "resolve_surface_pane", "surface:1", "workspace:7"],
+      {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+          KUMA_TEAM_JSON_PATH: teamPath,
+        },
+      },
+    );
+
+    expect(stdout.trim()).toBe("pane:99");
   });
 
   it("resolves a registered member surface through the shell helper", async () => {

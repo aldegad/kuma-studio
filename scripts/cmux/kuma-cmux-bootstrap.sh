@@ -22,7 +22,7 @@ REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
 # 헬퍼: surface → pane 조회
 get_pane() {
   local surface="$1"
-  cmux tree 2>&1 | grep -B5 "$surface" | grep -oE 'pane:[0-9]+' | tail -1 || true
+  resolve_surface_pane "$surface" "${CURRENT_WS:-}" 2>/dev/null || true
 }
 
 ensure_registry_file() {

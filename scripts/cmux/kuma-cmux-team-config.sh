@@ -31,7 +31,7 @@ json_stringify_string() {
 
 shell_single_quote() {
   local value="${1-}"
-  value="${value//\'/\'\\\'\'}"
+  value="$(printf '%s' "$value" | sed "s/'/'\"'\"'/g")"
   printf "'%s'" "$value"
 }
 
@@ -257,6 +257,49 @@ team_config_get_member_field() {
 team_config_member_exists() {
   local name="$1"
   run_team_normalizer_cli member-exists "$KUMA_TEAM_JSON_PATH" "$name" > /dev/null
+}
+
+resolve_surface_pane() {
+  local surface="${1:-}"
+  local workspace="${2:-}"
+  local panes_output pane_line pane_ref surfaces_output surface_line surface_ref tree_output tree_line current_pane
+
+  [ -n "$surface" ] || return 1
+
+  if [ -n "$workspace" ]; then
+    panes_output="$(cmux list-panes --workspace "$workspace" 2>/dev/null || true)"
+    while IFS= read -r pane_line; do
+      pane_ref="$(printf '%s\n' "$pane_line" | grep -oE 'pane:[0-9]+' | head -1 || true)"
+      [ -n "$pane_ref" ] || continue
+
+      surfaces_output="$(cmux list-pane-surfaces --workspace "$workspace" --pane "$pane_ref" 2>/dev/null || true)"
+      while IFS= read -r surface_line; do
+        surface_ref="$(printf '%s\n' "$surface_line" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+        if [ "$surface_ref" = "$surface" ]; then
+          printf '%s\n' "$pane_ref"
+          return 0
+        fi
+      done <<< "$surfaces_output"
+    done <<< "$panes_output"
+  fi
+
+  tree_output="$(cmux tree 2>/dev/null || true)"
+  current_pane=""
+  while IFS= read -r tree_line; do
+    pane_ref="$(printf '%s\n' "$tree_line" | grep -oE 'pane:[0-9]+' | head -1 || true)"
+    if [ -n "$pane_ref" ]; then
+      current_pane="$pane_ref"
+      continue
+    fi
+
+    surface_ref="$(printf '%s\n' "$tree_line" | grep -oE 'surface:[0-9]+' | head -1 || true)"
+    if [ "$surface_ref" = "$surface" ] && [ -n "$current_pane" ]; then
+      printf '%s\n' "$current_pane"
+      return 0
+    fi
+  done <<< "$tree_output"
+
+  return 1
 }
 
 parse_shell_member_record() {
