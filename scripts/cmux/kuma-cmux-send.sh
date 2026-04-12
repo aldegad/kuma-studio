@@ -89,6 +89,7 @@ READ_ARGS+=(--surface "$SURFACE" --lines 12)
 INTERACTIVE_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])'
 SUGGESTION_LINE_PATTERN='^[[:space:]]*›[[:space:]]+[^[:space:]]'
 EMPTY_PROMPT_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])[[:space:]]*$'
+CMUX_TRANSIENT_SEND_ERROR_PATTERN='timed out|terminal surface not found|surface not found|internal_error'
 
 read_input_view() {
   local screen
@@ -164,15 +165,58 @@ MAX_RETRIES=3
 PRE_SEND_VIEW="$(dismiss_blocking_suggestion "$(read_input_view)")"
 log_send "pre-send" "$PRE_SEND_VIEW"
 
-# Send the text WITHOUT trailing newline (Codex/Claude use bracketed paste;
-# a \n inside pasted text is treated as a literal newline, not Enter).
+cmux_send_with_retry() {
+  local attempt output rc
+
+  # Send the text WITHOUT trailing newline (Codex/Claude use bracketed paste;
+  # a \n inside pasted text is treated as a literal newline, not Enter).
+  for attempt in 1 2 3; do
+    if output="$(cmux send "${SEND_ARGS[@]}" "$PROMPT" 2>&1)"; then
+      [ -n "$output" ] && log_send "dispatch-output-$attempt" "$output"
+      return 0
+    fi
+
+    rc=$?
+    log_send "dispatch-retry-$attempt" "$output"
+    if printf '%s\n' "$output" | grep -Eiq "$CMUX_TRANSIENT_SEND_ERROR_PATTERN" && [ "$attempt" -lt 3 ]; then
+      sleep "$attempt"
+      continue
+    fi
+
+    printf '%s\n' "$output" >&2
+    return "$rc"
+  done
+}
+
+cmux_send_key_with_retry() {
+  local key="${1:?key required}"
+  local attempt output rc
+
+  for attempt in 1 2 3; do
+    if output="$(cmux send-key "${SEND_ARGS[@]}" "$key" 2>&1)"; then
+      [ -n "$output" ] && log_send "send-key-output-$attempt" "$output"
+      return 0
+    fi
+
+    rc=$?
+    log_send "send-key-retry-$attempt" "$output"
+    if printf '%s\n' "$output" | grep -Eiq "$CMUX_TRANSIENT_SEND_ERROR_PATTERN" && [ "$attempt" -lt 3 ]; then
+      sleep "$attempt"
+      continue
+    fi
+
+    printf '%s\n' "$output" >&2
+    return "$rc"
+  done
+}
+
 log_send "dispatch" "$PROMPT"
-cmux send "${SEND_ARGS[@]}" "$PROMPT"
+cmux_send_with_retry
 
 # Enter를 점진적 딜레이로 3회 시도 (1초, 2초, 3초) — codex가 긴 paste 처리 중 Enter를 씹는 문제 대응.
 for enter_try in 1 2 3; do
   sleep "$enter_try"
-  cmux send-key "${SEND_ARGS[@]}" Enter
+  cmux_send_key_with_retry Enter
   sleep 0.5
   EARLY_VIEW="$(read_input_view)"
   if echo "$EARLY_VIEW" | grep -qE "Working \([0-9]+s"; then
@@ -195,7 +239,7 @@ for i in $(seq 1 $MAX_RETRIES); do
   if ! views_differ "$PRE_SEND_VIEW" "$INPUT_VIEW"; then
     echo "RETRY $i: screen unchanged after send, retrying..." >&2
     log_send "retry-unchanged" "$INPUT_VIEW"
-    cmux send-key "${SEND_ARGS[@]}" Enter
+    cmux_send_key_with_retry Enter
   elif echo "$INPUT_VIEW" | grep -qE "Working \([0-9]+s"; then
     # Codex is actively working — delivery confirmed even if suggestion remnants linger.
     DELIVERED=true
@@ -205,7 +249,7 @@ for i in $(seq 1 $MAX_RETRIES); do
   elif prompt_still_pending "$INPUT_VIEW"; then
     echo "RETRY $i: Enter not registered, retrying..." >&2
     log_send "retry-enter" "$INPUT_VIEW"
-    cmux send-key "${SEND_ARGS[@]}" Enter
+    cmux_send_key_with_retry Enter
   else
     # 화면이 바뀌었고 프롬프트에 텍스트 안 남아있으면 전달 완료.
     DELIVERED=true

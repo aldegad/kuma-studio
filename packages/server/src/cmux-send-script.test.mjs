@@ -148,6 +148,79 @@ esac
     expect(sendLogContents).not.toContain("\tdelivered\t");
   });
 
+  it("retries transient cmux send failures when a fresh surface is not ready yet", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const cmuxLog = join(root, "cmux.log");
+    const sendLog = join(root, "kuma-send.log");
+    const sendCountPath = join(root, "send-count.txt");
+    const sendKeyCountPath = join(root, "send-key-count.txt");
+    const readCountPath = join(root, "read-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(sendCountPath, "0", "utf8");
+    await writeFile(sendKeyCountPath, "0", "utf8");
+    await writeFile(readCountPath, "0", "utf8");
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+printf '%s|' "$command" >> "${cmuxLog}"
+shift || true
+printf '%q ' "$@" >> "${cmuxLog}"
+printf '\\n' >> "${cmuxLog}"
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf 'Error: internal_error: ERROR: Terminal surface not found\\n'
+    else
+      printf 'Running task\\n'
+    fi
+    ;;
+  send)
+    count=$(cat "${sendCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf 'Error: internal_error: ERROR: Terminal surface not found\\n' >&2
+      exit 1
+    fi
+    ;;
+  send-key)
+    count=$(cat "${sendKeyCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendKeyCountPath}"
+    ;;
+esac
+`,
+    );
+
+    await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "retry me"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_SEND_LOG_PATH: sendLog,
+      },
+    });
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    const sendCount = Number((await readFile(sendCountPath, "utf8")).trim());
+
+    expect(sendCount).toBe(2);
+    expect(sendLogContents).toContain("\tdispatch-retry-1\t");
+    expect(sendLogContents).toContain("\tdelivered\t");
+  });
+
   it("routes helper scripts and kuma-task through the send wrapper instead of raw cmux send", async () => {
     for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH, KUMA_SERVER_RELOAD_PATH]) {
       const source = await readFile(filePath, "utf8");
