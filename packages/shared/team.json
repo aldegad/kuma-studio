@@ -82,9 +82,9 @@
             "ko": "총괄 리더",
             "en": "Leader"
           },
-          "modelCatalogId": "claude-opus-4-6-high",
+          "modelCatalogId": "claude-sonnet-4-6-high",
           "spawnType": "claude",
-          "spawnModel": "claude-opus-4-6",
+          "spawnModel": "claude-sonnet-4-6",
           "spawnOptions": "--dangerously-skip-permissions",
           "capabilities": [
             "orchestration",
