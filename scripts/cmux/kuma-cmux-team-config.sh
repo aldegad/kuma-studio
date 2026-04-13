@@ -46,12 +46,14 @@ build_member_identity_line() {
 }
 
 build_decisions_boot_pack_prompt() {
+  local project_name="${1:-}"
   local vault_dir="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 
   [ -n "$vault_dir" ] || return 0
 
   KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
   KUMA_VAULT_DIR="$vault_dir" \
+  KUMA_PROJECT_NAME="$project_name" \
   node --input-type=module <<'NODE'
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -66,6 +68,7 @@ function clip(text, max = 220) {
 
 const repoRoot = process.env.KUMA_REPO_ROOT || "";
 const vaultDir = process.env.KUMA_VAULT_DIR || "";
+const projectName = process.env.KUMA_PROJECT_NAME || "";
 if (!repoRoot || !vaultDir) {
   process.exit(0);
 }
@@ -77,15 +80,24 @@ if (typeof storeModule.loadDecisionBootPack !== "function") {
 
 const pack = await storeModule.loadDecisionBootPack({
   vaultDir,
+  projectName,
   openLedgerLimit: 10,
   latestResolvedLimit: 10,
   unresolvedInboxLimit: 10,
 });
 
-const hasEntries =
-  Array.isArray(pack.ledger_open) && pack.ledger_open.length > 0 ||
-  Array.isArray(pack.latest_resolved) && pack.latest_resolved.length > 0 ||
-  Array.isArray(pack.inbox_unresolved) && pack.inbox_unresolved.length > 0;
+function hasSectionEntries(section) {
+  return section &&
+    (
+      Array.isArray(section.ledger_open) && section.ledger_open.length > 0 ||
+      Array.isArray(section.latest_resolved) && section.latest_resolved.length > 0 ||
+      Array.isArray(section.inbox_unresolved) && section.inbox_unresolved.length > 0
+    );
+}
+
+const globalPack = pack.global || null;
+const projectPack = pack.project || null;
+const hasEntries = hasSectionEntries(globalPack) || hasSectionEntries(projectPack);
 
 if (!hasEntries) {
   process.exit(0);
@@ -93,34 +105,57 @@ if (!hasEntries) {
 
 const lines = [
   "Decision Ledger Boot Pack:",
-  "- Source: ~/.kuma/vault/decisions.md",
   "- Treat ledger entries as explicit user decisions unless the user explicitly supersedes them.",
 ];
 
-if (Array.isArray(pack.ledger_open) && pack.ledger_open.length > 0) {
-  lines.push("- Ledger open decisions:");
-  for (const entry of pack.ledger_open) {
-    lines.push(`  - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text)}`);
+function appendSection(label, section) {
+  if (!hasSectionEntries(section)) {
+    return;
+  }
+
+  lines.push(`- ${label}: ${section.source}`);
+  if (Array.isArray(section.ledger_open) && section.ledger_open.length > 0) {
+    lines.push("  - Ledger open decisions:");
+    for (const entry of section.ledger_open) {
+      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text)}`);
+    }
+  }
+
+  if (Array.isArray(section.latest_resolved) && section.latest_resolved.length > 0) {
+    lines.push("  - Latest resolved decisions:");
+    for (const entry of section.latest_resolved) {
+      lines.push(`    - ${entry.id} :: ${clip(entry.resolved_text)}`);
+    }
+  }
+
+  if (Array.isArray(section.inbox_unresolved) && section.inbox_unresolved.length > 0) {
+    lines.push("  - Unresolved inbox triggers (not yet confirmed decisions):");
+    for (const entry of section.inbox_unresolved) {
+      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.original_text)}`);
+    }
   }
 }
 
-if (Array.isArray(pack.latest_resolved) && pack.latest_resolved.length > 0) {
-  lines.push("- Latest resolved decisions:");
-  for (const entry of pack.latest_resolved) {
-    lines.push(`  - ${entry.id} :: ${clip(entry.resolved_text)}`);
-  }
-}
-
-if (Array.isArray(pack.inbox_unresolved) && pack.inbox_unresolved.length > 0) {
-  lines.push("- Unresolved inbox triggers (not yet confirmed decisions):");
-  for (const entry of pack.inbox_unresolved) {
-    lines.push(`  - [${entry.action}] ${entry.scope} :: ${clip(entry.original_text)}`);
-  }
+appendSection("Global source", globalPack);
+if (projectPack) {
+  appendSection(`Project source (${projectPack.projectName})`, projectPack);
 }
 
 process.stdout.write(lines.join("\n"));
 NODE
 }
+
+resolve_project_boot_pack_name() {
+  local dir="${1:-}"
+  [ -n "$dir" ] || return 0
+  basename "$dir"
+}
+
+if false; then
+  # unreachable marker to keep shellcheck-style editors from collapsing the
+  # adjacent heredoc edit above into the following functions.
+  :
+fi
 
 build_cleanup_policy_instructions() {
   cat <<'EOF'
@@ -335,11 +370,12 @@ build_codex_developer_instructions() {
   local member_name="${1:-}"
   local role_label_en="${2:-}"
   local node_type="${3:-worker}"
+  local project_name="${4:-}"
   local identity_line spawn_context decisions_context instructions
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt)"
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name")"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
@@ -355,11 +391,12 @@ build_claude_startup_system_prompt() {
   local member_name="${1:-}"
   local role_label_en="${2:-}"
   local node_type="${3:-worker}"
+  local project_name="${4:-}"
   local identity_line spawn_context decisions_context instructions
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt)"
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name")"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
@@ -375,17 +412,18 @@ EOF
 build_member_command_from_record() {
   local dir="$1"
   local record="${2:?launch record required}"
-  local member_name type model options _emoji skill role_label_en node_type developer_instructions developer_instructions_json startup_context command startup_context_quoted developer_instructions_setting
+  local member_name type model options _emoji skill role_label_en node_type project_name developer_instructions developer_instructions_json startup_context command startup_context_quoted developer_instructions_setting
   IFS=$'\x1f' read -r member_name type model options _emoji skill role_label_en node_type <<< "$record"
+  project_name="$(resolve_project_boot_pack_name "$dir")"
 
   case "$type" in
     claude)
-      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type")"
+      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
       startup_context_quoted="$(shell_single_quote "$startup_context")"
       printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt %s' "$dir" "$model" "$options" "$startup_context_quoted"
       ;;
     codex)
-      developer_instructions="$(build_codex_developer_instructions "$member_name" "$role_label_en" "$node_type")"
+      developer_instructions="$(build_codex_developer_instructions "$member_name" "$role_label_en" "$node_type" "$project_name")"
       if [ -n "$developer_instructions" ]; then
         developer_instructions_json="$(json_stringify_string "$developer_instructions")"
         developer_instructions_setting="$(shell_single_quote "developer_instructions=$developer_instructions_json")"
@@ -395,7 +433,7 @@ build_member_command_from_record() {
       fi
       ;;
     sonnet)
-      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type")"
+      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
       startup_context_quoted="$(shell_single_quote "$startup_context")"
       printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions --append-system-prompt %s' "$dir" "$startup_context_quoted"
       ;;

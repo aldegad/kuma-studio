@@ -442,10 +442,12 @@ async function importModule(relativePath) {
 
 let detectorModule;
 let storeModule;
+let scopeModule;
 try {
-  [detectorModule, storeModule] = await Promise.all([
+  [detectorModule, storeModule, scopeModule] = await Promise.all([
     importModule("packages/server/src/studio/decision-detector.mjs"),
     importModule("packages/server/src/studio/decisions-store.mjs"),
+    importModule("packages/server/src/studio/decision-scope.mjs"),
   ]);
 } catch {
   process.exit(0);
@@ -453,7 +455,12 @@ try {
 
 const detectDecision = detectorModule?.detectDecision;
 const appendDecision = storeModule?.appendDecision;
-if (typeof detectDecision !== "function" || typeof appendDecision !== "function") {
+const resolveDecisionCaptureScope = scopeModule?.resolveDecisionCaptureScope;
+if (
+  typeof detectDecision !== "function" ||
+  typeof appendDecision !== "function" ||
+  typeof resolveDecisionCaptureScope !== "function"
+) {
   process.exit(0);
 }
 
@@ -475,7 +482,10 @@ await appendDecision({
   entry: {
     layer: "inbox",
     action: decision.action.trim(),
-    scope: project ? `project:${project}` : "global",
+    scope: resolveDecisionCaptureScope({
+      text: originalText,
+      projectName: project,
+    }),
     writer: "lifecycle-emitter",
     original_text: originalText,
     context_ref: taskToken ? `task:${taskToken}` : taskFile || "kuma-task",

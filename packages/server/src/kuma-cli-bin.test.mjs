@@ -586,6 +586,14 @@ export async function promoteToLedger(input) {
 `,
     "utf8",
   );
+  await writeFile(
+    join(studioDir, "decision-scope.mjs"),
+    `export function resolveDecisionCaptureScope({ projectName = "" }) {
+  return projectName ? \`project:\${projectName}\` : "global";
+}
+`,
+    "utf8",
+  );
   return { root, logPath };
 }
 

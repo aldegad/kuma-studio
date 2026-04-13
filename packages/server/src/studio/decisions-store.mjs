@@ -1,31 +1,25 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 
-const DECISIONS_FILE_NAME = "decisions.md";
+import {
+  GLOBAL_DECISION_SCOPE,
+  PROJECT_DECISION_FILE_SUFFIX,
+  formatProjectDecisionScope,
+  isProjectDecisionScope,
+  parseDecisionScope,
+  projectDecisionFileName,
+} from "./decision-scope.mjs";
+
+const GLOBAL_DECISIONS_FILE_NAME = "decisions.md";
+const PROJECTS_DIR_NAME = "projects";
 const DECISION_ACTIONS = new Set(["approve", "reject", "hold", "priority", "preference"]);
 const KST_TIME_ZONE = "Asia/Seoul";
 const DEDUPE_WINDOW = 10;
 const DECISION_LAYERS = new Set(["inbox", "ledger"]);
 const INBOX_PROMOTION_SEPARATOR = ", ";
-
-const DEFAULT_FRONTMATTER = Object.freeze({
-  title: "Decisions Ledger",
-  type: "special/decisions",
-  updated: "",
-  layers: "inbox,ledger",
-  boot_priority: "3",
-});
-
-const DEFAULT_ABOUT_TEXT = `이 파일은 2-layer 로 동작한다.
-
-- **Ledger (resolved)** — 유저가 확정한 결정의 기록. writer = \`user-direct\` 또는 Inbox 에서 \`user-confirmed promotion\` 을 거친 entry.
-- **Inbox (raw triggers)** — 결정을 촉발한 원본 발화/계획 todo/감사 hit. writer = \`kuma-detect | lifecycle-emitter | noeuri-audit | user-direct (unresolved)\`. **verbatim-only** — AI 해석/요약 금지. 아직 결정된 것이 아님.
-
-승격 절차: Inbox entry 를 검토 → 유저가 resolved 문장을 확정 → Ledger 에 새 entry append (\`promoted_from: <inbox-id>\` 필드). Inbox 는 삭제하지 않고 \`status: promoted\` 로 마킹.
-
-Boot pack 로드는 \`Ledger open + latest resolved 10\` + \`Inbox unresolved\`.`;
+const DEFAULT_INBOX_INTRO_TEXT = "verbatim raw capture. 아직 결정된 것이 아니며, Ledger 로 승격되기 전까지는 맥락/트리거 기록용.";
 
 function normalizeString(value) {
   return typeof value === "string" ? value : "";
@@ -129,6 +123,49 @@ function parseFrontmatter(contents) {
     frontmatter,
     body: lines.slice(index).join("\n"),
   };
+}
+
+function createDefaultFrontmatter(target, updatedAt = "") {
+  if (target.kind === "project") {
+    return {
+      title: `${target.projectName} Project Decisions Ledger`,
+      type: "special/project-decisions",
+      project: target.projectName,
+      updated: updatedAt,
+      layers: "inbox,ledger",
+      boot_priority: "3",
+    };
+  }
+
+  return {
+    title: "Decisions Ledger",
+    type: "special/decisions",
+    updated: updatedAt,
+    layers: "inbox,ledger",
+    boot_priority: "3",
+  };
+}
+
+function createDefaultAboutText(target) {
+  if (target.kind === "project") {
+    return `이 파일은 \`project:${target.projectName}\` scoped decision memory 이다.
+
+- **Ledger (resolved)** — 이 프로젝트에 대해 유저가 확정한 결정의 기록. writer = \`user-direct\` 또는 Inbox 에서 \`user-confirmed promotion\` 을 거친 entry.
+- **Inbox (raw triggers)** — 이 프로젝트 결정으로 분류된 원본 발화/계획 todo/감사 hit. writer = \`kuma-detect | lifecycle-emitter | noeuri-audit | user-direct (unresolved)\`. **verbatim-only** — AI 해석/요약 금지. 아직 결정된 것이 아님.
+
+승격 절차: Inbox entry 를 검토 → 유저가 resolved 문장을 확정 → Ledger 에 새 entry append (\`promoted_from: <inbox-id>\` 필드). Inbox 는 삭제하지 않고 \`status: promoted\` 로 마킹.
+
+Boot pack 로드는 global decisions 뒤에 현재 프로젝트의 \`Ledger open + latest resolved 10 + Inbox unresolved\` 를 추가 로드한다.`;
+  }
+
+  return `이 파일은 global/system decision memory 이다.
+
+- **Ledger (resolved)** — 유저가 전역 원칙으로 확정한 결정의 기록. writer = \`user-direct\` 또는 Inbox 에서 \`user-confirmed promotion\` 을 거친 entry.
+- **Inbox (raw triggers)** — 말투/보고체계/SSOT 같은 전역 결정을 촉발한 원본 발화/감사 hit. writer = \`kuma-detect | lifecycle-emitter | noeuri-audit | user-direct (unresolved)\`. **verbatim-only** — AI 해석/요약 금지. 아직 결정된 것이 아님.
+
+승격 절차: Inbox entry 를 검토 → 유저가 resolved 문장을 확정 → Ledger 에 새 entry append (\`promoted_from: <inbox-id>\` 필드). Inbox 는 삭제하지 않고 \`status: promoted\` 로 마킹.
+
+Boot pack 로드는 global \`Ledger open + latest resolved 10 + Inbox unresolved\` 를 먼저 싣고, 현재 프로젝트가 있으면 project-decisions 를 뒤에 추가 로드한다.`;
 }
 
 function parseSections(body) {
@@ -291,10 +328,11 @@ function parseInboxEntries(sectionText) {
     .filter(Boolean);
 }
 
-function normalizeFrontmatter(frontmatter, updatedAt) {
+function normalizeFrontmatter(frontmatter, updatedAt, target) {
   return {
-    ...DEFAULT_FRONTMATTER,
+    ...createDefaultFrontmatter(target, updatedAt),
     ...(frontmatter ?? {}),
+    ...(target.kind === "project" ? { project: target.projectName } : {}),
     updated: updatedAt,
   };
 }
@@ -387,7 +425,7 @@ function formatInboxEntries(entries, introText = "") {
 
 function renderDecisionsFile(document) {
   const frontmatter = formatFrontmatter(document.frontmatter);
-  const aboutText = trimString(document.aboutText) || DEFAULT_ABOUT_TEXT;
+  const aboutText = trimString(document.aboutText) || createDefaultAboutText(document.target);
   const openText = formatOpenDecisions(document.ledgerEntries);
   const ledgerText = formatLedgerEntries(document.ledgerEntries);
   const inboxText = formatInboxEntries(document.inboxEntries, document.inboxIntroText);
@@ -395,44 +433,95 @@ function renderDecisionsFile(document) {
   return `${frontmatter}\n## About\n\n${aboutText}\n\n## Open Decisions\n\n${openText}\n\n## Ledger\n\n${ledgerText}\n\n## Inbox\n\n${inboxText}\n`;
 }
 
-async function ensureDecisionsFile(vaultDir) {
+function resolveDecisionStoreTarget(vaultDir, scope = GLOBAL_DECISION_SCOPE) {
   const root = resolve(vaultDir);
-  await mkdir(root, { recursive: true });
-  const filePath = join(root, DECISIONS_FILE_NAME);
+  const parsedScope = parseDecisionScope(scope);
 
-  if (!existsSync(filePath)) {
-    const updatedAt = new Date().toISOString();
-    await writeFile(
-      filePath,
-      renderDecisionsFile({
-        frontmatter: normalizeFrontmatter(null, updatedAt),
-        aboutText: DEFAULT_ABOUT_TEXT,
-        ledgerEntries: [],
-        inboxEntries: [],
-        inboxIntroText: "verbatim raw capture. 아직 결정된 것이 아니며, Ledger 로 승격되기 전까지는 맥락/트리거 기록용.",
-      }),
-      "utf8",
-    );
+  if (parsedScope.kind === "project") {
+    const fileName = projectDecisionFileName(parsedScope.projectName);
+    return {
+      kind: "project",
+      projectName: parsedScope.projectName,
+      scope: parsedScope.scope,
+      root,
+      relativePath: `${PROJECTS_DIR_NAME}/${fileName}`,
+      filePath: join(root, PROJECTS_DIR_NAME, fileName),
+      sourceLabel: `~/.kuma/vault/${PROJECTS_DIR_NAME}/${fileName}`,
+    };
   }
 
-  return filePath;
+  return {
+    kind: "global",
+    projectName: "",
+    scope: parsedScope.scope,
+    root,
+    relativePath: GLOBAL_DECISIONS_FILE_NAME,
+    filePath: join(root, GLOBAL_DECISIONS_FILE_NAME),
+    sourceLabel: `~/.kuma/vault/${GLOBAL_DECISIONS_FILE_NAME}`,
+  };
 }
 
-async function readDecisionsDocument(vaultDir) {
-  const filePath = await ensureDecisionsFile(vaultDir);
+function createEmptyDocument(target, updatedAt = "") {
+  return {
+    target,
+    frontmatter: createDefaultFrontmatter(target, updatedAt),
+    aboutText: createDefaultAboutText(target),
+    ledgerEntries: [],
+    inboxEntries: [],
+    inboxIntroText: DEFAULT_INBOX_INTRO_TEXT,
+  };
+}
+
+async function ensureDecisionsFile(target) {
+  await mkdir(dirname(target.filePath), { recursive: true });
+
+  if (!existsSync(target.filePath)) {
+    const updatedAt = new Date().toISOString();
+    await writeFile(target.filePath, renderDecisionsFile(createEmptyDocument(target, updatedAt)), "utf8");
+  }
+
+  return target.filePath;
+}
+
+async function readDecisionsDocument(target) {
+  const filePath = await ensureDecisionsFile(target);
   const contents = await readFile(filePath, "utf8");
   const parsed = parseFrontmatter(contents);
   const sections = parsed ? parseSections(parsed.body) : {};
   return {
+    target,
     filePath,
-    frontmatter: normalizeFrontmatter(parsed?.frontmatter, trimString(parsed?.frontmatter?.updated)),
-    aboutText: sections.About || DEFAULT_ABOUT_TEXT,
+    frontmatter: normalizeFrontmatter(parsed?.frontmatter, trimString(parsed?.frontmatter?.updated), target),
+    aboutText: sections.About || createDefaultAboutText(target),
     ledgerEntries: parseLedgerEntries(sections.Ledger),
     inboxEntries: parseInboxEntries(sections.Inbox),
-    inboxIntroText: splitSectionIntroAndBlocks(sections.Inbox).introText,
+    inboxIntroText: splitSectionIntroAndBlocks(sections.Inbox).introText || DEFAULT_INBOX_INTRO_TEXT,
   };
 }
 
+async function listDecisionStoreTargets(vaultDir) {
+  const root = resolve(vaultDir);
+  const targets = [resolveDecisionStoreTarget(root, GLOBAL_DECISION_SCOPE)];
+  const projectsDir = join(root, PROJECTS_DIR_NAME);
+
+  if (!existsSync(projectsDir)) {
+    return targets;
+  }
+
+  const entries = await readdir(projectsDir, { withFileTypes: true });
+  const projectTargets = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(PROJECT_DECISION_FILE_SUFFIX))
+    .map((entry) => entry.name.slice(0, -PROJECT_DECISION_FILE_SUFFIX.length))
+    .map((projectName) => resolveDecisionStoreTarget(root, formatProjectDecisionScope(projectName)))
+    .sort((left, right) => left.filePath.localeCompare(right.filePath));
+
+  return [...targets, ...projectTargets];
+}
+
+async function readAllDecisionDocuments(vaultDir) {
+  const targets = await listDecisionStoreTargets(vaultDir);
+  return Promise.all(targets.map((target) => readDecisionsDocument(target)));
+}
 
 function recentEntriesForLayer(entries, layer) {
   return entries.slice(-DEDUPE_WINDOW).filter((entry) => entry.layer === layer);
@@ -514,8 +603,9 @@ function normalizeLedgerEntry(entry, now = new Date()) {
 async function persistDocument(filePath, document, updatedAt) {
   const nextDocument = {
     ...document,
-    frontmatter: normalizeFrontmatter(document.frontmatter, updatedAt),
+    frontmatter: normalizeFrontmatter(document.frontmatter, updatedAt, document.target),
   };
+  await mkdir(dirname(filePath), { recursive: true });
   await writeFile(filePath, renderDecisionsFile(nextDocument), "utf8");
 }
 
@@ -549,12 +639,13 @@ function toPublicInboxEntry(entry) {
 }
 
 export async function appendDecision({ vaultDir, layer, entry }) {
-  const targetLayer = normalizeLayer(layer);
+  const targetLayer = normalizeLayer(layer || entry?.layer);
   if (!targetLayer) {
     throw new Error("decision layer is required");
   }
 
-  const document = await readDecisionsDocument(vaultDir);
+  const target = resolveDecisionStoreTarget(vaultDir, entry?.scope);
+  const document = await readDecisionsDocument(target);
   const createdAt = trimString(entry?.createdAt);
   const now = new Date(createdAt || Date.now());
 
@@ -610,12 +701,19 @@ export async function promoteToLedger({ vaultDir, inboxId, resolvedText, writer,
     throw new Error("writer is required");
   }
 
-  const document = await readDecisionsDocument(vaultDir);
-  const inboxIndex = document.inboxEntries.findIndex((entry) => entry.id === targetInboxId);
-  if (inboxIndex === -1) {
+  const documents = await readAllDecisionDocuments(vaultDir);
+  const matches = documents
+    .map((document) => ({ document, inboxIndex: document.inboxEntries.findIndex((entry) => entry.id === targetInboxId) }))
+    .filter((match) => match.inboxIndex !== -1);
+
+  if (matches.length === 0) {
     throw new Error(`inbox decision not found: ${targetInboxId}`);
   }
+  if (matches.length > 1) {
+    throw new Error(`inbox decision id is duplicated across stores: ${targetInboxId}`);
+  }
 
+  const [{ document, inboxIndex }] = matches;
   const inboxEntry = document.inboxEntries[inboxIndex];
   const now = new Date();
   const ledgerEntry = normalizeLedgerEntry(
@@ -654,42 +752,63 @@ export async function promoteToLedger({ vaultDir, inboxId, resolvedText, writer,
 }
 
 export async function listOpenDecisions({ vaultDir }) {
-  const document = await readDecisionsDocument(vaultDir);
+  const documents = await readAllDecisionDocuments(vaultDir);
   return {
-    ledger: document.ledgerEntries.map(toPublicLedgerEntry),
-    inbox: document.inboxEntries
+    ledger: documents
+      .flatMap((document) => document.ledgerEntries.map(toPublicLedgerEntry))
+      .sort((left, right) => right.id.localeCompare(left.id)),
+    inbox: documents
+      .flatMap((document) => document.inboxEntries
+        .filter((entry) => trimString(entry.status || "unresolved") === "unresolved")
+        .map(toPublicInboxEntry))
+      .sort((left, right) => right.id.localeCompare(left.id)),
+  };
+}
+
+function buildBootPackSection(target, document, { openLedgerLimit, latestResolvedLimit, unresolvedInboxLimit }) {
+  const ledgerEntries = document ? document.ledgerEntries.map(toPublicLedgerEntry) : [];
+  const unresolvedInboxEntries = document
+    ? document.inboxEntries
       .filter((entry) => trimString(entry.status || "unresolved") === "unresolved")
-      .map(toPublicInboxEntry),
+      .map(toPublicInboxEntry)
+    : [];
+
+  return {
+    source: target.sourceLabel,
+    scope: target.scope,
+    projectName: target.projectName,
+    ledger_open: ledgerEntries.slice(-openLedgerLimit).reverse(),
+    latest_resolved: ledgerEntries.slice(-latestResolvedLimit).reverse(),
+    inbox_unresolved: unresolvedInboxEntries.slice(-unresolvedInboxLimit).reverse(),
   };
 }
 
 export async function loadDecisionBootPack({
   vaultDir,
+  projectName = "",
   openLedgerLimit = 10,
   latestResolvedLimit = 10,
   unresolvedInboxLimit = 10,
 } = {}) {
   const activeVaultDir = resolve(vaultDir ?? join(process.env.HOME ?? ".", ".kuma", "vault"));
-  const filePath = join(activeVaultDir, DECISIONS_FILE_NAME);
+  const limits = { openLedgerLimit, latestResolvedLimit, unresolvedInboxLimit };
+  const globalTarget = resolveDecisionStoreTarget(activeVaultDir, GLOBAL_DECISION_SCOPE);
+  const globalDocument = existsSync(globalTarget.filePath) ? await readDecisionsDocument(globalTarget) : null;
+  const globalPack = buildBootPackSection(globalTarget, globalDocument, limits);
 
-  if (!existsSync(filePath)) {
-    return {
-      ledger_open: [],
-      latest_resolved: [],
-      inbox_unresolved: [],
-    };
-  }
-
-  const document = await readDecisionsDocument(activeVaultDir);
-  const ledgerEntries = document.ledgerEntries.map(toPublicLedgerEntry);
-  const unresolvedInboxEntries = document.inboxEntries
-    .filter((entry) => trimString(entry.status || "unresolved") === "unresolved")
-    .map(toPublicInboxEntry);
+  const projectScope = formatProjectDecisionScope(projectName);
+  const projectTarget = projectScope ? resolveDecisionStoreTarget(activeVaultDir, projectScope) : null;
+  const projectDocument = projectTarget && existsSync(projectTarget.filePath)
+    ? await readDecisionsDocument(projectTarget)
+    : null;
+  const projectPack = projectTarget && projectDocument ? buildBootPackSection(projectTarget, projectDocument, limits) : null;
 
   return {
-    ledger_open: ledgerEntries.slice(-openLedgerLimit).reverse(),
-    latest_resolved: ledgerEntries.slice(-latestResolvedLimit).reverse(),
-    inbox_unresolved: unresolvedInboxEntries.slice(-unresolvedInboxLimit).reverse(),
+    ledger_open: globalPack.ledger_open,
+    latest_resolved: globalPack.latest_resolved,
+    inbox_unresolved: globalPack.inbox_unresolved,
+    global: globalPack,
+    project: projectPack,
   };
 }
 
@@ -705,4 +824,94 @@ export async function resolveDecision({ vaultDir, id, resolvedText, writer = "us
 
 export async function supersedeDecision() {
   throw new Error("supersedeDecision is not supported in the 2-layer decisions store");
+}
+
+function mergeEntriesById(existingEntries, incomingEntries) {
+  const merged = existingEntries.slice();
+  const seenIds = new Set(existingEntries.map((entry) => entry.id));
+  for (const entry of incomingEntries) {
+    if (seenIds.has(entry.id)) {
+      continue;
+    }
+    seenIds.add(entry.id);
+    merged.push(entry);
+  }
+  return merged;
+}
+
+export async function repartitionDecisionStores({ vaultDir } = {}) {
+  const activeVaultDir = resolve(vaultDir ?? join(process.env.HOME ?? ".", ".kuma", "vault"));
+  const globalTarget = resolveDecisionStoreTarget(activeVaultDir, GLOBAL_DECISION_SCOPE);
+  if (!existsSync(globalTarget.filePath)) {
+    return {
+      movedProjectScopes: [],
+      movedLedgerCount: 0,
+      movedInboxCount: 0,
+    };
+  }
+
+  const globalDocument = await readDecisionsDocument(globalTarget);
+  const nextGlobalLedgerEntries = [];
+  const nextGlobalInboxEntries = [];
+  const projectGroups = new Map();
+
+  function pushProjectEntry(layer, entry) {
+    const target = resolveDecisionStoreTarget(activeVaultDir, entry.scope);
+    const current = projectGroups.get(target.scope) ?? { target, ledgerEntries: [], inboxEntries: [] };
+    if (layer === "ledger") {
+      current.ledgerEntries.push(entry);
+    } else {
+      current.inboxEntries.push(entry);
+    }
+    projectGroups.set(target.scope, current);
+  }
+
+  for (const entry of globalDocument.ledgerEntries) {
+    if (isProjectDecisionScope(entry.scope)) {
+      pushProjectEntry("ledger", entry);
+    } else {
+      nextGlobalLedgerEntries.push(entry);
+    }
+  }
+
+  for (const entry of globalDocument.inboxEntries) {
+    if (isProjectDecisionScope(entry.scope)) {
+      pushProjectEntry("inbox", entry);
+    } else {
+      nextGlobalInboxEntries.push(entry);
+    }
+  }
+
+  if (projectGroups.size === 0) {
+    return {
+      movedProjectScopes: [],
+      movedLedgerCount: 0,
+      movedInboxCount: 0,
+    };
+  }
+
+  const updatedAt = new Date().toISOString();
+  for (const { target, ledgerEntries, inboxEntries } of projectGroups.values()) {
+    const projectDocument = existsSync(target.filePath)
+      ? await readDecisionsDocument(target)
+      : createEmptyDocument(target, updatedAt);
+
+    await persistDocument(target.filePath, {
+      ...projectDocument,
+      ledgerEntries: mergeEntriesById(projectDocument.ledgerEntries, ledgerEntries),
+      inboxEntries: mergeEntriesById(projectDocument.inboxEntries, inboxEntries),
+    }, updatedAt);
+  }
+
+  await persistDocument(globalTarget.filePath, {
+    ...globalDocument,
+    ledgerEntries: nextGlobalLedgerEntries,
+    inboxEntries: nextGlobalInboxEntries,
+  }, updatedAt);
+
+  return {
+    movedProjectScopes: [...projectGroups.keys()].sort(),
+    movedLedgerCount: [...projectGroups.values()].reduce((sum, group) => sum + group.ledgerEntries.length, 0),
+    movedInboxCount: [...projectGroups.values()].reduce((sum, group) => sum + group.inboxEntries.length, 0),
+  };
 }

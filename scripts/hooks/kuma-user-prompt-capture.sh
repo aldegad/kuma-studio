@@ -65,8 +65,13 @@ try {
   const vaultDir = process.env.KUMA_VAULT_DIR || join(homedir(), ".kuma", "vault");
   const storeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/decisions-store.mjs")).href);
   const detectorModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/decision-detector.mjs")).href);
+  const scopeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/decision-scope.mjs")).href);
 
-  if (typeof storeModule?.appendDecision !== "function" || typeof detectorModule?.detectDecision !== "function") {
+  if (
+    typeof storeModule?.appendDecision !== "function" ||
+    typeof detectorModule?.detectDecision !== "function" ||
+    typeof scopeModule?.resolveDecisionCaptureScope !== "function"
+  ) {
     process.exit(0);
   }
 
@@ -75,7 +80,10 @@ try {
     process.exit(0);
   }
 
-  const scope = `project:${basename(repoRoot)}`;
+  const scope = scopeModule.resolveDecisionCaptureScope({
+    text: detected.original_text,
+    projectName: basename(repoRoot),
+  });
   const contextRef = typeof input.session_id === "string" && input.session_id.trim()
     ? `session:${input.session_id.trim()}`
     : "";

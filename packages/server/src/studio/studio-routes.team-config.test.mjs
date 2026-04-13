@@ -48,6 +48,45 @@ fixture
 ### 20260413-010500-inbox · user-direct
 
 - action: priority
+- scope: global
+- original_text: "에이전트 이름과 결정사항은 startup prompt에 넣는다."
+- status: unresolved
+`;
+
+const PROJECT_DECISIONS_FIXTURE = `---
+title: kuma-studio Project Decisions Ledger
+type: special/project-decisions
+project: kuma-studio
+updated: 2026-04-13T01:05:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Open Decisions
+
+- 20260413-010800-project: priority · project:kuma-studio · "프로젝트 결정은 project-decisions에서 읽는다"
+
+## Ledger
+
+### 2026-04-13 01:08 KST · priority · project:kuma-studio
+
+- id: 20260413-010800-project
+- action: priority
+- scope: project:kuma-studio
+- writer: user-direct
+- resolved_text: "프로젝트 결정은 project-decisions에서 읽는다."
+
+## Inbox
+
+fixture
+
+### 20260413-010900-project-inbox · user-direct
+
+- action: priority
 - scope: project:kuma-studio
 - original_text: "decision 사항이 프롬프트에도 들어가야 해."
 - status: unresolved
@@ -77,8 +116,9 @@ function writeExecutable(path, content) {
 
 function writeDecisionsFixture(root) {
   const vaultDir = join(root, "vault");
-  mkdirSync(vaultDir, { recursive: true });
+  mkdirSync(join(vaultDir, "projects"), { recursive: true });
   writeFileSync(join(vaultDir, "decisions.md"), DECISIONS_FIXTURE, "utf8");
+  writeFileSync(join(vaultDir, "projects", "kuma-studio.project-decisions.md"), PROJECT_DECISIONS_FIXTURE, "utf8");
   return vaultDir;
 }
 
@@ -808,6 +848,8 @@ describe("studio-routes team-config", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
     const vaultDir = writeDecisionsFixture(root);
+    const projectRoot = join(root, "kuma-studio");
+    mkdirSync(projectRoot, { recursive: true });
 
     const fakeCmux = createFakeCmuxEnvironment(
       root,
@@ -839,7 +881,7 @@ describe("studio-routes team-config", () => {
     );
     const result = spawnSync(
       "bash",
-      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "노을이" "" "${root}"`],
+      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "노을이" "" "${projectRoot}"`],
       {
         encoding: "utf8",
         env: fakeCmux.spawnEnv({ KUMA_VAULT_DIR: vaultDir }),
@@ -859,6 +901,8 @@ describe("studio-routes team-config", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
     const vaultDir = writeDecisionsFixture(root);
+    const projectRoot = join(root, "kuma-studio");
+    mkdirSync(projectRoot, { recursive: true });
 
     const fakeCmux = createFakeCmuxEnvironment(
       root,
@@ -881,7 +925,7 @@ describe("studio-routes team-config", () => {
     );
     const result = spawnSync(
       "bash",
-      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "쿤" "" "${root}"`],
+      ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_member_command "쿤" "" "${projectRoot}"`],
       {
         encoding: "utf8",
         env: fakeCmux.spawnEnv({ KUMA_VAULT_DIR: vaultDir }),

@@ -44,6 +44,45 @@ fixture
 ### 20260413-010500-inbox · user-direct
 
 - action: priority
+- scope: global
+- original_text: "앞으로 보고는 짧고 단정하게 해."
+- status: unresolved
+`;
+
+const PROJECT_DECISIONS_FIXTURE = `---
+title: kuma-studio Project Decisions Ledger
+type: special/project-decisions
+project: kuma-studio
+updated: 2026-04-13T01:05:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Open Decisions
+
+- 20260413-010800-kuma: priority · project:kuma-studio · "프로젝트 결정은 project-decisions에서 읽는다"
+
+## Ledger
+
+### 2026-04-13 01:08 KST · priority · project:kuma-studio
+
+- id: 20260413-010800-kuma
+- action: priority
+- scope: project:kuma-studio
+- writer: user-direct
+- resolved_text: "프로젝트 결정은 project-decisions에서 읽는다."
+
+## Inbox
+
+fixture
+
+### 20260413-010900-project-inbox · user-direct
+
+- action: priority
 - scope: project:kuma-studio
 - original_text: "이 결정사항을 시스템프롬프트에도 넣어."
 - status: unresolved
@@ -63,8 +102,9 @@ async function writeRegistry(root, value) {
 
 async function writeDecisionsFixture(root) {
   const vaultDir = join(root, "vault");
-  await mkdir(vaultDir, { recursive: true });
+  await mkdir(join(vaultDir, "projects"), { recursive: true });
   await writeFile(join(vaultDir, "decisions.md"), DECISIONS_FIXTURE, "utf8");
+  await writeFile(join(vaultDir, "projects", "kuma-studio.project-decisions.md"), PROJECT_DECISIONS_FIXTURE, "utf8");
   return vaultDir;
 }
 
@@ -473,7 +513,7 @@ describe("shared team normalizer", () => {
     const startupPrompt = await runTeamConfigHelperRaw(
       "build_claude_startup_system_prompt",
       teamPath,
-      ["노을이", "Publisher / Designer. HTML/CSS/Graphics", "worker"],
+      ["노을이", "Publisher / Designer. HTML/CSS/Graphics", "worker", "kuma-studio"],
       { KUMA_VAULT_DIR: vaultDir },
     );
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
@@ -519,7 +559,7 @@ describe("shared team normalizer", () => {
     const developerInstructions = await runTeamConfigHelperRaw(
       "build_codex_developer_instructions",
       teamPath,
-      ["밤토리", "QA. Build, deploy, screen verification. No code edits", "worker"],
+      ["밤토리", "QA. Build, deploy, screen verification. No code edits", "worker", "kuma-studio"],
       { KUMA_VAULT_DIR: vaultDir },
     );
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
