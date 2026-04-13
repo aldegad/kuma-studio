@@ -74,6 +74,7 @@ function resolveConfiguredWorkspaceRoot(envValue = process.env.KUMA_STUDIO_WORKS
 
 function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS) {
   const configuredIds = String(envValue || "")
+    .replace(/\\+,/gu, ",")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);

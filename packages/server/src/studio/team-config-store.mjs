@@ -111,7 +111,9 @@ function getCatalogFallbackEntry(type, model = "", catalog = MODEL_CATALOG) {
 function buildOptionsFromCatalogEntry(entry) {
   const explicitOptions = normalizeWhitespace(entry?.options);
   if (entry.type !== "codex") {
-    return explicitOptions || CLAUDE_DEFAULT_OPTIONS;
+    let opts = explicitOptions || CLAUDE_DEFAULT_OPTIONS;
+    if (entry.effort) opts = normalizeWhitespace(`${opts} --effort ${entry.effort}`);
+    return opts;
   }
 
   if (explicitOptions) {

@@ -166,6 +166,34 @@ describe("studio-routes explorer endpoints", () => {
     assert.deepStrictEqual(rootsRes.json.globalRoots, {});
   });
 
+  it("accepts shell-escaped explorer root bindings from managed reload commands", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    await mkdir(staticDir, { recursive: true });
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+    process.env.KUMA_STUDIO_WORKSPACE = repoRoot;
+    process.env.KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS = "vault\\\\\\,claude\\\\\\,codex";
+
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+    });
+
+    const rootsRes = createResponse();
+    await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
+    assert.strictEqual(rootsRes.statusCode, 200);
+    assert.deepStrictEqual(rootsRes.json.globalRoots, {
+      vault: resolve(join(homedir(), ".kuma", "vault")),
+      claude: resolve(join(homedir(), ".claude")),
+      codex: resolve(join(homedir(), ".codex")),
+    });
+  });
+
   it("allows explicitly configured global explorer roots", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
     tempDirs.push(root);

@@ -55,6 +55,11 @@ function appendTeamWatcherLog(message) {
   fs.appendFileSync(TEAM_WATCHER_LOG_PATH, `${new Date().toISOString()} ${message}\n`, "utf8");
 }
 
+export function resolveStudioWorkspaceRoot(root, envValue = process.env.KUMA_STUDIO_WORKSPACE) {
+  const configured = typeof envValue === "string" ? envValue.trim() : "";
+  return resolve(configured || root);
+}
+
 function createConnectMiddlewareDelegate(middlewares) {
   return async (req, res) => await new Promise((resolve, reject) => {
     const originalUrl = req.url ?? "/";
@@ -136,7 +141,7 @@ export async function createServer({ host, port, root }) {
   const memoStore = new MemoStore(resolve(root));
   const teamConfigStore = new TeamConfigStore();
   teamConfigStore.ensure();
-  const workspaceRoot = resolve(root);
+  const workspaceRoot = resolveStudioWorkspaceRoot(root);
   const teamConfigRuntime = createTeamConfigRuntime({
     teamStatusStore,
     teamConfigStore,
