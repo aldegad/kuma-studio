@@ -85,7 +85,7 @@ if [ -n "$WORKSPACE" ]; then
   READ_ARGS+=(--workspace "$WORKSPACE")
 fi
 SEND_ARGS+=(--surface "$SURFACE")
-READ_ARGS+=(--surface "$SURFACE" --lines 12)
+READ_ARGS+=(--surface "$SURFACE" --lines 24)
 
 INTERACTIVE_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$]|([[:alnum:]_-]+[[:space:]]+)*[[:alnum:]_-]+>)([[:space:]].*)?$'
 SUGGESTION_LINE_PATTERN='^[[:space:]]*›[[:space:]]+[^[:space:]]'
@@ -99,16 +99,36 @@ read_input_view() {
   local screen
 
   screen=$(cmux read-screen "${READ_ARGS[@]}" 2>&1 || true)
-  printf '%s\n' "$screen" | tail -n 8
+  printf '%s\n' "$screen"
+}
+
+normalize_view_line() {
+  printf '%s' "${1-}" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
+}
+
+line_is_box_divider() {
+  local line
+
+  line="$(normalize_view_line "${1-}")"
+  [ -n "$line" ] || return 1
+  printf '%s\n' "$line" | grep -Eq "$BOX_DRAWING_LINE_PATTERN"
+}
+
+line_is_trailing_hint_or_blank() {
+  local line
+
+  line="$(normalize_view_line "${1-}")"
+  [ -z "$line" ] && return 0
+  printf '%s\n' "$line" | grep -Eq "$TRAILING_HINT_LINE_PATTERN"
 }
 
 line_is_tail_footer() {
   local line
 
-  line="$(printf '%s' "${1-}" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  line="$(normalize_view_line "${1-}")"
   [ -z "$line" ] && return 0
 
-  printf '%s\n' "$line" | grep -Eq "$BOX_DRAWING_LINE_PATTERN" && return 0
+  line_is_box_divider "$line" && return 0
   printf '%s\n' "$line" | grep -Eq "$TRAILING_HINT_LINE_PATTERN" && return 0
   return 1
 }
@@ -146,6 +166,47 @@ last_interactive_line() {
   printf '%s\n' "$view" | grep -E "$INTERACTIVE_LINE_PATTERN" | tail -n 1 || true
 }
 
+prompt_region_view() {
+  local view="${1-}"
+  local lines=()
+  local dividers=()
+  local line
+  local index
+  local last_index
+  local start
+  local end
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    lines+=("$line")
+  done <<< "$view"
+
+  while [ ${#lines[@]} -gt 0 ]; do
+    last_index=$((${#lines[@]} - 1))
+    if ! line_is_trailing_hint_or_blank "${lines[$last_index]}"; then
+      break
+    fi
+    unset "lines[$last_index]"
+  done
+
+  [ ${#lines[@]} -gt 0 ] || return 1
+
+  for ((index=0; index<${#lines[@]}; index++)); do
+    if line_is_box_divider "${lines[$index]}"; then
+      dividers+=("$index")
+    fi
+  done
+
+  [ ${#dividers[@]} -ge 2 ] || return 1
+
+  start="${dividers[${#dividers[@]} - 2]}"
+  end="${dividers[${#dividers[@]} - 1]}"
+  [ "$end" -gt "$start" ] || return 1
+
+  for ((index=start + 1; index<end; index++)); do
+    printf '%s\n' "${lines[$index]}"
+  done
+}
+
 blocking_suggestion_visible() {
   local last_line
   last_line="$(last_interactive_line "${1-}")"
@@ -176,7 +237,18 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 prompt_still_pending() {
+  local prompt_region
   local last_line
+
+  prompt_region="$(prompt_region_view "${1-}" || true)"
+  if [ -n "$prompt_region" ]; then
+    last_line="$(last_interactive_line "$prompt_region")"
+    if [ -n "$last_line" ]; then
+      printf '%s\n' "$last_line" | grep -Eq "$EMPTY_PROMPT_LINE_PATTERN" && return 1
+      printf '%s\n' "$last_line" | grep -Eq "$SUGGESTION_LINE_PATTERN" && return 1
+      return 0
+    fi
+  fi
 
   last_line="$(last_relevant_line "${1-}" || true)"
   [ -n "$last_line" ] || return 1

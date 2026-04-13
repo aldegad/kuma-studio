@@ -128,6 +128,63 @@ describe("studio-routes dispatch endpoints", () => {
       source: "worker",
     }), eventRes);
     assert.strictEqual(eventRes.statusCode, 200);
+    assert.strictEqual(eventRes.json.applied, true);
     assert.strictEqual(eventRes.json.dispatch.status, "qa-passed");
+  });
+
+  it("returns ignored metadata when a dispatch event is replayed after terminal completion", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-dispatch-route-"));
+    tempRoots.push(root);
+    const taskFile = join(root, "demo.task.md");
+    const resultFile = join(root, "demo.result.md");
+    await writeFile(taskFile, "---\nid: demo-task\nproject: kuma-studio\ninitiator: surface:1\nworker: surface:4\nqa: worker-self-report\nresult: " + resultFile + "\nsignal: demo-task-done\n---\n\n# demo\n\nImplement fix\n", "utf8");
+
+    const broker = new DispatchBroker({
+      storagePath: join(root, "dispatch-broker.json"),
+    });
+    const handler = createStudioRouteHandler({
+      staticDir: process.cwd(),
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      dispatchBroker: broker,
+    });
+
+    const registerRes = createResponse();
+    await handler(createRequest("POST", "/studio/dispatches", {
+      taskId: "demo-task",
+      taskFile,
+      project: "kuma-studio",
+      initiator: "surface:1",
+      initiatorLabel: "쿠마",
+      worker: "surface:4",
+      workerId: "tookdaki",
+      workerName: "뚝딱이",
+      workerType: "codex",
+      qa: "worker-self-report",
+      resultFile,
+      signal: "demo-task-done",
+      instruction: "Implement fix",
+      summary: "Implement fix",
+    }), registerRes);
+    assert.strictEqual(registerRes.statusCode, 200);
+
+    const firstEventRes = createResponse();
+    await handler(createRequest("POST", "/studio/dispatches/demo-task/events", {
+      type: "complete",
+      source: "worker",
+    }), firstEventRes);
+    assert.strictEqual(firstEventRes.statusCode, 200);
+    assert.strictEqual(firstEventRes.json.applied, true);
+    assert.strictEqual(firstEventRes.json.dispatch.status, "qa-passed");
+
+    const replayEventRes = createResponse();
+    await handler(createRequest("POST", "/studio/dispatches/demo-task/events", {
+      type: "complete",
+      source: "worker",
+    }), replayEventRes);
+    assert.strictEqual(replayEventRes.statusCode, 200);
+    assert.strictEqual(replayEventRes.json.applied, false);
+    assert.strictEqual(replayEventRes.json.ignoredReason, "terminal:qa-passed");
+    assert.strictEqual(replayEventRes.json.dispatch.status, "qa-passed");
   });
 });

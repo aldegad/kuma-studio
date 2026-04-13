@@ -389,14 +389,13 @@ async function installBinScripts() {
   for (const script of scripts) {
     const src = resolve(srcDir, script);
     const dest = resolve(KUMA_BIN_DIR, script);
-    const result = await copyFileIfChanged(src, dest);
+    const result = await ensureSymlink(src, dest);
     if (result === "skipped") {
       log(`${script} already up to date`);
       addSummary("skipped", `Skipped existing ${script}`);
     } else {
-      await chmod(dest, 0o755);
-      log(`${result} ${script} → ${summarizePath(dest)}`);
-      addSummary(result, `${result} ${summarizePath(src)} → ${summarizePath(dest)}`);
+      log(`${result} ${summarizePath(dest)} → ${summarizePath(src)}`);
+      addSummary(result, `${result} symlink ${summarizePath(dest)} → ${summarizePath(src)}`);
     }
   }
 }

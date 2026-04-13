@@ -324,53 +324,7 @@ dispatch_role_label() {
     *)
       printf 'participant'
       ;;
-  esac
-}
-
-resolve_surface_display_name() {
-  local surface="${1:-}"
-  local preferred_project="${2:-}"
-
-  [ -n "$surface" ] || return 0
-
-  node - "$KUMA_SURFACES_PATH" "$surface" "$preferred_project" <<'NODE'
-const fs = require("node:fs");
-
-const [, , registryPath, surfaceRaw, preferredProjectRaw] = process.argv;
-const surface = typeof surfaceRaw === "string" ? surfaceRaw.trim() : "";
-const preferredProject = typeof preferredProjectRaw === "string" ? preferredProjectRaw.trim() : "";
-if (!surface || !registryPath || !fs.existsSync(registryPath)) {
-  process.exit(0);
-}
-
-function normalize(value) {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function parseRegistryLabel(label) {
-  const text = normalize(label);
-  const name = text.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim();
-  return name || text;
-}
-
-const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
-const projectOrder = preferredProject
-  ? [preferredProject, ...Object.keys(registry).filter((key) => key !== preferredProject)]
-  : Object.keys(registry);
-
-for (const projectId of projectOrder) {
-  const entries = registry?.[projectId];
-  if (!entries || typeof entries !== "object") {
-    continue;
-  }
-  for (const [label, candidateSurface] of Object.entries(entries)) {
-    if (normalize(candidateSurface) === surface) {
-      process.stdout.write(`${parseRegistryLabel(label)}\n`);
-      process.exit(0);
-    }
-  }
-}
-NODE
+    esac
 }
 
 format_dispatch_party() {
@@ -378,10 +332,18 @@ format_dispatch_party() {
   local role="${2:-}"
   local surface="${3:-}"
   local detail="${4:-}"
+  local rendered_surface=""
 
   local role_label
   role_label="$(dispatch_role_label "$role")"
+  if [ -z "$display_label" ] && [ "$role" = "initiator" ]; then
+    display_label="unknown initiator"
+  fi
+  if [ -z "$display_label" ] && [ "$role" = "surface" ]; then
+    display_label="unknown peer"
+  fi
   display_label="${display_label:-$role_label}"
+  rendered_surface="$(display_surface_meta "$surface")"
   local meta=""
   if [ "$display_label" != "$role_label" ]; then
     meta="$role_label"
@@ -394,12 +356,12 @@ format_dispatch_party() {
     fi
   fi
 
-  if [ -n "$meta" ] && [ -n "$surface" ]; then
-    printf '%s (%s, %s)' "$display_label" "$meta" "$surface"
+  if [ -n "$meta" ] && [ -n "$rendered_surface" ]; then
+    printf '%s (%s, %s)' "$display_label" "$meta" "$rendered_surface"
   elif [ -n "$meta" ]; then
     printf '%s (%s)' "$display_label" "$meta"
-  elif [ -n "$surface" ]; then
-    printf '%s (%s)' "$display_label" "$surface"
+  elif [ -n "$rendered_surface" ]; then
+    printf '%s (%s)' "$display_label" "$rendered_surface"
   else
     printf '%s' "$display_label"
   fi
@@ -636,7 +598,7 @@ RESULT_FILE="$KUMA_RESULT_DIR/${TASK_BASENAME}.result.md"
 SIGNAL="${TASK_BASENAME}-done"
 INITIATOR_SURFACE="$(resolve_initiator_surface)"
 WORKER_DETAIL="$MEMBER_TYPE"
-INITIATOR_NAME="$(resolve_surface_display_name "$INITIATOR_SURFACE" "$PROJECT")"
+INITIATOR_NAME="$(resolve_dispatch_party_display_name initiator "$INITIATOR_SURFACE" "$PROJECT")"
 INITIATOR_LABEL="$(format_dispatch_party "$INITIATOR_NAME" initiator "$INITIATOR_SURFACE")"
 WORKER_LABEL="$(format_dispatch_party "$MEMBER_NAME" worker "$WORKER_SURFACE" "$WORKER_DETAIL")"
 

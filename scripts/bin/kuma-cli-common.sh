@@ -71,7 +71,279 @@ normalize_surface() {
   printf '%s\n' "$raw"
 }
 
+surface_is_numeric_ref() {
+  local surface=""
+  surface="$(normalize_surface "${1:-}")"
+  [[ "$surface" =~ ^surface:[0-9]+$ ]]
+}
+
+surface_is_opaque_ref() {
+  local surface=""
+  surface="$(normalize_surface "${1:-}")"
+  [ -n "$surface" ] && ! surface_is_numeric_ref "$surface"
+}
+
+resolve_current_tty_name() {
+  local current_tty=""
+
+  if [ -n "${KUMA_STUB_CURRENT_TTY:-}" ]; then
+    current_tty="${KUMA_STUB_CURRENT_TTY#/dev/}"
+    [ -n "$current_tty" ] && printf '%s\n' "$current_tty"
+    [ -n "$current_tty" ]
+    return
+  fi
+
+  current_tty="$(tty 2>/dev/null || true)"
+  case "$current_tty" in
+    /dev/*)
+      printf '%s\n' "${current_tty#/dev/}"
+      return 0
+      ;;
+    ""|not\ a\ tty*)
+      return 1
+      ;;
+    *)
+      printf '%s\n' "$current_tty"
+      return 0
+      ;;
+  esac
+}
+
+resolve_surface_for_tty() {
+  local tty_name="${1:-}"
+  tty_name="${tty_name#/dev/}"
+  [ -n "$tty_name" ] || return 1
+
+  cmux tree 2>&1 | awk -v target="tty=${tty_name}" '
+    index($0, target) > 0 {
+      if (match($0, /surface:[0-9]+/)) {
+        print substr($0, RSTART, RLENGTH)
+        exit
+      }
+    }
+  '
+}
+
+resolve_current_live_surface() {
+  local tty_name=""
+  tty_name="$(resolve_current_tty_name 2>/dev/null || true)"
+  [ -n "$tty_name" ] || return 1
+  resolve_surface_for_tty "$tty_name"
+}
+
+parse_registry_label_text() {
+  local label="${1:-}"
+  [ -n "$label" ] || return 0
+
+  LABEL_INPUT="$label" node -e '
+    const label = typeof process.env.LABEL_INPUT === "string" ? process.env.LABEL_INPUT.trim() : "";
+    const parsed = label.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim();
+    process.stdout.write(`${parsed || label}\n`);
+  '
+}
+
+resolve_team_member_display_name() {
+  local query="${1:-}"
+  [ -n "$query" ] || return 0
+  [ -f "$KUMA_TEAM_JSON_PATH" ] || return 0
+
+  node - "$KUMA_TEAM_JSON_PATH" "$query" <<'NODE'
+const fs = require("node:fs");
+
+const [, , teamPath, queryRaw] = process.argv;
+const query = typeof queryRaw === "string" ? queryRaw.trim() : "";
+if (!query || !teamPath || !fs.existsSync(teamPath)) {
+  process.exit(0);
+}
+
+function normalize(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+const payload = JSON.parse(fs.readFileSync(teamPath, "utf8"));
+const teams = payload?.teams && typeof payload.teams === "object" ? payload.teams : {};
+for (const team of Object.values(teams)) {
+  const members = Array.isArray(team?.members) ? team.members : [];
+  for (const member of members) {
+    if (!member || typeof member !== "object") {
+      continue;
+    }
+
+    const id = normalize(member.id);
+    const name = normalize(member.displayName) || normalize(member.name);
+    if (id === query || name === query) {
+      process.stdout.write(`${name || id}\n`);
+      process.exit(0);
+    }
+  }
+}
+NODE
+}
+
+resolve_registry_surface_display_name() {
+  local surface="${1:-}"
+  local preferred_project="${2:-}"
+
+  [ -n "$surface" ] || return 0
+
+  node - "$KUMA_SURFACES_PATH" "$surface" "$preferred_project" <<'NODE'
+const fs = require("node:fs");
+
+const [, , registryPath, surfaceRaw, preferredProjectRaw] = process.argv;
+const surface = typeof surfaceRaw === "string" ? surfaceRaw.trim() : "";
+const preferredProject = typeof preferredProjectRaw === "string" ? preferredProjectRaw.trim() : "";
+if (!surface || !registryPath || !fs.existsSync(registryPath)) {
+  process.exit(0);
+}
+
+function normalize(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function parseRegistryLabel(label) {
+  const text = normalize(label);
+  const name = text.replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "").trim();
+  return name || text;
+}
+
+const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+const projectOrder = preferredProject
+  ? [preferredProject, ...Object.keys(registry).filter((key) => key !== preferredProject)]
+  : Object.keys(registry);
+
+for (const projectId of projectOrder) {
+  const entries = registry?.[projectId];
+  if (!entries || typeof entries !== "object") {
+    continue;
+  }
+  for (const [label, candidateSurface] of Object.entries(entries)) {
+    if (normalize(candidateSurface) === surface) {
+      process.stdout.write(`${parseRegistryLabel(label)}\n`);
+      process.exit(0);
+    }
+  }
+}
+NODE
+}
+
+resolve_live_surface_registry_label() {
+  local surface=""
+  surface="$(normalize_surface "${1:-}")"
+  surface_is_numeric_ref "$surface" || return 1
+
+  CMUX_TARGET_SURFACE="$surface" node -e '
+    const { execSync } = require("node:child_process");
+
+    const target = typeof process.env.CMUX_TARGET_SURFACE === "string" ? process.env.CMUX_TARGET_SURFACE.trim() : "";
+    if (!target) {
+      process.exit(1);
+    }
+
+    let output = "";
+    try {
+      output = String(execSync("cmux tree 2>&1", { encoding: "utf8" }));
+    } catch {
+      process.exit(1);
+    }
+
+    for (const line of output.split(/\r?\n/u)) {
+      if (!line.includes(target)) {
+        continue;
+      }
+      const match = line.match(/"([^"]+)"/u);
+      if (!match) {
+        continue;
+      }
+      process.stdout.write(`${match[1].trim()}\n`);
+      process.exit(0);
+    }
+
+    process.exit(1);
+  ' 2>/dev/null || true
+}
+
+resolve_surface_display_name() {
+  local surface=""
+  local preferred_project="${2:-}"
+  local display_name=""
+  local live_label=""
+  local live_surface=""
+
+  surface="$(normalize_surface "${1:-}")"
+  [ -n "$surface" ] || return 0
+
+  if surface_is_opaque_ref "$surface"; then
+    if [ -n "${CMUX_SURFACE_ID:-}" ] && [ "$surface" = "$(normalize_surface "$CMUX_SURFACE_ID")" ]; then
+      live_surface="$(resolve_current_live_surface 2>/dev/null || true)"
+      if [ -n "$live_surface" ]; then
+        surface="$live_surface"
+      fi
+    fi
+  fi
+
+  display_name="$(resolve_registry_surface_display_name "$surface" "$preferred_project" 2>/dev/null || true)"
+  if [ -n "$display_name" ]; then
+    printf '%s\n' "$display_name"
+    return 0
+  fi
+
+  live_label="$(resolve_live_surface_registry_label "$surface" 2>/dev/null || true)"
+  if [ -n "$live_label" ]; then
+    parse_registry_label_text "$live_label"
+  fi
+}
+
+resolve_dispatch_party_display_name() {
+  local role="${1:-}"
+  local surface="${2:-}"
+  local preferred_project="${3:-}"
+  local display_name=""
+
+  if [ "$role" = "initiator" ]; then
+    display_name="$(resolve_team_member_display_name "kuma" 2>/dev/null || true)"
+    if [ -n "$display_name" ]; then
+      printf '%s\n' "$display_name"
+      return 0
+    fi
+  fi
+
+  resolve_surface_display_name "$surface" "$preferred_project"
+}
+
+display_surface_meta() {
+  local surface=""
+  surface="$(normalize_surface "${1:-}")"
+  if surface_is_numeric_ref "$surface"; then
+    printf '%s\n' "$surface"
+  fi
+}
+
 resolve_initiator_surface() {
+  local explicit=""
+  local live_surface=""
+
+  if [ -n "${KUMA_INITIATOR_SURFACE:-}" ]; then
+    explicit="$(normalize_surface "$KUMA_INITIATOR_SURFACE")"
+    if surface_is_numeric_ref "$explicit"; then
+      printf '%s\n' "$explicit"
+      return
+    fi
+  fi
+
+  live_surface="$(resolve_current_live_surface 2>/dev/null || true)"
+  if [ -n "$live_surface" ]; then
+    printf '%s\n' "$live_surface"
+    return
+  fi
+
+  if [ -n "${CMUX_SURFACE_ID:-}" ]; then
+    explicit="$(normalize_surface "$CMUX_SURFACE_ID")"
+    if surface_is_numeric_ref "$explicit"; then
+      printf '%s\n' "$explicit"
+      return
+    fi
+  fi
+
   if [ -n "${KUMA_INITIATOR_SURFACE:-}" ]; then
     normalize_surface "$KUMA_INITIATOR_SURFACE"
     return
@@ -86,9 +358,34 @@ resolve_initiator_surface() {
 }
 
 resolve_dispatch_sender_surface() {
+  local current_surface=""
+  local live_surface=""
+
+  if [ -n "${CMUX_SURFACE_ID:-}" ]; then
+    current_surface="$(normalize_surface "$CMUX_SURFACE_ID")"
+    if surface_is_numeric_ref "$current_surface"; then
+      printf '%s\n' "$current_surface"
+      return
+    fi
+  fi
+
+  live_surface="$(resolve_current_live_surface 2>/dev/null || true)"
+  if [ -n "$live_surface" ]; then
+    printf '%s\n' "$live_surface"
+    return
+  fi
+
   if [ -n "${CMUX_SURFACE_ID:-}" ]; then
     normalize_surface "$CMUX_SURFACE_ID"
     return
+  fi
+
+  if [ -n "${KUMA_INITIATOR_SURFACE:-}" ]; then
+    current_surface="$(normalize_surface "$KUMA_INITIATOR_SURFACE")"
+    if surface_is_numeric_ref "$current_surface"; then
+      printf '%s\n' "$current_surface"
+      return
+    fi
   fi
 
   if [ -n "${KUMA_INITIATOR_SURFACE:-}" ]; then

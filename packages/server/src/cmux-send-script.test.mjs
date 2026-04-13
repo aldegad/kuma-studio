@@ -103,6 +103,67 @@ esac
     expect(sendLogContents).toContain("\tdelivered\t");
   }, 60_000);
 
+  it("sends Enter immediately once the pasted prompt tail clears without a pending continuation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const sendLog = join(root, "kuma-send.log");
+    const readCountPath = join(root, "read-count.txt");
+    const sendKeyCountPath = join(root, "send-key-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+    await writeFile(sendKeyCountPath, "0", "utf8");
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '❯\\n'
+    else
+      printf 'Running task\\n'
+    fi
+    ;;
+  send)
+    ;;
+  send-key)
+    count=$(cat "${sendKeyCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendKeyCountPath}"
+    ;;
+esac
+`,
+    );
+
+    await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "clear fast"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_SEND_LOG_PATH: sendLog,
+      },
+    });
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    const sendKeyCount = Number((await readFile(sendKeyCountPath, "utf8")).trim());
+
+    expect(sendKeyCount).toBe(1);
+    expect(sendLogContents).toContain("\tpre-enter-cleared\t");
+    expect(sendLogContents).toContain("\tenter-accepted-try-1\t");
+    expect(sendLogContents).toContain("\tdelivered\t");
+  });
+
   it("waits for shell continuation prompts to settle before sending Enter", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
     tempRoots.push(root);
@@ -418,6 +479,67 @@ esac
     expect(`${failure.stderr}`).toContain("ERROR: Prompt delivery failed");
 
     const sendLogContents = await readFile(sendLog, "utf8");
+    expect(sendLogContents).toContain("\tretry-enter\t");
+    expect(sendLogContents).toContain("\tfailed\t");
+    expect(sendLogContents).not.toContain("\tdelivered\t");
+  });
+
+  it("fails when a multiline Claude-style composer remains pending inside the prompt region", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const sendLog = join(root, "kuma-send.log");
+    const readCountPath = join(root, "read-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '✻ Baked for 1m 25s\\n\\n──────────────────────────────────────────────────────\\n❯\\n──────────────────────────────────────────────────────\\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\\n'
+    else
+      printf '✻ Baked for 1m 25s\\n\\n──────────────────────────────────────────────────────\\n❯ [Kuma Studio Dispatch] koon-20260413-171418\\n  Speaker: initiator\\n  Recipient: 쿤 (worker, claude, surface:9)\\n  Message kind: assigned task\\n  Body source: forwarded/orchestrated summary\\n\\n  [Bug Fix] TEAM 패널의 SYS 버튼 visibility 회귀\\n\\n  ## 증상\\n  TEAM 패널 (이전 CMUX 패널) 의 각 멤버 행 우측에\\n  들어간 SYS 버튼(◧ 아이콘)이 알렉스 화면에 전혀 안\\n  보임. 마우스 hover 해도 안 보임. 컬러 잘못\\n  넣었거나 group-hover 셀렉터가 안 먹는 등 디자인\\n  회귀로 보임.\\n──────────────────────────────────────────────────────\\n  ⏵⏵ bypass permissions on (shift+tab to cycle)\\n'
+    fi
+    ;;
+  send|send-key)
+    ;;
+esac
+`,
+    );
+
+    let failure;
+    try {
+      await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "multiline composer smoke"], {
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH}`,
+          KUMA_SEND_LOG_PATH: sendLog,
+        },
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(failure.code).toBe(1);
+    expect(`${failure.stderr}`).toContain("ERROR: Prompt delivery failed");
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    expect(sendLogContents).toContain("\tpre-enter-settled\t");
     expect(sendLogContents).toContain("\tretry-enter\t");
     expect(sendLogContents).toContain("\tfailed\t");
     expect(sendLogContents).not.toContain("\tdelivered\t");

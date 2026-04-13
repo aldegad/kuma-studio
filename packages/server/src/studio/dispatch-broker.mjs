@@ -6,6 +6,14 @@ export const DISPATCH_TERMINAL_STATUSES = new Set(["qa-passed", "qa-rejected", "
 export const DISPATCH_MESSAGE_KINDS = ["instruction", "question", "answer", "status", "note", "blocker"];
 export const DISPATCH_MESSAGE_BODY_SOURCES = ["original-user-text", "forwarded-summary", "direct-message", "lifecycle-event"];
 
+function cloneEventResult(result) {
+  return {
+    dispatch: cloneRecord(result.dispatch),
+    applied: result.applied === true,
+    ignoredReason: normalizeString(result.ignoredReason),
+  };
+}
+
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -307,6 +315,10 @@ export class DispatchBroker {
   }
 
   async reportEvent(taskId, input) {
+    return (await this.reportEventWithMetadata(taskId, input)).dispatch;
+  }
+
+  async reportEventWithMetadata(taskId, input) {
     const normalizedTaskId = normalizeString(taskId);
     const current = this.#dispatches.get(normalizedTaskId);
     if (!current) {
@@ -323,7 +335,19 @@ export class DispatchBroker {
     const directCompletion = current.qa === "worker-self-report" || current.qa === "kuma-direct";
 
     if (isTerminalStatus(current.status)) {
-      return cloneRecord(current);
+      return cloneEventResult({
+        dispatch: current,
+        applied: false,
+        ignoredReason: `terminal:${current.status}`,
+      });
+    }
+
+    if (type === "complete" && current.status === "worker-done") {
+      return cloneEventResult({
+        dispatch: current,
+        applied: false,
+        ignoredReason: "worker-already-done",
+      });
     }
 
     const next = normalizeDispatchRecord({
@@ -403,7 +427,11 @@ export class DispatchBroker {
       });
     }
 
-    return cloneRecord(next);
+    return cloneEventResult({
+      dispatch: next,
+      applied: true,
+      ignoredReason: "",
+    });
   }
 
   listMessages(taskId) {

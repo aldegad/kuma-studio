@@ -31,6 +31,8 @@ shift
 
 require_cmd node
 
+KUMA_LIFECYCLE_TRACE_LOG="${KUMA_LIFECYCLE_TRACE_LOG:-/tmp/kuma-lifecycle-trace.log}"
+
 json_field() {
   local field="${1:?field required}"
   node -e '
@@ -118,18 +120,26 @@ format_dispatch_party() {
   local surface="${3:-}"
   local role_label
   local meta=""
+  local rendered_surface=""
 
   role_label="$(dispatch_role_label "$role")"
+  if [ -z "$display_label" ] && [ "$role" = "initiator" ]; then
+    display_label="unknown initiator"
+  fi
+  if [ -z "$display_label" ] && [ "$role" = "surface" ]; then
+    display_label="unknown peer"
+  fi
   display_label="${display_label:-$role_label}"
+  rendered_surface="$(display_surface_meta "$surface")"
   if [ "$display_label" != "$role_label" ]; then
     meta="$role_label"
   fi
-  if [ -n "$meta" ] && [ -n "$surface" ]; then
-    printf '%s (%s, %s)' "$display_label" "$meta" "$surface"
+  if [ -n "$meta" ] && [ -n "$rendered_surface" ]; then
+    printf '%s (%s, %s)' "$display_label" "$meta" "$rendered_surface"
   elif [ -n "$meta" ]; then
     printf '%s (%s)' "$display_label" "$meta"
-  elif [ -n "$surface" ]; then
-    printf '%s (%s)' "$display_label" "$surface"
+  elif [ -n "$rendered_surface" ]; then
+    printf '%s (%s)' "$display_label" "$rendered_surface"
   else
     printf '%s' "$display_label"
   fi
@@ -160,6 +170,55 @@ EOF
 )"
 
   "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$surface" "$prompt"
+}
+
+append_lifecycle_trace_log() {
+  local event_type="${1:-}"
+  local task_id="${2:-}"
+  local current_surface="${3:-}"
+  local speaker_role="${4:-}"
+  local speaker_surface="${5:-}"
+  local speaker_label="${6:-}"
+  local recipient_surface="${7:-}"
+  local recipient_label="${8:-}"
+
+  mkdir -p "$(dirname "$KUMA_LIFECYCLE_TRACE_LOG")"
+  printf '%s LIFECYCLE_TRACE event=%s task=%s current_surface=%s speaker_role=%s speaker_surface=%s speaker_label="%s" recipient_surface=%s recipient_label="%s"\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "${event_type:-unknown}" \
+    "${task_id:-unknown}" \
+    "${current_surface:-unknown}" \
+    "${speaker_role:-unknown}" \
+    "${speaker_surface:-unknown}" \
+    "${speaker_label:-}" \
+    "${recipient_surface:-unknown}" \
+    "${recipient_label:-}" >> "$KUMA_LIFECYCLE_TRACE_LOG"
+}
+
+infer_lifecycle_sender_role() {
+  local event_type="${1:-}"
+  local dispatch_json="${2:-}"
+  local qa_surface=""
+
+  case "$event_type" in
+    complete|fail)
+      printf 'worker\n'
+      return 0
+      ;;
+    qa-pass|qa-reject)
+      qa_surface="$(printf '%s' "$dispatch_json" | json_field dispatch.qaSurface)"
+      if [ -n "$qa_surface" ]; then
+        printf 'qa\n'
+      else
+        printf 'worker\n'
+      fi
+      return 0
+      ;;
+    *)
+      printf 'surface\n'
+      return 0
+      ;;
+  esac
 }
 
 resolve_dispatch_message_context() {
@@ -456,6 +515,7 @@ send_thread_message() {
   local to_role
   local to_label
   local to_surface
+  local project_id
   task_id="$(printf '%s' "$context_json" | json_field taskId)"
   from_role="$(printf '%s' "$context_json" | json_field from)"
   from_label="$(printf '%s' "$context_json" | json_field fromLabel)"
@@ -463,9 +523,17 @@ send_thread_message() {
   to_role="$(printf '%s' "$context_json" | json_field to)"
   to_label="$(printf '%s' "$context_json" | json_field toLabel)"
   to_surface="$(printf '%s' "$context_json" | json_field toSurface)"
+  project_id="$(printf '%s' "$dispatch_json" | json_field dispatch.project)"
 
   [ -n "$task_id" ] || die "dispatch not found for task file: $task_file"
   [ -n "$to_surface" ] || die "could not resolve a target surface for '$target'"
+
+  if [ -z "$from_label" ]; then
+    from_label="$(resolve_dispatch_party_display_name "$from_role" "$from_surface" "$project_id")"
+  fi
+  if [ -z "$to_label" ]; then
+    to_label="$(resolve_dispatch_party_display_name "$to_role" "$to_surface" "$project_id")"
+  fi
 
   node "$KUMA_SERVER_CLI" dispatch-message \
     --task-file "$task_file" \
@@ -570,6 +638,7 @@ emit_lifecycle_event_to_initiator() {
   local current_surface
   local kind
   local context_json
+  local explicit_from_role
   local task_id
   local task_file
   local result_file
@@ -580,6 +649,7 @@ emit_lifecycle_event_to_initiator() {
   local to_role
   local to_label
   local to_surface
+  local project_id
   local speaker_label
   local recipient_label
   local kind_label
@@ -588,7 +658,8 @@ emit_lifecycle_event_to_initiator() {
 
   current_surface="$(resolve_dispatch_sender_surface)"
   kind="$(dispatch_event_kind "$event_type")"
-  context_json="$(printf '%s' "$dispatch_json" | resolve_dispatch_message_context "$current_surface" "initiator" "$kind")"
+  explicit_from_role="$(infer_lifecycle_sender_role "$event_type" "$dispatch_json")"
+  context_json="$(printf '%s' "$dispatch_json" | resolve_dispatch_message_context "$current_surface" "initiator" "$kind" "$explicit_from_role")"
 
   task_id="$(printf '%s' "$context_json" | json_field taskId)"
   task_file="$(printf '%s' "$dispatch_json" | json_field dispatch.taskFile)"
@@ -600,15 +671,32 @@ emit_lifecycle_event_to_initiator() {
   to_role="$(printf '%s' "$context_json" | json_field to)"
   to_label="$(printf '%s' "$context_json" | json_field toLabel)"
   to_surface="$(printf '%s' "$context_json" | json_field toSurface)"
+  project_id="$(printf '%s' "$dispatch_json" | json_field dispatch.project)"
 
   [ -n "$task_id" ] || return 0
   [ -n "$to_surface" ] || return 0
+
+  if [ -z "$from_label" ]; then
+    from_label="$(resolve_dispatch_party_display_name "$from_role" "$from_surface" "$project_id")"
+  fi
+  if [ -z "$to_label" ]; then
+    to_label="$(resolve_dispatch_party_display_name "$to_role" "$to_surface" "$project_id")"
+  fi
 
   speaker_label="$(format_dispatch_party "$from_label" "$from_role" "$from_surface")"
   recipient_label="$(format_dispatch_party "$to_label" "$to_role" "$to_surface")"
   kind_label="$(dispatch_message_kind_label "$kind")"
   body_source_label="$(dispatch_body_source_label lifecycle-event)"
   message_text="$(format_lifecycle_notice "$dispatch_json")"
+  append_lifecycle_trace_log \
+    "$event_type" \
+    "$task_id" \
+    "$current_surface" \
+    "$from_role" \
+    "$from_surface" \
+    "$from_label" \
+    "$to_surface" \
+    "$to_label"
 
   send_dispatch_prompt \
     "$to_surface" \
@@ -629,8 +717,25 @@ run_dispatch_event() {
   shift
 
   local dispatch_json=""
+  local applied=""
+  local ignored_reason=""
   dispatch_json="$(node "$KUMA_SERVER_CLI" "dispatch-${event_type}" "$@")"
-  emit_lifecycle_event_to_initiator "$event_type" "$dispatch_json"
+  applied="$(printf '%s' "$dispatch_json" | node -e '
+    const fs = require("node:fs");
+    const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+    process.stdout.write(payload?.applied === false ? "false\n" : "true\n");
+  ')"
+  ignored_reason="$(printf '%s' "$dispatch_json" | node -e '
+    const fs = require("node:fs");
+    const payload = JSON.parse(fs.readFileSync(0, "utf8"));
+    const value = typeof payload?.ignoredReason === "string" ? payload.ignoredReason.trim() : "";
+    process.stdout.write(`${value}\n`);
+  ')"
+  if [ "$applied" = "true" ]; then
+    emit_lifecycle_event_to_initiator "$event_type" "$dispatch_json"
+  else
+    printf 'LIFECYCLE_NOTICE_SKIP: event=%s reason=%s\n' "$event_type" "${ignored_reason:-ignored}" >&2
+  fi
   printf '%s\n' "$dispatch_json"
 }
 

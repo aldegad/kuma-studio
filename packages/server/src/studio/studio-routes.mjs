@@ -252,7 +252,10 @@ export function createStudioRouteHandler({
 
       const taskId = decodeURIComponent(dispatchEventMatch[1]);
       try {
-        sendJson(res, 200, { dispatch: await dispatchBroker.reportEvent(taskId, body) });
+        const eventResult = typeof dispatchBroker.reportEventWithMetadata === "function"
+          ? await dispatchBroker.reportEventWithMetadata(taskId, body)
+          : { dispatch: await dispatchBroker.reportEvent(taskId, body), applied: true, ignoredReason: "" };
+        sendJson(res, 200, eventResult);
       } catch (error) {
         const details = error instanceof Error ? error.message : "Unknown error";
         sendJson(res, details.startsWith("Unknown dispatch:") ? 404 : 400, {

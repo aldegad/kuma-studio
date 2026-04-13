@@ -167,4 +167,25 @@ describe("dispatch-broker", () => {
     expect(lateComplete.lastEvent).toBe("qa-pass");
     expect(hookCalls.map((entry) => entry.event)).toEqual(["dispatched", "worker-done", "qa-passed"]);
   });
+
+  it("reports ignored metadata for repeated complete events that do not advance dispatch state", async () => {
+    const { broker, hookCalls } = await createBroker();
+    await broker.registerDispatch(demoDispatch());
+
+    const workerDone = await broker.reportEventWithMetadata("demo-20260411-120000", {
+      type: "complete",
+      source: "worker",
+    });
+    expect(workerDone.applied).toBe(true);
+    expect(workerDone.dispatch.status).toBe("worker-done");
+
+    const repeatedComplete = await broker.reportEventWithMetadata("demo-20260411-120000", {
+      type: "complete",
+      source: "worker",
+    });
+    expect(repeatedComplete.applied).toBe(false);
+    expect(repeatedComplete.ignoredReason).toBe("worker-already-done");
+    expect(repeatedComplete.dispatch.status).toBe("worker-done");
+    expect(hookCalls.map((entry) => entry.event)).toEqual(["dispatched", "worker-done"]);
+  });
 });
