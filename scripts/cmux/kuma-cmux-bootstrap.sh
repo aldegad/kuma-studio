@@ -12,6 +12,12 @@ BOOTSTRAP_CALLER_DIR="${INIT_CWD:-$(pwd -P)}"
 WORKSPACE_DIR="${KUMA_STUDIO_WORKSPACE:-$BOOTSTRAP_CALLER_DIR}"
 WORKSPACE_DIR="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "$WORKSPACE_DIR")"
 KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_STUDIO_DIR/prompts/kuma-system-prompt.md}"
+DEFAULT_EXPLORER_GLOBAL_ROOTS="vault,claude,codex"
+if [ "${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS+x}" = x ]; then
+  EXPLORER_GLOBAL_ROOTS_BINDING="${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS}"
+else
+  EXPLORER_GLOBAL_ROOTS_BINDING="${DEFAULT_EXPLORER_GLOBAL_ROOTS}"
+fi
 
 source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
 set -euo pipefail
@@ -286,9 +292,9 @@ else
     INFRA_P="$(get_pane "$SERVER_SURFACE")"
     echo "→ 쿠마 서버 시작 중..."
     if [ -n "${KUMA_STUDIO_WORKSPACE:-}" ] || [ "$WORKSPACE_DIR" != "$KUMA_STUDIO_DIR" ]; then
-      printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$WORKSPACE_DIR"
+      printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$WORKSPACE_DIR" "$EXPLORER_GLOBAL_ROOTS_BINDING"
     else
-      printf -v SERVER_START_COMMAND 'cd "%s" && npm run server:reload' "$KUMA_STUDIO_DIR"
+      printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$EXPLORER_GLOBAL_ROOTS_BINDING"
     fi
     "$SCRIPT_DIR/kuma-cmux-send.sh" "$SERVER_SURFACE" "$SERVER_START_COMMAND" > /dev/null
     register_surface_label "kuma-studio" "server" "$SERVER_SURFACE" "kuma-server"

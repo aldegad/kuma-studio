@@ -17,7 +17,6 @@ const SKIP_DIRS = new Set([
   "coverage",
   ".cache",
 ]);
-const fsWorkspaceRoot = resolve(process.env.KUMA_STUDIO_WORKSPACE || process.cwd());
 const EXPLORER_GLOBAL_ROOTS = {
   vault: resolve(join(homedir(), ".kuma", "vault")),
   claude: resolve(join(homedir(), ".claude")),
@@ -66,6 +65,11 @@ const LANGUAGE_BY_EXTENSION = {
 function isWithinRoot(root, candidatePath) {
   const relativePath = relative(root, candidatePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith(`${sep}..`));
+}
+
+function resolveConfiguredWorkspaceRoot(envValue = process.env.KUMA_STUDIO_WORKSPACE) {
+  const configured = typeof envValue === "string" ? envValue.trim() : "";
+  return resolve(configured || process.cwd());
 }
 
 function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS) {
@@ -153,7 +157,7 @@ function parseGitStatus(output) {
 }
 
 export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots } = {}) {
-  const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : fsWorkspaceRoot;
+  const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : resolveConfiguredWorkspaceRoot();
   const configuredGlobalRoots = Object.fromEntries(
     Object.entries(globalRoots ?? resolveConfiguredGlobalRoots()).map(([id, root]) => [id, resolve(root)]),
   );

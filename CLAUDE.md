@@ -10,7 +10,8 @@
 - `npm run build:studio` builds the studio-web production bundle.
 - `npm test` runs all tests via vitest.
 - `kuma-server` and `kuma-frontend` are the canonical managed surfaces for this repo when Kuma bootstrap is running; reuse them instead of launching duplicate local servers in ad hoc terminals.
-- Prefer `~/.kuma/bin/kuma-status` or `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` to discover existing managed surfaces before starting server/frontend processes.
+- Treat `kuma-server`/`kuma-frontend` as managed infra slots: if the daemon process dies but the surface still exists, restart in the same slot and preserve the registry key instead of treating it as disposable.
+- Prefer `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` for infra discovery, and use `cmux tree` when you need to verify `kuma-server`/`kuma-frontend` directly because `kuma-status` may hide infra pseudo-members.
 
 ## Project Structure
 
@@ -28,6 +29,7 @@
 - **fallback/backfill 패턴 절대 금지.** 실패하면 실패로 보고. 자동 재전달/auto-redispatch/다른 소스에서 보충 절대 금지. SSOT 하나만 사용.
 - **서버 포트는 4312.** 3000/3001 아님. 확인 없이 포트 추측 금지.
 - **관리형 infra surface 우선.** `kuma-server`/`kuma-frontend` 가 있으면 거기서만 서버/프론트를 재시작한다. 현재 터미널에서 중복 기동 금지.
+- **infra registry continuity 유지.** daemon exit 만으로 `kuma-server`/`kuma-frontend` registry key 를 잃어버리면 안 된다. registry miss 시에는 현재 workspace 의 living infra surface 를 재발견·재등록한 뒤 같은 slot 을 재사용한다.
 - **브랜치/워크트리 임의 생성 금지.** 알렉스가 명시적으로 지시한 경우에만 새 git branch 또는 git worktree 를 만든다.
 - **충돌 회피 목적의 branch/worktree 도 사전 승인 필수.** 작업 충돌이 예상되면 이유를 먼저 보고하고 허가를 받은 뒤에만 분리한다.
 

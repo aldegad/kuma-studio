@@ -180,6 +180,10 @@ describe("kuma-server-reload", () => {
     expect(sendLog).toContain("--workspace workspace:7");
     expect(sendLog).toContain("surface:99");
     expect(sendLog).toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(sandbox.workspaceRoot)}`);
+    expect(sendLog).toContain("KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=");
+    expect(sendLog).toContain("vault");
+    expect(sendLog).toContain("claude");
+    expect(sendLog).toContain("codex");
     expect(sendLog).toContain("npm\\ run\\ server:reload");
     expect(cmuxLog).toContain("close-surface|--workspace workspace:7 --surface surface:42");
     expect(cmuxLog).toContain("new-surface|--pane pane:11 --workspace workspace:7");
@@ -211,6 +215,7 @@ describe("kuma-server-reload", () => {
     const sendLog = await readFile(sandbox.sendLog, "utf8");
     expect(sendLog).toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(preferredWorkspace)}`);
     expect(sendLog).not.toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(sandbox.workspaceRoot)}`);
+    expect(sendLog).toContain("KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=");
     expect(sendLog).toContain("surface:99");
   });
 
@@ -236,6 +241,165 @@ describe("kuma-server-reload", () => {
     const sendLog = await readFile(sandbox.sendLog, "utf8");
     expect(stdout).toContain(`WORKSPACE: ${await realpath(sandbox.workspaceRoot)}`);
     expect(sendLog).toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(sandbox.workspaceRoot)}`);
+    expect(sendLog).toContain("KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=");
+  });
+
+  it("recovers the workspace binding from the live kuma-server surface history when the running daemon env is stale", async () => {
+    const sandbox = await setupManagedReloadSandbox();
+    tempRoots.push(sandbox.root);
+
+    await writeExecutable(
+      join(sandbox.binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+printf '%s|' "$command" >> "${sandbox.cmuxLog}"
+shift || true
+printf '%q ' "$@" >> "${sandbox.cmuxLog}"
+printf '\\n' >> "${sandbox.cmuxLog}"
+case "$command" in
+  tree)
+    cat <<'EOF'
+workspace:7
+  pane:1
+    surface:1 tty=ttys001
+  pane:11
+    surface:42 [terminal] "kuma-server" tty=ttys042
+EOF
+    ;;
+  read-screen)
+    printf 'cd "%s" && KUMA_STUDIO_WORKSPACE=%s npm run server:reload\\n' "${process.cwd()}" "${sandbox.workspaceRoot}"
+    ;;
+  close-surface)
+    exit 0
+    ;;
+  new-surface)
+    printf 'surface:99\\n'
+    ;;
+  tab-action)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`,
+    );
+
+    const { stdout } = await execFile("bash", [MANAGED_RELOAD_SCRIPT_PATH], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: sandbox.home,
+        PATH: `${sandbox.binDir}:${process.env.PATH}`,
+        KUMA_SURFACES_PATH: sandbox.surfacesPath,
+        KUMA_TEAM_JSON_PATH: sandbox.teamPath,
+        KUMA_CMUX_DIR: join(sandbox.home, ".kuma", "cmux"),
+        INIT_CWD: process.cwd(),
+        KUMA_TEST_RUNNING_WORKSPACE: process.cwd(),
+      },
+    });
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    expect(stdout).toContain(`WORKSPACE: ${await realpath(sandbox.workspaceRoot)}`);
+    expect(sendLog).toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(sandbox.workspaceRoot)}`);
+  });
+
+  it("re-discovers and re-registers a live kuma-server title surface when the registry key is missing", async () => {
+    const sandbox = await setupManagedReloadSandbox();
+    tempRoots.push(sandbox.root);
+
+    await writeFile(
+      sandbox.surfacesPath,
+      `${JSON.stringify({
+        system: {
+          "🐻 쿠마": "surface:1",
+        },
+        "kuma-studio": {},
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    await writeExecutable(
+      join(sandbox.binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+printf '%s|' "$command" >> "${sandbox.cmuxLog}"
+shift || true
+printf '%q ' "$@" >> "${sandbox.cmuxLog}"
+printf '\\n' >> "${sandbox.cmuxLog}"
+case "$command" in
+  tree)
+    cat <<'EOF'
+workspace:7
+  pane:1
+    surface:1 tty=ttys001
+  pane:11
+    surface:15 [terminal] "kuma-server" tty=ttys042
+EOF
+    ;;
+  read-screen)
+    exit 0
+    ;;
+  close-surface)
+    exit 0
+    ;;
+  new-surface)
+    printf 'surface:99\\n'
+    ;;
+  tab-action)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+`,
+    );
+
+    const { stdout } = await execFile("bash", [MANAGED_RELOAD_SCRIPT_PATH], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: sandbox.home,
+        PATH: `${sandbox.binDir}:${process.env.PATH}`,
+        KUMA_SURFACES_PATH: sandbox.surfacesPath,
+        KUMA_TEAM_JSON_PATH: sandbox.teamPath,
+        KUMA_CMUX_DIR: join(sandbox.home, ".kuma", "cmux"),
+        INIT_CWD: process.cwd(),
+        KUMA_TEST_RUNNING_WORKSPACE: sandbox.workspaceRoot,
+      },
+    });
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    const nextRegistry = JSON.parse(await readFile(sandbox.surfacesPath, "utf8"));
+    expect(stdout).toContain("REPLACED_SURFACE: surface:15");
+    expect(sendLog).toContain("surface:99");
+    expect(nextRegistry["kuma-studio"].server).toBe("surface:99");
+  });
+
+  it("preserves an explicitly blank explorer roots env when reloading the managed surface", async () => {
+    const sandbox = await setupManagedReloadSandbox();
+    tempRoots.push(sandbox.root);
+
+    await execFile("bash", [MANAGED_RELOAD_SCRIPT_PATH], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: sandbox.home,
+        PATH: `${sandbox.binDir}:${process.env.PATH}`,
+        KUMA_SURFACES_PATH: sandbox.surfacesPath,
+        KUMA_TEAM_JSON_PATH: sandbox.teamPath,
+        KUMA_CMUX_DIR: join(sandbox.home, ".kuma", "cmux"),
+        INIT_CWD: process.cwd(),
+        KUMA_TEST_RUNNING_WORKSPACE: sandbox.workspaceRoot,
+        KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS: "",
+      },
+    });
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    expect(sendLog).toContain("KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=\\'\\'");
   });
 
   it("fails clearly when the managed kuma-server surface is missing", async () => {

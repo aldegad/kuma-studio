@@ -10,7 +10,8 @@
 - `npm run build:studio` builds the studio-web production bundle.
 - `npm test` runs all tests via vitest.
 - `kuma-server` and `kuma-frontend` are the canonical managed surfaces for this repo when Kuma bootstrap is running; reuse them instead of launching duplicate local servers in ad hoc terminals.
-- Prefer `~/.kuma/bin/kuma-status` or `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` to discover existing managed surfaces before starting server/frontend processes.
+- Treat `kuma-server`/`kuma-frontend` as managed infra slots: if the daemon process dies but the surface still exists, restart in the same slot and preserve the registry key instead of treating it as disposable.
+- Prefer `~/.kuma/cmux/kuma-cmux-project-status.sh kuma-studio` for infra discovery, and use `cmux tree` when you need to verify `kuma-server`/`kuma-frontend` directly because `kuma-status` may hide infra pseudo-members.
 
 ## Project Structure
 
@@ -32,6 +33,7 @@ The CLI is the canonical worker-facing interface, and Phase 4 direct main dispat
 - Server boot/restart is standardized on `npm run kuma-server:reload` for human/operator reuse of shared infra surfaces, and `npm run server:reload` as the raw in-surface/local entrypoint.
 - If the managed `kuma-server` surface already exists, restart the daemon there with `npm run kuma-server:reload` instead of starting a second server elsewhere.
 - If the managed `kuma-frontend` surface already exists, reuse it for `npm run dev:studio` instead of starting a second Vite dev server elsewhere.
+- Managed reload/restart should re-discover and re-register a live `kuma-server`/`kuma-frontend` title surface in the current workspace before giving up on a registry miss.
 - Do not create or switch git branches unless the user explicitly instructs it.
 - Do not create git worktrees unless the user explicitly instructs it.
 - If branch/worktree isolation seems necessary to avoid conflicts, stop and ask for approval first.

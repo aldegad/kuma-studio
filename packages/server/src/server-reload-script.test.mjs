@@ -40,6 +40,7 @@ describe("server-reload.sh", () => {
       `#!/bin/bash
 set -euo pipefail
 printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
+printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> "${nodeLog}"
 printf 'argv=' >> "${nodeLog}"
 printf '%q ' "$@" >> "${nodeLog}"
 printf '\\n' >> "${nodeLog}"
@@ -57,6 +58,7 @@ printf '\\n' >> "${nodeLog}"
 
     const log = await readFile(nodeLog, "utf8");
     expect(log).toContain(`workspace=${await realpath(workspaceRoot)}`);
+    expect(log).toContain("explorerRoots=vault,claude,codex");
     expect(log).toContain("--root");
   });
 
@@ -77,6 +79,7 @@ printf '\\n' >> "${nodeLog}"
       `#!/bin/bash
 set -euo pipefail
 printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
+printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> "${nodeLog}"
 `,
     );
 
@@ -91,5 +94,90 @@ printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
 
     const log = await readFile(nodeLog, "utf8");
     expect(log).toContain("workspace=<unset>");
+    expect(log).toContain("explorerRoots=vault,claude,codex");
+  });
+
+  it("reuses the running daemon env when the caller does not provide bindings", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-server-reload-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const nodeLog = join(root, "node.log");
+    const workspaceRoot = join(root, "workspace");
+    await mkdir(binDir, { recursive: true });
+    await mkdir(workspaceRoot, { recursive: true });
+
+    await writeExecutable(
+      join(binDir, "lsof"),
+      `#!/bin/bash
+set -euo pipefail
+if [[ "\${1:-}" == -tiTCP:* ]]; then
+  printf '54321\\n'
+fi
+`,
+    );
+    await writeExecutable(
+      join(binDir, "ps"),
+      `#!/bin/bash
+set -euo pipefail
+printf 'node KUMA_STUDIO_WORKSPACE=%s KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%s /usr/local/bin/node cli.mjs serve\\n' "${workspaceRoot}" "vault,claude,codex"
+`,
+    );
+    await writeExecutable(
+      join(binDir, "node"),
+      `#!/bin/bash
+set -euo pipefail
+printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
+printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> "${nodeLog}"
+`,
+    );
+
+    await execFile("bash", [SERVER_RELOAD_SCRIPT_PATH], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        INIT_CWD: process.cwd(),
+        KUMA_STUDIO_PORT: "44314",
+      },
+    });
+
+    const log = await readFile(nodeLog, "utf8");
+    expect(log).toContain(`workspace=${await realpath(workspaceRoot)}`);
+    expect(log).toContain("explorerRoots=vault,claude,codex");
+  });
+
+  it("preserves an explicitly blank explorer roots env", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-server-reload-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const nodeLog = join(root, "node.log");
+    await mkdir(binDir, { recursive: true });
+
+    await writeExecutable(
+      join(binDir, "lsof"),
+      "#!/bin/bash\nexit 0\n",
+    );
+    await writeExecutable(
+      join(binDir, "node"),
+      `#!/bin/bash
+set -euo pipefail
+printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" > "${nodeLog}"
+`,
+    );
+
+    await execFile("bash", [SERVER_RELOAD_SCRIPT_PATH], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        INIT_CWD: process.cwd(),
+        KUMA_STUDIO_PORT: "44315",
+        KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS: "",
+      },
+    });
+
+    const log = await readFile(nodeLog, "utf8");
+    expect(log).toContain("explorerRoots=");
+    expect(log).not.toContain("<unset>");
   });
 });

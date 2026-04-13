@@ -353,7 +353,7 @@ esac
       expect(source).not.toMatch(/^\s*cmux send\b/mu);
       expect(source).not.toMatch(/^\s*cmux send-key\b/mu);
       if (filePath === BOOTSTRAP_SCRIPT_PATH) {
-        expect(source).toContain("KUMA_STUDIO_WORKSPACE=%q npm run server:reload");
+        expect(source).toContain("KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload");
       }
     }
   });

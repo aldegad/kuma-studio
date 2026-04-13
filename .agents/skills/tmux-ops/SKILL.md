@@ -16,6 +16,8 @@ description: Reference the Kuma cmux operations protocol for surfaces, sends, re
 ## 기본 원칙
 
 - surface 생성/종료/등록은 `~/.kuma/cmux/` 스크립트를 우선 사용
+- `kuma-server`/`kuma-frontend` 는 managed infra surface 이다. daemon 프로세스가 죽어도 surface slot 과 registry key 는 유지 대상이며, 살아 있는 infra surface 가 있으면 같은 위치에서 재기동한다.
+- managed reload/restart 는 registry miss 시에도 현재 workspace 의 `kuma-server`/`kuma-frontend` title surface 를 재발견·재등록한 뒤 same-slot 재사용을 우선한다.
 - 작업 전달은 반드시 `~/.kuma/cmux/kuma-cmux-send.sh` 사용 (raw `cmux send` / `send-key` 금지)
 - 진행 중 추가 지시는 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 이어간다
 - 완료/실패/QA 결과는 `~/.kuma/bin/kuma-dispatch complete|fail|qa-pass|qa-reject` 로 보고한다
@@ -40,3 +42,4 @@ description: Reference the Kuma cmux operations protocol for surfaces, sends, re
 - 프로젝트 매핑: `~/.kuma/projects.json`
 - surface 레지스트리: `/tmp/kuma-surfaces.json`
 - 플랜 경로: `~/.kuma/plans/{project}/`
+- `kuma-status` 는 infra pseudo-member(`server`/`frontend`)를 숨길 수 있으므로, infra 확인은 필요 시 `cmux tree` / `kuma-cmux-project-status.sh kuma-studio` 와 함께 본다.
