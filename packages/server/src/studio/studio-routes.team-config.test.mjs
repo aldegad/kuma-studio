@@ -383,6 +383,7 @@ describe("studio-routes team-config", () => {
     assert.strictEqual(patchRes.json.surface, "surface:99");
     assert.strictEqual(store.getConfig().members["쿠마"].type, "codex");
     assert.strictEqual(respawns.length, 1);
+    assert.strictEqual(respawns[0].deferIfWorking, false);
     assert.strictEqual(broadcasts.length, 1);
   });
 
@@ -880,7 +881,8 @@ describe("studio-routes team-config", () => {
     assert.match(command, /-c service_tier=fast/u);
     assert.match(command, /-c model_reasoning_effort="xhigh"/u);
     expect(command).not.toMatch(/model_reasoning_effort="xhigh" CoS/u);
-    expect(command).not.toMatch(/kuma-picker/u);
+    expect(command).not.toContain('"/kuma-picker"');
+    expect(command).not.toContain('-- "/kuma-picker"');
   }, 30_000);
 
   it("spawns a system codex worker with member identity in developer instructions", () => {
@@ -973,13 +975,17 @@ describe("studio-routes team-config", () => {
 
     assert.strictEqual(result.status, 0);
     const command = result.stdout;
+    const promptFile = command.match(/--append-system-prompt-file\s+(\S+)/u)?.[1] ?? "";
     assert.match(command, /KUMA_ROLE=worker claude --model claude-opus-4-6/u);
-    assert.match(command, /--append-system-prompt/u);
-    assert.match(command, /쿤야\./u);
-    assert.match(command, /Publisher \/ Designer\./u);
-    assert.match(command, /Decision Ledger Boot Pack:/u);
-    assert.match(command, /decision 사항이 프롬프트에도 들어가야 해\./u);
-    assert.match(command, /Do not respond unless there is a startup problem\./u);
+    assert.match(command, /--append-system-prompt-file/u);
+    assert.ok(promptFile);
+    const startupPrompt = readFileSync(promptFile, "utf8");
+    assert.match(startupPrompt, /쿤야\./u);
+    assert.match(startupPrompt, /Publisher \/ Designer\./u);
+    assert.match(startupPrompt, /Decision Ledger Boot Pack:/u);
+    assert.match(startupPrompt, /decision 사항이 프롬프트에도 들어가야 해\./u);
+    assert.match(startupPrompt, /Do not respond unless there is a startup problem\./u);
+    expect(command).not.toMatch(/Decision Ledger Boot Pack:/u);
   }, 30_000);
 
   it("passes workspace and title to tab rename and surfaces rename failures on stderr", () => {

@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile as execFileCallback, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -143,6 +143,16 @@ fixture
 async function writeExecutable(path, content) {
   await writeFile(path, content, "utf8");
   await chmod(path, 0o755);
+}
+
+async function writeSessionPromptFixture(root) {
+  const promptPath = join(root, "kuma-system-prompt.md");
+  await writeFile(
+    promptPath,
+    "You are Kuma session prompt fixture.\nUse the shared session launch builder.\n",
+    "utf8",
+  );
+  return promptPath;
 }
 
 async function runTeamConfigHelper(helperName, teamPath, args = [], extraEnv = {}) {
@@ -517,8 +527,17 @@ describe("shared team normalizer", () => {
       { KUMA_VAULT_DIR: vaultDir },
     );
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
+    const promptFile = command.match(/--append-system-prompt-file\s+(\S+)/u)?.[1] ?? "";
+    const promptFileContents = await readFile(promptFile, "utf8");
     expect(command).toContain('claude --model claude-opus-4-6');
-    expect(command).toContain("--append-system-prompt");
+    expect(command).toContain("--append-system-prompt-file");
+    expect(promptFile).toBeTruthy();
+    expect(promptFileContents).toContain("너의 이름은 노을이야.");
+    expect(promptFileContents).toContain("Publisher / Designer. HTML/CSS/Graphics");
+    expect(promptFileContents).toContain("Decision Ledger Boot Pack:");
+    expect(promptFileContents).toContain("Wait for dispatched task");
+    expect(promptFileContents).toContain("Do not respond unless there is a startup problem.");
+    expect(command).not.toContain("Decision Ledger Boot Pack:");
     expect(startupPrompt).toContain("너의 이름은 노을이야.");
     expect(startupPrompt).toContain("Publisher / Designer. HTML/CSS/Graphics");
     expect(startupPrompt).toContain("Decision Ledger Boot Pack:");
@@ -530,6 +549,62 @@ describe("shared team normalizer", () => {
     expect(startupPrompt).toContain("Preserve SSOT and SRP:");
     expect(command).not.toContain('"/frontend-design"');
     expect(command).not.toContain('-- "/frontend-design"');
+  });
+
+  it("builds Kuma session commands from the shared session launch source", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+    const vaultDir = await writeDecisionsFixture(root);
+    const sessionPromptPath = await writeSessionPromptFixture(root);
+    const projectRoot = join(root, "kuma-studio");
+    await mkdir(projectRoot, { recursive: true });
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        system: {
+          members: [
+            {
+              id: "kuma",
+              name: "쿠마",
+              emoji: "🐻",
+              team: "system",
+              nodeType: "session",
+              spawnType: "claude",
+              spawnModel: "claude-opus-4-6",
+              spawnOptions: "--dangerously-skip-permissions",
+              roleLabel: { en: "Leader" },
+            },
+          ],
+        },
+      },
+    });
+
+    const startupBrief = await runTeamConfigHelperRaw("build_session_start_prompt", teamPath, ["쿠마"], {
+      KUMA_VAULT_DIR: vaultDir,
+      KUMA_SYSTEM_PROMPT_PATH: sessionPromptPath,
+    });
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["쿠마", "", projectRoot], {
+      KUMA_VAULT_DIR: vaultDir,
+      KUMA_SYSTEM_PROMPT_PATH: sessionPromptPath,
+    });
+    const promptFile = command.match(/--append-system-prompt-file\s+(\S+)/u)?.[1] ?? "";
+
+    expect(command).toMatch(/^cd ".+" && exec claude --model claude-opus-4-6 /u);
+    expect(command).toContain("--channels plugin:discord@claude-plugins-official");
+    expect(command).toContain("--name '🐻 쿠마'");
+    expect(command).not.toContain("KUMA_ROLE=worker");
+    expect(command).toContain('$(cat ');
+    expect(promptFile).toBeTruthy();
+    expect(startupBrief).toContain("쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.");
+    expect(startupBrief).toContain("managed infra 상태");
+
+    const startupPrompt = await readFile(promptFile, "utf8");
+    expect(startupPrompt).toContain("You are Kuma session prompt fixture.");
+    expect(startupPrompt).toContain("Decision Ledger Boot Pack:");
+    expect(startupPrompt).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(startupPrompt).toContain("프로젝트 결정은 project-decisions에서 읽는다.");
+    expect(startupPrompt).not.toContain("Wait for dispatched task.");
+    expect(startupPrompt).not.toContain("Do not respond unless there is a startup problem.");
   });
 
   it("builds a Codex startup command with the member identity, idle guard, and without preferred skill injection", async () => {

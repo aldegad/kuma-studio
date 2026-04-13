@@ -10,10 +10,13 @@ import {
   isPromptLine,
 } from "../../../shared/surface-classifier.mjs";
 import {
+  buildRegistryLabel,
   normalizeSurfaceRegistry,
   parseRegistryLabel,
   readSurfaceRegistryFile,
   removeSurfacesFromRegistry,
+  updateRegistryMemberSurface,
+  upsertRegistryLabelSurface,
   writeSurfaceRegistryFile,
 } from "../../../shared/surface-registry.mjs";
 import { normalizeAllTeams } from "../../../shared/team-normalizer.mjs";
@@ -32,6 +35,7 @@ const SURFACE_READ_TIMEOUT_MS = 5_000;
 const CMUX_SOCKET_HEAL_RETRY_DELAYS_MS = [0, 150];
 const SURFACE_NOT_FOUND_PATTERN = /(?:\bno such surface\b|\bsurface(?::\d+|\s+[^\n\r]+)?\s+not found\b)/iu;
 const CMUX_TREE_SURFACE_PATTERN = /\bsurface:\d+\b/gu;
+const CMUX_TREE_SURFACE_TITLE_PATTERN = /surface\s+(surface:\d+)\s+\[[^\]]+\](?:\s+"([^"]*)")?/u;
 const RETRYABLE_CMUX_SOCKET_FAILURE_PATTERN =
   /(?:failed to (?:write|read) to socket|failed to connect to socket|socket (?:closed|error|hang up)|broken pipe|\b(?:econnrefused|econnreset|epipe)\b)/iu;
 
@@ -234,6 +238,64 @@ export function reconcileRegistryWithCmuxTree(registry, cmuxTreeOutput) {
       return Object.keys(nextProjectMembers).length > 0 ? [[projectName, nextProjectMembers]] : [];
     }),
   );
+}
+
+function matchRosterMemberFromTitle(title, rosterMembers) {
+  const normalizedTitle = String(title ?? "").trim();
+  if (!normalizedTitle) {
+    return null;
+  }
+
+  const parsed = parseRegistryLabel(normalizedTitle);
+  return rosterMembers.find((member) => {
+    const displayName = String(member?.displayName ?? "").trim();
+    const emoji = String(member?.emoji ?? "").trim();
+    if (!displayName) {
+      return false;
+    }
+
+    return (
+      normalizedTitle === displayName
+      || normalizedTitle === buildRegistryLabel(displayName, emoji)
+      || parsed.name === displayName
+    );
+  }) ?? null;
+}
+
+export function recoverRegistryFromCmuxTree(registry, cmuxTreeOutput, rosterMembers = readStudioRosterMembers()) {
+  let nextRegistry = normalizeSurfaceRegistry(registry);
+
+  for (const line of String(cmuxTreeOutput ?? "").split(/\r?\n/u)) {
+    const match = line.match(CMUX_TREE_SURFACE_TITLE_PATTERN);
+    if (!match) {
+      continue;
+    }
+
+    const [, surface, rawTitle = ""] = match;
+    const title = String(rawTitle ?? "").trim();
+    if (!/^surface:\d+$/u.test(surface) || !title) {
+      continue;
+    }
+
+    if (title === "kuma-server" || title === "kuma-frontend") {
+      nextRegistry = upsertRegistryLabelSurface(nextRegistry, "kuma-studio", title, surface);
+      continue;
+    }
+
+    const member = matchRosterMemberFromTitle(title, rosterMembers);
+    if (!member) {
+      continue;
+    }
+
+    nextRegistry = updateRegistryMemberSurface(nextRegistry, {
+      projectId: getDefaultProjectIdForTeam(member.team),
+      memberName: member.displayName,
+      emoji: member.emoji,
+      surface,
+    });
+  }
+
+  return normalizeSurfaceRegistry(nextRegistry);
 }
 
 /**
@@ -830,8 +892,9 @@ export class TeamStatusStore {
 
     const normalizedRegistry = normalizeSurfaceRegistry(rawRegistry);
     const reconciledRegistry = reconcileRegistryWithCmuxTree(normalizedRegistry, treeResult.output);
-    await this.#persistRegistryIfChanged(normalizedRegistry, reconciledRegistry);
-    return reconciledRegistry;
+    const recoveredRegistry = recoverRegistryFromCmuxTree(reconciledRegistry, treeResult.output);
+    await this.#persistRegistryIfChanged(normalizedRegistry, recoveredRegistry);
+    return recoveredRegistry;
   }
 
   async #removeStaleRegistrySurfaces(surfaces) {

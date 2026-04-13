@@ -23,6 +23,7 @@ KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
 KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
 KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
+KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_REPO_ROOT/prompts/kuma-system-prompt.md}"
 KUMA_IDLE_GUARD_MESSAGE="Wait for dispatched task. Do not start any work autonomously. Your role and skills are context, not commands."
 
 json_stringify_string() {
@@ -43,6 +44,20 @@ build_member_identity_line() {
   local member_name="${1:-}"
   [ -n "$member_name" ] || return 0
   printf '너의 이름은 %s야.' "$member_name"
+}
+
+build_kuma_bootstrap_brief_prompt() {
+  cat <<'EOF'
+쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.
+
+첫 응답에서는 지금 워크스페이스 기준으로 아래만 짧고 운영자답게 정리해:
+- managed infra 상태: kuma-server / kuma-frontend
+- 팀 멤버 상태 요약: idle / working
+- 최근 커밋 1개와 현재 워크트리 변경 요약
+- 마지막 한 줄: 지금 무엇을 시킬지 묻기
+
+바로 브리핑부터 시작해.
+EOF
 }
 
 build_decisions_boot_pack_prompt() {
@@ -145,6 +160,19 @@ process.stdout.write(lines.join("\n"));
 NODE
 }
 
+build_session_start_prompt() {
+  local member_name="${1:-}"
+
+  case "$member_name" in
+    쿠마)
+      build_kuma_bootstrap_brief_prompt
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
 resolve_project_boot_pack_name() {
   local dir="${1:-}"
   [ -n "$dir" ] || return 0
@@ -204,11 +232,19 @@ Team-node dispatch policy:
 
 startup_command_has_idle_guard() {
   local command="${1:-}"
+  local prompt_file=""
   case "$command" in
     *"Wait for dispatched task"*|*"Wait\ for\ dispatched\ task"*)
       return 0
       ;;
   esac
+
+  prompt_file="$(printf '%s\n' "$command" | grep -oE -- '--append-system-prompt-file[[:space:]]+[^[:space:]]+' | awk '{print $2}' | tail -1 || true)"
+  if [ -n "$prompt_file" ] && [ -f "$prompt_file" ]; then
+    grep -F -- "Wait for dispatched task" "$prompt_file" > /dev/null 2>&1
+    return $?
+  fi
+
   return 1
 }
 
@@ -409,33 +445,175 @@ EOF
   printf '%s' "$instructions"
 }
 
+build_claude_prompt_file_path() {
+  local prompt_kind="${1:-worker}"
+  local member_name="${2:-}"
+  local role_label_en="${3:-}"
+  local node_type="${4:-worker}"
+  local project_name="${5:-}"
+
+  node --input-type=module - "$prompt_kind" "$member_name" "$role_label_en" "$node_type" "$project_name" <<'NODE'
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const [, , promptKind = "", memberName = "", roleLabelEn = "", nodeType = "", projectName = ""] = process.argv;
+const hash = createHash("sha256")
+  .update(JSON.stringify({ promptKind, memberName, roleLabelEn, nodeType, projectName }))
+  .digest("hex");
+
+process.stdout.write(join(tmpdir(), "kuma-startup-prompts", `${hash}.txt`));
+NODE
+}
+
+write_claude_prompt_file() {
+  local prompt_kind="${1:-worker}"
+  local prompt_text="${2:-}"
+  local member_name="${3:-}"
+  local role_label_en="${4:-}"
+  local node_type="${5:-worker}"
+  local project_name="${6:-}"
+  local prompt_path
+
+  prompt_path="$(build_claude_prompt_file_path "$prompt_kind" "$member_name" "$role_label_en" "$node_type" "$project_name")"
+  mkdir -p "$(dirname "$prompt_path")"
+  printf '%s' "$prompt_text" > "$prompt_path"
+  printf '%s' "$prompt_path"
+}
+
+write_claude_startup_prompt_file() {
+  local member_name="${1:-}"
+  local role_label_en="${2:-}"
+  local node_type="${3:-worker}"
+  local project_name="${4:-}"
+  local prompt_text
+
+  prompt_text="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
+  write_claude_prompt_file "worker" "$prompt_text" "$member_name" "$role_label_en" "$node_type" "$project_name"
+}
+
+build_session_system_prompt() {
+  local member_name="${1:-}"
+  local role_label_en="${2:-}"
+  local node_type="${3:-session}"
+  local project_name="${4:-}"
+  local identity_line spawn_context decisions_context instructions
+
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name")"
+
+  if [ "$member_name" = "쿠마" ] && [ -f "$KUMA_SYSTEM_PROMPT_PATH" ]; then
+    instructions="$(cat "$KUMA_SYSTEM_PROMPT_PATH")"
+  else
+    identity_line="$(build_member_identity_line "$member_name")"
+    spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
+    instructions="$(cat <<EOF
+${identity_line}
+${spawn_context}
+EOF
+)"
+  fi
+
+  if [ -n "$decisions_context" ]; then
+    instructions="${instructions}
+
+${decisions_context}"
+  fi
+
+  printf '%s' "$instructions"
+}
+
+write_session_system_prompt_file() {
+  local member_name="${1:-}"
+  local role_label_en="${2:-}"
+  local node_type="${3:-session}"
+  local project_name="${4:-}"
+  local prompt_text
+
+  prompt_text="$(build_session_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
+  write_claude_prompt_file "session" "$prompt_text" "$member_name" "$role_label_en" "$node_type" "$project_name"
+}
+
+write_session_start_prompt_file() {
+  local member_name="${1:-}"
+  local role_label_en="${2:-}"
+  local node_type="${3:-session}"
+  local project_name="${4:-}"
+  local prompt_text
+
+  prompt_text="$(build_session_start_prompt "$member_name")"
+  [ -n "$prompt_text" ] || return 0
+  write_claude_prompt_file "session-start" "$prompt_text" "$member_name" "$role_label_en" "$node_type" "$project_name"
+}
+
 build_member_command_from_record() {
   local dir="$1"
   local record="${2:?launch record required}"
-  local member_name type model options _emoji skill role_label_en node_type project_name developer_instructions developer_instructions_json startup_context command startup_context_quoted developer_instructions_setting
+  local member_name type model options _emoji skill role_label_en node_type project_name developer_instructions developer_instructions_json startup_context_file command developer_instructions_setting display_label session_name_arg session_start_prompt_file session_channels
   IFS=$'\x1f' read -r member_name type model options _emoji skill role_label_en node_type <<< "$record"
-  project_name="$(resolve_project_boot_pack_name "$dir")"
+  if [ "$node_type" = "session" ]; then
+    project_name="$(resolve_project_boot_pack_name "$KUMA_REPO_ROOT")"
+  else
+    project_name="$(resolve_project_boot_pack_name "$dir")"
+  fi
 
   case "$type" in
     claude)
-      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
-      startup_context_quoted="$(shell_single_quote "$startup_context")"
-      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt %s' "$dir" "$model" "$options" "$startup_context_quoted"
+      if [ "$node_type" = "session" ]; then
+        startup_context_file="$(write_session_system_prompt_file "$member_name" "$role_label_en" "$node_type" "$project_name")"
+        display_label="$(member_display_label_from_record "$member_name" "$record")"
+        session_name_arg="$(shell_single_quote "$display_label")"
+        session_start_prompt_file="$(write_session_start_prompt_file "$member_name" "$role_label_en" "$node_type" "$project_name")"
+        session_channels=""
+        if [ "$member_name" = "쿠마" ]; then
+          session_channels=" --channels plugin:discord@claude-plugins-official"
+        fi
+        if [ -n "$session_start_prompt_file" ]; then
+          printf -v command 'cd "%s" && exec claude --model %q %s%s --name %s --append-system-prompt-file %q "$(cat %q)"' "$dir" "$model" "$options" "$session_channels" "$session_name_arg" "$startup_context_file" "$session_start_prompt_file"
+        else
+          printf -v command 'cd "%s" && exec claude --model %q %s%s --name %s --append-system-prompt-file %q' "$dir" "$model" "$options" "$session_channels" "$session_name_arg" "$startup_context_file"
+        fi
+      else
+        startup_context_file="$(write_claude_startup_prompt_file "$member_name" "$role_label_en" "$node_type" "$project_name")"
+        printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model %q %s --append-system-prompt-file %q' "$dir" "$model" "$options" "$startup_context_file"
+      fi
       ;;
     codex)
-      developer_instructions="$(build_codex_developer_instructions "$member_name" "$role_label_en" "$node_type" "$project_name")"
+      if [ "$node_type" = "session" ]; then
+        developer_instructions="$(build_session_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
+      else
+        developer_instructions="$(build_codex_developer_instructions "$member_name" "$role_label_en" "$node_type" "$project_name")"
+      fi
       if [ -n "$developer_instructions" ]; then
         developer_instructions_json="$(json_stringify_string "$developer_instructions")"
         developer_instructions_setting="$(shell_single_quote "developer_instructions=$developer_instructions_json")"
-        printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s -c %s' "$dir" "$model" "$options" "$developer_instructions_setting"
+        if [ "$node_type" = "session" ]; then
+          printf -v command 'cd "%s" && exec codex -m %q %s -c %s' "$dir" "$model" "$options" "$developer_instructions_setting"
+        else
+          printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s -c %s' "$dir" "$model" "$options" "$developer_instructions_setting"
+        fi
       else
-        printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
+        if [ "$node_type" = "session" ]; then
+          printf -v command 'cd "%s" && exec codex -m %q %s' "$dir" "$model" "$options"
+        else
+          printf -v command 'cd "%s" && KUMA_ROLE=worker codex -m %q %s' "$dir" "$model" "$options"
+        fi
       fi
       ;;
     sonnet)
-      startup_context="$(build_claude_startup_system_prompt "$member_name" "$role_label_en" "$node_type" "$project_name")"
-      startup_context_quoted="$(shell_single_quote "$startup_context")"
-      printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions --append-system-prompt %s' "$dir" "$startup_context_quoted"
+      if [ "$node_type" = "session" ]; then
+        startup_context_file="$(write_session_system_prompt_file "$member_name" "$role_label_en" "$node_type" "$project_name")"
+        display_label="$(member_display_label_from_record "$member_name" "$record")"
+        session_name_arg="$(shell_single_quote "$display_label")"
+        session_start_prompt_file="$(write_session_start_prompt_file "$member_name" "$role_label_en" "$node_type" "$project_name")"
+        if [ -n "$session_start_prompt_file" ]; then
+          printf -v command 'cd "%s" && exec claude --model sonnet --dangerously-skip-permissions --name %s --append-system-prompt-file %q "$(cat %q)"' "$dir" "$session_name_arg" "$startup_context_file" "$session_start_prompt_file"
+        else
+          printf -v command 'cd "%s" && exec claude --model sonnet --dangerously-skip-permissions --name %s --append-system-prompt-file %q' "$dir" "$session_name_arg" "$startup_context_file"
+        fi
+      else
+        startup_context_file="$(write_claude_startup_prompt_file "$member_name" "$role_label_en" "$node_type" "$project_name")"
+        printf -v command 'cd "%s" && KUMA_ROLE=worker claude --model sonnet --dangerously-skip-permissions --append-system-prompt-file %q' "$dir" "$startup_context_file"
+      fi
       ;;
     *)
       echo "ERROR: Unknown type '$type'" >&2
@@ -443,7 +621,14 @@ build_member_command_from_record() {
       ;;
   esac
 
-  assert_idle_safe_startup_command "$type" "$command" "${_name:-unknown}"
+  if [ "$node_type" = "session" ]; then
+    if startup_command_invokes_claude_skill "$command"; then
+      echo "ERROR: Claude session command for ${member_name:-unknown} must not auto-run slash skills on spawn" >&2
+      exit 1
+    fi
+  else
+    assert_idle_safe_startup_command "$type" "$command" "${_name:-unknown}"
+  fi
   printf '%s' "$command"
 }
 

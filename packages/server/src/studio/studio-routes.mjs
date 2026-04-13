@@ -433,6 +433,7 @@ export function createStudioRouteHandler({
           project,
           currentSurface: memberContext?.surface ?? null,
           workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")),
+          deferIfWorking: body?.force !== true,
         });
         configRuntime.settlePendingSelfWrite?.(memberId);
         const cleanupFailed = "cleanupFailed" in respawned && respawned.cleanupFailed === true;

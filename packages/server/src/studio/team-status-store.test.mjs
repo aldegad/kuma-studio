@@ -10,6 +10,7 @@ import {
   parseLiveSurfacesFromCmuxTree,
   parseRegistryLabel,
   readSurfaceWithHealing,
+  recoverRegistryFromCmuxTree,
   reconcileRegistryWithCmuxTree,
   TeamStatusStore,
   toStudioTeamStatusSnapshot,
@@ -259,6 +260,28 @@ describe("team-status-store", () => {
     assert.deepEqual(reconciled, {
       "kuma-studio": {
         쿤: "surface:24",
+      },
+    });
+  });
+
+  it("recovers missing registry entries from live cmux titles using team roster", () => {
+    const recovered = recoverRegistryFromCmuxTree(
+      {},
+      [
+        "workspace workspace:1",
+        "│   ├── surface surface:2 [terminal] \"🐝 쭈니\" tty=ttys001",
+        "│   ├── surface surface:12 [terminal] \"🦊 루미\" tty=ttys011",
+        "│   ├── surface surface:20 [terminal] \"kuma-server\" tty=ttys014",
+      ].join("\n"),
+    );
+
+    assert.deepEqual(recovered, {
+      system: {
+        "🐝 쭈니": "surface:2",
+      },
+      "kuma-studio": {
+        "🦊 루미": "surface:12",
+        "kuma-server": "surface:20",
       },
     });
   });
@@ -846,7 +869,7 @@ describe("team-status-store", () => {
     assert.strictEqual(writes.length, 1);
     assert.deepEqual(registry, {
       "kuma-studio": {
-        쿤: "surface:24",
+        "🦝 쿤": "surface:24",
       },
     });
     assert.deepEqual(snapshot.projects["kuma-studio"].members.map(({ name, surface, status }) => ({
@@ -860,5 +883,42 @@ describe("team-status-store", () => {
         status: "idle",
       },
     ]);
+  });
+
+  it("self-heals an empty registry from live cmux titles before polling", async () => {
+    let registry = {};
+    const writes = [];
+
+    const store = new TeamStatusStore({
+      registryPath: "/tmp/team-status-store-self-heal.json",
+      readRegistryFn: async () => registry,
+      writeRegistryFn: async (_registryPath, nextRegistry) => {
+        registry = JSON.parse(JSON.stringify(nextRegistry));
+        writes.push(registry);
+      },
+      readCmuxTreeFn: async () => ({
+        ok: true,
+        output: [
+          "workspace workspace:1",
+          "│   ├── surface surface:2 [terminal] \"🐝 쭈니\" tty=ttys001",
+          "│   ├── surface surface:12 [terminal] \"🦊 루미\" tty=ttys011",
+        ].join("\n"),
+      }),
+      readSurfaceFn: async () => ({ ok: true, output: "❯" }),
+    });
+
+    await store.refreshRegistry();
+    await waitFor(() => store.getSnapshot().projects.system?.members?.[0]?.status === "idle");
+    await waitFor(() => store.getSnapshot().projects["kuma-studio"]?.members?.[0]?.status === "idle");
+
+    assert.strictEqual(writes.length, 1);
+    assert.deepEqual(registry, {
+      system: {
+        "🐝 쭈니": "surface:2",
+      },
+      "kuma-studio": {
+        "🦊 루미": "surface:12",
+      },
+    });
   });
 });

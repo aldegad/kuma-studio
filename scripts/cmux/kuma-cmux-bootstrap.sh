@@ -183,7 +183,7 @@ ensure_system_member_surface() {
   if [ "$name" = "쿠마" ]; then
     cmux tab-action --action rename --workspace "$CURRENT_WS" --surface "$KUMA_S" --title "$title" > /dev/null 2>&1 || true
     "$SCRIPT_DIR/kuma-cmux-register.sh" "system" "$title" "$KUMA_S" 2>/dev/null || true
-    echo "✓ $title 이미 활성 ($KUMA_S)"
+    echo "✓ $title 현재 세션 준비 완료 ($KUMA_S)"
     return 0
   fi
 
@@ -376,29 +376,6 @@ echo "스튜디오: http://localhost:5173/studio/"
 echo "서버 API: http://localhost:4312"
 echo ""
 echo "→ 쿠마 CTO 세션 시작..."
-cd "$WORKSPACE_DIR"
-KUMA_SYSTEM_PROMPT="$(cat "$KUMA_SYSTEM_PROMPT_PATH")"
-KUMA_DECISIONS_BOOT_PACK="$(build_decisions_boot_pack_prompt)"
-if [ -n "$KUMA_DECISIONS_BOOT_PACK" ]; then
-  KUMA_SYSTEM_PROMPT="${KUMA_SYSTEM_PROMPT}
-
-${KUMA_DECISIONS_BOOT_PACK}"
-fi
-KUMA_BOOTSTRAP_BRIEF_PROMPT="$(cat <<'EOF'
-쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.
-
-첫 응답에서는 지금 워크스페이스 기준으로 아래만 짧고 운영자답게 정리해:
-- managed infra 상태: kuma-server / kuma-frontend
-- 팀 멤버 상태 요약: idle / working
-- 최근 커밋 1개와 현재 워크트리 변경 요약
-- 마지막 한 줄: 지금 무엇을 시킬지 묻기
-
-바로 브리핑부터 시작해.
-EOF
-)"
-exec claude \
-  --dangerously-skip-permissions \
-  --channels plugin:discord@claude-plugins-official \
-  --name "🐻 쿠마" \
-  --append-system-prompt "$KUMA_SYSTEM_PROMPT" \
-  "$KUMA_BOOTSTRAP_BRIEF_PROMPT"
+KUMA_LAUNCH_RECORD="$(resolve_member_launch_record "쿠마")"
+KUMA_COMMAND="$(build_member_command_from_record "$WORKSPACE_DIR" "$KUMA_LAUNCH_RECORD")"
+eval "$KUMA_COMMAND"

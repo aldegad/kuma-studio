@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 LAUNCH_RECORD="$(resolve_member_launch_record "$NAME" "$TYPE")"
-IFS=$'\x1f' read -r _RESOLVED_NAME RESOLVED_TYPE _RESOLVED_MODEL _RESOLVED_OPTIONS _RESOLVED_EMOJI _RESOLVED_SKILL _RESOLVED_ROLE_LABEL <<< "$LAUNCH_RECORD"
+IFS=$'\x1f' read -r _RESOLVED_NAME RESOLVED_TYPE _RESOLVED_MODEL _RESOLVED_OPTIONS _RESOLVED_EMOJI _RESOLVED_SKILL _RESOLVED_ROLE_LABEL RESOLVED_NODE_TYPE <<< "$LAUNCH_RECORD"
 
 # Create new split pane or tab
 if [ -n "$TARGET_PANE" ]; then
@@ -63,7 +63,9 @@ sleep 1
 
 # Spawn only boots an idle worker session. Actual work must arrive later via dispatch.
 STARTUP_COMMAND="$(build_member_command_from_record "$DIR" "$LAUNCH_RECORD")"
-assert_idle_safe_startup_command "${RESOLVED_TYPE:-unknown}" "$STARTUP_COMMAND" "$NORMALIZED_NAME"
+if [ "${RESOLVED_NODE_TYPE:-worker}" != "session" ]; then
+  assert_idle_safe_startup_command "${RESOLVED_TYPE:-unknown}" "$STARTUP_COMMAND" "$NORMALIZED_NAME"
+fi
 SEND_SCRIPT_ARGS=("$SURFACE" "$STARTUP_COMMAND")
 if [ -n "$WORKSPACE" ]; then
   SEND_SCRIPT_ARGS+=(--workspace "$WORKSPACE")
