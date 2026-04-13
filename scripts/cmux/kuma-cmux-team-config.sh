@@ -51,10 +51,17 @@ build_kuma_bootstrap_brief_prompt() {
 쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.
 
 첫 응답에서는 지금 워크스페이스 기준으로 아래만 짧고 운영자답게 정리해:
-- managed infra 상태: kuma-server / kuma-frontend
+- managed infra 상태: `kuma-server`(port 4312) / `kuma-frontend`(port 5173)
 - 팀 멤버 상태 요약: idle / working
 - 최근 커밋 1개와 현재 워크트리 변경 요약
 - 마지막 한 줄: 지금 무엇을 시킬지 묻기
+
+규칙:
+- 첫 브리핑에서는 bootstrap 직전에 이미 확보된 managed infra 정보를 그대로 요약한다. 추가 probe는 하지 않는다.
+- 상태 확인이 정말 더 필요하면 Bash/tool 호출로만 한다. surface 이름을 입력창에 직접 타이핑해서 probe 하지 않는다.
+- `kuma-server echo STATUS_CHECK`, `kuma-frontend echo STATUS_CHECK` 같은 문자열을 composer에 남기지 않는다.
+- 브리핑을 마칠 때 입력창은 빈 상태여야 한다.
+- `kuma-server` 포트는 4312로 본다. 3000/3001로 추정하지 않는다.
 
 바로 브리핑부터 시작해.
 EOF
@@ -62,6 +69,10 @@ EOF
 
 build_decisions_boot_pack_prompt() {
   local project_name="${1:-}"
+  local open_limit="${2:-10}"
+  local resolved_limit="${3:-10}"
+  local unresolved_limit="${4:-10}"
+  local clip_max="${5:-220}"
   local vault_dir="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 
   [ -n "$vault_dir" ] || return 0
@@ -69,6 +80,10 @@ build_decisions_boot_pack_prompt() {
   KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
   KUMA_VAULT_DIR="$vault_dir" \
   KUMA_PROJECT_NAME="$project_name" \
+  KUMA_DECISIONS_OPEN_LIMIT="$open_limit" \
+  KUMA_DECISIONS_RESOLVED_LIMIT="$resolved_limit" \
+  KUMA_DECISIONS_UNRESOLVED_LIMIT="$unresolved_limit" \
+  KUMA_DECISIONS_CLIP_MAX="$clip_max" \
   node --input-type=module <<'NODE'
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -84,6 +99,10 @@ function clip(text, max = 220) {
 const repoRoot = process.env.KUMA_REPO_ROOT || "";
 const vaultDir = process.env.KUMA_VAULT_DIR || "";
 const projectName = process.env.KUMA_PROJECT_NAME || "";
+const openLedgerLimit = Number.parseInt(process.env.KUMA_DECISIONS_OPEN_LIMIT || "", 10) || 10;
+const latestResolvedLimit = Number.parseInt(process.env.KUMA_DECISIONS_RESOLVED_LIMIT || "", 10) || 10;
+const unresolvedInboxLimit = Number.parseInt(process.env.KUMA_DECISIONS_UNRESOLVED_LIMIT || "", 10) || 10;
+const clipMax = Number.parseInt(process.env.KUMA_DECISIONS_CLIP_MAX || "", 10) || 220;
 if (!repoRoot || !vaultDir) {
   process.exit(0);
 }
@@ -96,9 +115,9 @@ if (typeof storeModule.loadDecisionBootPack !== "function") {
 const pack = await storeModule.loadDecisionBootPack({
   vaultDir,
   projectName,
-  openLedgerLimit: 10,
-  latestResolvedLimit: 10,
-  unresolvedInboxLimit: 10,
+  openLedgerLimit,
+  latestResolvedLimit,
+  unresolvedInboxLimit,
 });
 
 function hasSectionEntries(section) {
@@ -132,21 +151,21 @@ function appendSection(label, section) {
   if (Array.isArray(section.ledger_open) && section.ledger_open.length > 0) {
     lines.push("  - Ledger open decisions:");
     for (const entry of section.ledger_open) {
-      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text)}`);
+      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text, clipMax)}`);
     }
   }
 
   if (Array.isArray(section.latest_resolved) && section.latest_resolved.length > 0) {
     lines.push("  - Latest resolved decisions:");
     for (const entry of section.latest_resolved) {
-      lines.push(`    - ${entry.id} :: ${clip(entry.resolved_text)}`);
+      lines.push(`    - ${entry.id} :: ${clip(entry.resolved_text, clipMax)}`);
     }
   }
 
   if (Array.isArray(section.inbox_unresolved) && section.inbox_unresolved.length > 0) {
     lines.push("  - Unresolved inbox triggers (not yet confirmed decisions):");
     for (const entry of section.inbox_unresolved) {
-      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.original_text)}`);
+      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.original_text, clipMax)}`);
     }
   }
 }
@@ -411,7 +430,7 @@ build_codex_developer_instructions() {
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name")"
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 4 3 3 120)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}

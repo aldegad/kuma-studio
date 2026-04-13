@@ -87,16 +87,52 @@ fi
 SEND_ARGS+=(--surface "$SURFACE")
 READ_ARGS+=(--surface "$SURFACE" --lines 12)
 
-INTERACTIVE_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])'
+INTERACTIVE_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$]|([[:alnum:]_-]+[[:space:]]+)*[[:alnum:]_-]+>)([[:space:]].*)?$'
 SUGGESTION_LINE_PATTERN='^[[:space:]]*›[[:space:]]+[^[:space:]]'
 EMPTY_PROMPT_LINE_PATTERN='^[[:space:]]*(❯|›|>|[$])[[:space:]]*$'
+SHELL_CONTINUATION_LINE_PATTERN='^[[:space:]]*([[:alnum:]_-]+[[:space:]]+)*[[:alnum:]_-]+>[[:space:]]*.*$'
 CMUX_TRANSIENT_SEND_ERROR_PATTERN='timed out|terminal surface not found|surface not found|internal_error|broken pipe|failed to write to socket'
+BOX_DRAWING_LINE_PATTERN='^[[:space:]]*[─━═]{3,}[[:space:]]*$'
+TRAILING_HINT_LINE_PATTERN='^[[:space:]]*(⏵⏵.*bypass|Now using extra usage|extra credit|Tip:|Press up to edit|Shift\+Tab to cycle|Tab to queue|/statusline|context left until auto-compact|new task\?|gpt-[[:alnum:].-]+|~?[0-9]+([.][0-9]+)?k uncached|[0-9]+([.][0-9]+)?% until auto-compact|esc to .*)'
 
 read_input_view() {
   local screen
 
   screen=$(cmux read-screen "${READ_ARGS[@]}" 2>&1 || true)
   printf '%s\n' "$screen" | tail -n 8
+}
+
+line_is_tail_footer() {
+  local line
+
+  line="$(printf '%s' "${1-}" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  [ -z "$line" ] && return 0
+
+  printf '%s\n' "$line" | grep -Eq "$BOX_DRAWING_LINE_PATTERN" && return 0
+  printf '%s\n' "$line" | grep -Eq "$TRAILING_HINT_LINE_PATTERN" && return 0
+  return 1
+}
+
+last_relevant_line() {
+  local view="${1-}"
+  local lines=()
+  local line
+  local index
+
+  while IFS= read -r line || [ -n "$line" ]; do
+    lines+=("$line")
+  done <<< "$view"
+
+  for ((index=${#lines[@]} - 1; index >= 0; index--)); do
+    line="${lines[$index]}"
+    if line_is_tail_footer "$line"; then
+      continue
+    fi
+    printf '%s\n' "$line"
+    return 0
+  done
+
+  return 1
 }
 
 views_differ() {
@@ -142,10 +178,101 @@ fi
 prompt_still_pending() {
   local last_line
 
-  last_line="$(last_interactive_line "${1-}")"
-  [ -n "$last_line" ] &&
-    ! printf '%s\n' "$last_line" | grep -Eq "$EMPTY_PROMPT_LINE_PATTERN" &&
-    ! printf '%s\n' "$last_line" | grep -Eq "$SUGGESTION_LINE_PATTERN"
+  last_line="$(last_relevant_line "${1-}" || true)"
+  [ -n "$last_line" ] || return 1
+  printf '%s\n' "$last_line" | grep -Eq "$INTERACTIVE_LINE_PATTERN" || return 1
+  printf '%s\n' "$last_line" | grep -Eq "$EMPTY_PROMPT_LINE_PATTERN" && return 1
+  printf '%s\n' "$last_line" | grep -Eq "$SUGGESTION_LINE_PATTERN" && return 1
+  return 0
+}
+
+wait_for_pending_paste_settle() {
+  local previous="" current="" stable_reads=0 pending_seen=false
+  local attempt
+
+  for attempt in $(seq 1 18); do
+    current="$(read_input_view)"
+
+    if view_contains_transport_error "$current"; then
+      log_send "pre-enter-transport-error" "$current"
+      printf '%s\n' "$current"
+      return 0
+    fi
+
+    if views_differ "$PRE_SEND_VIEW" "$current" && ! prompt_still_pending "$current"; then
+      log_send "pre-enter-cleared" "$current"
+      printf '%s\n' "$current"
+      return 0
+    fi
+
+    if views_differ "$PRE_SEND_VIEW" "$current"; then
+      pending_seen=true
+      if [ "$(last_relevant_line "$current" || true)" = "$previous" ]; then
+        stable_reads=$((stable_reads + 1))
+      else
+        stable_reads=0
+      fi
+
+      if [ "$stable_reads" -ge 1 ]; then
+        log_send "pre-enter-settled" "$current"
+        printf '%s\n' "$current"
+        return 0
+      fi
+      previous="$(last_relevant_line "$current" || true)"
+    fi
+
+    sleep 0.2
+  done
+
+  if [ "$pending_seen" = true ]; then
+    log_send "pre-enter-timeout" "$current"
+  fi
+  printf '%s\n' "$current"
+}
+
+ENTER_CONFIRM_STATUS=""
+ENTER_CONFIRM_VIEW=""
+
+wait_for_enter_effect() {
+  local before="${1-}"
+  local current=""
+  local attempt
+
+  ENTER_CONFIRM_STATUS="pending"
+  ENTER_CONFIRM_VIEW=""
+
+  for attempt in $(seq 1 10); do
+    sleep 0.2
+    current="$(read_input_view)"
+    ENTER_CONFIRM_VIEW="$current"
+
+    if view_contains_transport_error "$current"; then
+      ENTER_CONFIRM_STATUS="transport-error"
+      return 0
+    fi
+
+    if echo "$current" | grep -qE "Working \([0-9]+s"; then
+      ENTER_CONFIRM_STATUS="delivered-working"
+      return 0
+    fi
+
+    if views_differ "$before" "$current" && ! prompt_still_pending "$current"; then
+      ENTER_CONFIRM_STATUS="delivered"
+      return 0
+    fi
+  done
+
+  if [ -z "$ENTER_CONFIRM_VIEW" ]; then
+    ENTER_CONFIRM_VIEW="$(read_input_view)"
+  fi
+
+  if ! views_differ "$before" "$ENTER_CONFIRM_VIEW"; then
+    ENTER_CONFIRM_STATUS="unchanged"
+  elif prompt_still_pending "$ENTER_CONFIRM_VIEW"; then
+    ENTER_CONFIRM_STATUS="pending"
+  else
+    ENTER_CONFIRM_STATUS="delivered"
+  fi
 }
 
 cmux_send_with_retry() {
@@ -197,52 +324,43 @@ log_send "pre-send" "$PRE_SEND_VIEW"
 
 log_send "dispatch" "$PROMPT"
 cmux_send_with_retry
+wait_for_pending_paste_settle > /dev/null
 
-# The paste can take a moment to settle in Claude/Codex TUIs. Re-fire Enter with
-# gradually increasing delays so submit does not race ahead of the pasted prompt.
-for enter_try in 1 2 3; do
-  sleep "$enter_try"
-  cmux_send_key_with_retry Enter
-  sleep 0.5
-  EARLY_VIEW="$(read_input_view)"
-  if echo "$EARLY_VIEW" | grep -qE "Working \([0-9]+s"; then
-    log_send "enter-accepted-try-$enter_try" "$EARLY_VIEW"
-    break
-  fi
-  if views_differ "$PRE_SEND_VIEW" "$EARLY_VIEW" && ! prompt_still_pending "$EARLY_VIEW"; then
-    log_send "enter-accepted-try-$enter_try" "$EARLY_VIEW"
-    break
-  fi
-  log_send "enter-retry-$enter_try" "$EARLY_VIEW"
-done
-
+# Submit as soon as the pasted tail settles on screen, then verify via
+# short follow-up reads instead of relying on fixed 1s/2s/3s delays.
 DELIVERED=false
-for i in $(seq 1 $MAX_RETRIES); do
-  sleep 1.2
-  INPUT_VIEW="$(read_input_view)"
+INPUT_VIEW=""
+for enter_try in $(seq 1 "$MAX_RETRIES"); do
+  cmux_send_key_with_retry Enter
+  wait_for_enter_effect "$PRE_SEND_VIEW"
+  INPUT_VIEW="$ENTER_CONFIRM_VIEW"
 
-  if view_contains_transport_error "$INPUT_VIEW"; then
+  if [ "$ENTER_CONFIRM_STATUS" = "delivered-working" ]; then
+    log_send "enter-accepted-try-$enter_try" "$INPUT_VIEW"
+    log_send "delivered-working" "$INPUT_VIEW"
+    DELIVERED=true
+    break
+  fi
+
+  if [ "$ENTER_CONFIRM_STATUS" = "delivered" ]; then
+    log_send "enter-accepted-try-$enter_try" "$INPUT_VIEW"
+    log_send "delivered" "$INPUT_VIEW"
+    DELIVERED=true
+    break
+  fi
+
+  if [ "$ENTER_CONFIRM_STATUS" = "transport-error" ]; then
     echo "ERROR: transport error after send" >&2
     log_send "post-send-transport-error" "$INPUT_VIEW"
     break
   fi
 
-  if ! views_differ "$PRE_SEND_VIEW" "$INPUT_VIEW"; then
-    echo "RETRY $i: screen unchanged after send, retrying..." >&2
+  if [ "$ENTER_CONFIRM_STATUS" = "unchanged" ]; then
+    echo "RETRY $enter_try: screen unchanged after send, retrying..." >&2
     log_send "retry-unchanged" "$INPUT_VIEW"
-    cmux_send_key_with_retry Enter
-  elif echo "$INPUT_VIEW" | grep -qE "Working \([0-9]+s"; then
-    DELIVERED=true
-    log_send "delivered-working" "$INPUT_VIEW"
-    break
-  elif prompt_still_pending "$INPUT_VIEW"; then
-    echo "RETRY $i: Enter not registered, retrying..." >&2
-    log_send "retry-enter" "$INPUT_VIEW"
-    cmux_send_key_with_retry Enter
   else
-    DELIVERED=true
-    log_send "delivered" "$INPUT_VIEW"
-    break
+    echo "RETRY $enter_try: Enter not registered, retrying..." >&2
+    log_send "retry-enter" "$INPUT_VIEW"
   fi
 done
 

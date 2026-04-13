@@ -140,6 +140,97 @@ fixture
   return vaultDir;
 }
 
+async function writeLargeDecisionsFixture(root) {
+  const vaultDir = join(root, "vault");
+  const projectDir = join(vaultDir, "projects");
+  await mkdir(projectDir, { recursive: true });
+
+  const buildOpenLines = (prefix, scope, total) =>
+    Array.from({ length: total }, (_, index) =>
+      `- 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-open-${index + 1}: rule · ${scope} · "${prefix}-OPEN-${index + 1} ${"very long decision text ".repeat(8).trim()}"`
+    ).join("\n");
+
+  const buildLedgerEntries = (prefix, scope, total) =>
+    Array.from({ length: total }, (_, index) => `### 2026-04-13 03:${String(index).padStart(2, "0")} KST · rule · ${scope}
+
+- id: 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-resolved-${index + 1}
+- action: rule
+- scope: ${scope}
+- writer: user-direct
+- resolved_text: "${prefix}-RESOLVED-${index + 1} ${"very long resolved text ".repeat(8).trim()}"
+`).join("\n");
+
+  const buildInboxEntries = (prefix, scope, total) =>
+    Array.from({ length: total }, (_, index) => `### 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-inbox-${index + 1} · user-direct
+
+- action: priority
+- scope: ${scope}
+- original_text: "${prefix}-INBOX-${index + 1} ${"very long inbox trigger ".repeat(8).trim()}"
+- status: unresolved
+`).join("\n");
+
+  await writeFile(
+    join(vaultDir, "decisions.md"),
+    `---
+title: Decisions Ledger
+type: special/decisions
+updated: 2026-04-13T03:59:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Open Decisions
+
+${buildOpenLines("GLOBAL", "global", 8)}
+
+## Ledger
+
+${buildLedgerEntries("GLOBAL", "global", 8)}
+
+## Inbox
+
+${buildInboxEntries("GLOBAL", "global", 8)}
+`,
+    "utf8",
+  );
+
+  await writeFile(
+    join(projectDir, "kuma-studio.project-decisions.md"),
+    `---
+title: kuma-studio Project Decisions Ledger
+type: special/project-decisions
+project: kuma-studio
+updated: 2026-04-13T04:10:00+09:00
+layers: inbox,ledger
+boot_priority: 3
+---
+
+## About
+
+fixture
+
+## Open Decisions
+
+${buildOpenLines("PROJECT", "project:kuma-studio", 8)}
+
+## Ledger
+
+${buildLedgerEntries("PROJECT", "project:kuma-studio", 8)}
+
+## Inbox
+
+${buildInboxEntries("PROJECT", "project:kuma-studio", 8)}
+`,
+    "utf8",
+  );
+
+  return vaultDir;
+}
+
 async function writeExecutable(path, content) {
   await writeFile(path, content, "utf8");
   await chmod(path, 0o755);
@@ -597,6 +688,9 @@ describe("shared team normalizer", () => {
     expect(promptFile).toBeTruthy();
     expect(startupBrief).toContain("쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.");
     expect(startupBrief).toContain("managed infra 상태");
+    expect(startupBrief).toContain("`kuma-server`(port 4312)");
+    expect(startupBrief).toContain("bootstrap 직전에 이미 확보된 managed infra 정보를 그대로 요약한다.");
+    expect(startupBrief).toContain("`kuma-server echo STATUS_CHECK`, `kuma-frontend echo STATUS_CHECK` 같은 문자열을 composer에 남기지 않는다.");
 
     const startupPrompt = await readFile(promptFile, "utf8");
     expect(startupPrompt).toContain("You are Kuma session prompt fixture.");
@@ -731,6 +825,54 @@ describe("shared team normalizer", () => {
     });
     expect(zshParse.status).toBe(0);
     expect(zshParse.stderr).toBe("");
+  });
+
+  it("keeps Codex startup commands compact when decision ledgers are large", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
+    tempRoots.push(root);
+    const vaultDir = await writeLargeDecisionsFixture(root);
+
+    const teamPath = await writeTeamConfig(root, {
+      teams: {
+        dev: {
+          members: [
+            {
+              id: "howl",
+              name: "하울",
+              team: "dev",
+              nodeType: "team",
+              spawnType: "codex",
+              spawnModel: "gpt-5.4",
+              spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
+              roleLabel: { en: "Operator. Task decomposition, dispatch, aggregation" },
+            },
+          ],
+        },
+      },
+    });
+
+    const developerInstructions = await runTeamConfigHelperRaw(
+      "build_codex_developer_instructions",
+      teamPath,
+      ["하울", "Operator. Task decomposition, dispatch, aggregation", "team", "kuma-studio"],
+      { KUMA_VAULT_DIR: vaultDir },
+    );
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"], {
+      KUMA_VAULT_DIR: vaultDir,
+    });
+
+    expect(command).toContain("developer_instructions=");
+    expect(Buffer.byteLength(command, "utf8")).toBeLessThan(9000);
+    expect(developerInstructions).toContain("Decision Ledger Boot Pack:");
+    expect(developerInstructions).toContain("GLOBAL-RESOLVED-8");
+    expect(developerInstructions).toContain("GLOBAL-RESOLVED-5");
+    expect(developerInstructions).not.toContain("GLOBAL-RESOLVED-4");
+    expect(developerInstructions).toContain("PROJECT-RESOLVED-8");
+    expect(developerInstructions).toContain("PROJECT-RESOLVED-6");
+    expect(developerInstructions).not.toContain("PROJECT-RESOLVED-4");
+    expect(developerInstructions).toContain("GLOBAL-INBOX-8");
+    expect(developerInstructions).toContain("GLOBAL-INBOX-6");
+    expect(developerInstructions).not.toContain("GLOBAL-INBOX-5");
   });
 
   it("resolves the current pane for a surface using pane surface listings", async () => {

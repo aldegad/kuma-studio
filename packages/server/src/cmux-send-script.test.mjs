@@ -62,7 +62,7 @@ case "$command" in
     printf '%s' "$count" > "${readCountPath}"
     if [ "$count" -eq 1 ]; then
       printf '  ❯\\n'
-    elif [ "$count" -eq 2 ]; then
+    elif [ "$count" -le 3 ]; then
       printf '  > ${prompt}\\n'
     else
       printf 'Running task\\n'
@@ -95,13 +95,217 @@ esac
 
     expect(cmuxLogContents).toContain("send|--workspace workspace:1 --surface surface:9");
     expect(sendPayload).toBe(prompt);
-    expect(sendKeyCount).toBe(2);
+    expect(sendKeyCount).toBe(1);
     expect(cmuxLogContents).toContain("send-key|--workspace workspace:1 --surface surface:9 Enter");
     expect(sendLogContents).toContain("\tpre-send\t");
     expect(sendLogContents).toContain("\tdispatch\t");
-    expect(sendLogContents).toContain("\tenter-retry-1\t");
+    expect(sendLogContents).toContain("\tpre-enter-settled\t");
     expect(sendLogContents).toContain("\tdelivered\t");
   }, 60_000);
+
+  it("waits for shell continuation prompts to settle before sending Enter", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const sendLog = join(root, "kuma-send.log");
+    const readCountPath = join(root, "read-count.txt");
+    const sendKeyCountPath = join(root, "send-key-count.txt");
+    const firstEnterReadCountPath = join(root, "first-enter-read-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+    await writeFile(sendKeyCountPath, "0", "utf8");
+    await writeFile(firstEnterReadCountPath, "", "utf8");
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '❯\\n'
+    elif [ "$count" -eq 2 ]; then
+      printf 'cmdand quote> partial 1\\n'
+    elif [ "$count" -le 4 ]; then
+      printf 'cmdand quote> partial 2\\n'
+    else
+      printf 'Running task\\n'
+    fi
+    ;;
+  send)
+    ;;
+  send-key)
+    count=$(cat "${sendKeyCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendKeyCountPath}"
+    if [ "$count" -eq 1 ]; then
+      cat "${readCountPath}" > "${firstEnterReadCountPath}"
+    fi
+    ;;
+esac
+`,
+    );
+
+    await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "long startup"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_SEND_LOG_PATH: sendLog,
+      },
+    });
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    const firstEnterReadCount = Number((await readFile(firstEnterReadCountPath, "utf8")).trim());
+
+    expect(firstEnterReadCount).toBeGreaterThanOrEqual(4);
+    expect(sendLogContents).toContain("\tpre-enter-settled\t");
+    expect(sendLogContents).toContain("\tdelivered\t");
+  });
+
+  it("treats npm-style output lines that begin with '>' as delivered once later output appears", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const sendLog = join(root, "kuma-send.log");
+    const readCountPath = join(root, "read-count.txt");
+    const sendKeyCountPath = join(root, "send-key-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+    await writeFile(sendKeyCountPath, "0", "utf8");
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '❯\\n'
+    elif [ "$count" -le 3 ]; then
+      printf 'cmdand quote> npm run server:reload\\n'
+    else
+      printf '> bash ./scripts/server-reload.sh\\n\\nStarting kuma-studio server on http://127.0.0.1:4312\\nwatchTeamConfig registered\\nkuma-studio listening on http://127.0.0.1:4312\\nscene path: /tmp/scene.json\\n'
+    fi
+    ;;
+  send)
+    ;;
+  send-key)
+    count=$(cat "${sendKeyCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendKeyCountPath}"
+    ;;
+esac
+`,
+    );
+
+    await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "server boot"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_SEND_LOG_PATH: sendLog,
+      },
+    });
+
+    const sendLogContents = await readFile(sendLog, "utf8");
+    const sendKeyCount = Number((await readFile(sendKeyCountPath, "utf8")).trim());
+
+    expect(sendKeyCount).toBe(1);
+    expect(sendLogContents).toContain("\tpre-enter-settled\t");
+    expect(sendLogContents).toContain("\tenter-accepted-try-1\t");
+    expect(sendLogContents).toContain("\tdelivered\t");
+    expect(sendLogContents).not.toContain("\tfailed\t");
+  });
+
+  it("uses short polling instead of fixed 1s/2s/3s Enter backoff once the prompt settles", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
+    tempRoots.push(root);
+
+    const binDir = join(root, "bin");
+    const sendLog = join(root, "kuma-send.log");
+    const sleepLog = join(root, "sleep.log");
+    const readCountPath = join(root, "read-count.txt");
+    const sendKeyCountPath = join(root, "send-key-count.txt");
+
+    await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+    await writeFile(sendKeyCountPath, "0", "utf8");
+
+    await writeExecutable(
+      join(binDir, "sleep"),
+      `#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "\${1:-}" >> "${sleepLog}"
+`,
+    );
+
+    await writeExecutable(
+      join(binDir, "cmux"),
+      `#!/bin/bash
+set -euo pipefail
+command="\${1:-}"
+shift || true
+case "$command" in
+  tree)
+    printf 'workspace:1\\n  surface:9\\n'
+    ;;
+  read-screen)
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
+      printf '❯\\n'
+    elif [ "$count" -le 3 ]; then
+      printf 'cmdand quote> startup tail\\n'
+    else
+      printf 'Running task\\n'
+    fi
+    ;;
+  send)
+    ;;
+  send-key)
+    count=$(cat "${sendKeyCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendKeyCountPath}"
+    ;;
+esac
+`,
+    );
+
+    await execFile("bash", [SEND_SCRIPT_PATH, "surface:9", "quick boot"], {
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH}`,
+        KUMA_SEND_LOG_PATH: sendLog,
+      },
+    });
+
+    const sleepLogContents = await readFile(sleepLog, "utf8");
+    const sendKeyCount = Number((await readFile(sendKeyCountPath, "utf8")).trim());
+
+    expect(sendKeyCount).toBe(1);
+    expect(sleepLogContents).toContain("0.2");
+    expect(sleepLogContents).not.toMatch(/^(1|2|3)$/mu);
+  });
 
 
   it("fails when the screen snapshot does not change after dispatch", async () => {
