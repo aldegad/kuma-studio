@@ -44,16 +44,16 @@ import { DispatchBroker } from "./studio/dispatch-broker.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
 import { watchStudioExplorerRoots } from "./studio/studio-explorer-routes.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
+import { DEFAULT_TEAM_WATCHER_LOG_PATH } from "./kuma-paths.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
 const STUDIO_DEV_HMR_CLIENT_PATH = "/__vite_ws";
 const STUDIO_DEV_HMR_UPGRADE_PATH = "/studio/__vite_ws";
 const execFile = promisify(execFileCallback);
 
 function appendTeamWatcherLog(message) {
-  fs.mkdirSync(dirname(TEAM_WATCHER_LOG_PATH), { recursive: true });
-  fs.appendFileSync(TEAM_WATCHER_LOG_PATH, `${new Date().toISOString()} ${message}\n`, "utf8");
+  fs.mkdirSync(dirname(DEFAULT_TEAM_WATCHER_LOG_PATH), { recursive: true });
+  fs.appendFileSync(DEFAULT_TEAM_WATCHER_LOG_PATH, `${new Date().toISOString()} ${message}\n`, "utf8");
 }
 
 export function resolveStudioWorkspaceRoot(root, envValue = process.env.KUMA_STUDIO_WORKSPACE) {
@@ -146,7 +146,7 @@ export async function createServer({ host, port, root }) {
   const teamConfigRuntime = createTeamConfigRuntime({
     teamStatusStore,
     teamConfigStore,
-    logPath: TEAM_WATCHER_LOG_PATH,
+    logPath: DEFAULT_TEAM_WATCHER_LOG_PATH,
   });
   const dispatchBroker = new DispatchBroker({
     storagePath: resolve(root, ".kuma-studio", "dispatch-broker.json"),

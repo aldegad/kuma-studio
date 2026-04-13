@@ -23,7 +23,7 @@ find_kuma_repo_root() {
 PROJECT="${1:?project name required}"
 ROLE="${2:?role required}"
 SURFACE="${3:?surface id required}"
-REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+REGISTRY="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
 

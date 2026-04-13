@@ -5,7 +5,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECTS_MAP="$HOME/.kuma/projects.json"
-REGISTRY="/tmp/kuma-surfaces.json"
+REGISTRY="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 REPORT="/tmp/kuma-boot-report.md"
 TEAM_EXPECTED=11
 

@@ -152,10 +152,10 @@
             "ko": "CoS. Bash 실행 전담, cmux 워커 관리",
             "en": "CoS. Bash execution, cmux worker management"
           },
-          "modelCatalogId": "gpt-5.4-mini-high-fast",
+          "modelCatalogId": "gpt-5.4-mini-xhigh-fast",
           "spawnType": "codex",
           "spawnModel": "gpt-5.4-mini",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
+          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
           "capabilities": [
             "bash",
             "cmux",
@@ -202,10 +202,10 @@
             "ko": "PM. 작업 분해, 디스패치, 결과 취합",
             "en": "Operator. Task decomposition, dispatch, aggregation"
           },
-          "modelCatalogId": "gpt-5.4-xhigh-fast",
-          "spawnType": "codex",
-          "spawnModel": "gpt-5.4",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
+          "modelCatalogId": "claude-opus-4-6-max",
+          "spawnType": "claude",
+          "spawnModel": "claude-opus-4-6",
+          "spawnOptions": "--dangerously-skip-permissions",
           "capabilities": [
             "orchestration",
             "dispatch",
@@ -299,10 +299,10 @@
             "ko": "비평가/리뷰어",
             "en": "Critic / Reviewer"
           },
-          "modelCatalogId": "gpt-5.4-high-fast",
-          "spawnType": "codex",
-          "spawnModel": "gpt-5.4",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
+          "modelCatalogId": "claude-opus-4-6-high",
+          "spawnType": "claude",
+          "spawnModel": "claude-opus-4-6",
+          "spawnOptions": "--dangerously-skip-permissions --effort high",
           "capabilities": [
             "review",
             "security",
@@ -367,10 +367,10 @@
             "ko": "빌드/배포/화면검증. 코드 수정 X",
             "en": "QA. Build, deploy, screen verification. No code edits"
           },
-          "modelCatalogId": "gpt-5.4-high-fast",
-          "spawnType": "codex",
-          "spawnModel": "gpt-5.4",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
+          "modelCatalogId": "claude-opus-4-6-high",
+          "spawnType": "claude",
+          "spawnModel": "claude-opus-4-6",
+          "spawnOptions": "--dangerously-skip-permissions --effort high",
           "capabilities": [
             "qa",
             "build",
@@ -451,10 +451,10 @@
             "ko": "리더. 전략/분석 스카우트 오케스트레이션과 합성",
             "en": "Leader. Strategy/analytics scout orchestration and synthesis"
           },
-          "modelCatalogId": "gpt-5.4-high-fast",
-          "spawnType": "codex",
-          "spawnModel": "gpt-5.4",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
+          "modelCatalogId": "claude-opus-4-6-high",
+          "spawnType": "claude",
+          "spawnModel": "claude-opus-4-6",
+          "spawnOptions": "--dangerously-skip-permissions --effort high",
           "capabilities": [
             "research",
             "web-search",
@@ -497,6 +497,7 @@
             "aggregation"
           ],
           "skills": [
+            "kuma-vault",
             "analytics-team"
           ],
           "nodeType": "worker",
@@ -530,6 +531,7 @@
             "planning"
           ],
           "skills": [
+            "kuma-vault",
             "strategy-team",
             "codex-autoresearch:scenario",
             "codex-autoresearch:predict",
@@ -567,6 +569,7 @@
             "scouting"
           ],
           "skills": [
+            "kuma-vault",
             "analytics-team",
             "codex-autoresearch",
             "codex-autoresearch:reason"

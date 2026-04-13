@@ -69,7 +69,7 @@ boot_priority: 1
   - worker: surface:5
   - qa: worker-self-report
   - state: dispatched
-  - result: /tmp/kuma-results/kuma-studio-darami-20260409-190014.result.md
+  - result: ~/.kuma/dispatch/results/kuma-studio-darami-20260409-190014.result.md
   - signal: kuma-studio-darami-20260409-190014-done
   - updated_at: 2026-04-09T09:00:23Z
 
@@ -136,7 +136,7 @@ boot_priority: 4
   - latest_task_id: darami-20260409-190014
   - worker: surface:5
   - qa: worker-self-report
-  - latest_result: /tmp/kuma-results/kuma-studio-darami-20260409-190014.result.md
+  - latest_result: ~/.kuma/dispatch/results/kuma-studio-darami-20260409-190014.result.md
   - latest_signal: kuma-studio-darami-20260409-190014-done
   - status: dispatched
   - updated_at: 2026-04-09T09:00:23Z

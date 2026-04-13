@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
-const CLAUDE_CATALOG_PATH = "/tmp/kuma-results/claude-addons-catalog.result.md";
-const CODEX_CATALOG_PATH = "/tmp/kuma-results/codex-addons-catalog.result.md";
+import { DEFAULT_DISPATCH_RESULT_DIR } from "../kuma-paths.mjs";
+
+const CLAUDE_CATALOG_PATH = join(DEFAULT_DISPATCH_RESULT_DIR, "claude-addons-catalog.result.md");
+const CODEX_CATALOG_PATH = join(DEFAULT_DISPATCH_RESULT_DIR, "codex-addons-catalog.result.md");
 
 const CATALOG_SPECS = [
   {

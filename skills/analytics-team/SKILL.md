@@ -35,7 +35,7 @@ user-invocable: true
 - 루미가 추가 질문이나 방향 수정이 필요하면 같은 task file 기준으로 `~/.kuma/bin/kuma-dispatch ask|reply` 를 사용한다.
 - 부리는 result file 작성 후 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
 - QA 가 필요한 경우 밤토리 검수 후 동일 task file 로 `qa-pass|qa-reject` 를 기록한다.
-- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 다시 사용하지 않는다.
+- `kuma-cmux-wait.sh`, `~/.kuma/dispatch/signals`, `kuma-task --wait` 같은 레거시 완료 경로는 다시 사용하지 않는다.
 
 ### Step 3: 검증 게이트
 - 부리 결과에서 출처 URL과 주장 매칭을 확인

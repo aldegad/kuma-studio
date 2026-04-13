@@ -22,10 +22,10 @@ find_repo_root() {
 }
 
 REPO_ROOT="${KUMA_REPO_ROOT:-$(find_repo_root || pwd)}"
-RESULT_DIR="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
-STAMP_PATH="${KUMA_NOEURI_LAST_INGEST_TIMESTAMP:-/tmp/kuma-noeuri-last-ingest.timestamp}"
+RESULT_DIR="${KUMA_RESULT_DIR:-$HOME/.kuma/dispatch/results}"
+STAMP_PATH="${KUMA_NOEURI_LAST_INGEST_TIMESTAMP:-$HOME/.kuma/runtime/noeuri-last-ingest.timestamp}"
 INTERVAL_SECONDS="${KUMA_NOEURI_WATCHDOG_INTERVAL_SECONDS:-300}"
-LOG_PATH="${KUMA_NOEURI_WATCHDOG_LOG_PATH:-/tmp/kuma-noeuri-watchdog.log}"
+LOG_PATH="${KUMA_NOEURI_WATCHDOG_LOG_PATH:-$HOME/.kuma/runtime/noeuri-watchdog.log}"
 PROJECT="${KUMA_NOEURI_WATCHDOG_PROJECT:-kuma-studio}"
 DEFAULT_TASK_BIN="$REPO_ROOT/scripts/bin/kuma-task"
 

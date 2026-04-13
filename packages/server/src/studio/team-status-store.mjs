@@ -21,13 +21,13 @@ import {
 } from "../../../shared/surface-registry.mjs";
 import { normalizeAllTeams } from "../../../shared/team-normalizer.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
+import { DEFAULT_SURFACE_REGISTRY_PATH } from "../kuma-paths.mjs";
 import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { DEFAULT_TEAM_JSON_PATH } from "./team-config-store.mjs";
 
 export { classifySurfaceStatus } from "../../../shared/surface-classifier.mjs";
 export { parseRegistryLabel } from "../../../shared/surface-registry.mjs";
 
-const DEFAULT_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_REGISTRY_REFRESH_MS = 5_000;
 const DEFAULT_SURFACE_POLL_MS = 5_000;
 const CMUX_TREE_READ_TIMEOUT_MS = 5_000;
@@ -388,7 +388,7 @@ function deriveTaskFromOutput(status, lastOutputLines) {
 
 function readSurfaceAssignmentsForRoster(rosterMembers, registryData) {
   try {
-    const registry = normalizeSurfaceRegistry(registryData ?? readSurfaceRegistryFile(DEFAULT_REGISTRY_PATH));
+    const registry = normalizeSurfaceRegistry(registryData ?? readSurfaceRegistryFile(DEFAULT_SURFACE_REGISTRY_PATH));
     const idByDisplayName = new Map();
     for (const member of rosterMembers) {
       idByDisplayName.set(member.displayName, member.id);
@@ -666,7 +666,7 @@ export class TeamStatusStore {
    * }} [options]
    */
   constructor(options = {}) {
-    this.#registryPath = options.registryPath ?? DEFAULT_REGISTRY_PATH;
+    this.#registryPath = options.registryPath ?? DEFAULT_SURFACE_REGISTRY_PATH;
     this.#registryRefreshMs = options.registryRefreshMs ?? DEFAULT_REGISTRY_REFRESH_MS;
     this.#surfacePollMs = options.surfacePollMs ?? DEFAULT_SURFACE_POLL_MS;
     this.#readRegistry = options.readRegistryFn ?? defaultReadRegistry;

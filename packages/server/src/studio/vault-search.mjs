@@ -5,7 +5,10 @@ import { basename, extname, join, relative, resolve } from "node:path";
 import { resolveVaultDir } from "./memo-store.mjs";
 import { parseFrontmatterDocument } from "./vault-ingest.mjs";
 
+const DEFAULT_LIMIT = 20;
 const MARKDOWN_EXTENSION = ".md";
+const MAX_TIMELINE_SNIPPETS = 3;
+const TIMELINE_CONTEXT_RADIUS = 2;
 const WALK_SKIP_DIRS = new Set([".git", "images", "node_modules"]);
 const SEARCH_QUERY_PREFIX_STOPWORDS = new Set(["내", "내가", "내것", "제", "제가", "제것", "우리", "우리의", "나", "저", "저의"]);
 const SEARCH_QUERY_SUFFIX_STOPWORDS = new Set([
@@ -39,18 +42,18 @@ function normalizeSearchText(value) {
 }
 
 function normalizeRelativePath(value) {
-  return String(value ?? "").replace(/\\/gu, "/");
+  return String(value ?? "").replace(/\\/gu, "/").replace(/^\.\//u, "");
 }
 
 function normalizeSearchToken(value) {
   return String(value ?? "")
-    .replace(/^[^\p{L}\p{N}\p{Extended_Pictographic}@._-]+/gu, "")
-    .replace(/[^\p{L}\p{N}\p{Extended_Pictographic}@._-]+$/gu, "")
+    .replace(/^[^\p{L}\p{N}\p{Extended_Pictographic}@._/-]+/gu, "")
+    .replace(/[^\p{L}\p{N}\p{Extended_Pictographic}@._/-]+$/gu, "")
     .trim();
 }
 
 function extractSearchTerms(query) {
-  const normalizedQuery = normalizeSearchText(query).replace(/[^\p{L}\p{N}\p{Extended_Pictographic}@._-]+/gu, " ").trim();
+  const normalizedQuery = normalizeSearchText(query).replace(/[^\p{L}\p{N}\p{Extended_Pictographic}@._/-]+/gu, " ").trim();
   if (!normalizedQuery) {
     return [];
   }
@@ -88,13 +91,13 @@ function extractSearchTerms(query) {
   return Array.from(new Set(terms.filter(Boolean)));
 }
 
-function trimExcerpt(value) {
+function trimExcerpt(value, limit = 160) {
   const singleLine = String(value ?? "").replace(/\s+/gu, " ").trim();
-  if (singleLine.length <= 160) {
+  if (singleLine.length <= limit) {
     return singleLine;
   }
 
-  return `${singleLine.slice(0, 157)}...`;
+  return `${singleLine.slice(0, limit - 3)}...`;
 }
 
 function compareMatches(left, right) {
@@ -102,6 +105,14 @@ function compareMatches(left, right) {
     left.path.localeCompare(right.path) ||
     left.lineNumber - right.lineNumber ||
     left.fieldKind.localeCompare(right.fieldKind)
+  );
+}
+
+function compareDocumentMatches(left, right) {
+  return (
+    (right.entityMatches.length + right.contentMatches.length) - (left.entityMatches.length + left.contentMatches.length) ||
+    right.entityMatches.length - left.entityMatches.length ||
+    left.path.localeCompare(right.path)
   );
 }
 
@@ -115,6 +126,7 @@ async function walkVaultMarkdownFiles(rootDir, currentDir = rootDir) {
       if (WALK_SKIP_DIRS.has(entry.name)) {
         continue;
       }
+
       files.push(...await walkVaultMarkdownFiles(rootDir, fullPath));
       continue;
     }
@@ -171,7 +183,6 @@ function matchesAnySearchTerm(value, searchTerms) {
   return searchTerms.some((term) => term && normalizedValue.includes(term));
 }
 
-// Search still needs original line numbers/excerpts even though parsing now comes from the shared ingest parser.
 function parseFrontmatterSearchBridge(content = "") {
   const normalized = normalizeLineEndings(content);
   const lines = normalized.split("\n");
@@ -180,6 +191,7 @@ function parseFrontmatterSearchBridge(content = "") {
 
   if (closingIndex === -1) {
     return {
+      frontmatter,
       lines,
       bodyStartIndex,
       frontmatterFields: [],
@@ -243,15 +255,68 @@ function parseFrontmatterSearchBridge(content = "") {
   }
 
   return {
+    frontmatter,
     lines,
     bodyStartIndex: closingIndex + 1,
     frontmatterFields,
   };
 }
 
+function formatTimelineSnippet(lines, lineNumber) {
+  const startLine = Math.max(1, lineNumber - TIMELINE_CONTEXT_RADIUS);
+  const endLine = Math.min(lines.length, lineNumber + TIMELINE_CONTEXT_RADIUS);
+  const text = lines
+    .slice(startLine - 1, endLine)
+    .map((line, offset) => `L${startLine + offset}: ${trimExcerpt(line, 220) || "(blank)"}`)
+    .join("\n");
+
+  return {
+    lineNumber,
+    startLine,
+    endLine,
+    text,
+  };
+}
+
+function chooseSearchSnippet(title, entityMatches, contentMatches) {
+  const firstContent = contentMatches[0];
+  if (firstContent?.excerpt) {
+    return trimExcerpt(firstContent.excerpt);
+  }
+
+  const firstEntity = entityMatches.find((match) => match.fieldKind !== "title") ?? entityMatches[0];
+  if (firstEntity?.excerpt) {
+    return trimExcerpt(firstEntity.excerpt);
+  }
+
+  return trimExcerpt(title);
+}
+
+function buildTimelineSnippets(lines, entityMatches, contentMatches) {
+  const uniqueLineNumbers = [];
+  const seen = new Set();
+  const orderedMatches = [
+    ...contentMatches,
+    ...entityMatches,
+  ];
+
+  for (const match of orderedMatches) {
+    if (seen.has(match.lineNumber)) {
+      continue;
+    }
+    seen.add(match.lineNumber);
+    uniqueLineNumbers.push(match.lineNumber);
+    if (uniqueLineNumbers.length >= MAX_TIMELINE_SNIPPETS) {
+      break;
+    }
+  }
+
+  return uniqueLineNumbers.map((lineNumber) => formatTimelineSnippet(lines, lineNumber));
+}
+
 function analyzeVaultDocument(relativePath, content, searchTerms) {
   const canonicalId = basename(relativePath, extname(relativePath));
-  const { lines, bodyStartIndex, frontmatterFields } = parseFrontmatterSearchBridge(content);
+  const { frontmatter, lines, bodyStartIndex, frontmatterFields } = parseFrontmatterSearchBridge(content);
   const entityMatches = [];
   const contentMatches = [];
 
@@ -294,17 +359,57 @@ function analyzeVaultDocument(relativePath, content, searchTerms) {
   entityMatches.sort(compareMatches);
   contentMatches.sort(compareMatches);
 
+  if (entityMatches.length === 0 && contentMatches.length === 0) {
+    return null;
+  }
+
+  const title = normalizeFrontmatterSearchValue(frontmatter.title) || canonicalId;
+
   return {
+    id: relativePath,
+    path: relativePath,
+    title,
     entityMatches,
     contentMatches,
+    snippet: chooseSearchSnippet(title, entityMatches, contentMatches),
+    snippets: buildTimelineSnippets(lines, entityMatches, contentMatches),
   };
 }
 
-export async function searchVault({ query, vaultDir = resolveVaultDir() } = {}) {
+function validateLimit(limit) {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    throw new Error("vault-search limit must be a positive integer.");
+  }
+}
+
+function projectSearchHit(document, mode) {
+  const hit = {
+    id: document.id,
+    path: document.path,
+    title: document.title,
+    snippet: document.snippet,
+    entityMatchCount: document.entityMatches.length,
+    contentMatchCount: document.contentMatches.length,
+  };
+
+  if (mode === "timeline") {
+    hit.snippets = document.snippets;
+  }
+
+  return hit;
+}
+
+export async function searchVault({ query, vaultDir = resolveVaultDir(), limit = DEFAULT_LIMIT, mode = "search" } = {}) {
   const normalizedQuery = String(query ?? "").trim();
   if (!normalizedQuery) {
     throw new Error("vault-search requires a non-empty query.");
   }
+
+  if (mode !== "search" && mode !== "timeline") {
+    throw new Error(`Unsupported vault-search mode: ${mode}`);
+  }
+
+  validateLimit(limit);
 
   const resolvedVaultDir = resolve(vaultDir);
   if (!existsSync(resolvedVaultDir)) {
@@ -312,61 +417,149 @@ export async function searchVault({ query, vaultDir = resolveVaultDir() } = {}) 
   }
 
   const files = await walkVaultMarkdownFiles(resolvedVaultDir);
-  const entityMatches = [];
-  const contentMatches = [];
+  const documents = [];
   const searchTerms = extractSearchTerms(normalizedQuery);
+  let entityMatchCount = 0;
+  let contentMatchCount = 0;
 
   for (const file of files) {
     const content = await readFile(file.fullPath, "utf8");
-    const matches = analyzeVaultDocument(file.relativePath, content, searchTerms);
-    entityMatches.push(...matches.entityMatches);
-    contentMatches.push(...matches.contentMatches);
+    const document = analyzeVaultDocument(file.relativePath, content, searchTerms);
+    if (!document) {
+      continue;
+    }
+
+    entityMatchCount += document.entityMatches.length;
+    contentMatchCount += document.contentMatches.length;
+    documents.push(document);
   }
 
-  entityMatches.sort(compareMatches);
-  contentMatches.sort(compareMatches);
+  documents.sort(compareDocumentMatches);
 
   return {
+    mode,
     query: normalizedQuery,
     vaultDir: resolvedVaultDir,
     scannedFiles: files.length,
-    entityMatches,
-    contentMatches,
+    entityMatchCount,
+    contentMatchCount,
+    limit,
+    hits: documents.slice(0, limit).map((document) => projectSearchHit(document, mode)),
+  };
+}
+
+function resolveVaultDocumentTarget(vaultDir, rawTarget) {
+  const normalizedTarget = normalizeRelativePath(String(rawTarget ?? "").trim());
+  if (!normalizedTarget) {
+    throw new Error("vault-get requires at least one id or path.");
+  }
+
+  const withDefaultExtension = normalizedTarget.endsWith(MARKDOWN_EXTENSION)
+    ? normalizedTarget
+    : `${normalizedTarget}${MARKDOWN_EXTENSION}`;
+  const candidatePaths = [normalizedTarget, withDefaultExtension];
+
+  for (const relativePath of candidatePaths) {
+    const fullPath = resolve(vaultDir, relativePath);
+    if (existsSync(fullPath)) {
+      return {
+        id: relativePath,
+        path: relativePath,
+        fullPath,
+      };
+    }
+  }
+
+  throw new Error(`Vault document not found: ${normalizedTarget}`);
+}
+
+export async function getVaultDocuments({ ids = [], vaultDir = resolveVaultDir() } = {}) {
+  const resolvedVaultDir = resolve(vaultDir);
+  if (!existsSync(resolvedVaultDir)) {
+    throw new Error(`Vault directory not found: ${resolvedVaultDir}`);
+  }
+
+  const normalizedIds = Array.isArray(ids)
+    ? ids.map((value) => String(value ?? "").trim()).filter(Boolean)
+    : [];
+  if (normalizedIds.length === 0) {
+    throw new Error("vault-get requires at least one id or path.");
+  }
+
+  const hits = [];
+  for (const rawId of normalizedIds) {
+    const target = resolveVaultDocumentTarget(resolvedVaultDir, rawId);
+    const content = await readFile(target.fullPath, "utf8");
+    const { frontmatter } = parseFrontmatterDocument(content);
+    hits.push({
+      id: target.id,
+      path: target.path,
+      title: normalizeFrontmatterSearchValue(frontmatter.title) || basename(target.path, extname(target.path)),
+      content,
+    });
+  }
+
+  return {
+    mode: "get",
+    vaultDir: resolvedVaultDir,
+    hits,
   };
 }
 
 export function formatVaultSearchText(result) {
+  const commandName = result.mode === "timeline" ? "/vault timeline" : "/vault search";
   const lines = [
-    "# /vault search",
+    `# ${commandName}`,
     "",
     `query: ${result.query}`,
     `vault_dir: ${result.vaultDir}`,
     `files_scanned: ${result.scannedFiles}`,
+    `entity_match_count: ${result.entityMatchCount}`,
+    `content_match_count: ${result.contentMatchCount}`,
+    `limit: ${result.limit}`,
     "",
-    "## Entity Matches",
+    "## Hits",
   ];
 
-  if (result.entityMatches.length === 0) {
-    lines.push("(none)");
-  } else {
-    for (const match of result.entityMatches) {
-      lines.push(
-        `- \`${match.path}:${match.lineNumber}\` [${match.fieldKind}] ${trimExcerpt(match.excerpt) || "(blank)"}`,
-      );
-    }
+  if (result.hits.length === 0) {
+    lines.push("no matches");
+    return `${lines.join("\n")}\n`;
   }
 
-  lines.push("", "## Content Matches");
+  for (const hit of result.hits) {
+    lines.push(`- id: ${hit.id}`);
+    lines.push(`  title: ${hit.title}`);
+    lines.push(`  path: ${hit.path}`);
+    lines.push(`  counts: entity=${hit.entityMatchCount} content=${hit.contentMatchCount}`);
+    lines.push(`  snippet: ${hit.snippet || "(blank)"}`);
 
-  if (result.contentMatches.length === 0) {
-    lines.push("(none)");
-  } else {
-    for (const match of result.contentMatches) {
-      lines.push(
-        `- \`${match.path}:${match.lineNumber}\` [${match.fieldKind}] ${trimExcerpt(match.excerpt) || "(blank)"}`,
-      );
+    if (result.mode === "timeline") {
+      for (const [index, snippet] of (hit.snippets ?? []).entries()) {
+        lines.push(`  timeline_${index + 1}: L${snippet.startLine}-L${snippet.endLine}`);
+        lines.push(...snippet.text.split("\n").map((line) => `    ${line}`));
+      }
     }
+
+    lines.push("");
   }
 
-  return `${lines.join("\n")}\n`;
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+export function formatVaultGetText(result) {
+  const lines = ["# /vault get", ""];
+
+  for (const [index, hit] of result.hits.entries()) {
+    if (index > 0) {
+      lines.push("", "---", "");
+    }
+
+    lines.push(`## ${hit.title}`);
+    lines.push(`id: ${hit.id}`);
+    lines.push(`path: ${hit.path}`);
+    lines.push("");
+    lines.push(hit.content.trimEnd());
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
 }

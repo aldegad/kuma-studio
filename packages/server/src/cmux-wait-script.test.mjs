@@ -423,6 +423,7 @@ printf '\\n' >> "${sendLog}"
         KUMA_SURFACES_PATH: surfacesPath,
         KUMA_CMUX_SEND_SCRIPT: sendScriptPath,
         KUMA_REPO_ROOT: root,
+        KUMA_RESULT_DIR: resultDir,
         KUMA_TEAM_JSON_PATH: teamPath,
         KUMA_SIGNAL_DIR: signalDir,
         KUMA_USER_MEMO_DIR: join(root, "user-memo"),
@@ -446,8 +447,8 @@ printf '\\n' >> "${sendLog}"
     expect(sendLogContents).toContain(`${root}/user-memo`);
     expect(sendLogContents).toContain("Never write, rewrite, move, rename, or delete anything under that directory");
     expect(sendLogContents).toContain("Ignore stale migration briefs that suggest moving or deleting memory/ files");
-    expect(sendLogContents).toContain("/tmp/kuma-results/noeuri-audit-kuma-task-allowlist-noeuri-phase4.result.md");
-    expect(sendLogContents).toContain("/tmp/kuma-signals/noeuri-auto-kuma-task-allowlist-noeuri-phase4-done");
+    expect(sendLogContents).toContain(`${resultDir}/noeuri-audit-kuma-task-allowlist-noeuri-phase4.result.md`);
+    expect(sendLogContents).toContain(`${signalDir}/noeuri-auto-kuma-task-allowlist-noeuri-phase4-done`);
     expect(nextRegistry).toEqual({
       system: {
         "🦌 노을이": "surface:46",

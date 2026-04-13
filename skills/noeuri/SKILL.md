@@ -35,7 +35,7 @@ user-invocable: true
 2. audit result 경로를 고정한다.
 
 ```text
-/tmp/kuma-results/noeuri-audit-{task-id}.result.md
+~/.kuma/dispatch/results/noeuri-audit-{task-id}.result.md
 ```
 
 3. source result, 관련 plan, 필요한 memory/vault 문서를 읽고 충돌/누락/낡은 지시를 찾는다.
@@ -111,7 +111,7 @@ audit 결과 문서는 반드시 아래 섹션 순서를 지킨다.
 
 ## 완료 조건
 
-1. audit result 파일이 `/tmp/kuma-results/noeuri-audit-{task-id}.result.md` 에 존재한다.
+1. audit result 파일이 `~/.kuma/dispatch/results/noeuri-audit-{task-id}.result.md` 에 존재한다.
 2. 필수 섹션 5개가 모두 채워져 있다.
 3. 필요한 verification 이 기록돼 있다.
 4. 마지막에만 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 를 실행한다.

@@ -445,3 +445,103 @@ body {
   90% { opacity: var(--particle-opacity, 0.15); }
   100% { transform: translateY(-10vh) translateX(30px); opacity: 0; }
 }
+
+/* -----------------------------------------------------------------------
+   highlight.js — dark theme overrides
+   github.css (light) is loaded globally; in night mode we repaint every
+   hljs token with github-dark colors so markdown/yaml/bash sources stay
+   readable on the dark surface.
+   ----------------------------------------------------------------------- */
+[data-theme="night"] .hljs {
+  color: #c9d1d9;
+  background: transparent;
+}
+[data-theme="night"] .hljs-doctag,
+[data-theme="night"] .hljs-keyword,
+[data-theme="night"] .hljs-meta .hljs-keyword,
+[data-theme="night"] .hljs-template-tag,
+[data-theme="night"] .hljs-template-variable,
+[data-theme="night"] .hljs-type,
+[data-theme="night"] .hljs-variable.language_ {
+  color: #ff7b72;
+}
+[data-theme="night"] .hljs-title,
+[data-theme="night"] .hljs-title.class_,
+[data-theme="night"] .hljs-title.class_.inherited__,
+[data-theme="night"] .hljs-title.function_ {
+  color: #d2a8ff;
+}
+[data-theme="night"] .hljs-attr,
+[data-theme="night"] .hljs-attribute,
+[data-theme="night"] .hljs-literal,
+[data-theme="night"] .hljs-meta,
+[data-theme="night"] .hljs-number,
+[data-theme="night"] .hljs-operator,
+[data-theme="night"] .hljs-variable,
+[data-theme="night"] .hljs-selector-attr,
+[data-theme="night"] .hljs-selector-class,
+[data-theme="night"] .hljs-selector-id {
+  color: #79c0ff;
+}
+[data-theme="night"] .hljs-regexp,
+[data-theme="night"] .hljs-string,
+[data-theme="night"] .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+[data-theme="night"] .hljs-built_in,
+[data-theme="night"] .hljs-symbol {
+  color: #ffa657;
+}
+[data-theme="night"] .hljs-comment,
+[data-theme="night"] .hljs-code,
+[data-theme="night"] .hljs-formula,
+[data-theme="night"] .hljs-quote {
+  color: #8b949e;
+  font-style: italic;
+}
+[data-theme="night"] .hljs-name,
+[data-theme="night"] .hljs-selector-tag,
+[data-theme="night"] .hljs-selector-pseudo {
+  color: #7ee787;
+}
+[data-theme="night"] .hljs-subst,
+[data-theme="night"] .hljs-punctuation,
+[data-theme="night"] .hljs-tag,
+[data-theme="night"] .hljs-params,
+[data-theme="night"] .hljs-property,
+[data-theme="night"] .hljs-link {
+  color: #c9d1d9;
+}
+[data-theme="night"] .hljs-section {
+  color: #79c0ff;
+  font-weight: bold;
+}
+[data-theme="night"] .hljs-bullet {
+  color: #f2cc60;
+}
+[data-theme="night"] .hljs-emphasis {
+  color: #c9d1d9;
+  font-style: italic;
+}
+[data-theme="night"] .hljs-strong {
+  color: #e0e7ff;
+  font-weight: bold;
+}
+[data-theme="night"] .hljs-addition {
+  color: #aff5b4;
+  background-color: rgba(3, 58, 22, 0.45);
+}
+[data-theme="night"] .hljs-deletion {
+  color: #ffdcd7;
+  background-color: rgba(103, 6, 12, 0.45);
+}
+/* Fallback for raw text inside a code body that hljs didn't tokenize
+   (e.g., yaml frontmatter preamble rendered as plain text). */
+[data-theme="night"] .kuma-code-body,
+[data-theme="night"] .kuma-code-body pre,
+[data-theme="night"] .kuma-code-body code {
+  color: #c9d1d9;
+}
+[data-theme="night"] .kuma-code-scroll ::selection {
+  background: rgba(251, 191, 36, 0.30);
+}

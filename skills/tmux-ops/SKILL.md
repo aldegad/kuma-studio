@@ -11,7 +11,7 @@ user-invocable: true
 ## 목적
 
 - cmux surface 스폰, 등록, 상태 확인, broker 기반 dispatch 흐름을 일관되게 유지
-- `/tmp/kuma-surfaces.json` 레지스트리와 `~/.kuma/cmux/*.sh` 스크립트 사용 규칙을 한곳에 모음
+- `~/.kuma/cmux/surfaces.json` 레지스트리와 `~/.kuma/cmux/*.sh` 스크립트 사용 규칙을 한곳에 모음
 - 프로젝트별 전담 팀의 surface 운영을 재현 가능한 방식으로 유지
 
 ## 기본 원칙
@@ -23,7 +23,7 @@ user-invocable: true
 - 진행 중 clarification/progress 는 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 이어간다
 - 태스크 완료/실패/QA 결과는 `~/.kuma/bin/kuma-dispatch complete|fail|qa-pass|qa-reject` 로 보고
 - QA 태스크는 밤토리에게 전달하고, 검수 결과는 동일한 task file 기준으로 `kuma-dispatch qa-pass|qa-reject` 로 보고
-- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다
+- `kuma-cmux-wait.sh`, `~/.kuma/dispatch/signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다
 - 브라우저 작업은 `cmux browser`가 아니라 Chrome + Playwright 기준으로 수행
 
 ## 기본 명령
@@ -35,14 +35,14 @@ user-invocable: true
 ~/.kuma/cmux/kuma-cmux-register.sh <project> <role> <surface>
 ~/.kuma/cmux/kuma-cmux-send.sh surface:N "메시지"
 ~/.kuma/bin/kuma-task <member> "<instruction>"
-~/.kuma/bin/kuma-dispatch ask --task-file /tmp/kuma-tasks/<task>.task.md --message "..."
-~/.kuma/bin/kuma-dispatch complete --task-file /tmp/kuma-tasks/<task>.task.md
-~/.kuma/bin/kuma-dispatch qa-pass --task-file /tmp/kuma-tasks/<task>.task.md
+~/.kuma/bin/kuma-dispatch ask --task-file ~/.kuma/dispatch/tasks/<task>.task.md --message "..."
+~/.kuma/bin/kuma-dispatch complete --task-file ~/.kuma/dispatch/tasks/<task>.task.md
+~/.kuma/bin/kuma-dispatch qa-pass --task-file ~/.kuma/dispatch/tasks/<task>.task.md
 ```
 
 ## 레지스트리
 
 - 프로젝트 매핑: `~/.kuma/projects.json`
-- surface 레지스트리: `/tmp/kuma-surfaces.json`
+- surface 레지스트리: `~/.kuma/cmux/surfaces.json`
 - 플랜 경로: `~/.kuma/plans/{project}/`
 - `kuma-status` 는 infra pseudo-member(`server`/`frontend`)를 숨길 수 있으므로, infra 확인은 필요 시 `cmux tree` / `kuma-cmux-project-status.sh kuma-studio` 와 함께 본다.

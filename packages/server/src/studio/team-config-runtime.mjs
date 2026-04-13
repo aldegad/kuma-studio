@@ -12,14 +12,16 @@ import {
   writeSurfaceRegistryFile,
 } from "../../../shared/surface-registry.mjs";
 import { withCmuxEnv } from "../cmux-env.mjs";
+import {
+  DEFAULT_SURFACE_REGISTRY_PATH,
+  DEFAULT_TEAM_RESPAWN_QUEUE_PATH,
+  DEFAULT_TEAM_WATCHER_LOG_PATH,
+} from "../kuma-paths.mjs";
 import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { buildTeamConfigSelfWriteHash } from "./team-config-hash.mjs";
 
-const DEFAULT_SURFACE_REGISTRY_PATH = "/tmp/kuma-surfaces.json";
 const DEFAULT_CMUX_SPAWN_SCRIPT = `${process.env.HOME ?? ""}/.kuma/cmux/kuma-cmux-spawn.sh`;
 const DEFAULT_CMUX_KILL_SCRIPT = `${process.env.HOME ?? ""}/.kuma/cmux/kuma-cmux-kill.sh`;
-const DEFAULT_TEAM_RESPAWN_QUEUE_PATH = "/tmp/kuma-team-respawn-queue.json";
-const DEFAULT_TEAM_WATCHER_LOG_PATH = "/tmp/kuma-team-watcher.log";
 const DEFAULT_TEAM_RESPAWN_QUEUE_POLL_MS = 5_000;
 const SURFACE_NOT_FOUND_PATTERN = /(?:\bno such surface\b|\bsurface(?::\d+|\s+[^\n\r]+)?\s+not found\b)/iu;
 const CMUX_TREE_SURFACE_LINE_PATTERN = /surface\s+(surface:\d+)\s+\[[^\]]+\](?:\s+"([^"]*)")?/u;

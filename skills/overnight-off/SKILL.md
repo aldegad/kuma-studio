@@ -12,7 +12,7 @@ user-invocable: true
 
 1. **kuma-studio 야근모드 토글 OFF**
    - `POST http://127.0.0.1:4312/studio/nightmode {"enabled": false}`
-   - 성공 시 `/tmp/kuma-nightmode.flag` 파일 삭제
+   - 성공 시 `~/.kuma/runtime/nightmode.flag` 파일 삭제
    - GUI 오피스 설정패널 토글도 동기화
 2. **쿠마 행동 모드 원복** — 설계 결정은 다시 유저에게 물어본다
 3. **아침 복귀 루틴 실행** — 야근모드 동안 진행된 내용을 요약 보고
@@ -30,7 +30,7 @@ user-invocable: true
      -H 'Content-Type: application/json' \
      -d '{"enabled":false}'
    ```
-2. `/tmp/kuma-nightmode.flag` 삭제 확인 (여전히 있으면 실패로 간주하고 재시도)
+2. `~/.kuma/runtime/nightmode.flag` 삭제 확인 (여전히 있으면 실패로 간주하고 재시도)
 3. 야근모드 동안 진행된 작업 요약:
    - Active 플랜 (`.kuma/plans/index.md`) 에서 **새로 완료된 체크리스트** 전수 스캔
    - 야근 중 발생한 블로커 리스트
@@ -69,4 +69,4 @@ user-invocable: true
 - `/kuma:overnight-on` — 야근모드 진입
 - `packages/server/src/studio/nightmode-store.mjs` — flag 파일 store
 - `packages/server/src/studio/studio-routes.mjs` 644-677 — `/studio/nightmode` endpoint
-- `/tmp/kuma-nightmode.flag` — 활성화 상태 flag
+- `~/.kuma/runtime/nightmode.flag` — 활성화 상태 flag

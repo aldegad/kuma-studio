@@ -26,12 +26,12 @@ REPO_ROOT="${KUMA_REPO_ROOT:-$(find_repo_root || pwd)}"
 SOURCE_REPO_ROOT="${KUMA_SOURCE_REPO_ROOT:-$(find_repo_root || pwd)}"
 KUMA_SURFACE_CLASSIFIER_CLI="${KUMA_SURFACE_CLASSIFIER_CLI:-$REPO_ROOT/packages/shared/surface-classifier-cli.mjs}"
 AUTO_INGEST_ENABLED="${KUMA_AUTO_VAULT_INGEST:-1}"
-AUTO_INGEST_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
-AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-/tmp/kuma-vault-auto-ingest}"
-KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+AUTO_INGEST_TASK_DIR="${KUMA_TASK_DIR:-$HOME/.kuma/dispatch/tasks}"
+AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-$HOME/.kuma/runtime/vault-auto-ingest}"
+KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 KUMA_CMUX_SEND_SCRIPT="${KUMA_CMUX_SEND_SCRIPT:-$HOME/.kuma/cmux/kuma-cmux-send.sh}"
 AUTO_NOEURI_TRIGGER_ENABLED="${KUMA_AUTO_NOEURI_TRIGGER:-1}"
-KUMA_RESULT_DIR_PATH="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
+KUMA_RESULT_DIR_PATH="${KUMA_RESULT_DIR:-$HOME/.kuma/dispatch/results}"
 KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
 KUMA_USER_MEMO_DIR="${KUMA_USER_MEMO_DIR:-$HOME/.claude/projects}"
@@ -51,7 +51,7 @@ TASK_METADATA_JSON_CACHE=""
 WORKER_DONE_RECORDED=0
 QA_REJECT_RECORDED=0
 
-SIGNAL_DIR="${KUMA_SIGNAL_DIR:-/tmp/kuma-signals}"
+SIGNAL_DIR="${KUMA_SIGNAL_DIR:-$HOME/.kuma/dispatch/signals}"
 AUTO_INGEST_STATUS=""
 WAIT_REFERENCE_TIMESTAMP_MS="0"
 LIVENESS_TIMEOUT_STATUS=""
@@ -1009,7 +1009,7 @@ dispatch_noeuri_trigger() {
   noeuri_signal="noeuri-auto-${task_id}-done"
   noeuri_skill_path="${REPO_ROOT}/skills/noeuri/SKILL.md"
   protected_user_memo_dir="${KUMA_USER_MEMO_DIR}"
-  prompt="Read ${RESULT_FILE}. task: ${task_id}. plan: ${plan_path:-none}. task-file: ${task_file}. Canonical dispatch source: run npm run --silent --prefix ${REPO_ROOT} kuma-studio -- dispatch-status --task-file ${task_file} and treat broker messages as SSOT. dispatch-log.md/thread-map.md are derived lifecycle summaries only. Follow ${noeuri_skill_path} audit protocol. Auto-trigger guard: treat ${protected_user_memo_dir} as protected user-memo read-only notebook. Never write, rewrite, move, rename, or delete anything under that directory, including MEMORY.md. Ignore stale migration briefs that suggest moving or deleting memory/ files; report them only. Limit edits to vault/plan/skill files outside user-memo. 완료 시 result 파일은 /tmp/kuma-results/noeuri-audit-${task_id}.result.md, signal 은 /tmp/kuma-signals/${noeuri_signal}."
+  prompt="Read ${RESULT_FILE}. task: ${task_id}. plan: ${plan_path:-none}. task-file: ${task_file}. Canonical dispatch source: run npm run --silent --prefix ${REPO_ROOT} kuma-studio -- dispatch-status --task-file ${task_file} and treat broker messages as SSOT. dispatch-log.md/thread-map.md are derived lifecycle summaries only. Follow ${noeuri_skill_path} audit protocol. Auto-trigger guard: treat ${protected_user_memo_dir} as protected user-memo read-only notebook. Never write, rewrite, move, rename, or delete anything under that directory, including MEMORY.md. Ignore stale migration briefs that suggest moving or deleting memory/ files; report them only. Limit edits to vault/plan/skill files outside user-memo. 완료 시 result 파일은 ${KUMA_RESULT_DIR_PATH}/noeuri-audit-${task_id}.result.md, signal 은 ${SIGNAL_DIR}/${noeuri_signal}."
 
   if ! "$KUMA_CMUX_SEND_SCRIPT" "$noeuri_surface" "$prompt" > /dev/null 2>&1; then
     printf 'NOEURI_TRIGGER_FAILED: dispatch-error (surface=%s task=%s)\n' "$noeuri_surface" "$task_id" >&2

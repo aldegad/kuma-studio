@@ -35,6 +35,6 @@ user-invocable: true
 - 진행 중 clarification 이 필요하면 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 같은 스레드를 이어간다.
 - 구현/기획 산출물은 result file 작성 후 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
 - QA 가 필요한 경우 initiator 가 밤토리에게 별도 QA task 를 dispatch 하고, 밤토리는 같은 task file 기준으로 `qa-pass|qa-reject` 를 보고한다.
-- `kuma-cmux-wait.sh`, `/tmp/kuma-signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다.
+- `kuma-cmux-wait.sh`, `~/.kuma/dispatch/signals`, `kuma-task --wait` 같은 레거시 완료 경로는 사용하지 않는다.
 
 모든 워커는 cmux 상주 세션으로 스폰하지만, 완료 신호는 dispatch broker 가 canonical 이다.

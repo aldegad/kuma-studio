@@ -22,18 +22,21 @@ KUMA_HOME_DIR="${KUMA_HOME_DIR:-$HOME/.kuma}"
 KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$KUMA_HOME_DIR/vault}"
 KUMA_VAULT_RESULTS_DIR="${KUMA_VAULT_RESULTS_DIR:-$KUMA_VAULT_DIR/results}"
 KUMA_CMUX_DIR="${KUMA_CMUX_DIR:-$KUMA_HOME_DIR/cmux}"
+KUMA_DISPATCH_DIR="${KUMA_DISPATCH_DIR:-$KUMA_HOME_DIR/dispatch}"
+KUMA_RUNTIME_DIR="${KUMA_RUNTIME_DIR:-$KUMA_HOME_DIR/runtime}"
 KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$KUMA_HOME_DIR/team.json}"
 KUMA_PROJECTS_PATH="${KUMA_PROJECTS_PATH:-$KUMA_HOME_DIR/projects.json}"
-KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
-KUMA_TASK_DIR="${KUMA_TASK_DIR:-/tmp/kuma-tasks}"
-KUMA_RESULT_DIR="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
+KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-$KUMA_CMUX_DIR/surfaces.json}"
+KUMA_TASK_DIR="${KUMA_TASK_DIR:-$KUMA_DISPATCH_DIR/tasks}"
+KUMA_RESULT_DIR="${KUMA_RESULT_DIR:-$KUMA_DISPATCH_DIR/results}"
+KUMA_SIGNAL_DIR="${KUMA_SIGNAL_DIR:-$KUMA_DISPATCH_DIR/signals}"
 KUMA_DEFAULT_PROJECT="${KUMA_DEFAULT_PROJECT:-}"
 KUMA_DEFAULT_QA_MEMBER="${KUMA_DEFAULT_QA_MEMBER:-밤토리}"
 KUMA_DAEMON_URL="${KUMA_DAEMON_URL:-http://127.0.0.1:4312}"
 KUMA_WAIT_POLL_INTERVAL="${KUMA_WAIT_POLL_INTERVAL:-5}"
 KUMA_AUTO_VAULT_INGEST="${KUMA_AUTO_VAULT_INGEST:-1}"
 KUMA_AUTO_NOEURI_TRIGGER="${KUMA_AUTO_NOEURI_TRIGGER:-1}"
-KUMA_AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-/tmp/kuma-vault-auto-ingest}"
+KUMA_AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-$KUMA_RUNTIME_DIR/vault-auto-ingest}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
 KUMA_SURFACE_CLASSIFIER_CLI="${KUMA_SURFACE_CLASSIFIER_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-classifier-cli.mjs}"
@@ -844,7 +847,7 @@ try {
     const runtimeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/team-config-runtime.mjs")).href);
     runtime = runtimeModule.createTeamConfigRuntime({
       queuePollMs: 0,
-      registryPath: process.env.KUMA_SURFACES_PATH || "/tmp/kuma-surfaces.json",
+      registryPath: process.env.KUMA_SURFACES_PATH || `${process.env.HOME || "."}/.kuma/cmux/surfaces.json`,
     });
     const member = JSON.parse(memberJson);
     const memberName =

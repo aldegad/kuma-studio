@@ -44,3 +44,9 @@ boundary.
 - Default behavior: expose only `workspaceRoot`
 - Optional behavior: set `KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=vault,claude,codex`
   to opt into extra home-level roots when operating privately
+
+## Related
+
+- [`dispatch-runtime-home.md`](./dispatch-runtime-home.md) documents the default
+  Kuma dispatch runtime paths under `~/.kuma/dispatch`, `~/.kuma/cmux`, and
+  `~/.kuma/runtime`.

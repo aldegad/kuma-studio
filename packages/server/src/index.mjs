@@ -23,9 +23,10 @@ import { SceneStore } from "./scene-store.mjs";
 import { maybeAutoIngestResult } from "./studio/vault-auto-ingest.mjs";
 import { ingestResultFile } from "./studio/vault-ingest.mjs";
 import { formatVaultLintReport, lintVaultFiles } from "./studio/vault-lint.mjs";
-import { formatVaultSearchText, searchVault } from "./studio/vault-search.mjs";
+import { formatVaultGetText, formatVaultSearchText, getVaultDocuments, searchVault } from "./studio/vault-search.mjs";
 import { resolveAgentIdByDescriptor } from "./team-metadata.mjs";
 import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
+import { DEFAULT_AUTO_INGEST_STAMP_DIR, DEFAULT_DISPATCH_TASK_DIR } from "./kuma-paths.mjs";
 
 const DEFAULT_DAEMON_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
@@ -49,22 +50,23 @@ Usage:
   kuma-studio run [script.js] (--tab-id 123 | --tab-index 1 | --url "https://example.com/page" | --url-contains "example.com") [--timeout-ms 15000] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio set-job-status --status in_progress --message "Write a short progress note" [--session-id session-01] [--author codex] [--tab-id 123 | --url "https://example.com/page" | --url-contains "example.com"] [--selector "#submit"] [--selector-path "main > button:nth-of-type(1)"] [--rect-json '{"x":10,"y":20,"width":120,"height":48}'] [--daemon-url ${DEFAULT_DAEMON_URL}] [--root .]
   kuma-studio set-agent-status --status working|idle --from-stdin [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-register --task-file /tmp/kuma-tasks/task.task.md [--summary "Implement fix"] [--worker-id saemi] [--worker-name 새미] [--worker-type codex] [--qa-member 밤토리] [--qa-surface surface:7] [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-status --task-file /tmp/kuma-tasks/task.task.md [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-message --task-file /tmp/kuma-tasks/task.task.md --kind question --text "Need clarification" [--from worker] [--to initiator] [--from-surface surface:4] [--to-surface surface:1] [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-complete --task-file /tmp/kuma-tasks/task.task.md [--summary "Implemented"] [--note "handoff complete"] [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-fail --task-file /tmp/kuma-tasks/task.task.md --blocker "reason" [--summary "Failed"] [--note "details"] [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-qa-pass --task-file /tmp/kuma-tasks/task.task.md [--note "QA PASS"] [--daemon-url ${DEFAULT_DAEMON_URL}]
-  kuma-studio dispatch-qa-reject --task-file /tmp/kuma-tasks/task.task.md --blocker "reason" [--note "details"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-register --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md [--summary "Implement fix"] [--worker-id saemi] [--worker-name 새미] [--worker-type codex] [--qa-member 밤토리] [--qa-surface surface:7] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-status --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-message --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md --kind question --text "Need clarification" [--from worker] [--to initiator] [--from-surface surface:4] [--to-surface surface:1] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-complete --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md [--summary "Implemented"] [--note "handoff complete"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-fail --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md --blocker "reason" [--summary "Failed"] [--note "details"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-qa-pass --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md [--note "QA PASS"] [--daemon-url ${DEFAULT_DAEMON_URL}]
+  kuma-studio dispatch-qa-reject --task-file ${DEFAULT_DISPATCH_TASK_DIR}/task.task.md --blocker "reason" [--note "details"] [--daemon-url ${DEFAULT_DAEMON_URL}]
   kuma-studio put-scene --file ./scene.json [--root .]
   kuma-studio add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   kuma-studio move-node --id node-01 --x 120 --y 80 [--root .]
   kuma-studio remove-node --id node-01 [--root .]
-  kuma-studio vault-ingest [result-file] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--task-dir /tmp/kuma-tasks] [--vault-dir ~/.kuma/vault] [--dry-run]
+  kuma-studio vault-ingest [result-file] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
   kuma-studio wiki-ingest [result-file] ...                                   # temporary alias
-  kuma-studio vault-auto-ingest [result-file] [--signal task-done] [--task-dir /tmp/kuma-tasks] [--stamp-dir /tmp/kuma-vault-auto-ingest] [--vault-dir ~/.kuma/vault] [--dry-run]
+  kuma-studio vault-auto-ingest [result-file] [--signal task-done] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--stamp-dir ${DEFAULT_AUTO_INGEST_STAMP_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
   kuma-studio vault-lint [current-focus.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files current-focus.md,dispatch-log.md] [--json]
-  kuma-studio vault-search --query "task id" [--vault-dir ~/.kuma/vault] [--format text|json]
+  kuma-studio vault-search --query "task id" [--mode search|timeline] [--limit 20] [--vault-dir ~/.kuma/vault] [--format text|json]
+  kuma-studio vault-get <id|path ...> [--vault-dir ~/.kuma/vault] [--format text|json]
   kuma-studio project-info [--root .]            # show current project hash and state dir
   kuma-studio list-projects                      # list all known project state directories
   kuma-studio dashboard                          # open http://localhost:${DEFAULT_PORT}/studio
@@ -726,8 +728,12 @@ async function commandVaultSearch(options) {
     throw new Error("vault-search requires a query.");
   }
 
+  const mode = readOptionalString(options, "mode") ?? "search";
+  const limit = readNumber(options, "limit", 20);
   const result = await searchVault({
     query,
+    mode,
+    limit,
     vaultDir: readOptionalString(options, "vault-dir") ?? undefined,
   });
 
@@ -742,6 +748,37 @@ async function commandVaultSearch(options) {
   }
 
   process.stdout.write(formatVaultSearchText(result));
+}
+
+async function commandVaultGet(options) {
+  if (options.help === true) {
+    printUsage();
+    return;
+  }
+
+  const ids = Array.isArray(options._)
+    ? options._.filter((value) => typeof value === "string" && value.trim())
+    : [];
+  if (ids.length === 0) {
+    throw new Error("vault-get requires at least one id or path.");
+  }
+
+  const result = await getVaultDocuments({
+    ids,
+    vaultDir: readOptionalString(options, "vault-dir") ?? undefined,
+  });
+
+  const format = readOptionalString(options, "format") ?? "text";
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+
+  if (format !== "text") {
+    throw new Error(`Unsupported vault-get format: ${format}`);
+  }
+
+  process.stdout.write(formatVaultGetText(result));
 }
 
 function commandVaultLint(options) {
@@ -887,6 +924,9 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "vault-search":
       await commandVaultSearch(options);
+      return;
+    case "vault-get":
+      await commandVaultGet(options);
       return;
     case "project-info":
       commandProjectInfo(options);

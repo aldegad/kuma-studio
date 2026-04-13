@@ -33,4 +33,4 @@ user-invocable: true
 - 구현 워커는 result 파일을 쓴 뒤 `~/.kuma/bin/kuma-dispatch complete --task-file <task-file>` 또는 `fail` 로 보고한다.
 - QA 워커는 같은 task file 기준으로 `~/.kuma/bin/kuma-dispatch qa-pass|qa-reject` 로 최종 상태를 보고한다.
 - 오케스트레이터는 필요 시 별도 QA task 를 dispatch 하되, 상태 전이는 기존 task file 의 `complete -> qa-pass|qa-reject` 흐름으로 유지한다.
-- `kuma-task --wait`, `kuma-cmux-wait.sh`, `cmux wait-for -S`, `/tmp/kuma-signals` 는 더 이상 canonical flow 가 아니다.
+- `kuma-task --wait`, `kuma-cmux-wait.sh`, `cmux wait-for -S`, `~/.kuma/dispatch/signals` 는 더 이상 canonical flow 가 아니다.

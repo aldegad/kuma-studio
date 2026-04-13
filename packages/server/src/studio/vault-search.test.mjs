@@ -1,10 +1,16 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { execFile as execFileCallback } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { formatVaultSearchText, searchVault } from "./vault-search.mjs";
+import { formatVaultGetText, formatVaultSearchText, getVaultDocuments, searchVault } from "./vault-search.mjs";
+
+const execFile = promisify(execFileCallback);
+const CLI_PATH = resolve(process.cwd(), "packages/server/src/cli.mjs");
+const VAULT_BIN_PATH = resolve(process.cwd(), "scripts/bin/vault");
 
 async function createVaultFixture() {
   const vaultDir = await mkdtemp(join(tmpdir(), "vault-search-"));
@@ -34,7 +40,23 @@ tags:
   - misc
 ---
 
+Intro line before the match.
 This paragraph mentions nebula-search only in body text.
+Follow-up line after the body match.
+`,
+    "utf8",
+  );
+
+  await writeFile(
+    join(vaultDir, "domains", "security.md"),
+    `---
+title: Security
+aliases:
+  - vault shield
+---
+
+Vault security baseline checklist.
+Never dump the full document from search results.
 `,
     "utf8",
   );
@@ -80,6 +102,12 @@ title: Generic ID Note
     "utf8",
   );
 
+  await writeFile(
+    join(vaultDir, "index.md"),
+    "# Vault Index\n\n- security\n",
+    "utf8",
+  );
+
   return vaultDir;
 }
 
@@ -90,78 +118,7 @@ describe("vault search", () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it("returns entity-only hits for frontmatter title and top-level field matches", async () => {
-    const vaultDir = await createVaultFixture();
-    tempDirs.push(vaultDir);
-
-    const titleResult = await searchVault({
-      vaultDir,
-      query: "entity catalog",
-    });
-
-    expect(titleResult.entityMatches).toEqual([
-      expect.objectContaining({
-        path: "projects/entity-catalog.md",
-        lineNumber: 2,
-        fieldKind: "title",
-      }),
-    ]);
-    expect(titleResult.contentMatches).toEqual([]);
-
-    const fieldResult = await searchVault({
-      vaultDir,
-      query: "studio-alpha",
-    });
-
-    expect(fieldResult.entityMatches).toEqual([
-      expect.objectContaining({
-        path: "projects/entity-catalog.md",
-        lineNumber: 3,
-        fieldKind: "frontmatter:project",
-      }),
-    ]);
-    expect(fieldResult.contentMatches).toEqual([]);
-  });
-
-  it("returns content-only hits when the query appears only in the body", async () => {
-    const vaultDir = await createVaultFixture();
-    tempDirs.push(vaultDir);
-
-    const result = await searchVault({
-      vaultDir,
-      query: "nebula-search",
-    });
-
-    expect(result.entityMatches).toEqual([]);
-    expect(result.contentMatches).toEqual([
-      expect.objectContaining({
-        path: "learnings/plain-notes.md",
-        lineNumber: 7,
-        fieldKind: "body",
-      }),
-    ]);
-  });
-
-  it("keeps block-array frontmatter hits on the original array item line", async () => {
-    const vaultDir = await createVaultFixture();
-    tempDirs.push(vaultDir);
-
-    const result = await searchVault({
-      vaultDir,
-      query: "misc",
-    });
-
-    expect(result.entityMatches).toEqual([
-      expect.objectContaining({
-        path: "learnings/plain-notes.md",
-        lineNumber: 4,
-        fieldKind: "frontmatter:tags",
-      }),
-    ]);
-    expect(result.contentMatches).toEqual([]);
-  });
-
-  it("returns both entity and content hits when the same query matches both", async () => {
+  it("returns aggregated L1 hits with stable ids and snippets", async () => {
     const vaultDir = await createVaultFixture();
     tempDirs.push(vaultDir);
 
@@ -170,29 +127,73 @@ describe("vault search", () => {
       query: "lotus",
     });
 
-    expect(result.entityMatches).toEqual([
+    expect(result.mode).toBe("search");
+    expect(result.entityMatchCount).toBe(1);
+    expect(result.contentMatchCount).toBe(1);
+    expect(result.hits).toEqual([
       expect.objectContaining({
+        id: "domains/lotus-playbook.md",
         path: "domains/lotus-playbook.md",
-        lineNumber: 1,
-        fieldKind: "canonical_id",
-      }),
-    ]);
-    expect(result.contentMatches).toEqual([
-      expect.objectContaining({
-        path: "domains/lotus-playbook.md",
-        lineNumber: 6,
-        fieldKind: "body",
+        title: "Migration Playbook",
+        entityMatchCount: 1,
+        contentMatchCount: 1,
       }),
     ]);
 
     const formatted = formatVaultSearchText(result);
-    expect(formatted).toContain("## Entity Matches");
-    expect(formatted).toContain("## Content Matches");
-    expect(formatted).toContain("[canonical_id]");
-    expect(formatted).toContain("[body]");
+    expect(formatted).toContain("# /vault search");
+    expect(formatted).toContain("id: domains/lotus-playbook.md");
+    expect(formatted).not.toContain("## Content Matches");
+    expect(formatted).not.toContain("Lotus rollout notes are tracked here.\nLotus rollout notes are tracked here.");
   });
 
-  it("recalls alias pages from framed natural-language queries", async () => {
+  it("returns explicit no matches when nothing is found", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const result = await searchVault({
+      vaultDir,
+      query: "does-not-exist",
+    });
+
+    expect(result.hits).toEqual([]);
+    expect(formatVaultSearchText(result)).toContain("no matches");
+  });
+
+  it("returns timeline snippets without dumping the full document", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const result = await searchVault({
+      vaultDir,
+      query: "nebula-search",
+      mode: "timeline",
+    });
+
+    expect(result.mode).toBe("timeline");
+    expect(result.hits).toEqual([
+      expect.objectContaining({
+        id: "learnings/plain-notes.md",
+        path: "learnings/plain-notes.md",
+        contentMatchCount: 1,
+        snippets: [
+          expect.objectContaining({
+            lineNumber: 8,
+            startLine: 6,
+            endLine: 10,
+          }),
+        ],
+      }),
+    ]);
+
+    const formatted = formatVaultSearchText(result);
+    expect(formatted).toContain("# /vault timeline");
+    expect(formatted).toContain("timeline_1: L6-L10");
+    expect(formatted).toContain("L8: This paragraph mentions nebula-search only in body text.");
+    expect(formatted).not.toContain("## Entity Matches");
+  });
+
+  it("preserves alias retrieval for framed natural-language queries", async () => {
     const vaultDir = await createVaultFixture();
     tempDirs.push(vaultDir);
 
@@ -201,12 +202,97 @@ describe("vault search", () => {
       query: "내 권효성 아이디 알려줘",
     });
 
-    expect(result.entityMatches).toEqual([
+    expect(result.hits).toEqual([
       expect.objectContaining({
-        path: "domains/alex-accounts.md",
-        fieldKind: "frontmatter:aliases",
+        id: "domains/alex-accounts.md",
+        title: "알렉스 SNS/플랫폼 계정 레지스트리",
+        entityMatchCount: 1,
       }),
     ]);
-    expect(result.contentMatches).toEqual([]);
+  });
+
+  it("loads full document contents only through vault get", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const result = await getVaultDocuments({
+      vaultDir,
+      ids: ["domains/security.md", "domains/lotus-playbook.md"],
+    });
+
+    expect(result.hits).toEqual([
+      expect.objectContaining({
+        id: "domains/security.md",
+        path: "domains/security.md",
+        title: "Security",
+      }),
+      expect.objectContaining({
+        id: "domains/lotus-playbook.md",
+        path: "domains/lotus-playbook.md",
+        title: "Migration Playbook",
+      }),
+    ]);
+
+    const formatted = formatVaultGetText(result);
+    expect(formatted).toContain("# /vault get");
+    expect(formatted).toContain("Vault security baseline checklist.");
+    expect(formatted).toContain("Lotus rollout notes are tracked here.");
+  });
+
+  it("exposes vault-search CLI modes and vault-get at the cli.mjs level", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const { stdout: searchStdout } = await execFile("node", [
+      CLI_PATH,
+      "vault-search",
+      "--mode",
+      "search",
+      "--vault-dir",
+      vaultDir,
+      "--query",
+      "vault",
+    ]);
+    expect(searchStdout).toContain("# /vault search");
+    expect(searchStdout).toContain("id: domains/security.md");
+    expect(searchStdout).not.toContain("Vault security baseline checklist.\nNever dump the full document from search results.");
+
+    const { stdout: timelineStdout } = await execFile("node", [
+      CLI_PATH,
+      "vault-search",
+      "--mode",
+      "timeline",
+      "--vault-dir",
+      vaultDir,
+      "--query",
+      "vault",
+    ]);
+    expect(timelineStdout).toContain("# /vault timeline");
+    expect(timelineStdout).toContain("timeline_1:");
+
+    const { stdout: getStdout } = await execFile("node", [
+      CLI_PATH,
+      "vault-get",
+      "--vault-dir",
+      vaultDir,
+      "domains/security.md",
+    ]);
+    expect(getStdout).toContain("# /vault get");
+    expect(getStdout).toContain("Vault security baseline checklist.");
+  });
+
+  it("keeps the vault domain shortcut working through the bin wrapper", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const { stdout } = await execFile("bash", [
+      VAULT_BIN_PATH,
+      "--vault-dir",
+      vaultDir,
+      "security",
+    ]);
+
+    expect(stdout).toContain("title: Security");
+    expect(stdout).toContain("Vault security baseline checklist.");
   });
 });

@@ -268,39 +268,10 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
         </div>
       </div>
 
-      {/* Scoped dark-theme overrides for highlight.js (github.css is tuned for light). */}
       <style>{`
         .kuma-code-scroll pre { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
         .kuma-code-scroll ::selection { background: rgba(245, 158, 11, 0.25); }
         .kuma-code-body code.hljs { display: block; }
-        [data-theme="night"] .kuma-code-scroll .hljs { color: #e2e8f0; background: transparent; }
-        [data-theme="night"] .kuma-code-scroll .hljs-comment,
-        [data-theme="night"] .kuma-code-scroll .hljs-quote { color: #7a8aa3; font-style: italic; }
-        [data-theme="night"] .kuma-code-scroll .hljs-keyword,
-        [data-theme="night"] .kuma-code-scroll .hljs-selector-tag,
-        [data-theme="night"] .kuma-code-scroll .hljs-literal,
-        [data-theme="night"] .kuma-code-scroll .hljs-meta-keyword { color: #c4b5fd; }
-        [data-theme="night"] .kuma-code-scroll .hljs-string,
-        [data-theme="night"] .kuma-code-scroll .hljs-regexp,
-        [data-theme="night"] .kuma-code-scroll .hljs-addition { color: #86efac; }
-        [data-theme="night"] .kuma-code-scroll .hljs-number,
-        [data-theme="night"] .kuma-code-scroll .hljs-symbol,
-        [data-theme="night"] .kuma-code-scroll .hljs-meta { color: #fcd34d; }
-        [data-theme="night"] .kuma-code-scroll .hljs-title,
-        [data-theme="night"] .kuma-code-scroll .hljs-title.function_,
-        [data-theme="night"] .kuma-code-scroll .hljs-section { color: #93c5fd; }
-        [data-theme="night"] .kuma-code-scroll .hljs-attr,
-        [data-theme="night"] .kuma-code-scroll .hljs-attribute,
-        [data-theme="night"] .kuma-code-scroll .hljs-name,
-        [data-theme="night"] .kuma-code-scroll .hljs-variable,
-        [data-theme="night"] .kuma-code-scroll .hljs-template-variable { color: #fca5a5; }
-        [data-theme="night"] .kuma-code-scroll .hljs-type,
-        [data-theme="night"] .kuma-code-scroll .hljs-built_in,
-        [data-theme="night"] .kuma-code-scroll .hljs-class .hljs-title { color: #67e8f9; }
-        [data-theme="night"] .kuma-code-scroll .hljs-deletion { color: #fca5a5; }
-        [data-theme="night"] .kuma-code-scroll .hljs-tag,
-        [data-theme="night"] .kuma-code-scroll .hljs-punctuation { color: #cbd5e1; }
-        [data-theme="night"] .kuma-code-scroll ::selection { background: rgba(251, 191, 36, 0.30); }
       `}</style>
     </div>
   );

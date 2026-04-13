@@ -24,7 +24,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+REGISTRY="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 
 if [ ! -f "$REGISTRY" ]; then
   echo "{}" > "$REGISTRY"

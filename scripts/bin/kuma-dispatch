@@ -31,7 +31,7 @@ shift
 
 require_cmd node
 
-KUMA_LIFECYCLE_TRACE_LOG="${KUMA_LIFECYCLE_TRACE_LOG:-/tmp/kuma-lifecycle-trace.log}"
+KUMA_LIFECYCLE_TRACE_LOG="${KUMA_LIFECYCLE_TRACE_LOG:-$HOME/.kuma/runtime/lifecycle-trace.log}"
 
 json_field() {
   local field="${1:?field required}"

@@ -3,7 +3,7 @@
 # 사용: kuma-cmux-project-status.sh [project-name]
 set -euo pipefail
 
-REGISTRY="/tmp/kuma-surfaces.json"
+REGISTRY="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 
 if [ ! -f "$REGISTRY" ]; then
   echo "{}" > "$REGISTRY"

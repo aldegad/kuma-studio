@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-
-const DEFAULT_NIGHTMODE_FLAG_PATH = "/tmp/kuma-nightmode.flag";
+import { DEFAULT_NIGHTMODE_FLAG_PATH } from "../kuma-paths.mjs";
 
 export function resolveNightModeFlagPath() {
   return resolve(process.env.KUMA_NIGHTMODE_FLAG || DEFAULT_NIGHTMODE_FLAG_PATH);

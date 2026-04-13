@@ -12,7 +12,7 @@ user-invocable: true
 
 1. **kuma-studio 야근모드 토글 ON**
    - `POST http://127.0.0.1:4312/studio/nightmode {"enabled": true}`
-   - 성공 시 `/tmp/kuma-nightmode.flag` 파일 생성 (`packages/server/src/studio/nightmode-store.mjs`)
+   - 성공 시 `~/.kuma/runtime/nightmode.flag` 파일 생성 (`packages/server/src/studio/nightmode-store.mjs`)
    - GUI 오피스 설정패널 토글도 동기화됨
 2. **쿠마 행동 모드 변경** — 유저 응답 대기 없이 자율 진행
 3. **작업 진행 상황을 `.kuma/plans/` 체크리스트로 실시간 갱신**
@@ -53,7 +53,7 @@ find "${KUMA_PLANS_DIR:-.kuma/plans}" -name '*.md' -exec grep -l 'status: active
      -H 'Content-Type: application/json' \
      -d '{"enabled":true}'
    ```
-2. `/tmp/kuma-nightmode.flag` 존재 확인 (flag 없으면 실패로 간주)
+2. `~/.kuma/runtime/nightmode.flag` 존재 확인 (flag 없으면 실패로 간주)
 3. 현재 Active 플랜 (`.kuma/plans/index.md`) 에서 미완료 체크리스트 전수 파악
 4. 가용 워커 전원에 병렬 배분 (idle 워커 없게)
 5. 디스코드에 "야근모드 ON. 오늘 할 일: [요약]. 잘 자." 한 줄 보고
@@ -109,4 +109,4 @@ find "${KUMA_PLANS_DIR:-.kuma/plans}" -name '*.md' -exec grep -l 'status: active
 - kuma-studio GUI 오피스 설정패널 — 야근모드 토글
 - `packages/server/src/studio/nightmode-store.mjs` — flag 파일 store
 - `packages/server/src/studio/studio-routes.mjs` 644-677 — `/studio/nightmode` GET/POST
-- `/tmp/kuma-nightmode.flag` — 활성화 상태 flag 파일
+- `~/.kuma/runtime/nightmode.flag` — 활성화 상태 flag 파일

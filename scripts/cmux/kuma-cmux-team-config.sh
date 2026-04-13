@@ -728,7 +728,7 @@ member_display_label() {
 resolve_registered_member_surface() {
   local project="${1:?project required}"
   local name="${2:?member name required}"
-  local registry_path="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+  local registry_path="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
   local member_json context_json
 
   member_json="$(team_config_get_member_json "$name" 2>/dev/null)" || return 1

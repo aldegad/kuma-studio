@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 
+import { DEFAULT_DISPATCH_TASK_DIR } from "../kuma-paths.mjs";
 import { resolveVaultDir } from "./memo-store.mjs";
 import { inferProjectIdFromSlugPrefix } from "./project-defaults.mjs";
 
@@ -572,7 +573,7 @@ export async function ensureVaultScaffold(vaultDir) {
   }
 }
 
-async function readVaultEntry(filePath, section) {
+async function readVaultEntry(filePath, section, relativePathOverride) {
   const content = await readFile(filePath, "utf8");
   const parsed = parsePageDocument(content);
   const summary = String(parsed.sections.get("Summary") ?? "").trim() || extractSummary(parsed.body, basename(filePath, ".md"));
@@ -582,7 +583,7 @@ async function readVaultEntry(filePath, section) {
   return {
     section,
     filePath,
-    relativePath: join(section, basename(filePath)),
+    relativePath: relativePathOverride ?? join(section, basename(filePath)),
     slug: basename(filePath, ".md"),
     title: String(parsed.frontmatter.title ?? basename(filePath, ".md")),
     summary: summary && !summary.startsWith("(") ? summary.replace(/\n+/gu, " ").trim() : "",
@@ -603,6 +604,18 @@ async function collectVaultEntries(vaultDir) {
 
     const files = await readdir(sectionDir, { withFileTypes: true });
     for (const file of files) {
+      if (file.isDirectory()) {
+        const subDir = join(sectionDir, file.name);
+        const subFiles = await readdir(subDir, { withFileTypes: true });
+        for (const subFile of subFiles) {
+          if (!subFile.isFile() || extname(subFile.name).toLowerCase() !== ".md") {
+            continue;
+          }
+          const relPath = `${section}/${file.name}/${subFile.name}`;
+          entries.push(await readVaultEntry(join(subDir, subFile.name), section, relPath));
+        }
+        continue;
+      }
       if (!file.isFile() || extname(file.name).toLowerCase() !== ".md") {
         continue;
       }
@@ -686,6 +699,32 @@ export async function rewriteIndex(vaultDir) {
     const sectionEntries = bySection.get(section) ?? [];
     if (sectionEntries.length === 0) {
       lines.push(section === "inbox" ? "(비어 있음)" : "(아직 없음)");
+    } else if (section === "domains") {
+      const topLevel = sectionEntries.filter((e) => e.relativePath.split("/").length === 2);
+      const subDirEntries = sectionEntries.filter((e) => e.relativePath.split("/").length >= 3);
+      for (const entry of topLevel) {
+        const summary = entry.summary || "요약 없음";
+        lines.push(`- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`);
+      }
+      const bySubDir = new Map();
+      for (const entry of subDirEntries) {
+        const subDir = entry.relativePath.split("/")[1];
+        if (!bySubDir.has(subDir)) {
+          bySubDir.set(subDir, []);
+        }
+        bySubDir.get(subDir).push(entry);
+      }
+      for (const [subDir, subEntries] of bySubDir) {
+        const subsectionName = subDir
+          .split("-")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+        lines.push(`\n### ${subsectionName}`);
+        for (const entry of subEntries) {
+          const summary = entry.summary || "요약 없음";
+          lines.push(`- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`);
+        }
+      }
     } else {
       for (const entry of sectionEntries) {
         const summary = entry.summary || "요약 없음";
@@ -749,7 +788,7 @@ export async function ingestResultFile({
   resultPath,
   vaultDir,
   wikiDir,
-  taskDir = "/tmp/kuma-tasks",
+  taskDir = DEFAULT_DISPATCH_TASK_DIR,
   qaStatus = "passed",
   section = null,
   slug = null,

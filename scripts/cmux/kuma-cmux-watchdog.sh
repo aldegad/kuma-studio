@@ -22,9 +22,9 @@ ENTER_RETRY_WAIT=3
 KUMA_SURFACE="surface:1"
 KUMA_IDLE_ALERT_SECONDS=600  # 10 minutes
 
-LOG="/tmp/kuma-watchdog.log"
-ALERT_LOG="/tmp/kuma-watchdog-alert.log"
-SURFACES_FILE="/tmp/kuma-surfaces.json"
+LOG="${KUMA_WATCHDOG_LOG_PATH:-$HOME/.kuma/runtime/watchdog.log}"
+ALERT_LOG="${KUMA_WATCHDOG_ALERT_LOG_PATH:-$HOME/.kuma/runtime/watchdog-alert.log}"
+SURFACES_FILE="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 
 KUMA_IDLE_SINCE=0
 

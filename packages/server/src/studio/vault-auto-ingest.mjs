@@ -3,10 +3,8 @@ import { existsSync } from "node:fs";
 import { mkdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { DEFAULT_AUTO_INGEST_STAMP_DIR, DEFAULT_DISPATCH_TASK_DIR } from "../kuma-paths.mjs";
 import { findMatchingTaskMetadata, ingestResultFile } from "./vault-ingest.mjs";
-
-const DEFAULT_TASK_DIR = "/tmp/kuma-tasks";
-const DEFAULT_STAMP_DIR = "/tmp/kuma-vault-auto-ingest";
 
 function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";

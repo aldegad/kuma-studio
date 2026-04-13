@@ -35,7 +35,7 @@ if [ -n "$file_path" ]; then
       echo '{"continue": true}'; exit 0 ;;
     */.claude/projects/*/memory/*)
       echo '{"continue": true}'; exit 0 ;;
-    /tmp/kuma-tasks/*|/tmp/kuma-results/*|/tmp/kuma-signals/*)
+    */.kuma/dispatch/tasks/*|*/.kuma/dispatch/results/*|*/.kuma/dispatch/signals/*)
       echo '{"continue": true}'; exit 0 ;;
     */CLAUDE.md|*/MEMORY.md)
       echo '{"continue": true}'; exit 0 ;;

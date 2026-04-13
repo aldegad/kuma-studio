@@ -25,7 +25,7 @@ shift || true
 
 DRY_RUN=0
 TARGET_DIR=""
-REGISTRY_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+REGISTRY_PATH="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 CURRENT_SURFACE="${CMUX_SURFACE_ID:-}"
 
 while [[ $# -gt 0 ]]; do

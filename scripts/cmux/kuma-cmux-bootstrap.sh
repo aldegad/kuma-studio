@@ -23,7 +23,7 @@ source "$SCRIPT_DIR/kuma-cmux-team-config.sh"
 set -euo pipefail
 require_team_config
 
-REGISTRY="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+REGISTRY="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 
 # 헬퍼: surface → pane 조회
 get_pane() {

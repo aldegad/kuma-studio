@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage: kuma-cmux-clean.sh [--dry-run] [-v|--verbose]
-# Find cmux surfaces that are not registered in /tmp/kuma-surfaces.json and close them.
+# Find cmux surfaces that are not registered in ~/.kuma/cmux/surfaces.json and close them.
 set -euo pipefail
 
 # Resolve script path through any symlink chain so this works when invoked
@@ -17,7 +17,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"
 SCRIPT_NAME="$(basename "$SCRIPT_SOURCE")"
 
-REGISTRY_PATH="${KUMA_SURFACES_PATH:-/tmp/kuma-surfaces.json}"
+REGISTRY_PATH="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 CURRENT_SURFACE="${CMUX_SURFACE_ID:-}"
 DRY_RUN=0
 VERBOSE=0
