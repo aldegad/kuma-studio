@@ -119,6 +119,7 @@ describe("cmux wait script", { timeout: 30000 }, () => {
     const resultDir = join(root, "results");
     const signalDir = join(root, "signals");
     const surfacesPath = join(root, "surfaces.json");
+    const teamPath = join(root, "team.json");
     const sendLog = join(root, "send.log");
     const resultPath = join(resultDir, "phase8.result.md");
     const signalName = "kuma-studio-tookdaki-20260408-185642-done";
@@ -152,8 +153,22 @@ plan: ${planPath}
     await writeFile(
       surfacesPath,
       `${JSON.stringify({
-        system: {
+        "kuma-studio": {
           "🦌 노을이": "surface:46",
+        },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      teamPath,
+      `${JSON.stringify({
+        teams: {
+          system: {
+            name: "시스템",
+            members: [
+              { id: "noeuri", name: "노을이", emoji: "🦌", team: "system" },
+            ],
+          },
         },
       }, null, 2)}\n`,
       "utf8",
@@ -319,6 +334,7 @@ Wait for an exact signal file
     const resultDir = join(root, "results");
     const signalDir = join(root, "signals");
     const surfacesPath = join(root, "surfaces.json");
+    const teamPath = join(root, "team.json");
     const sendLog = join(root, "send.log");
     const resultPath = join(resultDir, "phase4.result.md");
     const signalName = "kuma-studio-kuma-task-allowlist-noeuri-phase4-done";
@@ -352,8 +368,22 @@ plan: ${planPath}
     await writeFile(
       surfacesPath,
       `${JSON.stringify({
-        system: {
+        "kuma-studio": {
           "🦌 노을이": "surface:46",
+        },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      teamPath,
+      `${JSON.stringify({
+        teams: {
+          system: {
+            name: "시스템",
+            members: [
+              { id: "noeuri", name: "노을이", emoji: "🦌", team: "system" },
+            ],
+          },
         },
       }, null, 2)}\n`,
       "utf8",
@@ -393,12 +423,14 @@ printf '\\n' >> "${sendLog}"
         KUMA_SURFACES_PATH: surfacesPath,
         KUMA_CMUX_SEND_SCRIPT: sendScriptPath,
         KUMA_REPO_ROOT: root,
+        KUMA_TEAM_JSON_PATH: teamPath,
         KUMA_SIGNAL_DIR: signalDir,
         KUMA_USER_MEMO_DIR: join(root, "user-memo"),
       },
     });
 
     const sendLogContents = await readFile(sendLog, "utf8");
+    const nextRegistry = JSON.parse(await readFile(surfacesPath, "utf8"));
     expect(stdout).toContain(`SIGNAL_RECEIVED: ${signalName}`);
     expect(stdout).toContain(`RESULT_FILE: ${resultPath}`);
     expect(stderr).toContain("AUTO_INGEST:");
@@ -413,6 +445,11 @@ printf '\\n' >> "${sendLog}"
     expect(sendLogContents).toContain("Ignore stale migration briefs that suggest moving or deleting memory/ files");
     expect(sendLogContents).toContain("/tmp/kuma-results/noeuri-audit-kuma-task-allowlist-noeuri-phase4.result.md");
     expect(sendLogContents).toContain("/tmp/kuma-signals/noeuri-auto-kuma-task-allowlist-noeuri-phase4-done");
+    expect(nextRegistry).toEqual({
+      system: {
+        "🦌 노을이": "surface:46",
+      },
+    });
   });
 
   it("runs qa-passed vault-hook post-processing without waiting for a signal", async () => {
@@ -423,6 +460,7 @@ printf '\\n' >> "${sendLog}"
     const taskDir = join(root, "tasks");
     const resultDir = join(root, "results");
     const surfacesPath = join(root, "surfaces.json");
+    const teamPath = join(root, "team.json");
     const sendLog = join(root, "send.log");
     const resultPath = join(resultDir, "broker.result.md");
     const taskPath = join(taskDir, "broker.task.md");
@@ -455,8 +493,22 @@ plan: ${join(root, ".kuma", "plans", "kuma-studio", "dispatch-broker-cleanup.md"
     await writeFile(
       surfacesPath,
       `${JSON.stringify({
-        system: {
+        "kuma-studio": {
           "🦌 노을이": "surface:46",
+        },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      teamPath,
+      `${JSON.stringify({
+        teams: {
+          system: {
+            name: "시스템",
+            members: [
+              { id: "noeuri", name: "노을이", emoji: "🦌", team: "system" },
+            ],
+          },
         },
       }, null, 2)}\n`,
       "utf8",
@@ -496,16 +548,23 @@ printf '\\n' >> "${sendLog}"
         KUMA_SURFACES_PATH: surfacesPath,
         KUMA_CMUX_SEND_SCRIPT: sendScriptPath,
         KUMA_REPO_ROOT: root,
+        KUMA_TEAM_JSON_PATH: teamPath,
         KUMA_USER_MEMO_DIR: join(root, "user-memo"),
       },
     });
 
     const sendLogContents = await readFile(sendLog, "utf8");
+    const nextRegistry = JSON.parse(await readFile(surfacesPath, "utf8"));
     expect(stderr).toContain("AUTO_INGEST:");
     expect(stderr).toContain("NOEURI_TRIGGER: surface=surface:46");
     expect(sendLogContents).toContain("surface:46");
     expect(sendLogContents).toContain("task: tookdaki-20260413-045000.");
     expect(sendLogContents).toContain(`task-file: ${taskPath}.`);
+    expect(nextRegistry).toEqual({
+      system: {
+        "🦌 노을이": "surface:46",
+      },
+    });
   });
 
   it("prints the Noeuri audit report when a noeuri-auto signal completes", async () => {

@@ -658,6 +658,10 @@ export class TeamStatusStore {
     return new Map(this.#surfaceStates);
   }
 
+  getRegistry() {
+    return cloneSnapshot(this.#registry);
+  }
+
   /**
    * @param {(snapshot: { projects: Record<string, { members: Array<{ name: string, emoji: string, role: string, surface: string, status: TeamSurfaceStatus, lastOutput: string }> }> }) => void} listener
    * @returns {() => void}

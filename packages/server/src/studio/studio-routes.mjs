@@ -166,7 +166,10 @@ export function createStudioRouteHandler({
       const projectId = url.searchParams.get("project") ?? "";
       sendJson(res, 200, toStudioTeamStatusSnapshot(
         teamStatusStore?.getSurfaceStates() ?? new Map(),
-        { projectId },
+        {
+          projectId,
+          registry: teamStatusStore?.getRegistry?.(),
+        },
       ));
       return true;
     }

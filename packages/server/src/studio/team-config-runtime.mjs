@@ -181,6 +181,17 @@ function isMissingSurfaceError(error) {
   return false;
 }
 
+function resolveCanonicalContextProject(requestedProject, team) {
+  const normalizedRequestedProject = typeof requestedProject === "string" ? requestedProject.trim() : "";
+  const normalizedTeam = typeof team === "string" ? team.trim() : "";
+
+  if (normalizedTeam === "system") {
+    return "system";
+  }
+
+  return normalizedRequestedProject || normalizedTeam || null;
+}
+
 export function createTeamConfigRuntime(options = {}) {
   const {
     teamStatusStore = null,
@@ -351,6 +362,8 @@ export function createTeamConfigRuntime(options = {}) {
       return resolveLiveMemberSurfacesFn(memberName, emoji);
     },
     resolveMemberContext(memberName, emoji, requestedProject = "", team = "") {
+      const canonicalProject = resolveCanonicalContextProject(requestedProject, team);
+      const canonicalLabel = buildRegistryLabel(memberName, emoji) || String(memberName ?? "").trim();
       const registryContext = resolveRegistryMemberContext(
         readSurfaceRegistryFile(registryPath),
         {
@@ -362,6 +375,24 @@ export function createTeamConfigRuntime(options = {}) {
       );
 
       if (registryContext) {
+        if (canonicalProject && registryContext.project !== canonicalProject) {
+          const nextRegistry = updateRegistryMemberSurface(
+            readSurfaceRegistryFile(registryPath),
+            {
+              projectId: canonicalProject,
+              memberName,
+              emoji,
+              surface: registryContext.surface,
+            },
+          );
+          writeSurfaceRegistryFile(registryPath, nextRegistry);
+          return {
+            project: canonicalProject,
+            label: canonicalLabel,
+            surface: registryContext.surface,
+          };
+        }
+
         return registryContext;
       }
 
@@ -371,9 +402,22 @@ export function createTeamConfigRuntime(options = {}) {
         return null;
       }
 
+      if (canonicalProject) {
+        const nextRegistry = updateRegistryMemberSurface(
+          readSurfaceRegistryFile(registryPath),
+          {
+            projectId: canonicalProject,
+            memberName,
+            emoji,
+            surface: liveSurface,
+          },
+        );
+        writeSurfaceRegistryFile(registryPath, nextRegistry);
+      }
+
       return {
-        project: requestedProject || team || null,
-        label: buildRegistryLabel(memberName, emoji) || String(memberName ?? "").trim(),
+        project: canonicalProject,
+        label: canonicalLabel,
         surface: liveSurface,
       };
     },

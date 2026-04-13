@@ -33,6 +33,7 @@ KUMA_CMUX_SEND_SCRIPT="${KUMA_CMUX_SEND_SCRIPT:-$HOME/.kuma/cmux/kuma-cmux-send.
 AUTO_NOEURI_TRIGGER_ENABLED="${KUMA_AUTO_NOEURI_TRIGGER:-1}"
 KUMA_RESULT_DIR_PATH="${KUMA_RESULT_DIR:-/tmp/kuma-results}"
 KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
+KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
 KUMA_USER_MEMO_DIR="${KUMA_USER_MEMO_DIR:-$HOME/.claude/projects}"
 KUMA_DISABLE_VAULT_HOOK="${KUMA_DISABLE_VAULT_HOOK:-0}"
 KUMA_VAULT_LOCK_PATH="${KUMA_VAULT_LOCK_PATH:-$KUMA_VAULT_DIR/.lock}"
@@ -346,24 +347,61 @@ broker_terminal_completion_ready() {
 }
 
 resolve_noeuri_surface() {
-  node --input-type=module - "$KUMA_SURFACES_PATH" <<'NODE'
+  local task_json=""
+  local project=""
+
+  task_json="$(current_task_metadata_json 2>/dev/null || true)"
+  project="$(json_field "$task_json" project)"
+
+  node --input-type=module - "$SOURCE_REPO_ROOT" "$KUMA_SURFACES_PATH" "$KUMA_TEAM_JSON_PATH" "$project" <<'NODE'
 import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const [, , surfacesPath] = process.argv;
-if (!existsSync(surfacesPath)) {
+const [, , repoRoot, registryPath, teamJsonPath, requestedProject] = process.argv;
+if (!repoRoot || !existsSync(teamJsonPath)) {
   process.exit(1);
 }
 
-const surfaces = JSON.parse(readFileSync(surfacesPath, "utf8"));
-const surface = typeof surfaces?.system?.["🦌 노을이"] === "string"
-  ? surfaces.system["🦌 노을이"].trim()
-  : "";
+const teamConfig = JSON.parse(readFileSync(teamJsonPath, "utf8"));
+const members = Object.values(teamConfig?.teams ?? {}).flatMap((team) =>
+  Array.isArray(team?.members) ? team.members : [],
+);
+const member = members.find((entry) => {
+  const id = typeof entry?.id === "string" ? entry.id.trim().toLowerCase() : "";
+  const name = typeof entry?.name === "string" ? entry.name.trim() : "";
+  const nameEn = typeof entry?.nameEn === "string" ? entry.nameEn.trim().toLowerCase() : "";
+  return id === "noeuri" || name === "노을이" || nameEn === "noeuri";
+});
 
-if (!surface) {
+if (!member) {
   process.exit(1);
 }
 
-process.stdout.write(surface);
+const runtimeModule = await import(
+  pathToFileURL(join(repoRoot, "packages/server/src/studio/team-config-runtime.mjs")).href
+);
+const runtime = runtimeModule.createTeamConfigRuntime({
+  queuePollMs: 0,
+  registryPath,
+});
+
+try {
+  const context = runtime.resolveMemberContext(
+    typeof member?.name === "string" ? member.name.trim() : "노을이",
+    typeof member?.emoji === "string" ? member.emoji.trim() : "",
+    typeof requestedProject === "string" ? requestedProject.trim() : "",
+    typeof member?.team === "string" ? member.team.trim() : "",
+  );
+
+  if (!context?.surface || typeof context.surface !== "string" || !context.surface.trim()) {
+    process.exit(1);
+  }
+
+  process.stdout.write(context.surface.trim());
+} finally {
+  runtime.close?.();
+}
 NODE
 }
 

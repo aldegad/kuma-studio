@@ -816,6 +816,45 @@ describe("studio-routes team-config", () => {
     }
   });
 
+  it("canonicalizes stale project-scoped system members back into the system registry", () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-runtime-"));
+    tempDirs.push(root);
+
+    const registryPath = join(root, "surfaces.json");
+    writeFileSync(registryPath, `${JSON.stringify({
+      "kuma-studio": {
+        "🦌 노을이": "surface:24",
+      },
+      system: {
+        "🐻 쿠마": "surface:1",
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const runtime = createTeamConfigRuntime({
+      registryPath,
+      queuePollMs: 0,
+      resolveLiveMemberSurfacesFn: () => [],
+    });
+
+    try {
+      const context = runtime.resolveMemberContext("노을이", "🦌", "kuma-studio", "system");
+
+      assert.deepStrictEqual(context, {
+        project: "system",
+        label: "🦌 노을이",
+        surface: "surface:24",
+      });
+      assert.deepStrictEqual(JSON.parse(readFileSync(registryPath, "utf8")), {
+        system: {
+          "🐻 쿠마": "surface:1",
+          "🦌 노을이": "surface:24",
+        },
+      });
+    } finally {
+      runtime.close();
+    }
+  });
+
   it("spawns the exact codex command with model and options for 밤토리", () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-cmux-spawn-"));
     tempDirs.push(root);
