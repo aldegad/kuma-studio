@@ -27,7 +27,7 @@ describe("cmux send enforcement scripts", { timeout: 30_000 }, () => {
     await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  it("submits prompts atomically with an attached Enter escape", async () => {
+  it("submits prompts with a separate Enter key after the paste settles", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
     tempRoots.push(root);
 
@@ -35,9 +35,13 @@ describe("cmux send enforcement scripts", { timeout: 30_000 }, () => {
     const cmuxLog = join(root, "cmux.log");
     const sendLog = join(root, "kuma-send.log");
     const sendPayloadPath = join(root, "send-payload.txt");
+    const readCountPath = join(root, "read-count.txt");
+    const sendKeyCountPath = join(root, "send-key-count.txt");
     const prompt = "HOWL-BAMTORI-ACK";
 
     await mkdir(binDir, { recursive: true });
+    await writeFile(readCountPath, "0", "utf8");
+    await writeFile(sendKeyCountPath, "0", "utf8");
 
     await writeExecutable(
       join(binDir, "cmux"),
@@ -53,14 +57,24 @@ case "$command" in
     printf 'workspace:1\\n  surface:9\\n'
     ;;
   read-screen)
-    if [ ! -f "${sendPayloadPath}" ]; then
+    count=$(cat "${readCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${readCountPath}"
+    if [ "$count" -eq 1 ]; then
       printf '  ❯\\n'
+    elif [ "$count" -eq 2 ]; then
+      printf '  > ${prompt}\\n'
     else
       printf 'Running task\\n'
     fi
     ;;
   send)
     printf '%s' "\${*: -1}" > "${sendPayloadPath}"
+    ;;
+  send-key)
+    count=$(cat "${sendKeyCountPath}")
+    count=$((count + 1))
+    printf '%s' "$count" > "${sendKeyCountPath}"
     ;;
 esac
 `,
@@ -77,12 +91,15 @@ esac
     const cmuxLogContents = await readFile(cmuxLog, "utf8");
     const sendLogContents = await readFile(sendLog, "utf8");
     const sendPayload = await readFile(sendPayloadPath, "utf8");
+    const sendKeyCount = Number((await readFile(sendKeyCountPath, "utf8")).trim());
 
     expect(cmuxLogContents).toContain("send|--workspace workspace:1 --surface surface:9");
-    expect(sendPayload.endsWith("\\r")).toBe(true);
-    expect(cmuxLogContents).not.toContain("send-key|");
+    expect(sendPayload).toBe(prompt);
+    expect(sendKeyCount).toBe(2);
+    expect(cmuxLogContents).toContain("send-key|--workspace workspace:1 --surface surface:9 Enter");
     expect(sendLogContents).toContain("\tpre-send\t");
     expect(sendLogContents).toContain("\tdispatch\t");
+    expect(sendLogContents).toContain("\tenter-retry-1\t");
     expect(sendLogContents).toContain("\tdelivered\t");
   }, 60_000);
 
@@ -133,7 +150,7 @@ esac
     expect(`${failure.stderr}`).toContain("ERROR: Prompt delivery failed");
 
     const sendLogContents = await readFile(sendLog, "utf8");
-    expect(sendLogContents).toContain("\tobserve-unchanged\t");
+    expect(sendLogContents).toContain("\tretry-unchanged\t");
     expect(sendLogContents).toContain("\tfailed\t");
     expect(sendLogContents).not.toContain("\tdelivered\t");
   });
