@@ -413,6 +413,158 @@ describe("studio-routes team-config", () => {
     assert.strictEqual(res.json.members["뚝딱이"].type, "codex");
   });
 
+  it("renders the exact codex developer instructions through the prompt viewer route", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-routes-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const vaultDir = writeDecisionsFixture(root);
+    const projectRoot = join(root, "kuma-studio");
+    mkdirSync(projectRoot, { recursive: true });
+    const teamPath = join(root, "team.json");
+    writeFileSync(teamPath, `${JSON.stringify(createMinimalTeamSchema(), null, 2)}\n`, "utf8");
+
+    const store = new TeamConfigStore(teamPath);
+    const previousVaultDir = process.env.KUMA_VAULT_DIR;
+    process.env.KUMA_VAULT_DIR = vaultDir;
+
+    try {
+      const handler = createStudioRouteHandler({
+        staticDir,
+        statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+        sceneStore: {},
+        teamConfigStore: store,
+        workspaceRoot: projectRoot,
+      });
+
+      const expected = spawnSync(
+        "bash",
+        ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_codex_developer_instructions "밤토리" "CoS. Bash execution, cmux worker management" "worker" "kuma-studio"`],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            KUMA_TEAM_JSON_PATH: teamPath,
+            KUMA_VAULT_DIR: vaultDir,
+          },
+        },
+      );
+
+      assert.strictEqual(expected.status, 0);
+
+      const res = createResponse();
+      await handler(
+        createRequest("GET", "/studio/team-prompts/bamdori?project=kuma-studio"),
+        res,
+        new URL("http://localhost:4312/studio/team-prompts/bamdori?project=kuma-studio"),
+      );
+
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.json.member, "밤토리");
+      assert.strictEqual(res.json.type, "codex");
+      assert.strictEqual(res.json.project, "kuma-studio");
+      assert.strictEqual(res.json.prompt, expected.stdout);
+    } finally {
+      if (previousVaultDir == null) {
+        delete process.env.KUMA_VAULT_DIR;
+      } else {
+        process.env.KUMA_VAULT_DIR = previousVaultDir;
+      }
+    }
+  });
+
+  it("renders the exact Kuma session system prompt using the workspace project fallback", async () => {
+    const root = mkdtempSync(join(tmpdir(), "kuma-team-config-routes-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const vaultDir = writeDecisionsFixture(root);
+    const projectRoot = join(root, "kuma-studio");
+    mkdirSync(projectRoot, { recursive: true });
+    const sessionPromptPath = join(root, "kuma-session-prompt.md");
+    writeFileSync(sessionPromptPath, "You are Kuma session prompt fixture.", "utf8");
+    const teamPath = join(root, "team.json");
+    writeFileSync(teamPath, `${JSON.stringify({
+      teams: {
+        system: {
+          members: [
+            {
+              id: "kuma",
+              name: "쿠마",
+              emoji: "🐻",
+              role: "총괄 리더",
+              roleLabel: { en: "Leader" },
+              team: "system",
+              nodeType: "session",
+              spawnType: "claude",
+              spawnModel: "claude-opus-4-6",
+              spawnOptions: "--dangerously-skip-permissions",
+            },
+          ],
+        },
+      },
+    }, null, 2)}\n`, "utf8");
+
+    const store = new TeamConfigStore(teamPath);
+    const previousVaultDir = process.env.KUMA_VAULT_DIR;
+    const previousSystemPromptPath = process.env.KUMA_SYSTEM_PROMPT_PATH;
+    process.env.KUMA_VAULT_DIR = vaultDir;
+    process.env.KUMA_SYSTEM_PROMPT_PATH = sessionPromptPath;
+
+    try {
+      const handler = createStudioRouteHandler({
+        staticDir,
+        statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+        sceneStore: {},
+        teamConfigStore: store,
+        workspaceRoot: projectRoot,
+      });
+
+      const expected = spawnSync(
+        "bash",
+        ["-lc", `source "${CMUX_TEAM_CONFIG_SCRIPT_PATH}" && build_session_system_prompt "쿠마" "Leader" "session" "kuma-studio"`],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            KUMA_TEAM_JSON_PATH: teamPath,
+            KUMA_VAULT_DIR: vaultDir,
+            KUMA_SYSTEM_PROMPT_PATH: sessionPromptPath,
+          },
+        },
+      );
+
+      assert.strictEqual(expected.status, 0);
+
+      const res = createResponse();
+      await handler(
+        createRequest("GET", "/studio/team-prompts/kuma?project=system"),
+        res,
+        new URL("http://localhost:4312/studio/team-prompts/kuma?project=system"),
+      );
+
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(res.json.member, "쿠마");
+      assert.strictEqual(res.json.project, "kuma-studio");
+      assert.strictEqual(res.json.nodeType, "session");
+      assert.strictEqual(res.json.prompt, expected.stdout);
+      assert.match(res.json.prompt, /You are Kuma session prompt fixture\./u);
+      assert.match(res.json.prompt, /프로젝트 결정은 project-decisions에서 읽는다\./u);
+    } finally {
+      if (previousVaultDir == null) {
+        delete process.env.KUMA_VAULT_DIR;
+      } else {
+        process.env.KUMA_VAULT_DIR = previousVaultDir;
+      }
+
+      if (previousSystemPromptPath == null) {
+        delete process.env.KUMA_SYSTEM_PROMPT_PATH;
+      } else {
+        process.env.KUMA_SYSTEM_PROMPT_PATH = previousSystemPromptPath;
+      }
+    }
+  });
+
   it("applies explicit modelCatalogId patches without collapsing back to raw model defaults", async () => {
     const root = mkdtempSync(join(tmpdir(), "kuma-team-config-routes-"));
     tempDirs.push(root);

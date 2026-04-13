@@ -98,6 +98,19 @@ export interface TeamConfigResponse {
   modelCatalog: ModelCatalogEntry[];
 }
 
+export interface TeamPromptResponse {
+  member: string;
+  memberId: string;
+  role: string;
+  project: string;
+  type: string;
+  model: string;
+  options: string;
+  nodeType: string;
+  builder: string;
+  prompt: string;
+}
+
 type SharedTeamMember = (typeof teamData.members)[number];
 
 const TEAM_NAME_BY_ID = new Map(teamData.teams.map((team) => [team.id, team.name] as const));

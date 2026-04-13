@@ -4,6 +4,7 @@ import { CharacterSprite } from "./CharacterSprite";
 import { CharacterTooltip } from "./CharacterTooltip";
 import { useRandomEmote } from "../../hooks/use-random-emote";
 import { STATE_COLORS, formatModelName, formatModelDetail } from "../../lib/constants";
+import { MAX_SPEECH_BUBBLE_LINES } from "../../lib/dispatch-bubbles";
 import { useTeamStatusStore } from "../../stores/use-team-status-store";
 import { useTeamConfigStore } from "../../stores/use-team-config-store";
 
@@ -17,13 +18,11 @@ interface CharacterProps {
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void;
 }
 
-const SPEECH_BUBBLE_MAX_LINES = 2;
-
 export function getVisibleSpeechBubbleLines(lines?: string[]): string[] {
   return (lines ?? [])
     .map((line) => line.trim())
     .filter(Boolean)
-    .slice(-SPEECH_BUBBLE_MAX_LINES);
+    .slice(-MAX_SPEECH_BUBBLE_LINES);
 }
 
 export function Character({ character, isDragging = false, isSelected = false, speechBubbleLines, onClick, onDragStart, onDoubleClick }: CharacterProps) {
@@ -87,7 +86,7 @@ export function Character({ character, isDragging = false, isSelected = false, s
           </div>
         )}
 
-        {/* Speech bubble — absolute so it doesn't push card down. Shows the latest two meaningful lines. */}
+        {/* Speech bubble — absolute so it doesn't push card down. Shows the latest five meaningful lines. */}
         {hasSpeechBubble && (
           <div
             className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-[18rem] min-h-[3rem] max-w-[min(18rem,60vw)] rounded-lg border border-stone-200 bg-white/95 px-2.5 py-2 shadow-md z-10"

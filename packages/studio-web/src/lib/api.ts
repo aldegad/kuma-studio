@@ -1,5 +1,5 @@
 import type { OfficeLayoutSnapshot } from "../types/office";
-import type { TeamMetadataResponse, TeamConfigResponse } from "../types/agent";
+import type { TeamMetadataResponse, TeamConfigResponse, TeamPromptResponse } from "../types/agent";
 import type {
   ContentListResponse,
   ContentPostStatus,
@@ -326,6 +326,15 @@ export async function fetchTeamConfig(): Promise<TeamConfigResponse> {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch team config: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchTeamMemberPrompt(memberId: string, projectId?: string | null): Promise<TeamPromptResponse> {
+  const search = projectId ? `?project=${encodeURIComponent(projectId)}` : "";
+  const res = await fetch(`${BASE_URL}/studio/team-prompts/${encodeURIComponent(memberId)}${search}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch team member prompt: ${res.statusText}`);
   return res.json();
 }
 

@@ -10,17 +10,26 @@ describe("getVisibleSpeechBubbleLines", () => {
     });
   });
 
-  it("returns the most recent two meaningful lines", async () => {
+  it("returns the most recent five meaningful lines", async () => {
     const { getVisibleSpeechBubbleLines } = await import("./Character");
     expect(
       getVisibleSpeechBubbleLines([
+        "Reading task",
         "Starting build",
         "",
         "Applying patch",
         "  ",
         "Verifying result",
+        "Running tests",
+        "Posting summary",
       ]),
-    ).toEqual(["Applying patch", "Verifying result"]);
+    ).toEqual([
+      "Starting build",
+      "Applying patch",
+      "Verifying result",
+      "Running tests",
+      "Posting summary",
+    ]);
   });
 
   it("keeps shorter speech output intact", async () => {

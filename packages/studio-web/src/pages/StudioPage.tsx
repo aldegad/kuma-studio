@@ -222,7 +222,7 @@ export function StudioPage() {
     { id: "memo", title: "메모", className: "w-80", content: <MemoPanel /> },
     { id: "content", title: "스레드 콘텐츠", className: "w-[min(56rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
-    { id: "cmux", title: "cmux", className: "w-64", content: <CmuxPanel /> },
+    { id: "cmux", title: "TEAM", className: "w-64", content: <CmuxPanel /> },
     { id: "activity-feed", title: "활동 로그", className: "w-72", content: <ActivityFeed />, hidden: activityCount === 0 },
     { id: "skills", title: "확장", className: "w-80", content: <SkillsPanel /> },
     { id: "minimap", title: "미니맵", className: "w-[152px]",

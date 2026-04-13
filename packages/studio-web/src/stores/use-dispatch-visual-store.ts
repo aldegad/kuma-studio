@@ -1,8 +1,7 @@
 import { create } from "zustand";
+import { MAX_SPEECH_BUBBLE_LINE_LENGTH, MAX_SPEECH_BUBBLE_LINES } from "../lib/dispatch-bubbles";
 
 const DEFAULT_BUBBLE_DURATION_MS = 5_000;
-const MAX_BUBBLE_LINES = 3;
-const MAX_LINE_LENGTH = 24;
 const bubbleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export type DispatchBubbleKind = "instruction" | "question" | "answer" | "status" | "note" | "blocker";
@@ -33,7 +32,7 @@ function wrapBubbleText(text: string): string[] {
 
   for (const word of words) {
     const next = current ? `${current} ${word}` : word;
-    if (next.length <= MAX_LINE_LENGTH) {
+    if (next.length <= MAX_SPEECH_BUBBLE_LINE_LENGTH) {
       current = next;
       continue;
     }
@@ -43,29 +42,29 @@ function wrapBubbleText(text: string): string[] {
       current = "";
     }
 
-    if (word.length <= MAX_LINE_LENGTH) {
+    if (word.length <= MAX_SPEECH_BUBBLE_LINE_LENGTH) {
       current = word;
       continue;
     }
 
     let remaining = word;
-    while (remaining.length > MAX_LINE_LENGTH && lines.length < MAX_BUBBLE_LINES) {
-      lines.push(remaining.slice(0, MAX_LINE_LENGTH));
-      remaining = remaining.slice(MAX_LINE_LENGTH);
+    while (remaining.length > MAX_SPEECH_BUBBLE_LINE_LENGTH && lines.length < MAX_SPEECH_BUBBLE_LINES) {
+      lines.push(remaining.slice(0, MAX_SPEECH_BUBBLE_LINE_LENGTH));
+      remaining = remaining.slice(MAX_SPEECH_BUBBLE_LINE_LENGTH);
     }
     current = remaining;
   }
 
-  if (current && lines.length < MAX_BUBBLE_LINES) {
+  if (current && lines.length < MAX_SPEECH_BUBBLE_LINES) {
     lines.push(current);
   }
 
   if (lines.length === 0) {
-    lines.push(normalized.slice(0, MAX_LINE_LENGTH));
+    lines.push(normalized.slice(0, MAX_SPEECH_BUBBLE_LINE_LENGTH));
   }
 
-  if (lines.length > MAX_BUBBLE_LINES) {
-    return lines.slice(0, MAX_BUBBLE_LINES);
+  if (lines.length > MAX_SPEECH_BUBBLE_LINES) {
+    return lines.slice(0, MAX_SPEECH_BUBBLE_LINES);
   }
 
   return lines;
@@ -92,7 +91,7 @@ export function formatDispatchBubbleLines(text: string, kind: DispatchBubbleKind
   if (truncatedSource.length > visibleLength && lines.length > 0) {
     const next = [...lines];
     const lastIndex = next.length - 1;
-    const trimmed = next[lastIndex].slice(0, Math.max(0, MAX_LINE_LENGTH - 1)).trimEnd();
+    const trimmed = next[lastIndex].slice(0, Math.max(0, MAX_SPEECH_BUBBLE_LINE_LENGTH - 1)).trimEnd();
     next[lastIndex] = trimmed ? `${trimmed}…` : "…";
     return next;
   }

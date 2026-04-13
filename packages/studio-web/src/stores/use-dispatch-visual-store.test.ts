@@ -24,6 +24,15 @@ describe("useDispatchVisualStore", () => {
     ]);
   });
 
+  it("keeps up to five wrapped lines before truncating", async () => {
+    const { formatDispatchBubbleLines } = await loadStoreModule();
+    expect(
+      formatDispatchBubbleLines(
+        "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix",
+      ),
+    ).toHaveLength(5);
+  });
+
   it("shows a bubble briefly and clears it after the duration", async () => {
     const { useDispatchVisualStore } = await loadStoreModule();
 

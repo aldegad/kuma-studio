@@ -24,6 +24,7 @@ import { createStudioMemoRouteHandler } from "./studio-memo-routes.mjs";
 import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { readStudioPlugins, readStudioSkills } from "./studio-skill-catalog.mjs";
 import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
+import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
 
 /**
  * @param {object} options
@@ -344,6 +345,49 @@ export function createStudioRouteHandler({
         };
       }
       sendJson(res, 200, { ...config, members: enriched });
+      return true;
+    }
+
+    const teamPromptMatch = url.pathname.match(/^\/studio\/team-prompts\/([^/]+)$/u);
+    if (teamPromptMatch && req.method === "GET") {
+      if (!teamConfigStore) {
+        sendJson(res, 503, { error: "Team config store is not available." });
+        return true;
+      }
+
+      const memberRef = decodeURIComponent(teamPromptMatch[1]);
+      const currentEntry = teamConfigStore.getMember(memberRef);
+      if (!currentEntry) {
+        sendJson(res, 404, { error: "Unknown team member." });
+        return true;
+      }
+
+      try {
+        const rendered = renderTeamMemberPrompt({
+          memberName: currentEntry.key,
+          requestedProject: url.searchParams.get("project") ?? "",
+          workspaceRoot: workspaceRoot ?? resolve(join(staticDir, "..", "..", "..")),
+          teamConfigPath: teamConfigStore.configPath,
+        });
+
+        sendJson(res, 200, {
+          member: currentEntry.key,
+          memberId: currentEntry.member.id,
+          role: currentEntry.member.role,
+          project: rendered.projectName,
+          type: rendered.type,
+          model: rendered.model,
+          options: rendered.options,
+          nodeType: rendered.nodeType,
+          builder: rendered.builder,
+          prompt: rendered.prompt,
+        });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to render team member prompt.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
       return true;
     }
 

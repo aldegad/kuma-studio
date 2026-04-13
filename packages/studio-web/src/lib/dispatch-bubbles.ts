@@ -1,0 +1,2 @@
+export const MAX_SPEECH_BUBBLE_LINES = 5;
+export const MAX_SPEECH_BUBBLE_LINE_LENGTH = 24;
