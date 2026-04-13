@@ -139,31 +139,13 @@ if [ "$DRY_RUN" = "1" ]; then
   exit 0
 fi
 
-# Use last 30 chars for check — near the cursor, visible even for long wrapped prompts.
-if [ ${#PROMPT} -le 30 ]; then
-  CHECK="$PROMPT"
-else
-  CHECK="${PROMPT: -30}"
-fi
-
 prompt_still_pending() {
-  local view="$1"
-  local line
-  local line_index=0
-  local last_prompt_index=0
-  local target_prompt_index=0
+  local last_line
 
-  while IFS= read -r line; do
-    line_index=$((line_index + 1))
-    if printf '%s\n' "$line" | grep -Eq "$INTERACTIVE_LINE_PATTERN"; then
-      last_prompt_index=$line_index
-      if [ -n "$CHECK" ] && printf '%s\n' "$line" | grep -F -- "$CHECK" > /dev/null; then
-        target_prompt_index=$line_index
-      fi
-    fi
-  done <<< "$view"
-
-  [ "$target_prompt_index" -gt 0 ] && [ "$target_prompt_index" -eq "$last_prompt_index" ]
+  last_line="$(last_interactive_line "${1-}")"
+  [ -n "$last_line" ] &&
+    ! printf '%s\n' "$last_line" | grep -Eq "$EMPTY_PROMPT_LINE_PATTERN" &&
+    ! printf '%s\n' "$last_line" | grep -Eq "$SUGGESTION_LINE_PATTERN"
 }
 
 cmux_send_with_retry() {
