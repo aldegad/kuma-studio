@@ -115,10 +115,10 @@
             "ko": "Vault 큐레이터. 지식 관리·정리·동기화",
             "en": "Vault Curator. Knowledge management, curation, sync"
           },
-          "modelCatalogId": "gpt-5.4-mini-high-fast",
-          "spawnType": "codex",
-          "spawnModel": "gpt-5.4-mini",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
+          "modelCatalogId": "claude-sonnet-4-6-high",
+          "spawnType": "claude",
+          "spawnModel": "claude-sonnet-4-6",
+          "spawnOptions": "--dangerously-skip-permissions",
           "capabilities": [
             "vault",
             "knowledge-management",
