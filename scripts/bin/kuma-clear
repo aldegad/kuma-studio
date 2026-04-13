@@ -1,0 +1,73 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-clear <멤버이름> [--project <프로젝트>]
+EOF
+}
+
+[ $# -ge 1 ] || {
+  usage >&2
+  exit 1
+}
+
+MEMBER_QUERY=""
+PROJECT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT="${2:?project required}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [ -n "$MEMBER_QUERY" ]; then
+        die "member already specified: $MEMBER_QUERY"
+      fi
+      MEMBER_QUERY="$1"
+      shift
+      ;;
+  esac
+done
+
+ensure_runtime_requirements
+ensure_surface_registry
+
+[ -n "$MEMBER_QUERY" ] || die "member name is required"
+MEMBER_JSON="$(resolve_member_json "$MEMBER_QUERY")" || die "unknown member: $MEMBER_QUERY"
+
+if [ -z "$PROJECT" ]; then
+  PROJECT="$(resolve_project_from_dir "$(pwd)" || true)"
+fi
+
+SURFACE_JSON="$(resolve_surface_json "$PROJECT" "$MEMBER_JSON")" || die "surface not found for $MEMBER_QUERY"
+
+MEMBER_RECORD="$(printf '%s' "$MEMBER_JSON" | node -e 'const fs=require("node:fs"); const member=JSON.parse(fs.readFileSync(0,"utf8")); const displayName=(member.displayName||member.name||member.id||"").trim(); const id=(member.id||"").trim(); const team=(member.team||"").trim(); process.stdout.write([displayName,id,team].join("\t"));')"
+IFS=$'\t' read -r MEMBER_NAME MEMBER_ID MEMBER_TEAM <<EOF
+$MEMBER_RECORD
+EOF
+
+SURFACE_RECORD="$(printf '%s' "$SURFACE_JSON" | node -e 'const fs=require("node:fs"); const surface=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write([(surface.surface||""),(surface.project||"")].join("\t"));')"
+IFS=$'\t' read -r SURFACE RESOLVED_PROJECT <<EOF
+$SURFACE_RECORD
+EOF
+
+if [ -n "$RESOLVED_PROJECT" ]; then
+  PROJECT="$RESOLVED_PROJECT"
+fi
+
+clear_target_is_protected "$SURFACE" "$PROJECT" "$MEMBER_ID" "$MEMBER_TEAM" "$MEMBER_NAME" \
+  && die "refusing to clear protected target '${MEMBER_NAME:-$MEMBER_QUERY}' @${SURFACE}"
+
+"$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$SURFACE" "/clear"
+
+printf 'cleared %s @%s\n' "${MEMBER_NAME:-$MEMBER_QUERY}" "$SURFACE"

@@ -1,0 +1,55 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-clear-all [--project <프로젝트>]
+EOF
+}
+
+PROJECT=""
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT="${2:?project required}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+ensure_runtime_requirements
+ensure_surface_registry
+
+if [ "${KUMA_CLEAR_CONFIRM:-}" != "1" ]; then
+  printf 'WARNING: kuma-clear-all will drop live worker context. Re-run with KUMA_CLEAR_CONFIRM=1.\n' >&2
+  printf 'Example: KUMA_CLEAR_CONFIRM=1 ~/.kuma/bin/kuma-clear-all%s\n' "${PROJECT:+ --project $PROJECT}" >&2
+  exit 1
+fi
+
+MEMBER_LINES="$(resolve_project_member_lines "$PROJECT")"
+[ -n "$MEMBER_LINES" ] || exit 0
+
+while IFS=$'\t' read -r PROJECT_ID DISPLAY_NAME MEMBER_ID _EMOJI _TYPE MEMBER_TEAM SURFACE; do
+  [ -n "$SURFACE" ] || continue
+
+  if clear_target_is_protected "$SURFACE" "$PROJECT_ID" "$MEMBER_ID" "$MEMBER_TEAM" "$DISPLAY_NAME"; then
+    continue
+  fi
+
+  "$SCRIPT_DIR/kuma-clear" "$DISPLAY_NAME" --project "$PROJECT_ID"
+  sleep 0.2
+done <<EOF
+$MEMBER_LINES
+EOF

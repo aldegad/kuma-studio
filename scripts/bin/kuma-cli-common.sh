@@ -83,6 +83,53 @@ surface_is_opaque_ref() {
   [ -n "$surface" ] && ! surface_is_numeric_ref "$surface"
 }
 
+member_id_is_system_owned() {
+  case "${1:-}" in
+    kuma|noeuri|jjooni)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+clear_target_is_protected() {
+  local surface=""
+  local project="${2:-}"
+  local member_id="${3:-}"
+  local member_team="${4:-}"
+  local member_name="${5:-}"
+
+  surface="$(normalize_surface "${1:-}")"
+
+  case "$surface" in
+    surface:1|kuma-server|kuma-frontend)
+      return 0
+      ;;
+  esac
+
+  case "$project" in
+    system)
+      return 0
+      ;;
+  esac
+
+  case "$member_team" in
+    system)
+      return 0
+      ;;
+  esac
+
+  member_id_is_system_owned "$member_id" && return 0
+
+  case "$member_name" in
+    쿠마|노을이|쭈니)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
 resolve_current_tty_name() {
   local current_tty=""
 

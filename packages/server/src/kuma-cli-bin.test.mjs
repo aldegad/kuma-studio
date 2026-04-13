@@ -13,6 +13,8 @@ const KUMA_READ_PATH = resolve(process.cwd(), "scripts/bin/kuma-read");
 const KUMA_STATUS_PATH = resolve(process.cwd(), "scripts/bin/kuma-status");
 const KUMA_SPAWN_PATH = resolve(process.cwd(), "scripts/bin/kuma-spawn");
 const KUMA_KILL_PATH = resolve(process.cwd(), "scripts/bin/kuma-kill");
+const KUMA_CLEAR_PATH = resolve(process.cwd(), "scripts/bin/kuma-clear");
+const KUMA_CLEAR_ALL_PATH = resolve(process.cwd(), "scripts/bin/kuma-clear-all");
 const KUMA_PROJECT_INIT_PATH = resolve(process.cwd(), "scripts/bin/kuma-project-init");
 const KUMA_RESULT_INGEST_PATH = resolve(process.cwd(), "scripts/bin/kuma-result-ingest");
 const KUMA_DISPATCH_PATH = resolve(process.cwd(), "scripts/bin/kuma-dispatch");
@@ -40,6 +42,7 @@ async function setupCliSandbox() {
   const cmuxLog = join(root, "cmux.log");
   const spawnLog = join(root, "spawn.log");
   const killLog = join(root, "kill.log");
+  const sendLog = join(root, "send.log");
   const projectInitLog = join(root, "project-init.log");
   const dispatchLog = join(root, "dispatch.log");
   const dispatchStatePath = join(root, "dispatch-state.json");
@@ -139,6 +142,8 @@ set -euo pipefail
 printf 'send-wrapper|' >> "${cmuxLog}"
 printf '%q ' "$@" >> "${cmuxLog}"
 printf '\\n' >> "${cmuxLog}"
+printf '%q ' "$@" >> "${sendLog}"
+printf '\\n' >> "${sendLog}"
 `,
   );
 
@@ -479,6 +484,7 @@ echo "전팀 준비 완료. (워크스페이스: workspace:9)"
     cmuxLog,
     spawnLog,
     killLog,
+    sendLog,
     projectInitLog,
     dispatchLog,
     dispatchStatePath,
@@ -1831,6 +1837,74 @@ describe("kuma CLI bin scripts", { timeout: 30_000 }, () => {
 
     const registry = JSON.parse(await readFile(sandbox.surfacesPath, "utf8"));
     expect(registry["kuma-studio"]["🦫 뚝딱이"]).toBeUndefined();
+  });
+
+  it("kuma-clear sends /clear only to the targeted worker surface", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    const { stdout } = await runScript(KUMA_CLEAR_PATH, ["뚝딱이", "--project", "kuma-studio"], sandbox.env);
+    expect(stdout).toContain("cleared 뚝딱이 @surface:4");
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    expect(sendLog.trim()).toBe("surface:4 /clear");
+  });
+
+  it("kuma-clear-all refuses to send without KUMA_CLEAR_CONFIRM=1", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    let failure;
+    try {
+      await runScript(KUMA_CLEAR_ALL_PATH, [], sandbox.env);
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeTruthy();
+    expect(`${failure.stderr}`).toContain("KUMA_CLEAR_CONFIRM=1");
+
+    const sendLogExists = await readFile(sandbox.sendLog, "utf8").catch(() => "");
+    expect(sendLogExists).toBe("");
+  });
+
+  it("kuma-clear-all skips protected system and infra surfaces", async () => {
+    const sandbox = await setupCliSandbox();
+    tempRoots.push(sandbox.root);
+
+    await addSurfaceLabel(sandbox, "kuma-studio", "server", "surface:20");
+    await addSurfaceLabel(sandbox, "kuma-studio", "frontend", "surface:21");
+
+    const { stdout } = await runScript(
+      KUMA_CLEAR_ALL_PATH,
+      ["--project", "kuma-studio"],
+      { ...sandbox.env, KUMA_CLEAR_CONFIRM: "1" },
+    );
+
+    expect(stdout).toContain("cleared 하울 @surface:3");
+    expect(stdout).toContain("cleared 뚝딱이 @surface:4");
+    expect(stdout).toContain("cleared 새미 @surface:5");
+    expect(stdout).toContain("cleared 쿤 @surface:16");
+    expect(stdout).toContain("cleared 밤토리 @surface:7");
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    expect(sendLog).toContain("surface:3 /clear");
+    expect(sendLog).toContain("surface:4 /clear");
+    expect(sendLog).toContain("surface:5 /clear");
+    expect(sendLog).toContain("surface:7 /clear");
+    expect(sendLog).toContain("surface:16 /clear");
+    expect(sendLog).not.toContain("surface:1 /clear");
+    expect(sendLog).not.toContain("surface:2 /clear");
+    expect(sendLog).not.toContain("surface:20 /clear");
+    expect(sendLog).not.toContain("surface:21 /clear");
+  });
+
+  it("kuma:clear command matches the existing slash-command format", async () => {
+    const clearCommand = await readFile(resolve(process.cwd(), ".claude/commands/kuma/clear.md"), "utf8");
+    expect(clearCommand).toContain("name: kuma:clear");
+    expect(clearCommand).toContain('argument-hint: "<member|all> [--project <project>]"');
+    expect(clearCommand).toContain("~/.kuma/bin/kuma-clear-all [--project <project>]");
+    expect(clearCommand).toContain("~/.kuma/bin/kuma-clear <member> [--project <project>]");
   });
 
   it("kuma-project-init saves projects.json and delegates to the cmux project init wrapper", async () => {
