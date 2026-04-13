@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+
+# Repo-local git hook entrypoint.
+# Keep this file tiny and delegate real policy to scripts/security/ so the rules
+# stay versioned, reviewable, and easy for other agents to update.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+exec "$REPO_ROOT/scripts/security/pre-commit-secrets.sh"

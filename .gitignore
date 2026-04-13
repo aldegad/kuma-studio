@@ -5,6 +5,14 @@ dist/
 .env
 .env.*
 !.env.example
+.envrc
+.direnv/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 output/
 output/playwright/
 artifacts/
@@ -13,6 +21,11 @@ artifacts/
 .kuma-picker/
 .codex-review/
 .kuma-studio/
+/vault/
+/memory/
+/memo/
+*.task.md
+*.result.md
 .tmp*
 config/projects.json
 test-results/

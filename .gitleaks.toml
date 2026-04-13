@@ -1,0 +1,13 @@
+title = "Kuma Studio secret and privacy guardrails"
+
+[extend]
+useDefault = true
+
+# Extend the stock gitleaks rules for generic secrets, then add repo-specific
+# privacy rules for private project identifiers and machine-local runtime data.
+
+[[rules]]
+id = "kuma-runtime-artifacts"
+description = "Kuma runtime artifacts and private knowledge roots must stay out of git"
+path = '''(?i)(^vault/|^memory/|^memo/|(^|/)\.kuma/|(^|/)\.kuma-picker/|(^|/)\.kuma-studio/|(^|/)\.claude/projects/|(^|/)[^/]+\.(?:task|result)\.md$)'''
+tags = ["privacy", "runtime-data"]

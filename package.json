@@ -47,6 +47,9 @@
     "dev": "npm run dev:studio",
     "dev:studio": "npm run dev --workspace=studio-web",
     "build:studio": "npm run build --workspace=studio-web",
+    "security:hooks:install": "bash ./scripts/security/install-hooks.sh",
+    "security:scan": "bash ./scripts/security/run-gitleaks.sh --repo",
+    "security:scan:staged": "bash ./scripts/security/run-gitleaks.sh --staged",
     "test": "vitest run --passWithNoTests",
     "skill:install": "node ./scripts/install.mjs",
     "skill:doctor": "node ./scripts/doctor.mjs"

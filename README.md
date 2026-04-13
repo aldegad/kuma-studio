@@ -73,8 +73,32 @@ vault contents, review artifacts, screenshots, or machine-specific paths.
 - `npm run server:reload`: restart the daemon on port `4312`
 - `npm run dev:studio`: run the Studio web UI in Vite dev mode
 - `npm run build:studio`: build the production Studio bundle
+- `npm run security:hooks:install`: install the repo-local pre-commit hook that blocks private runtime data and runs `gitleaks`
+- `npm run security:scan`: run a full-repo `gitleaks` scan
+- `npm run security:scan:staged`: run the same scan against staged changes only
 - `npm test`: run the Vitest suite
 - `npm run skill:doctor`: validate the local Kuma install
+
+## Secret Guardrails
+
+This repo ships a repo-local pre-commit hook under `.githooks/pre-commit`.
+
+- It blocks staging known private Kuma runtime roots such as `.kuma/`, `.claude/projects/`, top-level `vault/`, `memory/`, `memo/`, and `*.task.md` / `*.result.md`.
+- It blocks staged references to protected private project identifiers.
+- It then runs `gitleaks` against staged changes.
+- The hook uses a local `gitleaks` binary when available, or Docker when the daemon is running.
+
+Why the hook has both path rules and `gitleaks`:
+
+- `gitleaks` catches generic secrets such as tokens, passwords, and keys.
+- Repo-specific path guards catch private Kuma runtime data that is sensitive even when it does not look like a conventional secret.
+- Public structure docs are still allowed. For example, `README.md`, docs about the vault layout, or code that implements vault features are fine to commit. The guard is aimed at actual private runtime content, not architectural explanations.
+
+Install it once per clone with:
+
+```bash
+npm run security:hooks:install
+```
 
 ## License
 
