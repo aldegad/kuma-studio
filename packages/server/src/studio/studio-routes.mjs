@@ -103,6 +103,7 @@ export function createStudioRouteHandler({
   const handleExplorerRoute = createStudioExplorerRouteHandler({
     workspaceRoot,
     globalRoots: explorerGlobalRoots,
+    studioWsEvents,
   });
   const handleMemoRoute = createStudioMemoRouteHandler({
     memoStore,

@@ -42,6 +42,7 @@ import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
 import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
 import { DispatchBroker } from "./studio/dispatch-broker.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
+import { watchStudioExplorerRoots } from "./studio/studio-explorer-routes.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -238,6 +239,14 @@ export async function createServer({ host, port, root }) {
     },
   });
   void readPlans();
+  const stopWatchingExplorer = watchStudioExplorerRoots({
+    workspaceRoot,
+    studioWsEvents,
+    onError(error) {
+      const details = error instanceof Error ? error.message : "unknown error";
+      console.error("watchStudioExplorerRoots failed:", details);
+    },
+  });
 
   const teamConfigWatcher = watchTeamConfig({
     debounceMs: 500,
@@ -872,6 +881,7 @@ export async function createServer({ host, port, root }) {
   server.on("close", () => {
     stopWatching();
     stopWatchingPlans();
+    stopWatchingExplorer();
     teamConfigWatcher.close();
     if (extensionWatcher) {
       extensionWatcher.close();

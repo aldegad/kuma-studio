@@ -143,6 +143,17 @@ export class StudioWsEvents {
   }
 
   /**
+   * Broadcast a filesystem change event for the Studio explorer.
+   * @param {{ changes: Array<{ rootId: string, rootPath: string, eventType: string, path: string, relativePath: string, origin?: string, changedAt?: string }> }} payload
+   */
+  broadcastFilesystemChange(payload) {
+    this.#broadcast({
+      type: "kuma-studio:event",
+      event: { kind: "filesystem-change", ...payload },
+    });
+  }
+
+  /**
    * Get the number of connected studio clients.
    * @returns {number}
    */

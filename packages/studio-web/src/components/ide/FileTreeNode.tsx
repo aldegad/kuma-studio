@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 export interface FsNode {
   name: string;
@@ -21,6 +21,7 @@ interface FileTreeNodeProps {
   onDelete?: (path: string, name: string) => Promise<void>;
   gitStatus?: GitStatusMap;
   gitRoot?: string;
+  refreshToken?: number;
 }
 
 // --- SVG-style icon colors by extension ---
@@ -233,7 +234,7 @@ function hasDirGitChanges(
   return Object.keys(gitStatus).some((key) => key.startsWith(dirPrefix));
 }
 
-export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren, onDelete, gitStatus, gitRoot }: FileTreeNodeProps) {
+export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren, onDelete, gitStatus, gitRoot, refreshToken = 0 }: FileTreeNodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FsNode[] | null>(node.children ?? null);
   const [loading, setLoading] = useState(false);
@@ -247,6 +248,50 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
   const fileGitStatus = !isDir ? getGitStatusForPath(node.path, gitStatus, gitRoot) : null;
   const dirHasChanges = isDir ? hasDirGitChanges(node.path, gitStatus, gitRoot) : false;
   const gitStyle = fileGitStatus ? GIT_STATUS_STYLE[fileGitStatus] : null;
+
+  useEffect(() => {
+    const nextChildren = node.children ?? null;
+    const isDepthLimitedPlaceholder =
+      isDir &&
+      node.expandable === true &&
+      Array.isArray(node.children) &&
+      node.children.length === 0;
+
+    if (isDepthLimitedPlaceholder && children && children.length > 0) {
+      return;
+    }
+
+    setChildren(nextChildren);
+  }, [children, isDir, node.children, node.expandable, node.path]);
+
+  useEffect(() => {
+    if (!isDir || !expanded || !Number.isFinite(refreshToken)) {
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    void onLoadChildren(node.path)
+      .then((result) => {
+        if (!cancelled) {
+          setChildren(result.children ?? []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setChildren([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, isDir, node.path, onLoadChildren, refreshToken]);
 
   const handleToggle = useCallback(async () => {
     if (!isDir) return;
@@ -414,6 +459,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
               onDelete={onDelete}
               gitStatus={gitStatus}
               gitRoot={gitRoot}
+              refreshToken={refreshToken}
             />
           ))}
           {children.length === 0 && (

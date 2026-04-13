@@ -7,6 +7,7 @@ import { Readable } from "node:stream";
 import { afterEach, assert, describe, it } from "vitest";
 
 import { createStudioRouteHandler } from "./studio-routes.mjs";
+import { watchStudioExplorerRoots } from "./studio-explorer-routes.mjs";
 
 function createRequest(method, url, body) {
   const payload = body == null ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -47,6 +48,21 @@ function createResponse() {
       return state.body.length > 0 ? JSON.parse(state.body.toString("utf8")) : null;
     },
   };
+}
+
+async function waitForCondition(assertion, { timeoutMs = 1500, intervalMs = 25 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      assertion();
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  assertion();
 }
 
 const tempDirs = [];
@@ -110,6 +126,80 @@ describe("studio-routes explorer endpoints", () => {
     await handler(createRequest("DELETE", "/studio/fs/delete", { path: writeTarget }), deleteRes);
     assert.strictEqual(deleteRes.statusCode, 200);
     assert.deepStrictEqual(deleteRes.json, { success: true });
+  });
+
+  it("broadcasts filesystem-change events for explorer write/delete mutations", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    await mkdir(staticDir, { recursive: true });
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+
+    const broadcasts = [];
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      workspaceRoot: repoRoot,
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
+        },
+      },
+    });
+
+    const target = join(repoRoot, "broadcast.md");
+    const writeRes = createResponse();
+    await handler(createRequest("PUT", "/studio/fs/write", { path: target, content: "# live\n" }), writeRes);
+    assert.strictEqual(writeRes.statusCode, 200);
+    assert.strictEqual(broadcasts.length, 1);
+    assert.strictEqual(broadcasts[0].changes[0].rootId, "workspace");
+    assert.strictEqual(broadcasts[0].changes[0].eventType, "change");
+    assert.strictEqual(broadcasts[0].changes[0].path, target);
+
+    const deleteRes = createResponse();
+    await handler(createRequest("DELETE", "/studio/fs/delete", { path: target }), deleteRes);
+    assert.strictEqual(deleteRes.statusCode, 200);
+    assert.strictEqual(broadcasts.length, 2);
+    assert.strictEqual(broadcasts[1].changes[0].eventType, "delete");
+    assert.strictEqual(broadcasts[1].changes[0].path, target);
+  });
+
+  it("watches explorer roots and emits filesystem-change events for external edits", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-watch-"));
+    tempDirs.push(root);
+
+    const repoRoot = join(root, "workspace");
+    await mkdir(repoRoot, { recursive: true });
+
+    const broadcasts = [];
+    const stopWatching = watchStudioExplorerRoots({
+      workspaceRoot: repoRoot,
+      debounceMs: 20,
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
+        },
+      },
+    });
+
+    try {
+      const target = join(repoRoot, "external.md");
+      await writeFile(target, "# external\n", "utf8");
+
+      await waitForCondition(() => {
+        assert.ok(
+          broadcasts.some((payload) =>
+            payload.changes.some((change) => change.path === target && change.rootId === "workspace"),
+          ),
+        );
+      });
+    } finally {
+      stopWatching();
+    }
   });
 
   it("returns the default bootstrap explorer roots when the server env opts them in", async () => {

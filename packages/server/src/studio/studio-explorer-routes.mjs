@@ -1,3 +1,4 @@
+import fs, { existsSync } from "node:fs";
 import { readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
@@ -92,6 +93,50 @@ function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORE
   }, {});
 }
 
+function resolveExplorerRootsConfig({ workspaceRoot, globalRoots } = {}) {
+  const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : resolveConfiguredWorkspaceRoot();
+  const configuredGlobalRoots = Object.fromEntries(
+    Object.entries(globalRoots ?? resolveConfiguredGlobalRoots()).map(([id, root]) => [id, resolve(root)]),
+  );
+  const rootEntries = [
+    { id: "workspace", path: defaultRoot },
+    ...Object.entries(configuredGlobalRoots)
+      .filter(([, root]) => resolve(root) !== defaultRoot)
+      .map(([id, root]) => ({ id, path: root })),
+  ];
+
+  return {
+    defaultRoot,
+    configuredGlobalRoots,
+    rootEntries,
+    allowedRoots: rootEntries.map((entry) => entry.path),
+  };
+}
+
+function resolveExplorerRootEntry(rootEntries, candidatePath) {
+  const resolvedPath = resolve(candidatePath);
+  return rootEntries.find((entry) => isWithinRoot(entry.path, resolvedPath)) ?? null;
+}
+
+function buildFilesystemChangePayload(rootEntries, candidatePath, eventType, origin) {
+  const rootEntry = resolveExplorerRootEntry(rootEntries, candidatePath);
+  if (!rootEntry) {
+    return null;
+  }
+
+  const resolvedPath = resolve(candidatePath);
+  const relativePath = relative(rootEntry.path, resolvedPath);
+  return {
+    rootId: rootEntry.id,
+    rootPath: rootEntry.path,
+    eventType,
+    path: resolvedPath,
+    relativePath: relativePath === "" ? "." : relativePath,
+    origin,
+    changedAt: new Date().toISOString(),
+  };
+}
+
 async function buildFsTree(dirPath, maxDepth, currentDepth) {
   const name = basename(dirPath) || dirPath;
   const hidden = name.startsWith(".");
@@ -103,6 +148,7 @@ async function buildFsTree(dirPath, maxDepth, currentDepth) {
   }
 
   if (currentDepth >= maxDepth) {
+    node.expandable = true;
     node.children = [];
     return node;
   }
@@ -157,19 +203,111 @@ function parseGitStatus(output) {
   return files;
 }
 
-export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots } = {}) {
-  const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : resolveConfiguredWorkspaceRoot();
-  const configuredGlobalRoots = Object.fromEntries(
-    Object.entries(globalRoots ?? resolveConfiguredGlobalRoots()).map(([id, root]) => [id, resolve(root)]),
-  );
-  const allowedRoots = [
-    defaultRoot,
-    ...Object.values(configuredGlobalRoots).filter((root) => resolve(root) !== defaultRoot),
-  ];
+export function watchStudioExplorerRoots({
+  workspaceRoot,
+  globalRoots,
+  studioWsEvents,
+  debounceMs = 120,
+  onError,
+} = {}) {
+  if (!studioWsEvents?.broadcastFilesystemChange) {
+    return () => {};
+  }
+
+  const { rootEntries } = resolveExplorerRootsConfig({ workspaceRoot, globalRoots });
+  const watchers = [];
+  const pendingChanges = new Map();
+  let flushTimer = null;
+
+  const flush = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (pendingChanges.size === 0) {
+      return;
+    }
+
+    studioWsEvents.broadcastFilesystemChange({
+      changes: [...pendingChanges.values()],
+    });
+    pendingChanges.clear();
+  };
+
+  const scheduleFlush = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+    }
+    flushTimer = setTimeout(flush, debounceMs);
+  };
+
+  for (const rootEntry of rootEntries) {
+    if (!existsSync(rootEntry.path)) {
+      continue;
+    }
+
+    try {
+      const watcher = fs.watch(rootEntry.path, { recursive: true }, (eventType, filename) => {
+        const candidatePath =
+          typeof filename === "string" && filename.trim().length > 0
+            ? resolve(rootEntry.path, filename)
+            : rootEntry.path;
+        const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, "watch");
+        if (!change) {
+          return;
+        }
+
+        pendingChanges.set(`${change.rootId}:${change.path}:${change.eventType}`, change);
+        scheduleFlush();
+      });
+
+      watcher.on("error", (error) => {
+        if (typeof onError === "function") {
+          onError(error);
+        } else {
+          console.error("studio explorer watch failed:", error);
+        }
+      });
+      watchers.push(watcher);
+    } catch (error) {
+      if (typeof onError === "function") {
+        onError(error);
+      } else {
+        console.error("studio explorer watch failed:", error);
+      }
+    }
+  }
+
+  return () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    for (const watcher of watchers) {
+      watcher.close();
+    }
+  };
+}
+
+export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, studioWsEvents } = {}) {
+  const { defaultRoot, configuredGlobalRoots, rootEntries, allowedRoots } = resolveExplorerRootsConfig({
+    workspaceRoot,
+    globalRoots,
+  });
 
   function isAllowedPath(candidatePath) {
     const resolved = resolve(candidatePath);
     return allowedRoots.some((root) => isWithinRoot(root, resolved));
+  }
+
+  function broadcastFilesystemChange(candidatePath, eventType, origin) {
+    const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, origin);
+    if (!change) {
+      return;
+    }
+    studioWsEvents?.broadcastFilesystemChange({
+      changes: [change],
+    });
   }
 
   return async (req, res, url) => {
@@ -297,6 +435,7 @@ export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots } 
           return true;
         }
         await unlink(resolved);
+        broadcastFilesystemChange(resolved, "delete", "route");
         sendJson(res, 200, { success: true });
       } catch (error) {
         sendJson(res, 500, {
@@ -324,6 +463,7 @@ export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots } 
 
       try {
         await writeFile(resolved, fileContent, "utf8");
+        broadcastFilesystemChange(resolved, "change", "route");
         sendJson(res, 200, { success: true });
       } catch (error) {
         sendJson(res, 500, {

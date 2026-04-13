@@ -3,6 +3,7 @@ import { FileTreeNode, type FsNode, type GitStatusMap } from "./FileTreeNode";
 import { CodeViewer } from "./CodeViewer";
 import { ImageViewer } from "./ImageViewer";
 import { MarkdownBody } from "../dashboard/MarkdownBody";
+import { useWsStore } from "../../stores/use-ws-store";
 
 interface FrontmatterMeta {
   title?: string;
@@ -101,6 +102,22 @@ interface GlobalSection {
   color: string;
 }
 
+interface FilesystemChangeEvent {
+  type: "kuma-studio:event";
+  event: {
+    kind: "filesystem-change";
+    changes: Array<{
+      rootId: string;
+      rootPath: string;
+      eventType: string;
+      path: string;
+      relativePath: string;
+      origin?: string;
+      changedAt?: string;
+    }>;
+  };
+}
+
 const GLOBAL_SECTION_DEFS: GlobalSection[] = [
   { id: "vault", label: ".kuma/vault", icon: "V", color: "text-sky-500" },
   { id: "claude", label: ".claude", icon: "C", color: "text-violet-500" },
@@ -108,6 +125,7 @@ const GLOBAL_SECTION_DEFS: GlobalSection[] = [
 ];
 
 export function FileExplorer({ onCollapse }: FileExplorerProps) {
+  const ws = useWsStore((state) => state.ws);
   const [tree, setTree] = useState<FsNode | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<ExplorerRoots | null>(null);
   const [globalTrees, setGlobalTrees] = useState<Record<string, FsNode | null>>({});
@@ -133,31 +151,67 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   // Git status state
   const [gitStatus, setGitStatus] = useState<GitStatusMap>({});
   const [gitRoot, setGitRoot] = useState<string>("");
+  const [refreshToken, setRefreshToken] = useState(0);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadGitStatus = useCallback(async (root: string) => {
+    if (!root) return;
+    const response = await fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`);
+    const data: { root: string; files: GitStatusMap } = await response.json();
+    setGitStatus(data.files);
+    setGitRoot(data.root);
+  }, []);
+
+  const reloadRootTree = useCallback(async () => {
+    const [roots, data] = await Promise.all([
+      fetch(`${BASE_URL}/studio/fs/roots`).then((r) => r.json()),
+      fetch(`${BASE_URL}/studio/fs/tree?depth=2`).then((r) => r.json()),
+    ]);
+
+    setExplorerRoots(roots);
+    setTree(data);
+    setError(null);
+    setRefreshToken((current) => current + 1);
+    return { roots, tree: data as FsNode };
+  }, []);
+
+  const reloadVaultIndex = useCallback(async () => {
+    const vaultRoot = explorerRoots?.globalRoots.vault;
+    if (!vaultRoot) return;
+
+    const indexPath = `${vaultRoot}/index.md`;
+    const response = await fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(indexPath)}`);
+    const data = await response.json();
+    if (data.content) {
+      const sections = parseIndexMd(data.content);
+      setTocSections(sections);
+      setVaultSectionExpanded((previous) => {
+        const next = { ...previous };
+        for (const section of sections) {
+          if (section.docs.length > 0 && next[section.id] == null) {
+            next[section.id] = true;
+          }
+        }
+        return next;
+      });
+    } else {
+      setTocSections([]);
+    }
+    setVaultIndexLoaded(true);
+  }, [explorerRoots?.globalRoots.vault]);
 
   // Fetch git status
   useEffect(() => {
     const root = tree?.path || "";
     if (!root) return;
-    fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`)
-      .then((r) => r.json())
-      .then((data: { root: string; files: GitStatusMap }) => {
-        setGitStatus(data.files);
-        setGitRoot(data.root);
-      })
-      .catch(() => {});
+    void loadGitStatus(root).catch(() => {});
 
     // Refresh every 30s
     const interval = setInterval(() => {
-      fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`)
-        .then((r) => r.json())
-        .then((data: { root: string; files: GitStatusMap }) => {
-          setGitStatus(data.files);
-          setGitRoot(data.root);
-        })
-        .catch(() => {});
+      void loadGitStatus(root).catch(() => {});
     }, 30_000);
     return () => clearInterval(interval);
-  }, [tree?.path]);
+  }, [loadGitStatus, tree?.path]);
 
   // Filter tree by search query
   const filteredTree = useMemo(() => {
@@ -196,18 +250,10 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   // Fetch root tree
   useEffect(() => {
     setLoading(true);
-    Promise.all([
-      fetch(`${BASE_URL}/studio/fs/roots`).then((r) => r.json()),
-      fetch(`${BASE_URL}/studio/fs/tree?depth=2`).then((r) => r.json()),
-    ])
-      .then(([roots, data]: [ExplorerRoots, FsNode]) => {
-        setExplorerRoots(roots);
-        setTree(data);
-        setError(null);
-      })
+    reloadRootTree()
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reloadRootTree]);
 
   useEffect(() => {
     if (!hasVaultRoot && sidebarTab === "vault") {
@@ -216,8 +262,8 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   }, [hasVaultRoot, sidebarTab]);
 
   // Load global config tree on demand
-  const loadGlobalTree = useCallback(async (section: GlobalSection & { path: string }) => {
-    if (!section.path || globalTrees[section.id]) return;
+  const loadGlobalTree = useCallback(async (section: GlobalSection & { path: string }, force = false) => {
+    if (!section.path || (!force && globalTrees[section.id])) return;
     try {
       const r = await fetch(`${BASE_URL}/studio/fs/tree?root=${encodeURIComponent(section.path)}&depth=2`);
       const data: FsNode = await r.json();
@@ -282,11 +328,9 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
       setViewerFile(null);
     }
 
-    // Refresh tree
-    const treeR = await fetch(`${BASE_URL}/studio/fs/tree?depth=2`);
-    const treeData: FsNode = await treeR.json();
-    setTree(treeData);
-  }, [viewerFile]);
+    await reloadRootTree();
+    await loadGitStatus(tree?.path || "");
+  }, [loadGitStatus, reloadRootTree, tree?.path, viewerFile]);
 
   // Tree panel resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -318,24 +362,65 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   // Parse index.md when vault tab is selected
   useEffect(() => {
     if (sidebarTab !== "vault" || vaultIndexLoaded || !explorerRoots?.globalRoots.vault) return;
-    const indexPath = `${explorerRoots.globalRoots.vault}/index.md`;
-    fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(indexPath)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.content) {
-          const sections = parseIndexMd(data.content);
-          setTocSections(sections);
-          // Wiki style: all sections with docs expanded by default
-          const expanded: Record<string, boolean> = {};
-          for (const s of sections) {
-            if (s.docs.length > 0) expanded[s.id] = true;
-          }
-          setVaultSectionExpanded(expanded);
+    reloadVaultIndex().catch(() => setVaultIndexLoaded(true));
+  }, [explorerRoots, reloadVaultIndex, vaultIndexLoaded, sidebarTab]);
+
+  useEffect(() => {
+    if (!ws) return;
+
+    const scheduleRefresh = (refreshVaultIndex: boolean) => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+      }
+
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        void reloadRootTree().catch(() => {});
+        void loadGitStatus(tree?.path || explorerRoots?.workspaceRoot || "").catch(() => {});
+        void Promise.all(
+          globalSections
+            .filter((section) => globalExpanded[section.id])
+            .map((section) => loadGlobalTree(section, true)),
+        ).catch(() => {});
+        if (refreshVaultIndex) {
+          void reloadVaultIndex().catch(() => {});
         }
-        setVaultIndexLoaded(true);
-      })
-      .catch(() => setVaultIndexLoaded(true));
-  }, [explorerRoots, vaultIndexLoaded, sidebarTab]);
+      }, 100);
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data as string) as FilesystemChangeEvent;
+        if (payload.type !== "kuma-studio:event" || payload.event.kind !== "filesystem-change") {
+          return;
+        }
+
+        const refreshVaultIndex = payload.event.changes.some((change) => change.rootId === "vault");
+        scheduleRefresh(refreshVaultIndex);
+      } catch {
+        // ignore malformed websocket payloads
+      }
+    };
+
+    ws.addEventListener("message", handleMessage);
+    return () => {
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
+      ws.removeEventListener("message", handleMessage);
+    };
+  }, [
+    explorerRoots?.workspaceRoot,
+    globalExpanded,
+    globalSections,
+    loadGitStatus,
+    loadGlobalTree,
+    reloadRootTree,
+    reloadVaultIndex,
+    tree?.path,
+    ws,
+  ]);
 
   const handleVaultSelect = useCallback(async (doc: TocDoc) => {
     if (!explorerRoots?.globalRoots.vault) return;
@@ -532,6 +617,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                 onDelete={handleFileDelete}
                 gitStatus={gitStatus}
                 gitRoot={gitRoot}
+                refreshToken={refreshToken}
               />
             ))}
             {searchQuery && (!filteredTree?.children || filteredTree.children.length === 0) && (
@@ -587,6 +673,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                         onFileSelect={handleFileSelect}
                         onLoadChildren={handleLoadChildren}
                         onDelete={handleFileDelete}
+                        refreshToken={refreshToken}
                       />
                     ))}
                     {sectionTree && (!sectionTree.children || sectionTree.children.length === 0) && (
