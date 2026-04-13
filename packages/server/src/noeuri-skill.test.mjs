@@ -13,5 +13,8 @@ describe("noeuri skill protections", () => {
     expect(skill).toContain("MEMORY.md");
     expect(skill).toContain("write`, `rewrite`, `move`, `rename`, `delete`");
     expect(skill).toContain("과거 migration brief");
+    expect(skill).toContain("dispatch-status --task-file");
+    expect(skill).toContain("broker record");
+    expect(skill).toContain("dispatch-log.md");
   });
 });

@@ -438,6 +438,9 @@ printf '\\n' >> "${sendLog}"
     expect(sendLogContents).toContain("surface:46");
     expect(sendLogContents).toContain("task: kuma-task-allowlist-noeuri-phase4.");
     expect(sendLogContents).toContain(`plan: ${planPath}`);
+    expect(sendLogContents).toContain(`npm run --silent --prefix ${root} kuma-studio -- dispatch-status --task-file ${join(taskDir, "phase4.task.md")}`);
+    expect(sendLogContents).toContain("broker messages as SSOT");
+    expect(sendLogContents).toContain("dispatch-log.md/thread-map.md are derived lifecycle summaries only");
     expect(sendLogContents).toContain(`${root}/skills/noeuri/SKILL.md`);
     expect(sendLogContents).toContain("protected user-memo read-only notebook");
     expect(sendLogContents).toContain(`${root}/user-memo`);

@@ -96,7 +96,8 @@ audit 결과 문서는 반드시 아래 섹션 순서를 지킨다.
 ## Backfill Decisions Mode
 
 - dispatch 나 plan 에 `--mode backfill-decisions` 가 있으면 기존 audit에 더해 `~/.kuma/vault/decisions.md` 보강 작업으로 해석한다.
-- 스캔 대상은 plan 본문, `dispatch-log.md`, 그리고 명시적 attribution 이 있는 인용 블록뿐이다.
+- dispatch 계열 원문/대화는 `dispatch-log.md` 가 아니라 broker record 가 canonical source 다. 가능하면 `npm run --silent --prefix <repo-root> kuma-studio -- dispatch-status --task-file <task-file>` 로 해당 task 의 broker messages 를 읽고, `dispatch-log.md` / `thread-map.md` 는 lifecycle summary 확인용으로만 본다.
+- 스캔 대상은 plan 본문, canonical dispatch broker messages, 그리고 명시적 attribution 이 있는 인용 블록뿐이다.
 - 감지는 항상 서버의 `decision-detector` 규칙을 재사용한다. LLM 분류나 추론 요약은 금지한다.
 - append 시에는 원문 키워드가 직접 들어 있는 verbatim 문장만 `writer: noeuri-audit` 로 기록한다.
 - 애매하면 기록하지 말고 Findings 에만 남긴다.
