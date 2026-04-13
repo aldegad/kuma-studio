@@ -35,6 +35,14 @@
       "serviceTier": "fast"
     },
     {
+      "id": "gpt-5.3-codex-spark-high",
+      "type": "codex",
+      "model": "gpt-5.3-codex-spark",
+      "label": "Codex Spark · high",
+      "effort": "high",
+      "serviceTier": "fast"
+    },
+    {
       "id": "claude-opus-4-6-high",
       "type": "claude",
       "model": "claude-opus-4-6",
@@ -152,10 +160,10 @@
             "ko": "CoS. Bash 실행 전담, cmux 워커 관리",
             "en": "CoS. Bash execution, cmux worker management"
           },
-          "modelCatalogId": "gpt-5.4-mini-xhigh-fast",
+          "modelCatalogId": "gpt-5.3-codex-spark-high",
           "spawnType": "codex",
-          "spawnModel": "gpt-5.4-mini",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"xhigh\"",
+          "spawnModel": "gpt-5.3-codex-spark",
+          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
           "capabilities": [
             "bash",
             "cmux",
@@ -451,9 +459,9 @@
             "ko": "리더. 전략/분석 스카우트 오케스트레이션과 합성",
             "en": "Leader. Strategy/analytics scout orchestration and synthesis"
           },
-          "modelCatalogId": "claude-opus-4-6-high",
+          "modelCatalogId": "claude-sonnet-4-6-high",
           "spawnType": "claude",
-          "spawnModel": "claude-opus-4-6",
+          "spawnModel": "claude-sonnet-4-6",
           "spawnOptions": "--dangerously-skip-permissions --effort high",
           "capabilities": [
             "research",

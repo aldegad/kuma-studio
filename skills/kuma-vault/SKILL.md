@@ -1,10 +1,5 @@
 ---
-name: kuma-vault
-description: Load domain knowledge from Kuma Vault through a single retrieval interface.
----
-
----
-name: kuma-vault
+name: kuma:vault
 description: Load domain knowledge from Kuma Vault through a single retrieval interface.
 ---
 
