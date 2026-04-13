@@ -27,20 +27,17 @@ describe("cmux send enforcement scripts", { timeout: 30_000 }, () => {
     await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  it("retries Enter for a pending Codex-style prompt and logs the dispatch", async () => {
+  it("submits prompts atomically with an attached Enter escape", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-cmux-send-"));
     tempRoots.push(root);
 
     const binDir = join(root, "bin");
     const cmuxLog = join(root, "cmux.log");
     const sendLog = join(root, "kuma-send.log");
-    const readCountPath = join(root, "read-count.txt");
-    const sendKeyCountPath = join(root, "send-key-count.txt");
+    const sendPayloadPath = join(root, "send-payload.txt");
     const prompt = "HOWL-BAMTORI-ACK";
 
     await mkdir(binDir, { recursive: true });
-    await writeFile(readCountPath, "0", "utf8");
-    await writeFile(sendKeyCountPath, "0", "utf8");
 
     await writeExecutable(
       join(binDir, "cmux"),
@@ -56,21 +53,14 @@ case "$command" in
     printf 'workspace:1\\n  surface:9\\n'
     ;;
   read-screen)
-    count=$(cat "${readCountPath}")
-    count=$((count + 1))
-    printf '%s' "$count" > "${readCountPath}"
-    if [ "$count" -eq 1 ]; then
+    if [ ! -f "${sendPayloadPath}" ]; then
       printf '  ❯\\n'
-    elif [ "$count" -eq 2 ]; then
-      printf '  > ${prompt}\\n'
     else
       printf 'Running task\\n'
     fi
     ;;
-  send-key)
-    count=$(cat "${sendKeyCountPath}")
-    count=$((count + 1))
-    printf '%s' "$count" > "${sendKeyCountPath}"
+  send)
+    printf '%s' "\${*: -1}" > "${sendPayloadPath}"
     ;;
 esac
 `,
@@ -86,13 +76,13 @@ esac
 
     const cmuxLogContents = await readFile(cmuxLog, "utf8");
     const sendLogContents = await readFile(sendLog, "utf8");
-    const sendKeyCount = Number((await readFile(sendKeyCountPath, "utf8")).trim());
+    const sendPayload = await readFile(sendPayloadPath, "utf8");
 
     expect(cmuxLogContents).toContain("send|--workspace workspace:1 --surface surface:9");
-    expect(sendKeyCount).toBe(2);
+    expect(sendPayload.endsWith("\\r")).toBe(true);
+    expect(cmuxLogContents).not.toContain("send-key|");
     expect(sendLogContents).toContain("\tpre-send\t");
     expect(sendLogContents).toContain("\tdispatch\t");
-    expect(sendLogContents).toContain("\tenter-retry-1\t");
     expect(sendLogContents).toContain("\tdelivered\t");
   }, 60_000);
 
@@ -119,7 +109,7 @@ case "$command" in
   read-screen)
     printf '❯\\n'
     ;;
-  send|send-key)
+  send)
     ;;
 esac
 `,
@@ -143,7 +133,7 @@ esac
     expect(`${failure.stderr}`).toContain("ERROR: Prompt delivery failed");
 
     const sendLogContents = await readFile(sendLog, "utf8");
-    expect(sendLogContents).toContain("\tretry-unchanged\t");
+    expect(sendLogContents).toContain("\tobserve-unchanged\t");
     expect(sendLogContents).toContain("\tfailed\t");
     expect(sendLogContents).not.toContain("\tdelivered\t");
   });
@@ -156,12 +146,10 @@ esac
     const cmuxLog = join(root, "cmux.log");
     const sendLog = join(root, "kuma-send.log");
     const sendCountPath = join(root, "send-count.txt");
-    const sendKeyCountPath = join(root, "send-key-count.txt");
     const readCountPath = join(root, "read-count.txt");
 
     await mkdir(binDir, { recursive: true });
     await writeFile(sendCountPath, "0", "utf8");
-    await writeFile(sendKeyCountPath, "0", "utf8");
     await writeFile(readCountPath, "0", "utf8");
 
     await writeExecutable(
@@ -195,11 +183,6 @@ case "$command" in
       printf 'Error: internal_error: ERROR: Terminal surface not found\\n' >&2
       exit 1
     fi
-    ;;
-  send-key)
-    count=$(cat "${sendKeyCountPath}")
-    count=$((count + 1))
-    printf '%s' "$count" > "${sendKeyCountPath}"
     ;;
 esac
 `,
@@ -252,7 +235,7 @@ case "$command" in
       printf 'Error: Failed to write to socket (Broken pipe, errno 32)\\n'
     fi
     ;;
-  send|send-key)
+  send)
     ;;
 esac
 `,
@@ -277,8 +260,7 @@ esac
     expect(`${failure.stderr}`).toContain("transport error after send");
 
     const sendLogContents = await readFile(sendLog, "utf8");
-    expect(sendLogContents).toContain("\tenter-transport-error-1\t");
-    expect(sendLogContents).toContain("\tretry-transport-error\t");
+    expect(sendLogContents).toContain("\tpost-send-transport-error\t");
     expect(sendLogContents).toContain("\tfailed\t");
     expect(sendLogContents).not.toContain("\tdelivered\t");
   });
