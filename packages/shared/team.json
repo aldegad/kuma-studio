@@ -160,18 +160,18 @@
             "ko": "CoS. Bash 실행 전담, cmux 워커 관리",
             "en": "CoS. Bash execution, cmux worker management"
           },
-          "modelCatalogId": "gpt-5.3-codex-spark-high",
-          "spawnType": "codex",
-          "spawnModel": "gpt-5.3-codex-spark",
-          "spawnOptions": "--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort=\"high\"",
+          "modelCatalogId": "claude-sonnet-4-6-high",
+          "spawnType": "claude",
+          "spawnModel": "claude-sonnet-4-6",
+          "spawnOptions": "--dangerously-skip-permissions --effort high",
           "capabilities": [
             "bash",
             "cmux",
             "ops"
           ],
           "skills": [
-            "codex-autoresearch:predict",
-            "codex-autoresearch:reason"
+            "autoresearch:predict",
+            "autoresearch:reason"
           ],
           "nodeType": "worker",
           "parentId": "kuma",
@@ -210,10 +210,10 @@
             "ko": "PM. 작업 분해, 디스패치, 결과 취합",
             "en": "Operator. Task decomposition, dispatch, aggregation"
           },
-          "modelCatalogId": "claude-opus-4-6-max",
+          "modelCatalogId": "claude-opus-4-6-high",
           "spawnType": "claude",
           "spawnModel": "claude-opus-4-6",
-          "spawnOptions": "--dangerously-skip-permissions",
+          "spawnOptions": "--dangerously-skip-permissions --effort high",
           "capabilities": [
             "orchestration",
             "dispatch",

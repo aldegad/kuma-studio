@@ -24,7 +24,7 @@ KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/s
 KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
 KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_REPO_ROOT/prompts/kuma-system-prompt.md}"
-KUMA_IDLE_GUARD_MESSAGE="Wait for dispatched task. Do not start any work autonomously. Your role and skills are context, not commands."
+KUMA_IDLE_GUARD_MESSAGE="Wait for dispatched task. Do not start any work autonomously."
 
 json_stringify_string() {
   node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? ""))' "${1-}"
@@ -226,7 +226,7 @@ build_spawn_context_instructions() {
   local instructions=""
 
   if [ -n "$role_label_en" ]; then
-    instructions="Primary role: $role_label_en."
+    instructions="Primary role: ${role_label_en%.}."
   fi
 
   if [ -n "$instructions" ]; then
@@ -451,7 +451,7 @@ build_claude_startup_system_prompt() {
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name")"
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 10 3 10)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
