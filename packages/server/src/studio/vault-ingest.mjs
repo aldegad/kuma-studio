@@ -678,6 +678,53 @@ export async function detectUnindexedDomainPages(vaultDir) {
     .sort((left, right) => left.localeCompare(right));
 }
 
+function autoSubsectionLabel(subDirName) {
+  return subDirName
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export function extractIndexStructure(indexContent) {
+  const pathToSubsection = new Map();
+  const subsectionOrder = new Map();
+  if (!indexContent) {
+    return { pathToSubsection, subsectionOrder };
+  }
+
+  const lines = normalizeLineEndings(indexContent).split("\n");
+  let currentSection = null;
+  let currentSubsection = null;
+
+  for (const rawLine of lines) {
+    const h2 = rawLine.match(/^##\s+(.+?)\s*$/u);
+    if (h2) {
+      currentSection = h2[1].trim();
+      currentSubsection = null;
+      if (!subsectionOrder.has(currentSection)) {
+        subsectionOrder.set(currentSection, []);
+      }
+      continue;
+    }
+    const h3 = rawLine.match(/^###\s+(.+?)\s*$/u);
+    if (h3 && currentSection) {
+      currentSubsection = h3[1].trim();
+      const order = subsectionOrder.get(currentSection);
+      if (order && !order.includes(currentSubsection)) {
+        order.push(currentSubsection);
+      }
+      continue;
+    }
+    const link = rawLine.match(/^-\s+\[[^\]]+\]\(([^)]+\.md)\)/u);
+    if (link && currentSection) {
+      const relPath = link[1].trim();
+      pathToSubsection.set(relPath, currentSubsection);
+    }
+  }
+
+  return { pathToSubsection, subsectionOrder };
+}
+
 export async function rewriteIndex(vaultDir) {
   const entries = await collectVaultEntries(vaultDir);
   const bySection = new Map(
@@ -687,7 +734,18 @@ export async function rewriteIndex(vaultDir) {
     ]),
   );
 
+  const indexPath = join(vaultDir, "index.md");
+  const existingContent = existsSync(indexPath)
+    ? normalizeLineEndings(await readFile(indexPath, "utf8"))
+    : "";
+  const { pathToSubsection, subsectionOrder } = extractIndexStructure(existingContent);
+
   const lines = ["# Kuma Vault Index", ""];
+
+  const formatEntry = (entry) => {
+    const summary = entry.summary || "요약 없음";
+    return `- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`;
+  };
 
   for (const [section, heading] of [
     ["domains", "Domains"],
@@ -697,40 +755,78 @@ export async function rewriteIndex(vaultDir) {
   ]) {
     lines.push(`## ${heading}`);
     const sectionEntries = bySection.get(section) ?? [];
+
     if (sectionEntries.length === 0) {
       lines.push(section === "inbox" ? "(비어 있음)" : "(아직 없음)");
-    } else if (section === "domains") {
-      const topLevel = sectionEntries.filter((e) => e.relativePath.split("/").length === 2);
-      const subDirEntries = sectionEntries.filter((e) => e.relativePath.split("/").length >= 3);
-      for (const entry of topLevel) {
-        const summary = entry.summary || "요약 없음";
-        lines.push(`- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`);
-      }
-      const bySubDir = new Map();
-      for (const entry of subDirEntries) {
-        const subDir = entry.relativePath.split("/")[1];
-        if (!bySubDir.has(subDir)) {
-          bySubDir.set(subDir, []);
-        }
-        bySubDir.get(subDir).push(entry);
-      }
-      for (const [subDir, subEntries] of bySubDir) {
-        const subsectionName = subDir
-          .split("-")
-          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-          .join(" ");
-        lines.push(`\n### ${subsectionName}`);
-        for (const entry of subEntries) {
-          const summary = entry.summary || "요약 없음";
-          lines.push(`- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`);
-        }
-      }
-    } else {
+      lines.push("");
+      continue;
+    }
+
+    if (section === "inbox") {
       for (const entry of sectionEntries) {
-        const summary = entry.summary || "요약 없음";
-        lines.push(`- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`);
+        lines.push(formatEntry(entry));
+      }
+      lines.push("");
+      continue;
+    }
+
+    const rootEntries = [];
+    const bySubsection = new Map();
+    const placeUnder = (label, entry) => {
+      if (!bySubsection.has(label)) {
+        bySubsection.set(label, []);
+      }
+      bySubsection.get(label).push(entry);
+    };
+
+    for (const entry of sectionEntries) {
+      const relPath = entry.relativePath.replace(/\\/gu, "/");
+      if (pathToSubsection.has(relPath)) {
+        const mapped = pathToSubsection.get(relPath);
+        if (mapped === null) {
+          rootEntries.push(entry);
+        } else {
+          placeUnder(mapped, entry);
+        }
+        continue;
+      }
+
+      const parts = relPath.split("/");
+      if (parts.length >= 3) {
+        placeUnder(autoSubsectionLabel(parts[1]), entry);
+      } else {
+        rootEntries.push(entry);
       }
     }
+
+    for (const entry of rootEntries) {
+      lines.push(formatEntry(entry));
+    }
+
+    const preservedOrder = subsectionOrder.get(heading) ?? [];
+    const emittedSubsections = new Set();
+    const emitSubsection = (label) => {
+      if (emittedSubsections.has(label)) return;
+      const subEntries = bySubsection.get(label);
+      if (!subEntries || subEntries.length === 0) return;
+      emittedSubsections.add(label);
+      lines.push("");
+      lines.push(`### ${label}`);
+      for (const entry of subEntries) {
+        lines.push(formatEntry(entry));
+      }
+    };
+
+    for (const label of preservedOrder) {
+      emitSubsection(label);
+    }
+    const remaining = Array.from(bySubsection.keys())
+      .filter((label) => !emittedSubsections.has(label))
+      .sort((a, b) => a.localeCompare(b));
+    for (const label of remaining) {
+      emitSubsection(label);
+    }
+
     lines.push("");
   }
 

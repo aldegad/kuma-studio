@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, it } from "vitest";
 
-import { ingestResultFile, parseFrontmatterDocument } from "./vault-ingest.mjs";
+import {
+  extractIndexStructure,
+  ingestResultFile,
+  parseFrontmatterDocument,
+  rewriteIndex,
+} from "./vault-ingest.mjs";
 
 async function createResultFile(dir, name, content) {
   const path = join(dir, name);
@@ -166,5 +171,162 @@ status: done
     expect(parsed.frontmatter.title).toBe("Playwright timeout 디버깅");
     expect(parsed.frontmatter.domain).toBe("learnings");
     expect(parsed.body).toContain("Playwright timeout 디버깅");
+  });
+
+  it("extractIndexStructure captures subsection + root placement per path", () => {
+    const content = `# Kuma Vault Index
+
+## Projects
+- [alpha 프로젝트](projects/alpha.md) — root entry
+- [beta 프로젝트](projects/beta.md) — root entry
+
+### GroupA
+- [gamma 프로젝트](projects/gamma.md) — manually grouped
+- [delta 프로젝트](projects/delta.md) — manually grouped
+
+### GroupB
+- [epsilon 프로젝트](projects/epsilon.md) — manually grouped top-level
+- [epsilon detail](projects/epsilon/detail.md) — subdir file grouped explicitly
+
+## Learnings
+- [loose learning](learnings/loose.md) — no subsection
+`;
+    const { pathToSubsection, subsectionOrder } = extractIndexStructure(content);
+
+    expect(pathToSubsection.get("projects/alpha.md")).toBe(null);
+    expect(pathToSubsection.get("projects/beta.md")).toBe(null);
+    expect(pathToSubsection.get("projects/gamma.md")).toBe("GroupA");
+    expect(pathToSubsection.get("projects/delta.md")).toBe("GroupA");
+    expect(pathToSubsection.get("projects/epsilon.md")).toBe("GroupB");
+    expect(pathToSubsection.get("projects/epsilon/detail.md")).toBe("GroupB");
+    expect(pathToSubsection.get("learnings/loose.md")).toBe(null);
+    expect(subsectionOrder.get("Projects")).toEqual(["GroupA", "GroupB"]);
+  });
+
+  it("rewriteIndex preserves manual subsection groupings across regeneration", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-rewrite-"));
+    const vaultDir = join(tempRoot, "vault");
+
+    await mkdir(join(vaultDir, "projects"), { recursive: true });
+    await mkdir(join(vaultDir, "projects", "epsilon"), { recursive: true });
+    await mkdir(join(vaultDir, "learnings"), { recursive: true });
+
+    const pageFrontmatter = (title, summary) => `---
+title: ${title}
+domain: projects
+tags: []
+created: 2026-04-14
+updated: 2026-04-14
+sources: []
+---
+
+## Summary
+${summary}
+`;
+
+    await writeFile(
+      join(vaultDir, "projects", "gamma.md"),
+      pageFrontmatter("gamma 프로젝트", "gamma summary"),
+      "utf8",
+    );
+    await writeFile(
+      join(vaultDir, "projects", "delta.md"),
+      pageFrontmatter("delta 프로젝트", "delta summary"),
+      "utf8",
+    );
+    await writeFile(
+      join(vaultDir, "projects", "alpha.md"),
+      pageFrontmatter("alpha 프로젝트", "alpha summary"),
+      "utf8",
+    );
+    await writeFile(
+      join(vaultDir, "projects", "epsilon.md"),
+      pageFrontmatter("epsilon 프로젝트", "epsilon root summary"),
+      "utf8",
+    );
+    await writeFile(
+      join(vaultDir, "projects", "epsilon", "detail.md"),
+      pageFrontmatter("epsilon detail", "epsilon detail summary"),
+      "utf8",
+    );
+
+    await writeFile(
+      join(vaultDir, "index.md"),
+      `# Kuma Vault Index
+
+## Domains
+(아직 없음)
+
+## Projects
+- [alpha 프로젝트](projects/alpha.md) — manual root
+
+### GroupA
+- [gamma 프로젝트](projects/gamma.md) — manual group
+- [delta 프로젝트](projects/delta.md) — manual group
+
+### GroupB
+- [epsilon 프로젝트](projects/epsilon.md) — manual group
+- [epsilon detail](projects/epsilon/detail.md) — manual group
+
+## Learnings
+(아직 없음)
+
+## Inbox
+(비어 있음)
+
+## Cross References
+(아직 없음)
+`,
+      "utf8",
+    );
+
+    await rewriteIndex(vaultDir);
+
+    const regenerated = await readFile(join(vaultDir, "index.md"), "utf8");
+
+    expect(regenerated).toContain("### GroupA");
+    expect(regenerated).toContain("### GroupB");
+
+    const groupAIdx = regenerated.indexOf("### GroupA");
+    const groupBIdx = regenerated.indexOf("### GroupB");
+    expect(groupAIdx).toBeGreaterThan(0);
+    expect(groupBIdx).toBeGreaterThan(groupAIdx);
+
+    const groupABlock = regenerated.slice(groupAIdx, groupBIdx);
+    expect(groupABlock).toContain("projects/gamma.md");
+    expect(groupABlock).toContain("projects/delta.md");
+    expect(groupABlock).not.toContain("projects/alpha.md");
+
+    const groupBBlock = regenerated.slice(groupBIdx);
+    expect(groupBBlock).toContain("projects/epsilon.md");
+    expect(groupBBlock).toContain("projects/epsilon/detail.md");
+
+    const projectsIdx = regenerated.indexOf("## Projects");
+    const projectsBlock = regenerated.slice(projectsIdx, groupAIdx);
+    expect(projectsBlock).toContain("projects/alpha.md");
+    expect(projectsBlock).not.toContain("projects/gamma.md");
+
+    await writeFile(
+      join(vaultDir, "projects", "zeta.md"),
+      pageFrontmatter("zeta 프로젝트", "new ingest result"),
+      "utf8",
+    );
+
+    await rewriteIndex(vaultDir);
+    const afterNew = await readFile(join(vaultDir, "index.md"), "utf8");
+
+    const afterAIdx = afterNew.indexOf("### GroupA");
+    const afterBIdx = afterNew.indexOf("### GroupB");
+    expect(afterAIdx).toBeGreaterThan(0);
+    expect(afterBIdx).toBeGreaterThan(afterAIdx);
+
+    const afterProjectsIdx = afterNew.indexOf("## Projects");
+    const afterProjectsBlock = afterNew.slice(afterProjectsIdx, afterAIdx);
+    expect(afterProjectsBlock).toContain("projects/zeta.md");
+    expect(afterProjectsBlock).toContain("projects/alpha.md");
+
+    const afterGroupABlock = afterNew.slice(afterAIdx, afterBIdx);
+    expect(afterGroupABlock).toContain("projects/gamma.md");
+    expect(afterGroupABlock).toContain("projects/delta.md");
   });
 });
