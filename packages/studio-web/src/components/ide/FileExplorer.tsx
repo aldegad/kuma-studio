@@ -39,27 +39,134 @@ interface TocDoc {
   description?: string;
 }
 
-interface TocSection {
+interface TocFolder {
   id: string;
   label: string;
   docs: TocDoc[];
+  folders: TocFolder[];
 }
 
-/** Parse ~/.kuma/vault/index.md into a section/doc tree. */
-function parseIndexMd(content: string): TocSection[] {
-  const sections: TocSection[] = [];
-  let current: TocSection | null = null;
-  for (const line of content.split("\n")) {
-    const heading = line.match(/^##\s+(.+)$/);
-    if (heading) {
-      current = { id: heading[1].toLowerCase().replace(/\s+/g, "-"), label: heading[1], docs: [] };
-      sections.push(current);
+interface TocSection extends TocFolder {
+  /** total leaf doc count (recursive) */
+  totalDocs: number;
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+
+/** Count leaf docs recursively. */
+function countLeafDocs(folder: TocFolder): number {
+  return folder.docs.length + folder.folders.reduce((sum, f) => sum + countLeafDocs(f), 0);
+}
+
+/**
+ * Group a flat list of docs by their path segment at `depth` (0-indexed).
+ * Docs shallower than depth+1 segments go into `directDocs`.
+ * Returns synthetic folders keyed by segment, plus leftover direct docs.
+ */
+function groupDocsByPathSegment(docs: TocDoc[], depth: number, parentId: string): { directDocs: TocDoc[]; folders: TocFolder[] } {
+  const directDocs: TocDoc[] = [];
+  const bySegment = new Map<string, TocDoc[]>();
+  for (const doc of docs) {
+    const parts = doc.path.split("/");
+    // At this depth, folder is parts[depth]; leaf filename is parts[depth+1] or later
+    if (parts.length <= depth + 1) {
+      directDocs.push(doc);
       continue;
     }
-    if (current) {
-      const link = line.match(/^-\s+\[(.+?)\]\((.+?)\)(?:\s*[—\-–]\s*(.+))?/);
-      if (link) current.docs.push({ title: link[1], path: link[2], description: link[3]?.trim() });
+    const segment = parts[depth];
+    if (!segment) {
+      directDocs.push(doc);
+      continue;
     }
+    let bucket = bySegment.get(segment);
+    if (!bucket) {
+      bucket = [];
+      bySegment.set(segment, bucket);
+    }
+    bucket.push(doc);
+  }
+  // Only promote to folder if 2+ docs share a segment; single-doc "folders" stay direct
+  const folders: TocFolder[] = [];
+  for (const [segment, bucket] of bySegment) {
+    if (bucket.length < 2) {
+      directDocs.push(...bucket);
+      continue;
+    }
+    folders.push({
+      id: `${parentId}/${segment}`,
+      label: segment,
+      docs: bucket,
+      folders: [],
+    });
+  }
+  folders.sort((a, b) => a.label.localeCompare(b.label));
+  return { directDocs, folders };
+}
+
+/** Parse ~/.kuma/vault/index.md into a nested section/folder/doc tree. */
+function parseIndexMd(content: string): TocSection[] {
+  // 1) Parse `##` sections and `###` subsections (docs as flat list under each)
+  interface RawSubsection { label: string; docs: TocDoc[] }
+  interface RawSection { id: string; label: string; docs: TocDoc[]; subsections: RawSubsection[] }
+  const raw: RawSection[] = [];
+  let currentSection: RawSection | null = null;
+  let currentSub: RawSubsection | null = null;
+  for (const line of content.split("\n")) {
+    const h2 = line.match(/^##\s+(.+?)\s*$/);
+    if (h2) {
+      currentSection = { id: slug(h2[1]), label: h2[1], docs: [], subsections: [] };
+      currentSub = null;
+      raw.push(currentSection);
+      continue;
+    }
+    const h3 = line.match(/^###\s+(.+?)\s*$/);
+    if (h3 && currentSection) {
+      currentSub = { label: h3[1], docs: [] };
+      currentSection.subsections.push(currentSub);
+      continue;
+    }
+    if (!currentSection) continue;
+    const link = line.match(/^-\s+\[(.+?)\]\((.+?)\)(?:\s*[—\-–]\s*(.+))?/);
+    if (!link) continue;
+    const doc: TocDoc = { title: link[1], path: link[2], description: link[3]?.trim() };
+    if (currentSub) currentSub.docs.push(doc);
+    else currentSection.docs.push(doc);
+  }
+
+  // 2) For each section, convert ### subsections → folders, and auto-group direct docs by path segment
+  const sections: TocSection[] = [];
+  for (const rawSec of raw) {
+    const basePath = rawSec.id; // "projects" / "learnings" / "domains" / ...
+    const { directDocs, folders: pathFolders } = groupDocsByPathSegment(rawSec.docs, 1, basePath);
+    const subFolders: TocFolder[] = rawSec.subsections.map((sub) => ({
+      id: `${rawSec.id}/${slug(sub.label)}`,
+      label: sub.label,
+      docs: sub.docs,
+      folders: [],
+    }));
+    // Merge path-derived folders with explicit subsections; explicit subsections win on label match
+    const mergedByKey = new Map<string, TocFolder>();
+    for (const f of [...subFolders, ...pathFolders]) {
+      const key = f.label.toLowerCase();
+      const existing = mergedByKey.get(key);
+      if (existing) {
+        // Merge docs, dedupe by path
+        const seen = new Set(existing.docs.map((d) => d.path));
+        for (const d of f.docs) if (!seen.has(d.path)) existing.docs.push(d);
+      } else {
+        mergedByKey.set(key, f);
+      }
+    }
+    const folders = Array.from(mergedByKey.values()).sort((a, b) => a.label.localeCompare(b.label));
+    const section: TocSection = {
+      id: rawSec.id,
+      label: rawSec.label,
+      docs: directDocs.sort((a, b) => a.title.localeCompare(b.title)),
+      folders,
+      totalDocs: 0,
+    };
+    section.totalDocs = countLeafDocs(section);
+    sections.push(section);
   }
   return sections;
 }
@@ -82,6 +189,129 @@ type ViewerFile =
 
 interface FileExplorerProps {
   onCollapse?: () => void;
+}
+
+const VAULT_DEPTH_INDENT_PX = 12;
+
+function VaultFixedLink({
+  icon, label, hint, path, active, onSelect,
+}: {
+  icon: string; label: string; hint: string; path: string; active: boolean; onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-white/5"
+      style={{
+        background: active ? "rgba(14,165,233,0.12)" : "transparent",
+        borderLeft: active ? "2px solid #0ea5e9" : "2px solid transparent",
+      }}
+      title={path}
+    >
+      <span className="text-[11px]">{icon}</span>
+      <span className="text-[10px] font-semibold" style={{ color: active ? "#0ea5e9" : "var(--t-secondary)" }}>{label}</span>
+      <span className="ml-auto text-[8px]" style={{ color: "var(--t-faint)" }}>{hint}</span>
+    </button>
+  );
+}
+
+function VaultDocRow({
+  doc, depth, accent, active, onSelect,
+}: {
+  doc: TocDoc; depth: number; accent: string; active: boolean; onSelect: () => void;
+}) {
+  const leftPad = 8 + depth * VAULT_DEPTH_INDENT_PX;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-start gap-1.5 py-1 pr-2 text-left transition-colors hover:bg-white/5"
+      style={{
+        paddingLeft: leftPad,
+        background: active ? `${accent}14` : "transparent",
+        borderLeft: active ? `2px solid ${accent}` : "2px solid transparent",
+      }}
+      title={doc.path}
+    >
+      <span className="mt-[2px] shrink-0 text-[9px]" style={{ color: active ? accent : "var(--t-faint)" }}>•</span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[10px] font-medium truncate" style={{ color: active ? accent : "var(--t-primary)" }}>
+          {doc.title}
+        </span>
+        {doc.description && (
+          <span className="block text-[9px] truncate mt-0.5" style={{ color: "var(--t-faint)" }}>
+            {doc.description}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function VaultFolderRow({
+  folder, depth, accent, expanded, setExpanded, selectedPath, onSelect,
+}: {
+  folder: TocFolder;
+  depth: number;
+  accent: string;
+  expanded: Record<string, boolean>;
+  setExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  selectedPath: string | null;
+  onSelect: (doc: TocDoc) => void | Promise<void>;
+}) {
+  const isOpen = expanded[folder.id] ?? false;
+  const leftPad = 6 + depth * VAULT_DEPTH_INDENT_PX;
+  const count = folder.docs.length + folder.folders.length;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => ({ ...prev, [folder.id]: !prev[folder.id] }))}
+        className="flex w-full items-center gap-1.5 py-1 pr-2 transition-colors hover:bg-white/5"
+        style={{ paddingLeft: leftPad }}
+        title={folder.label}
+      >
+        <svg
+          width="9" height="9" viewBox="0 0 16 16"
+          className={`shrink-0 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
+          style={{ color: "var(--t-faint)" }}
+          fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+        >
+          <path d="M6 4l4 4-4 4" />
+        </svg>
+        <span className="text-[10px]" style={{ color: accent }}>{isOpen ? "📂" : "📁"}</span>
+        <span className="text-[10px] font-semibold truncate" style={{ color: "var(--t-secondary)" }}>{folder.label}</span>
+        <span className="ml-auto text-[8px] font-medium tabular-nums" style={{ color: "var(--t-faint)" }}>{count}</span>
+      </button>
+      {isOpen && (
+        <div>
+          {folder.folders.map((child) => (
+            <VaultFolderRow
+              key={child.id}
+              folder={child}
+              depth={depth + 1}
+              accent={accent}
+              expanded={expanded}
+              setExpanded={setExpanded}
+              selectedPath={selectedPath}
+              onSelect={onSelect}
+            />
+          ))}
+          {folder.docs.map((doc) => (
+            <VaultDocRow
+              key={doc.path}
+              doc={doc}
+              depth={depth + 1}
+              accent={accent}
+              active={selectedPath === doc.path}
+              onSelect={() => { void onSelect(doc); }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
@@ -188,8 +418,9 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
       setVaultSectionExpanded((previous) => {
         const next = { ...previous };
         for (const section of sections) {
-          if (section.docs.length > 0 && next[section.id] == null) {
-            next[section.id] = true;
+          // Sections expand by default (except Cross References — it's meta, keep collapsed)
+          if (next[section.id] == null) {
+            next[section.id] = section.id !== "cross-references" && section.totalDocs > 0;
           }
         }
         return next;
@@ -691,28 +922,33 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
           {sidebarTab === "vault" && (
             <div className="py-1">
               {/* Wiki header */}
-              <div className="px-4 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+              <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                 <h3 className="text-[12px] font-bold" style={{ color: "var(--t-primary)" }}>Kuma Wiki</h3>
-                <p className="text-[9px] mt-0.5" style={{ color: "var(--t-faint)" }}>~/.kuma/vault</p>
+                <p className="text-[9px] mt-0.5 truncate" style={{ color: "var(--t-faint)" }}>~/.kuma/vault</p>
               </div>
 
-              {/* Schema fixed link */}
-              <button
-                type="button"
-                onClick={() => { void handleVaultSelect({ title: "Schema", path: "schema.md" }); }}
-                className="flex w-full items-center gap-2 px-4 py-1.5 text-left transition-colors hover:bg-white/5"
-                style={{
-                  borderBottom: "1px solid var(--border-subtle)",
-                  background: viewerFile?.type === "vault" && viewerFile.path === "schema.md" ? "rgba(14,165,233,0.1)" : "transparent",
-                }}
-              >
-                <span className="text-[11px]">📋</span>
-                <span className="text-[10px] font-semibold" style={{ color: viewerFile?.type === "vault" && viewerFile.path === "schema.md" ? "#0ea5e9" : "var(--t-secondary)" }}>Schema</span>
-                <span className="ml-auto text-[8px]" style={{ color: "var(--t-faint)" }}>운영 규칙</span>
-              </button>
+              {/* Fixed top links: Schema + Index */}
+              <div className="flex flex-col" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <VaultFixedLink
+                  icon="📋"
+                  label="Schema"
+                  hint="운영 규칙"
+                  path="schema.md"
+                  active={viewerFile?.type === "vault" && viewerFile.path === "schema.md"}
+                  onSelect={() => { void handleVaultSelect({ title: "Schema", path: "schema.md" }); }}
+                />
+                <VaultFixedLink
+                  icon="🗂"
+                  label="Index"
+                  hint="전체 목차"
+                  path="index.md"
+                  active={viewerFile?.type === "vault" && viewerFile.path === "index.md"}
+                  onSelect={() => { void handleVaultSelect({ title: "Index", path: "index.md" }); }}
+                />
+              </div>
 
               {!vaultIndexLoaded && (
-                <div className="flex items-center gap-2 px-4 py-3">
+                <div className="flex items-center gap-2 px-3 py-3">
                   <svg width="10" height="10" viewBox="0 0 12 12" className="animate-spin" style={{ color: "var(--t-faint)" }}>
                     <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
                   </svg>
@@ -721,13 +957,14 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
               )}
 
               {vaultIndexLoaded && tocSections.length === 0 && (
-                <p className="px-4 py-3 text-[9px] italic" style={{ color: "var(--t-faint)" }}>(index.md 없음)</p>
+                <p className="px-3 py-3 text-[9px] italic" style={{ color: "var(--t-faint)" }}>(index.md 없음)</p>
               )}
 
-              {vaultIndexLoaded && tocSections.map((sec) => {
+              {vaultIndexLoaded && tocSections.filter((sec) => sec.totalDocs > 0).map((sec) => {
                 const meta = VAULT_SECTIONS_META[sec.id] ?? VAULT_FALLBACK_META;
                 const isExpanded = vaultSectionExpanded[sec.id] ?? false;
                 const selectedPath = viewerFile?.type === "vault" ? viewerFile.path : (viewerFile?.type === "image" ? viewerFile.path : null);
+                const isMeta = sec.id === "cross-references";
 
                 return (
                   <div key={sec.id} className="mt-0.5">
@@ -735,49 +972,48 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
                     <button
                       type="button"
                       onClick={() => setVaultSectionExpanded((prev) => ({ ...prev, [sec.id]: !prev[sec.id] }))}
-                      className="flex w-full items-center gap-1.5 px-4 py-1.5 transition-colors hover:bg-white/5"
-                      style={{ borderLeft: `3px solid ${meta.accent}` }}
+                      className="group flex w-full items-center gap-1.5 py-1.5 pl-3 pr-2 transition-colors hover:bg-white/5"
+                      style={{ borderLeft: `3px solid ${meta.accent}`, opacity: isMeta ? 0.75 : 1 }}
                     >
+                      <svg
+                        width="10" height="10" viewBox="0 0 16 16"
+                        className={`shrink-0 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`}
+                        style={{ color: meta.accent }}
+                        fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                      >
+                        <path d="M6 4l4 4-4 4" />
+                      </svg>
                       <span className="text-[11px]">{meta.icon}</span>
-                      <span className={`text-[10px] font-bold ${meta.textClass}`}>{sec.label}</span>
-                      {sec.docs.length > 0 && (
-                        <span className="ml-auto rounded-full px-1.5 text-[8px] font-medium" style={{ background: `${meta.accent}15`, color: meta.accent }}>{sec.docs.length}</span>
-                      )}
+                      <span className={`text-[10px] font-bold uppercase tracking-wider ${meta.textClass}`}>{sec.label}</span>
+                      <span className="ml-auto rounded-full px-1.5 text-[8px] font-semibold tabular-nums" style={{ background: `${meta.accent}18`, color: meta.accent }}>{sec.totalDocs}</span>
                     </button>
 
-                    {/* Doc entries — title + description */}
+                    {/* Section body — folders + docs */}
                     {isExpanded && (
-                      <ul className="pb-1">
-                        {sec.docs.length === 0 ? (
-                          <li className="px-5 py-1.5 text-[9px] italic" style={{ color: "var(--t-faint)" }}>(아직 없음)</li>
-                        ) : (
-                          sec.docs.map((doc) => {
-                            const isActive = selectedPath === doc.path;
-                            return (
-                              <li key={doc.path}>
-                                <button
-                                  type="button"
-                                  onClick={() => { void handleVaultSelect(doc); }}
-                                  className="w-full px-5 py-1.5 text-left transition-colors hover:bg-white/5"
-                                  style={{
-                                    background: isActive ? `${meta.accent}12` : "transparent",
-                                    borderLeft: isActive ? `2px solid ${meta.accent}` : "2px solid transparent",
-                                  }}
-                                >
-                                  <span className="block text-[10px] font-medium truncate" style={{ color: isActive ? meta.accent : "var(--t-primary)" }}>
-                                    {doc.title}
-                                  </span>
-                                  {doc.description && (
-                                    <span className="block text-[9px] truncate mt-0.5" style={{ color: "var(--t-faint)" }}>
-                                      {doc.description}
-                                    </span>
-                                  )}
-                                </button>
-                              </li>
-                            );
-                          })
-                        )}
-                      </ul>
+                      <div className="pb-1">
+                        {sec.folders.map((folder) => (
+                          <VaultFolderRow
+                            key={folder.id}
+                            folder={folder}
+                            depth={1}
+                            accent={meta.accent}
+                            expanded={vaultSectionExpanded}
+                            setExpanded={setVaultSectionExpanded}
+                            selectedPath={selectedPath}
+                            onSelect={handleVaultSelect}
+                          />
+                        ))}
+                        {sec.docs.map((doc) => (
+                          <VaultDocRow
+                            key={doc.path}
+                            doc={doc}
+                            depth={1}
+                            accent={meta.accent}
+                            active={selectedPath === doc.path}
+                            onSelect={() => { void handleVaultSelect(doc); }}
+                          />
+                        ))}
+                      </div>
                     )}
                   </div>
                 );
@@ -785,7 +1021,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
               {/* Last updated footer */}
               {vaultIndexLoaded && tocSections.length > 0 && (
-                <div className="px-4 pt-2 pb-1 mt-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+                <div className="px-3 pt-2 pb-1 mt-1" style={{ borderTop: "1px solid var(--border-subtle)" }}>
                   <span className="text-[8px]" style={{ color: "var(--t-faint)" }}>index.md 기반 목차</span>
                 </div>
               )}
