@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FileTreeNode, type FsNode, type GitStatusMap } from "./FileTreeNode";
 import { CodeViewer } from "./CodeViewer";
 import { ImageViewer } from "./ImageViewer";
+import { PdfViewer } from "./PdfViewer";
 import { MarkdownBody } from "../dashboard/MarkdownBody";
 import { useWsStore } from "../../stores/use-ws-store";
 
@@ -183,6 +184,7 @@ const VAULT_FALLBACK_META = { accent: "#6366f1", textClass: "text-indigo-400", i
 type ViewerFile =
   | { type: "code"; content: string; language: string; path: string }
   | { type: "image"; content: string; mimeType: string; path: string }
+  | { type: "pdf"; content: string; mimeType: string; path: string }
   | { type: "binary"; size: number; path: string }
   | { type: "vault"; content: string; title: string; path: string; meta: FrontmatterMeta }
   | null;
@@ -533,6 +535,8 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
       }
       if (data.binary) {
         setViewerFile({ type: "binary", size: data.size, path });
+      } else if (data.mimeType === "application/pdf") {
+        setViewerFile({ type: "pdf", content: data.content, mimeType: data.mimeType, path });
       } else if (data.mimeType) {
         setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path });
       } else {
@@ -657,12 +661,15 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
     if (!explorerRoots?.globalRoots.vault) return;
     if (viewerFile?.type === "vault" && viewerFile.path === doc.path) return;
     if (viewerFile?.type === "image" && viewerFile.path === doc.path) return;
+    if (viewerFile?.type === "pdf" && viewerFile.path === doc.path) return;
     const filePath = `${explorerRoots.globalRoots.vault}/${doc.path}`;
     setFileLoading(true);
     try {
       const r = await fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(filePath)}`);
       const data = await r.json();
-      if (data.mimeType) {
+      if (data.mimeType === "application/pdf") {
+        setViewerFile({ type: "pdf", content: data.content, mimeType: data.mimeType, path: doc.path });
+      } else if (data.mimeType) {
         // Image file from vault TOC
         setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path: doc.path });
       } else if (data.content) {
@@ -693,6 +700,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
   const projectName = tree?.path?.split("/").pop() || "workspace";
   const workspaceRootLabel = tree?.path || explorerRoots?.workspaceRoot || "workspace";
   const hasViewer = viewerFile !== null;
+  const effectiveTreeWidth = viewerFile?.type === "pdf" ? Math.min(treeWidth, 220) : treeWidth;
 
   return (
     <div className="flex h-full">
@@ -708,7 +716,7 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
           background: "var(--ide-bg)",
           borderColor: "var(--card-border)",
           ...(hasViewer
-            ? { width: treeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX }
+            ? { width: effectiveTreeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX }
             : { width: TREE_WIDTH_INITIAL, minWidth: TREE_WIDTH_INITIAL, maxWidth: TREE_WIDTH_INITIAL }),
         }}
       >
@@ -963,7 +971,10 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
               {vaultIndexLoaded && tocSections.filter((sec) => sec.totalDocs > 0).map((sec) => {
                 const meta = VAULT_SECTIONS_META[sec.id] ?? VAULT_FALLBACK_META;
                 const isExpanded = vaultSectionExpanded[sec.id] ?? false;
-                const selectedPath = viewerFile?.type === "vault" ? viewerFile.path : (viewerFile?.type === "image" ? viewerFile.path : null);
+                const selectedPath =
+                  viewerFile?.type === "vault" || viewerFile?.type === "image" || viewerFile?.type === "pdf"
+                    ? viewerFile.path
+                    : null;
                 const isMeta = sec.id === "cross-references";
 
                 return (
@@ -1080,6 +1091,16 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
 
           {viewerFile?.type === "image" && (
             <ImageViewer
+              inline
+              content={viewerFile.content}
+              mimeType={viewerFile.mimeType}
+              filePath={viewerFile.path}
+              onClose={() => setViewerFile(null)}
+            />
+          )}
+
+          {viewerFile?.type === "pdf" && (
+            <PdfViewer
               inline
               content={viewerFile.content}
               mimeType={viewerFile.mimeType}

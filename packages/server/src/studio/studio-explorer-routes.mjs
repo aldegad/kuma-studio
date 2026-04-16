@@ -23,15 +23,16 @@ const EXPLORER_GLOBAL_ROOTS = {
   claude: resolve(join(homedir(), ".claude")),
   codex: resolve(join(homedir(), ".codex")),
 };
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
-const IMAGE_MIME_MAP = {
+const PREVIEWABLE_BINARY_MIME_MAP = {
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
+  ".pdf": "application/pdf",
 };
+const PREVIEWABLE_BINARY_EXTENSIONS = new Set(Object.keys(PREVIEWABLE_BINARY_MIME_MAP));
 const LANGUAGE_BY_EXTENSION = {
   ".ts": "typescript",
   ".tsx": "typescript",
@@ -385,11 +386,11 @@ export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, s
         }
 
         const extension = extname(resolved).toLowerCase();
-        if (IMAGE_EXTENSIONS.has(extension)) {
+        if (PREVIEWABLE_BINARY_EXTENSIONS.has(extension)) {
           const buffer = await readFile(resolved);
           sendJson(res, 200, {
             content: buffer.toString("base64"),
-            mimeType: IMAGE_MIME_MAP[extension] || "application/octet-stream",
+            mimeType: PREVIEWABLE_BINARY_MIME_MAP[extension] || "application/octet-stream",
           });
           return true;
         }

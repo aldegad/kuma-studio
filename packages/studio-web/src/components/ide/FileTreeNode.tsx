@@ -59,6 +59,7 @@ const EXT_META: Record<string, { label: string; color: string; kind: FileKind }>
   svg:  { label: "Sv", color: "text-amber-500",   kind: "image" },
   webp: { label: "Im", color: "text-teal-500",    kind: "image" },
   ico:  { label: "Ic", color: "text-teal-500",    kind: "image" },
+  pdf:  { label: "PF", color: "text-rose-500",    kind: "doc" },
 };
 
 function getFileMeta(name: string): { label: string; color: string; kind: FileKind } {

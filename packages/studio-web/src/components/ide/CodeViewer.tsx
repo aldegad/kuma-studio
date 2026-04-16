@@ -11,6 +11,7 @@ import bash from "highlight.js/lib/languages/bash";
 import yaml from "highlight.js/lib/languages/yaml";
 import sql from "highlight.js/lib/languages/sql";
 import "highlight.js/styles/github.css";
+import { MarkdownBody } from "../dashboard/MarkdownBody";
 
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("javascript", javascript);
@@ -80,17 +81,51 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function readEditableText(element: HTMLElement): string {
+  return element.innerText.replace(/\u00a0/g, " ");
+}
+
+function focusEditableEnd(element: HTMLElement) {
+  element.focus();
+  const selection = window.getSelection();
+  if (!selection) return;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+function insertTextAtSelection(text: string): boolean {
+  if (typeof document !== "undefined" && typeof document.execCommand === "function") {
+    return document.execCommand("insertText", false, text);
+  }
+  return false;
+}
+
 export function CodeViewer({ content, language, filePath, onClose, onSave, inline }: CodeViewerProps) {
-  const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
   const [saving, setSaving] = useState(false);
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<"code" | "preview">("code");
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const fileName = filePath.split("/").pop() || filePath;
   const badgeColor = LANG_COLOR[language] || "bg-stone-100 text-stone-500";
+  const isDirty = editContent !== content;
 
-  useEffect(() => { setEditContent(content); setIsEditing(false); }, [content]);
+  useEffect(() => {
+    setEditContent(content);
+    setViewMode("code");
+  }, [content, language]);
+
+  useEffect(() => {
+    if (!editorRef.current || viewMode !== "code") return;
+    if (readEditableText(editorRef.current) !== editContent) {
+      editorRef.current.textContent = editContent;
+    }
+  }, [editContent, viewMode]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -105,14 +140,13 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
       const d = await r.json();
       if (!d.success) throw new Error(d.error || "Save failed");
       onSave?.(editContent);
-      setIsEditing(false);
     } catch { /* ignore */ }
     setSaving(false);
   };
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(content);
+      await navigator.clipboard.writeText(editContent);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch { /* ignore */ }
@@ -122,23 +156,45 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
   // span state across multi-line strings/comments stays intact.
   const highlightedHtml = useMemo(() => {
     const lang = normalizeLang(language);
-    if (!lang) return escapeHtml(content);
+    if (!lang) return escapeHtml(editContent);
     try {
-      return hljs.highlight(content, { language: lang, ignoreIllegals: true }).value;
+      return hljs.highlight(editContent, { language: lang, ignoreIllegals: true }).value;
     } catch {
-      return escapeHtml(content);
+      return escapeHtml(editContent);
     }
-  }, [content, language]);
+  }, [editContent, language]);
+
+  const normalizedLanguage = useMemo(() => normalizeLang(language), [language]);
+  const canPreviewMarkdown = normalizedLanguage === "markdown";
 
   const lineCount = useMemo(() => {
-    if (!content) return 1;
+    if (!editContent) return 1;
     // A trailing newline should not render an extra empty gutter row.
-    const raw = content.split("\n");
+    const raw = editContent.split("\n");
     if (raw.length > 1 && raw[raw.length - 1] === "") raw.pop();
     return Math.max(raw.length, 1);
-  }, [content]);
+  }, [editContent]);
 
   const gutterWidth = `${Math.max(2, String(lineCount).length) * 0.62 + 1.2}rem`;
+
+  const syncFromEditor = () => {
+    if (!editorRef.current) return;
+    setEditContent(readEditableText(editorRef.current));
+  };
+
+  const handleUndo = () => {
+    if (!editorRef.current) return;
+    focusEditableEnd(editorRef.current);
+    document.execCommand?.("undo");
+    window.requestAnimationFrame(syncFromEditor);
+  };
+
+  const handleRedo = () => {
+    if (!editorRef.current) return;
+    focusEditableEnd(editorRef.current);
+    document.execCommand?.("redo");
+    window.requestAnimationFrame(syncFromEditor);
+  };
 
   const viewer = (
     <div
@@ -167,7 +223,7 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
           </span>
         </div>
         <div className="flex-1" />
-        {!isEditing && (
+        {viewMode === "code" && (
           <>
             <button
               type="button"
@@ -180,6 +236,24 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
             </button>
             <button
               type="button"
+              onClick={handleUndo}
+              className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+              style={{ color: "var(--t-faint)" }}
+              title="되돌리기"
+            >
+              되돌리기
+            </button>
+            <button
+              type="button"
+              onClick={handleRedo}
+              className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+              style={{ color: "var(--t-faint)" }}
+              title="다시 실행"
+            >
+              다시실행
+            </button>
+            <button
+              type="button"
               onClick={() => void handleCopy()}
               className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
               style={{ color: copied ? "#10b981" : "var(--t-faint)" }}
@@ -189,14 +263,38 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
             </button>
           </>
         )}
-        {isEditing ? (
+        {canPreviewMarkdown && (
+          <button
+            type="button"
+            onClick={() => setViewMode((current) => (current === "preview" ? "code" : "preview"))}
+            className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+            style={{
+              color: viewMode === "preview" ? "var(--t-primary)" : "var(--t-faint)",
+              background: viewMode === "preview" ? "var(--badge-bg)" : "transparent",
+            }}
+            title={viewMode === "preview" ? "코드 보기" : "프리뷰 보기"}
+          >
+            {viewMode === "preview" ? "코드" : "프리뷰"}
+          </button>
+        )}
+        {isDirty || saving ? (
           <div className="flex items-center gap-1 mr-2">
-            <button type="button" onClick={() => { setEditContent(content); setIsEditing(false); }} className="rounded px-2 py-0.5 text-[10px] font-medium transition-colors" style={{ color: "var(--t-muted)" }}>취소</button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditContent(content);
+                if (editorRef.current) {
+                  editorRef.current.textContent = content;
+                }
+              }}
+              className="rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+              style={{ color: "var(--t-muted)" }}
+            >
+              취소
+            </button>
             <button type="button" onClick={() => void handleSave()} disabled={saving} className="rounded px-2.5 py-0.5 text-[10px] font-bold text-white bg-amber-500 hover:bg-amber-600 disabled:opacity-50 transition-colors">{saving ? "저장 중..." : "저장"}</button>
           </div>
-        ) : (
-          <button type="button" onClick={() => setIsEditing(true)} className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors" style={{ color: "var(--t-faint)" }} title="편집">편집</button>
-        )}
+        ) : null}
         <button
           type="button"
           onClick={onClose}
@@ -211,15 +309,13 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
       </div>
 
       {/* Code area */}
-      {isEditing ? (
-        <div className="flex-1 overflow-auto" style={{ background: "var(--ide-bg-alt)" }}>
-          <textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className="w-full h-full min-h-[200px] p-4 font-mono text-[12px] leading-[1.65] outline-none resize-none"
-            style={{ background: "var(--ide-bg-alt)", color: "var(--t-primary)", tabSize: 2 }}
-            spellCheck={false}
-          />
+      {viewMode === "preview" && canPreviewMarkdown ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4" style={{ background: "var(--ide-bg-alt)" }}>
+          {editContent ? (
+            <MarkdownBody content={editContent} />
+          ) : (
+            <p className="text-[11px] italic" style={{ color: "var(--t-faint)" }}>(내용 없음)</p>
+          )}
         </div>
       ) : (
         <div
@@ -248,11 +344,55 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
               className={`kuma-code-body flex-1 font-mono text-[12px] leading-[1.65] py-3 px-4 ${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"}`}
               style={{ margin: 0, tabSize: 2, color: "var(--t-primary)" }}
             >
-              <code
-                className="hljs"
-                style={{ background: "transparent", padding: 0 }}
-                dangerouslySetInnerHTML={{ __html: highlightedHtml || "&nbsp;" }}
-              />
+              <div className="relative min-h-full">
+                <code
+                  aria-hidden="true"
+                  className="hljs pointer-events-none block"
+                  style={{ background: "transparent", padding: 0 }}
+                  dangerouslySetInnerHTML={{ __html: highlightedHtml || "&nbsp;" }}
+                />
+                <div
+                  ref={editorRef}
+                  contentEditable="plaintext-only"
+                  suppressContentEditableWarning
+                  spellCheck={false}
+                  onInput={syncFromEditor}
+                  onKeyDown={(event) => {
+                    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+                      event.preventDefault();
+                      if (isDirty && !saving) {
+                        void handleSave();
+                      }
+                      return;
+                    }
+
+                    if (event.key === "Tab") {
+                      event.preventDefault();
+                      if (!insertTextAtSelection("\t")) {
+                        const selection = window.getSelection();
+                        if (selection?.rangeCount) {
+                          const range = selection.getRangeAt(0);
+                          range.deleteContents();
+                          range.insertNode(document.createTextNode("\t"));
+                          range.collapse(false);
+                          selection.removeAllRanges();
+                          selection.addRange(range);
+                        }
+                      }
+                      window.requestAnimationFrame(syncFromEditor);
+                    }
+                  }}
+                  className={`absolute inset-0 font-mono text-[12px] leading-[1.65] outline-none ${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"}`}
+                  style={{
+                    margin: 0,
+                    padding: 0,
+                    tabSize: 2,
+                    color: "transparent",
+                    caretColor: "var(--t-primary)",
+                    background: "transparent",
+                  }}
+                />
+              </div>
             </pre>
           </div>
         </div>
@@ -262,16 +402,17 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
       <div className="flex items-center justify-between border-t px-4 py-1.5" style={{ borderColor: "var(--border-subtle)", background: `linear-gradient(to bottom, var(--ide-header-to), var(--ide-header-from))` }}>
         <span className="text-[10px] truncate" style={{ color: "var(--t-faint)" }}>{filePath}</span>
         <div className="flex items-center gap-3 text-[10px]" style={{ color: "var(--t-faint)" }}>
-          {isEditing && <span className="text-amber-500 font-medium">편집 중</span>}
+          {isDirty && <span className="text-amber-500 font-medium">수정됨</span>}
+          {canPreviewMarkdown && viewMode === "preview" && <span>preview mode</span>}
           <span>{lineCount} lines</span>
-          <span>{new Blob([isEditing ? editContent : content]).size.toLocaleString()} bytes</span>
+          <span>{new Blob([editContent]).size.toLocaleString()} bytes</span>
         </div>
       </div>
 
       <style>{`
         .kuma-code-scroll pre { font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
         .kuma-code-scroll ::selection { background: rgba(245, 158, 11, 0.25); }
-        .kuma-code-body code.hljs { display: block; }
+        .kuma-code-body [contenteditable="plaintext-only"]::selection { background: rgba(245, 158, 11, 0.25); }
       `}</style>
     </div>
   );
