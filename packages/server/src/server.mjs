@@ -228,6 +228,16 @@ export async function createServer({ host, port, root }) {
       clearTimeout(extensionReloadDebounce);
       extensionReloadDebounce = setTimeout(() => broadcastExtensionReload(), 500);
     });
+    extensionWatcher.on("error", (error) => {
+      const details = error instanceof Error ? error.message : "unknown error";
+      console.error("extensionWatcher failed:", details);
+      try {
+        extensionWatcher?.close?.();
+      } catch {
+        // ignore close failures while recovering from watcher errors
+      }
+      extensionWatcher = null;
+    });
   } catch {
     // Extension directory may not exist in production deployments.
   }

@@ -16,9 +16,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
+const CODEX_DIR = join(HOME, ".codex");
 const STATE_DIR = join(HOME, ".kuma-picker");
 const OPENAI_ENV_PATH = join(CLAUDE_DIR, ".env.openai");
 const HEALTHCHECK_URL = `http://127.0.0.1:${DEFAULT_PORT}/health`;
+const SKILL_ROOTS = [
+  { label: "Claude", dir: join(CLAUDE_DIR, "skills") },
+  { label: "Codex", dir: join(CODEX_DIR, "skills") },
+];
 
 function check(label, condition) {
   const status = condition ? "OK" : "FAIL";
@@ -54,21 +59,30 @@ async function main() {
 
   // Check skills
   const skills = [
-    { id: "kuma", candidates: ["kuma"] },
+    { id: "kuma-brief", candidates: ["kuma-brief"] },
+    { id: "kuma-picker", candidates: ["kuma-picker"] },
+    { id: "kuma-recovery", candidates: ["kuma-recovery"] },
+    { id: "kuma-snapshot", candidates: ["kuma-snapshot"] },
+    { id: "kuma-vault", candidates: ["kuma-vault"] },
+    { id: "noeuri", candidates: ["noeuri"] },
+    { id: "overnight-on", candidates: ["overnight-on"] },
+    { id: "overnight-off", candidates: ["overnight-off"] },
     { id: "dev-team", candidates: ["dev-team"] },
     { id: "strategy-analytics-team", candidates: ["strategy-analytics-team", "analytics-team", "strategy-team"] },
     { id: "tmux-ops", candidates: ["tmux-ops"] },
   ];
-  for (const skill of skills) {
-    const resolvedSkill = skill.candidates.find((candidate) =>
-      existsSync(join(CLAUDE_DIR, "skills", candidate, "SKILL.md")) ||
-      existsSync(join(CLAUDE_DIR, "skills", candidate, "skill.md")),
-    );
-    const ok = Boolean(resolvedSkill);
-    allOk = check(`Skill: ${skill.id}`, ok) && allOk;
-    if (!ok) process.stdout.write("    Run: node scripts/install.mjs\n");
-    if (ok && resolvedSkill !== skill.id) {
-      process.stdout.write(`    Using legacy alias: ${resolvedSkill} (deprecated, canonical: ${skill.id})\n`);
+  for (const skillRoot of SKILL_ROOTS) {
+    for (const skill of skills) {
+      const resolvedSkill = skill.candidates.find((candidate) =>
+        existsSync(join(skillRoot.dir, candidate, "SKILL.md")) ||
+        existsSync(join(skillRoot.dir, candidate, "skill.md")),
+      );
+      const ok = Boolean(resolvedSkill);
+      allOk = check(`${skillRoot.label} skill: ${skill.id}`, ok) && allOk;
+      if (!ok) process.stdout.write("    Run: node scripts/install.mjs\n");
+      if (ok && resolvedSkill !== skill.id) {
+        process.stdout.write(`    Using legacy alias: ${resolvedSkill} (deprecated, canonical: ${skill.id})\n`);
+      }
     }
   }
 

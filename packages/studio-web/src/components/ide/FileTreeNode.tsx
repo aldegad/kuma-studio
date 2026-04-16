@@ -38,9 +38,9 @@ const EXT_META: Record<string, { label: string; color: string; kind: FileKind }>
   jsonc:{ label: "{}", color: "text-emerald-600", kind: "data" },
   toml: { label: "TM", color: "text-emerald-700", kind: "data" },
   env:  { label: "EV", color: "text-emerald-500", kind: "data" },
-  md:   { label: "MD", color: "text-stone-500",   kind: "markdown" },
-  mdx:  { label: "MX", color: "text-stone-500",   kind: "markdown" },
-  txt:  { label: "TX", color: "text-stone-400",   kind: "doc" },
+  md:   { label: "MD", color: "explorer-icon-muted", kind: "markdown" },
+  mdx:  { label: "MX", color: "explorer-icon-muted", kind: "markdown" },
+  txt:  { label: "TX", color: "explorer-icon-muted", kind: "doc" },
   html: { label: "<>", color: "text-orange-500",  kind: "code" },
   htm:  { label: "<>", color: "text-orange-500",  kind: "code" },
   css:  { label: "#",  color: "text-purple-500",  kind: "style" },
@@ -67,10 +67,10 @@ function getFileMeta(name: string): { label: string; color: string; kind: FileKi
   if (lower === "dockerfile") return { label: "Dk", color: "text-sky-500", kind: "shell" };
   if (lower === "makefile")   return { label: "Mk", color: "text-lime-600", kind: "shell" };
   if (lower === ".gitignore" || lower === ".dockerignore") {
-    return { label: "Ig", color: "text-stone-400", kind: "data" };
+    return { label: "Ig", color: "explorer-icon-muted", kind: "data" };
   }
   const ext = lower.split(".").pop() || "";
-  return EXT_META[ext] || { label: "F", color: "text-stone-400", kind: "default" };
+  return EXT_META[ext] || { label: "F", color: "explorer-icon-muted", kind: "default" };
 }
 
 // --- Chevron SVG ---
@@ -80,7 +80,7 @@ function ChevronIcon({ expanded, muted }: { expanded: boolean; muted?: boolean }
       width="16"
       height="16"
       viewBox="0 0 16 16"
-      className={`shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""} ${muted ? "text-stone-300" : "text-stone-400"}`}
+      className={`shrink-0 transition-transform duration-150 ${expanded ? "rotate-90" : ""} ${muted ? "explorer-icon-muted" : "explorer-chevron"}`}
       fill="none"
       stroke="currentColor"
       strokeWidth="1.5"
@@ -96,21 +96,21 @@ function ChevronIcon({ expanded, muted }: { expanded: boolean; muted?: boolean }
 function FolderIcon({ open, skipped }: { open: boolean; skipped?: boolean }) {
   if (skipped) {
     return (
-      <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 text-stone-300" fill="none" stroke="currentColor" strokeWidth="1.2">
+      <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 explorer-icon-muted" fill="none" stroke="currentColor" strokeWidth="1.2">
         <rect x="2" y="3" width="12" height="10" rx="1.5" strokeDasharray="2 1.5" />
       </svg>
     );
   }
   if (open) {
     return (
-      <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 text-amber-500" fill="currentColor">
+      <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 explorer-folder-icon" fill="currentColor">
         <path d="M1.5 3.5A1.5 1.5 0 013 2h3.586a1 1 0 01.707.293L8.5 3.5H13a1.5 1.5 0 011.5 1.5v.5H3.5a2 2 0 00-1.94 1.515L1 9.5V5A1.5 1.5 0 012.5 3.5H1.5z" />
         <path d="M1.06 7.015A1.5 1.5 0 012.56 6H13.44a1.5 1.5 0 011.5 1.015l-.94 5A1.5 1.5 0 0112.56 13H3.44a1.5 1.5 0 01-1.44-1.015l-.94-4.97z" opacity="0.85" />
       </svg>
     );
   }
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 text-amber-500" fill="currentColor">
+    <svg width="16" height="16" viewBox="0 0 16 16" className="shrink-0 explorer-folder-icon" fill="currentColor">
       <path d="M2 3.5A1.5 1.5 0 013.5 2h2.879a1.5 1.5 0 011.06.44l1.122 1.12A1.5 1.5 0 009.62 4H12.5A1.5 1.5 0 0114 5.5v7a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 12.5v-9z" />
     </svg>
   );
@@ -193,7 +193,7 @@ function FileIcon({ color, kind }: { color: string; kind: FileKind }) {
 // --- Trash icon ---
 function TrashIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 16 16" className="text-stone-400 group-hover/del:text-red-500 transition-colors" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="14" height="14" viewBox="0 0 16 16" className="explorer-icon-muted group-hover/del:text-red-400 transition-colors" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 4.5h10M6.5 4.5V3a1 1 0 011-1h1a1 1 0 011 1v1.5" />
       <path d="M4.5 4.5l.5 8.5a1 1 0 001 1h4a1 1 0 001-1l.5-8.5" />
       <path d="M6.5 7v4M9.5 7v4" />
@@ -352,12 +352,10 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           type="button"
           onClick={isDir ? handleToggle : handleFileClick}
           className={[
-            "flex w-full items-center gap-1 py-[3px] text-left text-[12px] leading-[18px] transition-colors duration-100",
+            "explorer-row flex w-full items-center gap-1 py-[3px] text-left text-[12px] leading-[18px] transition-colors duration-100",
             node.hidden ? "opacity-50" : "",
-            isSkipped ? "text-gray-400" : "",
-            isSelected
-              ? "bg-amber-50 border-l-2 border-amber-400"
-              : "border-l-2 border-transparent hover:bg-stone-100",
+            isSkipped ? "explorer-row--skipped" : "",
+            isSelected ? "explorer-row--selected" : "",
           ].join(" ")}
           style={{ paddingLeft: `${depth * 14 + (isSelected ? 6 : 8)}px` }}
           data-panel-no-drag="true"
@@ -370,10 +368,17 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           ) : (
             <>
               <span className="w-4 shrink-0" />
-              <FileIcon color={fileMeta?.color || "text-stone-400"} kind={fileMeta?.kind || "default"} />
+              <FileIcon color={fileMeta?.color || "explorer-icon-muted"} kind={fileMeta?.kind || "default"} />
             </>
           )}
-          <span className={`truncate ${isDir ? "font-medium text-stone-700" : "text-stone-600"} ${gitStyle ? gitStyle.color : ""} ${dirHasChanges ? "text-amber-600" : ""}`}>
+          <span
+            className={`truncate ${isDir ? "font-medium" : ""} ${gitStyle ? gitStyle.color : ""} ${dirHasChanges ? "text-amber-500" : ""}`}
+            style={
+              gitStyle || dirHasChanges
+                ? undefined
+                : { color: isDir ? "var(--t-primary)" : "var(--t-secondary)" }
+            }
+          >
             {node.name}
           </span>
           {/* Git status badge */}
@@ -386,13 +391,13 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
             <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-400 opacity-60" />
           )}
           {!isDir && fileMeta && !confirmDelete && !gitStyle && (
-            <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-30 group-hover:opacity-80 transition-opacity`}>
+            <span className={`ml-auto mr-2 shrink-0 text-[9px] font-mono font-semibold ${fileMeta.color} opacity-50 group-hover:opacity-90 transition-opacity`}>
               {fileMeta.label}
             </span>
           )}
           {loading && (
             <span className="ml-auto mr-2 shrink-0">
-              <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin text-stone-400">
+              <svg width="12" height="12" viewBox="0 0 12 12" className="animate-spin explorer-icon-muted">
                 <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
               </svg>
             </span>
@@ -404,7 +409,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           <button
             type="button"
             onClick={handleDeleteClick}
-            className="group/del absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50"
+            className="explorer-trash-button group/del absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
             title={`${node.name} 삭제`}
             data-panel-no-drag="true"
           >
@@ -415,7 +420,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
         {/* Inline delete confirmation */}
         {confirmDelete && (
           <div
-            className="absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1.5 pl-2 bg-gradient-to-l from-red-50 via-red-50/95 to-red-50/0"
+            className="explorer-delete-confirm absolute right-0 top-0 bottom-0 flex items-center gap-1 pr-1.5 pl-2"
             style={{ animation: "fadeIn 100ms ease-out" }}
           >
             {deleting ? (
@@ -436,7 +441,12 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
                 <button
                   type="button"
                   onClick={handleCancelDelete}
-                  className="rounded px-1.5 py-0.5 text-[10px] font-medium text-stone-500 bg-white border border-stone-200 hover:bg-stone-50 transition-colors"
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors"
+                  style={{
+                    color: "var(--explorer-muted-button-text)",
+                    background: "var(--explorer-muted-button-bg)",
+                    border: "1px solid var(--explorer-muted-button-border)",
+                  }}
                   data-panel-no-drag="true"
                 >
                   취소
@@ -465,8 +475,11 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           ))}
           {children.length === 0 && (
             <p
-              className="py-1 text-[10px] text-stone-300 italic"
-              style={{ paddingLeft: `${(depth + 1) * 14 + 24}px` }}
+              className="py-1 text-[10px] italic"
+              style={{
+                color: "var(--t-faint)",
+                paddingLeft: `${(depth + 1) * 14 + 24}px`,
+              }}
             >
               (empty)
             </p>

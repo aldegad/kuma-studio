@@ -5,18 +5,18 @@
  *
  * Installs:
  *   1. npm dependencies
- *   2. Skill files → user Claude skills directory
+ *   2. Skill directories → user Claude/Codex skills directories
  *   3. cmux scripts → user Kuma cmux directory
  *   4. State directory → user Kuma Picker directory
  *   5. Team metadata → user Kuma Picker team metadata
  *   6. Studio-web production build
  *
  * Usage:
- *   node scripts/install.mjs [--skip-build] [--skip-deps]
+ *   node scripts/install.mjs [--skip-build] [--skip-deps] [--claude-only|--codex-only]
  */
 
 import { access } from "node:fs/promises";
-import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -29,6 +29,8 @@ const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
 const CLAUDE_HOOKS_DIR = join(CLAUDE_DIR, "hooks");
 const CLAUDE_SKILLS_DIR = join(CLAUDE_DIR, "skills");
+const CODEX_DIR = join(HOME, ".codex");
+const CODEX_SKILLS_DIR = join(CODEX_DIR, "skills");
 const KUMA_DIR = join(HOME, ".kuma");
 const KUMA_CMUX_DIR = join(KUMA_DIR, "cmux");
 const KUMA_BIN_DIR = join(KUMA_DIR, "bin");
@@ -38,12 +40,23 @@ const STATE_DIR = join(HOME, ".kuma-picker");
 const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.json");
 
 const SKILLS = [
-  { id: "kuma", source: "kuma" },
+  { id: "kuma-brief", source: "kuma-brief" },
+  { id: "kuma-picker", source: "kuma-picker" },
+  { id: "kuma-recovery", source: "kuma-recovery" },
+  { id: "kuma-snapshot", source: "kuma-snapshot" },
+  { id: "kuma-vault", source: "kuma-vault" },
+  { id: "noeuri", source: "noeuri" },
+  { id: "overnight-on", source: "overnight-on" },
+  { id: "overnight-off", source: "overnight-off" },
   { id: "dev-team", source: "dev-team" },
   { id: "strategy-analytics-team", source: "analytics-team" },
   { id: "analytics-team", source: "analytics-team" },
   { id: "strategy-team", source: "strategy-team" },
   { id: "tmux-ops", source: "tmux-ops" },
+];
+const SKILL_INSTALL_TARGETS = [
+  { id: "claude", label: "Claude", dir: CLAUDE_SKILLS_DIR },
+  { id: "codex", label: "Codex", dir: CODEX_SKILLS_DIR },
 ];
 const IGNORED_DIRS = new Set([".git", "node_modules", ".next", "dist", "build", ".turbo"]);
 const summary = [];
@@ -127,7 +140,13 @@ async function ensureSymlink(target, dest) {
       }
     }
 
-    await unlink(dest);
+    if (stats.isDirectory()) {
+      // Repo-managed skill dirs may already exist as copied folders. Replace them so
+      // future updates stay in sync via the symlink.
+      await rm(dest, { recursive: true, force: true });
+    } else {
+      await unlink(dest);
+    }
   }
 
   await mkdir(dirname(dest), { recursive: true });
@@ -135,34 +154,47 @@ async function ensureSymlink(target, dest) {
   return destExists ? "updated" : "created";
 }
 
-async function installSkills() {
+function resolveSkillInstallTargets(flags) {
+  const claudeOnly = flags.has("claude-only");
+  const codexOnly = flags.has("codex-only");
+
+  if (claudeOnly && codexOnly) {
+    throw new Error("Choose only one of --claude-only or --codex-only.");
+  }
+  if (claudeOnly) return SKILL_INSTALL_TARGETS.filter((target) => target.id === "claude");
+  if (codexOnly) return SKILL_INSTALL_TARGETS.filter((target) => target.id === "codex");
+  return SKILL_INSTALL_TARGETS;
+}
+
+async function installSkills(flags) {
   header("Installing skills");
-  await ensureDirWithSummary(CLAUDE_DIR);
-  await ensureDirWithSummary(CLAUDE_SKILLS_DIR);
+  const installTargets = resolveSkillInstallTargets(flags);
 
-  for (const skill of SKILLS) {
-    const srcFile = resolve(ROOT, "skills", skill.source, "SKILL.md");
-    const destDir = resolve(CLAUDE_SKILLS_DIR, skill.id);
-    const destFile = resolve(destDir, "SKILL.md");
+  for (const installTarget of installTargets) {
+    const agentRoot = dirname(installTarget.dir);
+    await ensureDirWithSummary(agentRoot);
+    await ensureDirWithSummary(installTarget.dir);
 
-    if (!(await pathExists(srcFile))) {
-      warn(`skill source not found: ${summarizePath(srcFile)} — skipping`);
-      addSummary("missing", `Missing skill source ${summarizePath(srcFile)}`);
-      continue;
-    }
+    for (const skill of SKILLS) {
+      const srcDir = resolve(ROOT, "skills", skill.source);
+      const srcFile = resolve(srcDir, "SKILL.md");
+      const destDir = resolve(installTarget.dir, skill.id);
 
-    await ensureDirWithSummary(destDir);
+      if (!(await pathExists(srcFile))) {
+        warn(`skill source not found: ${summarizePath(srcFile)} — skipping`);
+        addSummary("missing", `Missing skill source ${summarizePath(srcFile)}`);
+        continue;
+      }
 
-    const result = await copyFileIfChanged(srcFile, destFile);
-    if (result === "copied") {
-      log(`${skill.id} → ${summarizePath(destFile)}`);
-      addSummary("copied", `Copied ${summarizePath(srcFile)} → ${summarizePath(destFile)}`);
-    } else if (result === "updated") {
-      log(`Updated ${skill.id} → ${summarizePath(destFile)}`);
-      addSummary("updated", `Updated ${summarizePath(destFile)} from ${summarizePath(srcFile)}`);
-    } else {
-      log(`${summarizePath(destFile)} already up to date`);
-      addSummary("skipped", `Skipped existing file ${summarizePath(destFile)}`);
+      const result = await ensureSymlink(srcDir, destDir);
+      if (result === "skipped") {
+        log(`${installTarget.label}: ${skill.id} already up to date`);
+        addSummary("skipped", `Skipped existing symlink ${summarizePath(destDir)}`);
+        continue;
+      }
+
+      log(`${installTarget.label}: ${result} ${summarizePath(destDir)} → ${summarizePath(srcDir)}`);
+      addSummary(result, `${installTarget.label} ${result} symlink ${summarizePath(destDir)} → ${summarizePath(srcDir)}`);
     }
   }
 }
@@ -454,7 +486,7 @@ async function main() {
   process.stdout.write("========================\n");
 
   installDeps(flags);
-  await installSkills();
+  await installSkills(flags);
   await installHooks();
   await installCmux();
   await installBinScripts();
@@ -475,7 +507,7 @@ async function main() {
        npm run --prefix ${ROOT} kuma-studio:dashboard
 
   Skills installed:
-${SKILLS.map((s) => `    /claude ${s.id}`).join("\n")}
+${SKILLS.flatMap((s) => resolveSkillInstallTargets(flags).map((target) => `    ${target.label}: ${s.id}`)).join("\n")}
 
   Chrome extension:
     1. Open chrome://extensions

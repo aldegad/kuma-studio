@@ -319,36 +319,68 @@ export function StudioPage() {
           {projects.length > 1 && (
             <div className="flex items-center gap-0.5 ml-2">
               <button type="button" onClick={() => setActiveProject(null)}
-                className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${activeProjectId === null ? "bg-amber-500/30 text-amber-100 border-amber-400/40" : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"}`}>
+                className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
+                  activeProjectId === null
+                    ? isNight
+                      ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
+                      : "bg-amber-500/30 text-amber-100 border-amber-400/40"
+                    : isNight
+                      ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
+                      : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
+                }`}>
                 전체
               </button>
               {projects.map((p) => (
                 <button key={p.projectId} type="button" onClick={() => setActiveProject(p.projectId)}
-                  className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${activeProjectId === p.projectId ? "bg-amber-500/30 text-amber-100 border-amber-400/40" : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"}`}>
+                  className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
+                    activeProjectId === p.projectId
+                      ? isNight
+                        ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
+                        : "bg-amber-500/30 text-amber-100 border-amber-400/40"
+                      : isNight
+                        ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
+                        : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
+                  }`}>
                   {p.projectName}
                 </button>
               ))}
             </div>
           )}
 
-          <span className="rounded px-2 py-0.5 text-[10px] font-medium bg-white/8 text-amber-200/80 border border-white/10">
+          <span className={`rounded px-2 py-0.5 text-[10px] font-medium border ${isNight ? "bg-white/10 text-amber-100/90 border-amber-200/15" : "bg-white/8 text-amber-200/80 border-white/10"}`}>
             {isNight ? "🌙" : hour < 12 ? "☀️" : "🌤️"} {String(hour).padStart(2, "0")}:{String(new Date().getMinutes()).padStart(2, "0")}
           </span>
           {/* Theme mode toggle: auto / light / dark */}
-          <div className="flex items-center rounded border border-white/10 overflow-hidden">
+          <div className={`flex items-center rounded border overflow-hidden ${isNight ? "border-amber-200/15 bg-white/6" : "border-white/10"}`}>
             {(["auto", "light", "dark"] as const).map((mode) => {
               const isActive = themeMode === mode;
               const icon = mode === "auto" ? "A" : mode === "light" ? "☀" : "☾";
               return (
                 <button key={mode} type="button" title={mode === "auto" ? "자동 (시간 기반)" : mode === "light" ? "라이트 모드" : "다크 모드"}
                   onClick={() => { setThemeMode(mode); localStorage.setItem("kuma-studio-theme-mode", mode); }}
-                  className={`px-1.5 py-0.5 text-[10px] font-bold transition-colors ${isActive ? "bg-amber-500/30 text-amber-100" : "bg-white/5 text-amber-300/40 hover:bg-white/10 hover:text-amber-200/70"}`}
+                  className={`px-1.5 py-0.5 text-[10px] font-bold transition-colors ${
+                    isActive
+                      ? isNight
+                        ? "bg-amber-400/28 text-amber-50"
+                        : "bg-amber-500/30 text-amber-100"
+                      : isNight
+                        ? "bg-white/6 text-amber-100/75 hover:bg-white/12 hover:text-amber-50"
+                        : "bg-white/5 text-amber-300/40 hover:bg-white/10 hover:text-amber-200/70"
+                  }`}
                 >{icon}</button>
               );
             })}
           </div>
-          <button type="button" onClick={() => setShowHelp(true)} className="rounded w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-white/8 text-amber-200/70 border border-white/10 hover:bg-white/15 hover:text-amber-100" title="단축키 도움말 (?)" aria-label="단축키 도움말 열기">?</button>
-          <button type="button" onClick={() => setExplorerOpen((v) => !v)} className={`rounded h-5 flex items-center justify-center text-[10px] font-bold px-2 border transition-colors ${explorerOpen ? "bg-amber-500/30 text-amber-100 border-amber-400/30" : "bg-white/8 text-amber-200/70 border-white/10 hover:bg-white/15 hover:text-amber-100"}`} title="탐색기 토글 (파일/Vault)" aria-label="탐색기 열기/닫기">{explorerOpen ? "✕ 탐색기" : "📂 탐색기"}</button>
+          <button type="button" onClick={() => setShowHelp(true)} className={`rounded w-5 h-5 flex items-center justify-center text-[10px] font-bold border transition-colors ${isNight ? "bg-white/10 text-amber-100/85 border-amber-200/15 hover:bg-white/16 hover:text-amber-50" : "bg-white/8 text-amber-200/70 border-white/10 hover:bg-white/15 hover:text-amber-100"}`} title="단축키 도움말 (?)" aria-label="단축키 도움말 열기">?</button>
+          <button type="button" onClick={() => setExplorerOpen((v) => !v)} className={`rounded h-5 flex items-center justify-center text-[10px] font-bold px-2 border transition-colors ${
+            explorerOpen
+              ? isNight
+                ? "bg-amber-400/28 text-amber-50 border-amber-300/40"
+                : "bg-amber-500/30 text-amber-100 border-amber-400/30"
+              : isNight
+                ? "bg-white/10 text-amber-100/85 border-amber-200/15 hover:bg-white/16 hover:text-amber-50"
+                : "bg-white/8 text-amber-200/70 border-white/10 hover:bg-white/15 hover:text-amber-100"
+          }`} title="탐색기 토글 (파일/Vault)" aria-label="탐색기 열기/닫기">{explorerOpen ? "✕ 탐색기" : "📂 탐색기"}</button>
         </div>
         <div className="flex items-center gap-2">
           <SettingsPanel className="shrink-0" isNight={isNight} animationsEnabled={animationsEnabled} onToggleAnimations={() => setAnimationsEnabled((v) => !v)} particlesEnabled={particlesEnabled} onToggleParticles={() => setParticlesEnabled((v) => !v)} nightShiftEnabled={nightShiftEnabled} onToggleNightShift={toggleNightShift} />
@@ -362,7 +394,11 @@ export function StudioPage() {
       {/* File Explorer */}
       {explorerOpen && (
         <div className="absolute left-0 top-10 bottom-0 z-[50]" style={{ maxWidth: "min(1600px, 94vw)" }}>
-          <FileExplorer onCollapse={() => setExplorerOpen(false)} />
+          <FileExplorer
+            onCollapse={() => setExplorerOpen(false)}
+            activeProjectId={activeProjectId}
+            activeProjectName={activeProjectName}
+          />
         </div>
       )}
 

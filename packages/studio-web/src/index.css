@@ -75,46 +75,57 @@
   --ide-header-from: #f5f5f4;
   --ide-header-to: #fafaf9;
 
+  /* Explorer */
+  --explorer-folder: #d97706;
+  --explorer-row-hover: rgba(245, 245, 244, 0.9);
+  --explorer-row-selected-bg: rgba(251, 191, 36, 0.12);
+  --explorer-row-selected-border: #f59e0b;
+  --explorer-delete-hover-bg: #fef2f2;
+  --explorer-delete-confirm-bg: linear-gradient(to left, rgba(254, 242, 242, 1), rgba(254, 242, 242, 0.95), rgba(254, 242, 242, 0));
+  --explorer-muted-button-bg: rgba(255, 255, 255, 0.92);
+  --explorer-muted-button-border: rgba(214, 211, 209, 0.9);
+  --explorer-muted-button-text: #57534e;
+
   font-family: "Pretendard Variable", "IBM Plex Sans", system-ui, sans-serif;
 }
 
 [data-theme="night"] {
   --color-kuma-cream: #0f0d1a;
 
-  --panel-bg: rgba(25, 22, 55, 0.75);
-  --panel-bg-strong: rgba(25, 22, 55, 0.90);
-  --panel-border: rgba(100, 80, 180, 0.35);
-  --panel-hover: rgba(100, 80, 180, 0.20);
+  --panel-bg: rgba(24, 21, 53, 0.82);
+  --panel-bg-strong: rgba(24, 21, 53, 0.94);
+  --panel-border: rgba(140, 124, 230, 0.36);
+  --panel-hover: rgba(120, 110, 210, 0.22);
 
-  --t-primary: #e0e7ff;
-  --t-secondary: #c7d2fe;
-  --t-muted: #818cf8;
-  --t-faint: #6366f1;
+  --t-primary: #f5f7ff;
+  --t-secondary: #dbe3ff;
+  --t-muted: #b7c2ff;
+  --t-faint: #8d99d8;
 
-  --card-bg: rgba(30, 25, 60, 0.40);
-  --card-border: rgba(100, 80, 180, 0.25);
-  --card-bg-hover: rgba(49, 46, 129, 0.40);
+  --card-bg: rgba(31, 27, 66, 0.72);
+  --card-border: rgba(127, 110, 220, 0.36);
+  --card-bg-hover: rgba(71, 64, 160, 0.42);
 
-  --input-bg: rgba(30, 27, 75, 0.70);
-  --input-border: rgba(67, 56, 202, 0.40);
+  --input-bg: rgba(25, 23, 66, 0.88);
+  --input-border: rgba(129, 140, 248, 0.5);
 
-  --badge-bg: rgba(49, 46, 129, 0.50);
-  --badge-text: #c7d2fe;
+  --badge-bg: rgba(67, 56, 202, 0.42);
+  --badge-text: #e0e7ff;
 
-  --btn-solid-bg: rgba(67, 56, 202, 0.50);
-  --btn-solid-text: #e0e7ff;
-  --btn-solid-hover: rgba(79, 70, 229, 0.60);
+  --btn-solid-bg: rgba(79, 70, 229, 0.56);
+  --btn-solid-text: #eef2ff;
+  --btn-solid-hover: rgba(99, 102, 241, 0.68);
 
-  --btn-ghost-bg: rgba(30, 27, 75, 0.60);
-  --btn-ghost-text: #a5b4fc;
-  --btn-ghost-hover: rgba(49, 46, 129, 0.60);
+  --btn-ghost-bg: rgba(40, 35, 88, 0.72);
+  --btn-ghost-text: #cbd5ff;
+  --btn-ghost-hover: rgba(67, 56, 202, 0.38);
 
   --danger-text: #f87171;
   --danger-hover-bg: rgba(127, 29, 29, 0.40);
 
-  --track-bg: rgba(49, 46, 129, 0.50);
+  --track-bg: rgba(67, 56, 202, 0.42);
 
-  --border-subtle: rgba(100, 80, 180, 0.25);
+  --border-subtle: rgba(137, 120, 228, 0.3);
 
   --toast-info-bg: rgba(30, 27, 75, 0.90);
   --toast-info-border: rgba(99, 102, 241, 0.40);
@@ -128,15 +139,25 @@
 
   --minimap-bg: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
 
-  --wb-bg: rgba(25, 22, 55, 0.90);
-  --wb-border: rgba(100, 80, 180, 0.40);
-  --wb-card-bg: rgba(49, 46, 129, 0.30);
-  --wb-card-border: rgba(100, 80, 180, 0.40);
+  --wb-bg: rgba(24, 21, 53, 0.92);
+  --wb-border: rgba(132, 115, 224, 0.44);
+  --wb-card-bg: rgba(67, 56, 202, 0.28);
+  --wb-card-border: rgba(132, 115, 224, 0.44);
 
-  --ide-bg: #16132e;
-  --ide-bg-alt: #1a1640;
-  --ide-header-from: #1e1a3d;
-  --ide-header-to: #16132e;
+  --ide-bg: #131028;
+  --ide-bg-alt: #191438;
+  --ide-header-from: #211b46;
+  --ide-header-to: #15112f;
+
+  --explorer-folder: #ffcd66;
+  --explorer-row-hover: rgba(99, 102, 241, 0.18);
+  --explorer-row-selected-bg: rgba(245, 158, 11, 0.2);
+  --explorer-row-selected-border: #fbbf24;
+  --explorer-delete-hover-bg: rgba(127, 29, 29, 0.3);
+  --explorer-delete-confirm-bg: linear-gradient(to left, rgba(78, 23, 23, 0.92), rgba(78, 23, 23, 0.82), rgba(78, 23, 23, 0));
+  --explorer-muted-button-bg: rgba(41, 37, 82, 0.92);
+  --explorer-muted-button-border: rgba(120, 110, 210, 0.4);
+  --explorer-muted-button-text: #dbe3ff;
 }
 
 body {
@@ -327,8 +348,8 @@ body {
 
 [data-theme="night"] .game-hud-bar {
   background: linear-gradient(180deg, rgba(30, 25, 60, 0.95) 0%, rgba(20, 16, 45, 0.92) 100%);
-  border-bottom-color: rgba(100, 80, 180, 0.25);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3), 0 0 20px rgba(80, 60, 160, 0.05);
+  border-bottom-color: rgba(146, 128, 232, 0.34);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.34), 0 0 24px rgba(110, 92, 210, 0.1);
 }
 
 /* Game zoom controls */
@@ -340,7 +361,45 @@ body {
 
 [data-theme="night"] .game-zoom-bar {
   background: rgba(30, 25, 60, 0.85);
-  border-color: rgba(100, 80, 180, 0.3);
+  border-color: rgba(146, 128, 232, 0.34);
+}
+
+.explorer-row {
+  border-left: 2px solid transparent;
+  color: var(--t-secondary);
+}
+
+.explorer-row:hover {
+  background: var(--explorer-row-hover);
+}
+
+.explorer-row--selected {
+  background: var(--explorer-row-selected-bg);
+  border-left-color: var(--explorer-row-selected-border);
+}
+
+.explorer-row--skipped {
+  color: var(--t-faint);
+}
+
+.explorer-chevron {
+  color: var(--t-muted);
+}
+
+.explorer-icon-muted {
+  color: var(--t-faint);
+}
+
+.explorer-folder-icon {
+  color: var(--explorer-folder);
+}
+
+.explorer-trash-button:hover {
+  background: var(--explorer-delete-hover-bg);
+}
+
+.explorer-delete-confirm {
+  background: var(--explorer-delete-confirm-bg);
 }
 
 /* Furniture — shadow only on hover/drag */

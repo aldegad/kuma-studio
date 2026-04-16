@@ -191,6 +191,8 @@ type ViewerFile =
 
 interface FileExplorerProps {
   onCollapse?: () => void;
+  activeProjectId?: string | null;
+  activeProjectName?: string | null;
 }
 
 const VAULT_DEPTH_INDENT_PX = 12;
@@ -324,6 +326,8 @@ const TREE_WIDTH_MAX = 420;
 
 interface ExplorerRoots {
   workspaceRoot: string;
+  systemRoot: string;
+  projectRoots: Record<string, string>;
   globalRoots: Partial<Record<"vault" | "claude" | "codex", string>>;
 }
 
@@ -356,7 +360,24 @@ const GLOBAL_SECTION_DEFS: GlobalSection[] = [
   { id: "codex", label: ".codex", icon: "X", color: "text-emerald-500" },
 ];
 
-export function FileExplorer({ onCollapse }: FileExplorerProps) {
+function inferProjectRoot(explorerRoots: ExplorerRoots | null, activeProjectId: string | null | undefined) {
+  if (!explorerRoots) {
+    return "";
+  }
+
+  if (!activeProjectId) {
+    return explorerRoots.workspaceRoot;
+  }
+
+  if (activeProjectId === "system") {
+    return explorerRoots.systemRoot;
+  }
+
+  return explorerRoots.projectRoots[activeProjectId]
+    ?? `${explorerRoots.workspaceRoot}/${activeProjectId}`;
+}
+
+export function FileExplorer({ onCollapse, activeProjectId = null, activeProjectName = null }: FileExplorerProps) {
   const ws = useWsStore((state) => state.ws);
   const [tree, setTree] = useState<FsNode | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<ExplorerRoots | null>(null);
@@ -394,18 +415,31 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
     setGitRoot(data.root);
   }, []);
 
-  const reloadRootTree = useCallback(async () => {
-    const [roots, data] = await Promise.all([
-      fetch(`${BASE_URL}/studio/fs/roots`).then((r) => r.json()),
-      fetch(`${BASE_URL}/studio/fs/tree?depth=2`).then((r) => r.json()),
-    ]);
+  const fetchTreeForRoot = useCallback(async (rootPath: string, depth = 2) => {
+    const target = rootPath?.trim();
+    if (!target) {
+      return null;
+    }
+    const response = await fetch(`${BASE_URL}/studio/fs/tree?root=${encodeURIComponent(target)}&depth=${depth}`);
+    return response.json() as Promise<FsNode>;
+  }, []);
 
+  const reloadRootTree = useCallback(async () => {
+    const roots = await fetch(`${BASE_URL}/studio/fs/roots`).then((r) => r.json());
+    const activeRoot = inferProjectRoot(roots, activeProjectId);
+    let data = activeRoot ? await fetchTreeForRoot(activeRoot, 2) : null;
+    if (data && "error" in data) {
+      const fallbackRoot = roots.workspaceRoot;
+      data = fallbackRoot && fallbackRoot !== activeRoot
+        ? await fetchTreeForRoot(fallbackRoot, 2)
+        : null;
+    }
     setExplorerRoots(roots);
     setTree(data);
     setError(null);
     setRefreshToken((current) => current + 1);
     return { roots, tree: data as FsNode };
-  }, []);
+  }, [activeProjectId, fetchTreeForRoot]);
 
   const reloadVaultIndex = useCallback(async () => {
     const vaultRoot = explorerRoots?.globalRoots.vault;
@@ -697,8 +731,10 @@ export function FileExplorer({ onCollapse }: FileExplorerProps) {
     return () => window.removeEventListener("keydown", handler);
   }, [viewerFile]);
 
-  const projectName = tree?.path?.split("/").pop() || "workspace";
-  const workspaceRootLabel = tree?.path || explorerRoots?.workspaceRoot || "workspace";
+  const projectName = activeProjectId
+    ? activeProjectName ?? activeProjectId
+    : "workspace";
+  const workspaceRootLabel = tree?.path || inferProjectRoot(explorerRoots, activeProjectId) || explorerRoots?.workspaceRoot || "workspace";
   const hasViewer = viewerFile !== null;
   const effectiveTreeWidth = viewerFile?.type === "pdf" ? Math.min(treeWidth, 220) : treeWidth;
 

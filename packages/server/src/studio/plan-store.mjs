@@ -414,6 +414,12 @@ export function watchPlans(options = {}) {
 
       scheduleRefresh();
     });
+    watcher.on("error", (error) => {
+      if (closed) {
+        return;
+      }
+      onError?.(error);
+    });
   } catch (error) {
     onError?.(error);
     return () => {};

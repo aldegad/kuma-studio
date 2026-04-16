@@ -14,6 +14,8 @@ Kuma Studio is open source, but its supported distribution model is currently
   global package
 - Runtime state stays machine-local under `~/.kuma`, `~/.claude`, and other
   ignored directories
+- The installer syncs repo-managed Kuma skills into both `~/.claude/skills` and
+  `~/.codex/skills` by default so Claude and Codex stay aligned
 
 ## Quick Start
 
@@ -23,6 +25,9 @@ cd kuma-studio
 npm install
 node scripts/install.mjs
 ```
+
+If you only want one agent catalog refreshed, use `--claude-only` or
+`--codex-only`.
 
 Then:
 

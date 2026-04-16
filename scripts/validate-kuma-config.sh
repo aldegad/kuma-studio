@@ -2,6 +2,10 @@
 # 심링크 정합성 검증
 KUMA_STUDIO="$(cd "$(dirname "$0")/.." && pwd)"
 errors=0
+skill_roots=(
+  "$HOME/.claude/skills:Claude"
+  "$HOME/.codex/skills:Codex"
+)
 
 matches_repo_file() {
   local expected="$1"
@@ -29,33 +33,44 @@ matches_skill_dir() {
 
 # 스킬 심링크 확인
 required_skill_specs=(
-  "kuma:kuma"
+  "kuma-brief:kuma-brief"
+  "kuma-picker:kuma-picker"
+  "kuma-recovery:kuma-recovery"
+  "kuma-snapshot:kuma-snapshot"
+  "kuma-vault:kuma-vault"
+  "noeuri:noeuri"
+  "overnight-on:overnight-on"
+  "overnight-off:overnight-off"
   "dev-team:dev-team"
   "analytics-team:analytics-team"
   "strategy-team:strategy-team"
   "tmux-ops:tmux-ops"
 )
-for spec in "${required_skill_specs[@]}"; do
-  skill="${spec%%:*}"
-  source_skill="${spec#*:}"
-  link="$HOME/.claude/skills/$skill"
-  target="$KUMA_STUDIO/skills/$source_skill"
-  if ! matches_skill_dir "$target" "$link"; then
-    echo "❌ skill/$skill: 심링크 불일치"
-    errors=$((errors + 1))
+for root_spec in "${skill_roots[@]}"; do
+  skill_root="${root_spec%%:*}"
+  agent_label="${root_spec#*:}"
+  for spec in "${required_skill_specs[@]}"; do
+    skill="${spec%%:*}"
+    source_skill="${spec#*:}"
+    link="$skill_root/$skill"
+    target="$KUMA_STUDIO/skills/$source_skill"
+    if ! matches_skill_dir "$target" "$link"; then
+      echo "❌ $agent_label skill/$skill: 심링크 불일치"
+      errors=$((errors + 1))
+    fi
+  done
+
+  strategy_analytics_link="$skill_root/strategy-analytics-team"
+  strategy_analytics_target="$KUMA_STUDIO/skills/analytics-team"
+  if [ -L "$strategy_analytics_link" ] || [ -d "$strategy_analytics_link" ]; then
+    if ! matches_skill_dir "$strategy_analytics_target" "$strategy_analytics_link"; then
+      echo "❌ $agent_label skill/strategy-analytics-team: 심링크 불일치"
+      errors=$((errors + 1))
+    fi
+  else
+    echo "⚠️ $agent_label skill/strategy-analytics-team: 미설치 (legacy analytics-team / strategy-team alias 허용)"
   fi
 done
-
-strategy_analytics_link="$HOME/.claude/skills/strategy-analytics-team"
-strategy_analytics_target="$KUMA_STUDIO/skills/analytics-team"
-if [ -L "$strategy_analytics_link" ] || [ -d "$strategy_analytics_link" ]; then
-  if ! matches_skill_dir "$strategy_analytics_target" "$strategy_analytics_link"; then
-    echo "❌ skill/strategy-analytics-team: 심링크 불일치"
-    errors=$((errors + 1))
-  fi
-else
-  echo "⚠️ skill/strategy-analytics-team: 미설치 (legacy analytics-team / strategy-team alias 허용)"
-fi
 
 # 훅 심링크 확인
 for hook in "$KUMA_STUDIO"/scripts/hooks/*.sh; do
@@ -99,6 +114,6 @@ done
 if [ $errors -eq 0 ]; then
   echo "✅ 모든 심링크 정상"
 else
-  echo "⚠️ $errors개 불일치 발견. scripts/kuma-setup.sh 재실행 필요."
+  echo "⚠️ $errors개 불일치 발견. scripts/kuma-setup.sh 또는 node scripts/install.mjs 재실행 필요."
 fi
 exit $errors

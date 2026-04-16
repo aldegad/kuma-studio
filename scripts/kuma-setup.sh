@@ -6,23 +6,38 @@ KUMA_STUDIO="$(cd "$(dirname "$0")/.." && pwd)"
 echo "🐻 쿠마 스튜디오 설정: $KUMA_STUDIO"
 
 # 1. 스킬 심링크
-mkdir -p ~/.claude/skills
+skill_roots=(
+  "$HOME/.claude/skills:Claude"
+  "$HOME/.codex/skills:Codex"
+)
 skill_specs=(
-  "kuma:kuma"
+  "kuma-brief:kuma-brief"
+  "kuma-picker:kuma-picker"
+  "kuma-recovery:kuma-recovery"
+  "kuma-snapshot:kuma-snapshot"
+  "kuma-vault:kuma-vault"
+  "noeuri:noeuri"
+  "overnight-on:overnight-on"
+  "overnight-off:overnight-off"
   "dev-team:dev-team"
   "strategy-analytics-team:analytics-team"
   "analytics-team:analytics-team"
   "strategy-team:strategy-team"
   "tmux-ops:tmux-ops"
 )
-for spec in "${skill_specs[@]}"; do
-  skill="${spec%%:*}"
-  source_skill="${spec#*:}"
-  target="$KUMA_STUDIO/skills/$source_skill"
-  link="$HOME/.claude/skills/$skill"
-  [ -L "$link" ] && rm "$link"
-  ln -sf "$target" "$link"
-  echo "  ✓ skill: $skill"
+for root_spec in "${skill_roots[@]}"; do
+  skill_root="${root_spec%%:*}"
+  agent_label="${root_spec#*:}"
+  mkdir -p "$skill_root"
+  for spec in "${skill_specs[@]}"; do
+    skill="${spec%%:*}"
+    source_skill="${spec#*:}"
+    target="$KUMA_STUDIO/skills/$source_skill"
+    link="$skill_root/$skill"
+    [ -L "$link" ] && rm "$link"
+    ln -snf "$target" "$link"
+    echo "  ✓ $agent_label skill: $skill"
+  done
 done
 
 # 2. 훅 심링크

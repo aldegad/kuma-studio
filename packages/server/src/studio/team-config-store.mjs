@@ -589,6 +589,12 @@ export function watchTeamConfig(options = {}) {
       }
       scheduleRefresh();
     });
+    watcher.on("error", (error) => {
+      if (closed) {
+        return;
+      }
+      onError?.(error);
+    });
   } catch (error) {
     onError?.(error);
     return { close() {} };

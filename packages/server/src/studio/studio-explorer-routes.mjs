@@ -5,6 +5,7 @@ import { basename, extname, join, relative, resolve, sep } from "node:path";
 
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { execGitSync } from "./git-command.mjs";
+import { readProjectsRegistry } from "./project-defaults.mjs";
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -94,23 +95,36 @@ function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORE
   }, {});
 }
 
-function resolveExplorerRootsConfig({ workspaceRoot, globalRoots } = {}) {
+function resolveExplorerRootsConfig({ workspaceRoot, globalRoots, systemRoot, includeProjectRoots = true } = {}) {
   const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : resolveConfiguredWorkspaceRoot();
+  const resolvedSystemRoot = resolve(systemRoot ?? defaultRoot);
   const configuredGlobalRoots = Object.fromEntries(
     Object.entries(globalRoots ?? resolveConfiguredGlobalRoots()).map(([id, root]) => [id, resolve(root)]),
   );
+  const configuredProjectRoots = includeProjectRoots
+    ? Object.fromEntries(
+      Object.entries(readProjectsRegistry())
+        .map(([id, root]) => [id, resolve(root)]),
+    )
+    : {};
   const rootEntries = [
     { id: "workspace", path: defaultRoot },
+    { id: "system", path: resolvedSystemRoot },
+    ...Object.entries(configuredProjectRoots)
+      .filter(([, root]) => resolve(root) !== defaultRoot && resolve(root) !== resolvedSystemRoot)
+      .map(([id, root]) => ({ id, path: root })),
     ...Object.entries(configuredGlobalRoots)
-      .filter(([, root]) => resolve(root) !== defaultRoot)
+      .filter(([, root]) => resolve(root) !== defaultRoot && resolve(root) !== resolvedSystemRoot)
       .map(([id, root]) => ({ id, path: root })),
   ];
 
   return {
     defaultRoot,
+    systemRoot: resolvedSystemRoot,
     configuredGlobalRoots,
+    configuredProjectRoots,
     rootEntries,
-    allowedRoots: rootEntries.map((entry) => entry.path),
+    allowedRoots: [...new Set(rootEntries.map((entry) => entry.path))],
   };
 }
 
@@ -207,6 +221,7 @@ function parseGitStatus(output) {
 export function watchStudioExplorerRoots({
   workspaceRoot,
   globalRoots,
+  systemRoot,
   studioWsEvents,
   debounceMs = 120,
   onError,
@@ -215,7 +230,12 @@ export function watchStudioExplorerRoots({
     return () => {};
   }
 
-  const { rootEntries } = resolveExplorerRootsConfig({ workspaceRoot, globalRoots });
+  const { rootEntries } = resolveExplorerRootsConfig({
+    workspaceRoot,
+    globalRoots,
+    systemRoot,
+    includeProjectRoots: false,
+  });
   const watchers = [];
   const pendingChanges = new Map();
   let flushTimer = null;
@@ -247,28 +267,96 @@ export function watchStudioExplorerRoots({
       continue;
     }
 
-    try {
-      const watcher = fs.watch(rootEntry.path, { recursive: true }, (eventType, filename) => {
-        const candidatePath =
-          typeof filename === "string" && filename.trim().length > 0
-            ? resolve(rootEntry.path, filename)
-            : rootEntry.path;
-        const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, "watch");
-        if (!change) {
-          return;
+    const createPollingWatcher = () => {
+      let previousEntries = new Set();
+      try {
+        previousEntries = new Set(fs.readdirSync(rootEntry.path));
+      } catch {
+        previousEntries = new Set();
+      }
+
+      const scanForChanges = () => {
+        let nextEntries = new Set();
+        try {
+          nextEntries = new Set(fs.readdirSync(rootEntry.path));
+        } catch {
+          nextEntries = new Set();
         }
 
-        pendingChanges.set(`${change.rootId}:${change.path}:${change.eventType}`, change);
-        scheduleFlush();
-      });
+        const changedNames = new Set([
+          ...[...nextEntries].filter((name) => !previousEntries.has(name)),
+          ...[...previousEntries].filter((name) => !nextEntries.has(name)),
+        ]);
 
-      watcher.on("error", (error) => {
+        if (changedNames.size === 0) {
+          handleWatchEvent("change");
+        } else {
+          for (const name of changedNames) {
+            handleWatchEvent("rename", name);
+          }
+        }
+
+        previousEntries = nextEntries;
+      };
+
+      const intervalId = setInterval(scanForChanges, Math.max(debounceMs, 80));
+      return {
+        close() {
+          clearInterval(intervalId);
+        },
+      };
+    };
+
+    const handleWatchEvent = (eventType, filename) => {
+      const candidatePath =
+        typeof filename === "string" && filename.trim().length > 0
+          ? resolve(rootEntry.path, filename)
+          : rootEntry.path;
+      const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, "watch");
+      if (!change) {
+        return;
+      }
+
+      pendingChanges.set(`${change.rootId}:${change.path}:${change.eventType}`, change);
+      scheduleFlush();
+    };
+
+    try {
+      let watcher;
+      try {
+        watcher = fs.watch(rootEntry.path, { recursive: true }, handleWatchEvent);
+      } catch (error) {
+        try {
+          watcher = fs.watch(rootEntry.path, handleWatchEvent);
+        } catch {
+          watcher = createPollingWatcher();
+        }
         if (typeof onError === "function") {
           onError(error);
         } else {
           console.error("studio explorer watch failed:", error);
         }
-      });
+      }
+
+      if (typeof watcher.on === "function") {
+        let fallbackWatcher = null;
+        watcher.on("error", (error) => {
+          if (!fallbackWatcher && error?.code === "EMFILE") {
+            try {
+              watcher.close?.();
+            } catch {
+              // ignore close failures before fallback
+            }
+            fallbackWatcher = createPollingWatcher();
+            watchers.push(fallbackWatcher);
+          }
+          if (typeof onError === "function") {
+            onError(error);
+          } else {
+            console.error("studio explorer watch failed:", error);
+          }
+        });
+      }
       watchers.push(watcher);
     } catch (error) {
       if (typeof onError === "function") {
@@ -290,10 +378,18 @@ export function watchStudioExplorerRoots({
   };
 }
 
-export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, studioWsEvents } = {}) {
-  const { defaultRoot, configuredGlobalRoots, rootEntries, allowedRoots } = resolveExplorerRootsConfig({
+export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, systemRoot, studioWsEvents } = {}) {
+  const {
+    defaultRoot,
+    systemRoot: resolvedSystemRoot,
+    configuredGlobalRoots,
+    configuredProjectRoots,
+    rootEntries,
+    allowedRoots,
+  } = resolveExplorerRootsConfig({
     workspaceRoot,
     globalRoots,
+    systemRoot,
   });
 
   function isAllowedPath(candidatePath) {
@@ -315,6 +411,8 @@ export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, s
     if (url.pathname === "/studio/fs/roots" && req.method === "GET") {
       sendJson(res, 200, {
         workspaceRoot: defaultRoot,
+        systemRoot: resolvedSystemRoot,
+        projectRoots: configuredProjectRoots,
         globalRoots: configuredGlobalRoots,
       });
       return true;

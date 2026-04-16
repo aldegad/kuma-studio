@@ -8,6 +8,7 @@ import { afterEach, assert, describe, it } from "vitest";
 
 import { createStudioRouteHandler } from "./studio-routes.mjs";
 import { watchStudioExplorerRoots } from "./studio-explorer-routes.mjs";
+import { readProjectsRegistry } from "./project-defaults.mjs";
 
 function createRequest(method, url, body) {
   const payload = body == null ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -224,6 +225,8 @@ describe("studio-routes explorer endpoints", () => {
     await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
     assert.strictEqual(rootsRes.statusCode, 200);
     assert.strictEqual(rootsRes.json.workspaceRoot, repoRoot);
+    assert.strictEqual(rootsRes.json.systemRoot, resolve(process.cwd()));
+    assert.deepStrictEqual(rootsRes.json.projectRoots, readProjectsRegistry());
     assert.deepStrictEqual(rootsRes.json.globalRoots, {
       vault: resolve(join(homedir(), ".kuma", "vault")),
       claude: resolve(join(homedir(), ".claude")),
@@ -253,6 +256,8 @@ describe("studio-routes explorer endpoints", () => {
     await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
     assert.strictEqual(rootsRes.statusCode, 200);
     assert.strictEqual(rootsRes.json.workspaceRoot, repoRoot);
+    assert.strictEqual(rootsRes.json.systemRoot, resolve(process.cwd()));
+    assert.deepStrictEqual(rootsRes.json.projectRoots, readProjectsRegistry());
     assert.deepStrictEqual(rootsRes.json.globalRoots, {});
   });
 
@@ -277,6 +282,8 @@ describe("studio-routes explorer endpoints", () => {
     const rootsRes = createResponse();
     await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
     assert.strictEqual(rootsRes.statusCode, 200);
+    assert.strictEqual(rootsRes.json.systemRoot, resolve(process.cwd()));
+    assert.deepStrictEqual(rootsRes.json.projectRoots, readProjectsRegistry());
     assert.deepStrictEqual(rootsRes.json.globalRoots, {
       vault: resolve(join(homedir(), ".kuma", "vault")),
       claude: resolve(join(homedir(), ".claude")),
@@ -308,6 +315,8 @@ describe("studio-routes explorer endpoints", () => {
     const rootsRes = createResponse();
     await handler(createRequest("GET", "/studio/fs/roots"), rootsRes);
     assert.strictEqual(rootsRes.statusCode, 200);
+    assert.strictEqual(rootsRes.json.systemRoot, resolve(process.cwd()));
+    assert.deepStrictEqual(rootsRes.json.projectRoots, readProjectsRegistry());
     assert.deepStrictEqual(rootsRes.json.globalRoots, { vault: vaultRoot });
 
     const readRes = createResponse();
