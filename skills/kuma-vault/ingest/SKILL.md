@@ -141,6 +141,7 @@ log.md append: {1줄}
 - 인제스트가 실제 쓰기를 하면, 완료 직후 방금 갱신한 페이지와 `index.md`/`log.md` 에 대해 자동 `fast lint` 를 수행한다.
 - 타깃 분류는 **명시 override(`--section`, `--page`) > 프로젝트 감지 > learnings/domains 규칙 기반 자동 분류** 순서로 동작한다.
 - 다만 자동 분류는 아직 LLM 판단이 아니라 **키워드/프로젝트 ID 기반 heuristic** 이다. `--full-auto` 에서는 ambiguous hit 를 사용자에게 확인하고, `--bypass` 에서는 최선 추정으로 바로 반영한다.
+- 기존 Vault 내부의 고아 raw, 깨진 source path, 중복 page, canonical 재정리는 `kuma:vault:curate` 범위다.
 - 따라서 ingest가 Vault 정리를 많이 줄여주긴 하지만, 아래 조합은 여전히 필요하다.
   - `vault-ingest`: 원본/결과를 canonical page 로 승격
   - `vault-skill-sync` 또는 수동 동기화: skill 문서와 vault 문서 정렬
