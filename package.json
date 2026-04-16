@@ -42,7 +42,6 @@
     "kuma-studio:vault-lint": "node ./packages/server/src/cli.mjs vault-lint",
     "kuma-studio:noeuri-watchdog": "bash ./scripts/cmux/kuma-cmux-noeuri-watchdog.sh",
     "vault:ingest": "node ./packages/server/src/cli.mjs vault-ingest",
-    "wiki:ingest": "npm run vault:ingest",
     "kuma-studio:dashboard": "open http://localhost:4312/studio",
     "dev": "npm run dev:studio",
     "dev:studio": "npm run dev --workspace=studio-web",

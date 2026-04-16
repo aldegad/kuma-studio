@@ -26,6 +26,7 @@ export const SKILL_DOMAIN_PAGE_MAP = new Map([
   ["gateproof-full-security-check", "domains/security.md"],
   ["security-threat-intel", "domains/security.md"],
   ["content-pipeline", "domains/content-pipeline.md"],
+  ["kuma-vault", "domains/kuma-vault.md"],
 ]);
 
 function normalizeSkillKey(value) {

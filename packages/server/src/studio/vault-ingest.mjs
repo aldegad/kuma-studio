@@ -1,12 +1,35 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 
-import { DEFAULT_DISPATCH_TASK_DIR } from "../kuma-paths.mjs";
+import { DEFAULT_DISPATCH_RESULT_DIR, DEFAULT_DISPATCH_TASK_DIR, DEFAULT_VAULT_INGEST_STAMP_DIR } from "../kuma-paths.mjs";
 import { resolveVaultDir } from "./memo-store.mjs";
-import { inferProjectIdFromSlugPrefix } from "./project-defaults.mjs";
+import {
+  getConfiguredDefaultProjectId,
+  inferProjectIdFromSlugPrefix,
+  readPackageProjectId,
+  readProjectsRegistry,
+} from "./project-defaults.mjs";
 
 const VAULT_SECTION_DIRS = ["domains", "projects", "learnings", "inbox"];
+const INGESTIBLE_INBOX_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
+const PROJECT_ROUTING_KEYWORDS = [
+  "project", "milestone", "roadmap", "backlog", "issue", "issues", "todo", "task", "tasks",
+  "architecture", "migration", "release", "deploy", "deployment", "sprint", "spec", "prd",
+  "프로젝트", "마일스톤", "로드맵", "백로그", "이슈", "할일", "작업", "아키텍처", "마이그레이션", "릴리즈", "배포", "명세",
+];
+const LEARNING_ROUTING_KEYWORDS = [
+  "rule", "rules", "guideline", "guidelines", "playbook", "runbook", "checklist", "postmortem", "rca",
+  "debug", "debugging", "troubleshoot", "troubleshooting", "lesson", "lessons", "benchmark", "performance",
+  "timeout", "flaky", "incident", "recovery", "pattern",
+  "규칙", "원칙", "가이드", "가이드라인", "플레이북", "런북", "체크리스트", "장애", "원인", "복구", "디버깅", "교훈", "벤치마크", "성능", "패턴",
+];
+const DOMAIN_ROUTING_KEYWORDS = [
+  "company", "service", "product", "vendor", "market", "competitor", "website", "homepage", "pricing",
+  "price", "plan", "feature", "platform", "api", "sdk", "library", "tool", "resume", "portfolio", "candidate",
+  "회사", "서비스", "제품", "사이트", "홈페이지", "가격", "요금", "플랜", "기능", "플랫폼", "api", "라이브러리", "도구", "이력서", "포트폴리오", "후보자",
+];
 const DEFAULT_SCHEMA_CONTENT = `---
 title: Kuma Vault Schema
 description: Vault 페이지 작성 규칙과 운영 원칙
@@ -332,6 +355,270 @@ function inferProjectFromSourceName(sourceSlug) {
   return inferProjectIdFromSlugPrefix(sourceSlug);
 }
 
+function isLikelyUrl(value) {
+  return /^https?:\/\//iu.test(String(value ?? "").trim());
+}
+
+function normalizeRoutingText(value) {
+  return String(value ?? "").toLowerCase();
+}
+
+function countKeywordHits(haystack, keywords) {
+  let score = 0;
+  for (const keyword of keywords) {
+    if (haystack.includes(normalizeRoutingText(keyword))) {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function getKnownProjectIds() {
+  const registryIds = Object.keys(readProjectsRegistry());
+  const packageIds = [
+    readPackageProjectId(process.env.KUMA_STUDIO_WORKSPACE),
+    readPackageProjectId(process.cwd()),
+  ].filter(Boolean);
+  const defaultIds = [getConfiguredDefaultProjectId({ fallback: null })].filter(Boolean);
+
+  return Array.from(new Set([...registryIds, ...packageIds, ...defaultIds]))
+    .map((projectId) => String(projectId ?? "").trim())
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+}
+
+function detectProjectIdFromContent(documentMeta) {
+  const haystack = normalizeRoutingText([
+    documentMeta?.title,
+    documentMeta?.summary,
+    documentMeta?.body,
+    documentMeta?.sourcePath,
+    documentMeta?.sourceName,
+    documentMeta?.taskId,
+  ].filter(Boolean).join("\n"));
+
+  for (const projectId of getKnownProjectIds()) {
+    const flexibleProjectPattern = projectId
+      .toLowerCase()
+      .split(/[-_\s]+/u)
+      .filter(Boolean)
+      .map((part) => escapeRegExp(part))
+      .join("[-_\\s]*");
+    const pattern = new RegExp(`(^|[^a-z0-9])${flexibleProjectPattern}([^a-z0-9]|$)`, "u");
+    if (pattern.test(haystack)) {
+      return projectId;
+    }
+  }
+
+  return null;
+}
+
+export function analyzeDocumentRouting({ documentMeta, explicitSection = null, page = null, sourceType = "text" }) {
+  if (page || explicitSection) {
+    return {
+      section: explicitSection,
+      project: documentMeta?.project ?? null,
+      confidence: "explicit",
+      ambiguous: false,
+      reason: page ? "explicit-page" : "explicit-section",
+      scores: {
+        projects: 0,
+        learnings: 0,
+        domains: 0,
+      },
+      candidates: [],
+    };
+  }
+
+  const inferredProject =
+    documentMeta?.project ??
+    detectProjectIdFromContent(documentMeta) ??
+    inferProjectFromSourceName(documentMeta?.sourceSlug ?? "");
+  const haystack = normalizeRoutingText([
+    documentMeta?.title,
+    documentMeta?.summary,
+    documentMeta?.body,
+    documentMeta?.sourcePath,
+    documentMeta?.sourceName,
+    documentMeta?.taskId,
+  ].filter(Boolean).join("\n"));
+
+  const projectScore = (inferredProject ? 2 : 0) + countKeywordHits(haystack, PROJECT_ROUTING_KEYWORDS);
+  const learningScore = countKeywordHits(haystack, LEARNING_ROUTING_KEYWORDS);
+  const domainScore = (sourceType === "url" ? 1 : 0) + countKeywordHits(haystack, DOMAIN_ROUTING_KEYWORDS);
+  const candidates = [
+    { section: "projects", score: projectScore, project: inferredProject },
+    { section: "learnings", score: learningScore, project: inferredProject },
+    { section: "domains", score: domainScore, project: inferredProject },
+  ].sort((left, right) => right.score - left.score || left.section.localeCompare(right.section));
+  const prioritizeCandidates = (chosenSection) => [
+    ...candidates.filter((candidate) => candidate.section === chosenSection),
+    ...candidates.filter((candidate) => candidate.section !== chosenSection),
+  ];
+  const top = candidates[0] ?? { section: "learnings", score: 0 };
+  const second = candidates[1] ?? { section: null, score: 0 };
+  const ambiguous =
+    top.score <= 1 ||
+    (second.score > 0 && Math.abs(top.score - second.score) <= 1);
+  const confidence =
+    top.score >= 4 && top.score - second.score >= 2
+      ? "high"
+      : top.score >= 2 && top.score - second.score >= 1
+        ? "medium"
+        : "low";
+
+  if (inferredProject && projectScore >= 3 && projectScore + 1 >= learningScore) {
+    return {
+      section: "projects",
+      project: inferredProject,
+      confidence,
+      ambiguous,
+      reason: inferredProject ? "project-id-and-project-keywords" : "project-keywords",
+      scores: {
+        projects: projectScore,
+        learnings: learningScore,
+        domains: domainScore,
+      },
+      candidates: prioritizeCandidates("projects"),
+    };
+  }
+
+  if (learningScore > 0 && learningScore >= domainScore) {
+    return {
+      section: "learnings",
+      project: inferredProject,
+      confidence,
+      ambiguous,
+      reason: "learning-keywords",
+      scores: {
+        projects: projectScore,
+        learnings: learningScore,
+        domains: domainScore,
+      },
+      candidates: prioritizeCandidates("learnings"),
+    };
+  }
+
+  if (domainScore > 0 || sourceType === "url") {
+    return {
+      section: "domains",
+      project: inferredProject,
+      confidence,
+      ambiguous,
+      reason: sourceType === "url" && domainScore <= 1 ? "url-default" : "domain-keywords",
+      scores: {
+        projects: projectScore,
+        learnings: learningScore,
+        domains: domainScore,
+      },
+      candidates: prioritizeCandidates("domains"),
+    };
+  }
+
+  return {
+    section: inferredProject ? "projects" : "learnings",
+    project: inferredProject,
+    confidence,
+    ambiguous: true,
+    reason: inferredProject ? "project-fallback" : "default-learning-fallback",
+    scores: {
+      projects: projectScore,
+      learnings: learningScore,
+      domains: domainScore,
+    },
+    candidates: prioritizeCandidates(inferredProject ? "projects" : "learnings"),
+  };
+}
+
+function normalizeGenericSourceName(sourceRef, fallbackSlug) {
+  const trimmed = String(sourceRef ?? "").trim();
+  if (!trimmed) {
+    return `${fallbackSlug}.md`;
+  }
+
+  if (isLikelyUrl(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      const pathname = url.pathname.replace(/\/+$/u, "");
+      const leaf = pathname.split("/").filter(Boolean).pop();
+      return leaf || url.hostname || `${fallbackSlug}.md`;
+    } catch {
+      return trimmed;
+    }
+  }
+
+  return basename(trimmed) || `${fallbackSlug}.md`;
+}
+
+function buildGenericDocumentMeta({
+  content,
+  sourceRef,
+  title = null,
+  taskId = null,
+  project = null,
+  status = "",
+  worker = "",
+  qa = "",
+  updatedDate = new Date().toISOString().slice(0, 10),
+} = {}) {
+  const parsed = parseFrontmatterDocument(String(content ?? ""));
+  const body = parsed.body?.trim() ? parsed.body : String(content ?? "").trim();
+  const normalizedSourceName = normalizeGenericSourceName(sourceRef, "note");
+  const rawSourceSlug = sanitizeSlug(
+    taskId ??
+    title ??
+    basename(normalizedSourceName, extname(normalizedSourceName)) ??
+    sourceRef ??
+    "note",
+  );
+  const fallbackTitle = humanizeSlug(taskId ?? rawSourceSlug);
+
+  return {
+    sourcePath: String(sourceRef ?? "").trim() || rawSourceSlug,
+    sourceName: normalizeGenericSourceName(sourceRef, rawSourceSlug),
+    sourceSlug: rawSourceSlug,
+    taskId:
+      String(
+        taskId ??
+        parsed.frontmatter.id ??
+        parsed.frontmatter.task ??
+        rawSourceSlug,
+      ).trim(),
+    project:
+      typeof project === "string" && project.trim()
+        ? project.trim()
+        : typeof parsed.frontmatter.project === "string" && parsed.frontmatter.project.trim()
+          ? parsed.frontmatter.project.trim()
+          : inferProjectFromSourceName(rawSourceSlug),
+    status:
+      typeof status === "string" && status.trim()
+        ? status.trim()
+        : typeof parsed.frontmatter.status === "string"
+          ? parsed.frontmatter.status.trim()
+          : "",
+    worker:
+      typeof worker === "string" && worker.trim()
+        ? worker.trim()
+        : typeof parsed.frontmatter.worker === "string"
+          ? parsed.frontmatter.worker.trim()
+          : "",
+    qa:
+      typeof qa === "string" && qa.trim()
+        ? qa.trim()
+        : typeof parsed.frontmatter.qa === "string"
+          ? parsed.frontmatter.qa.trim()
+          : "",
+    title: title ?? extractTitle(body, fallbackTitle),
+    summary: extractSummary(body, fallbackTitle),
+    body,
+    updatedDate,
+  };
+}
+
 function inferTargetDescriptor(resultMeta, options = {}) {
   const pageOverride = typeof options.page === "string" && options.page.trim()
     ? options.page.trim().replace(/^\/+/u, "")
@@ -355,6 +642,15 @@ function inferTargetDescriptor(resultMeta, options = {}) {
     : null;
 
   const project = resultMeta.project ?? inferProjectFromSourceName(resultMeta.sourceSlug);
+  if (explicitSection === "projects" && project) {
+    const slug = explicitSlug ?? sanitizeSlug(project);
+    return {
+      section: "projects",
+      slug,
+      relativePath: join("projects", `${slug}.md`),
+    };
+  }
+
   if (project && !explicitSection) {
     const slug = explicitSlug ?? sanitizeSlug(project);
     return {
@@ -459,10 +755,6 @@ function upsertDetailsSection(detailsContent, blockId, blockContent) {
   };
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
 function parsePageDocument(content = "") {
   const { frontmatter, body } = parseFrontmatterDocument(content);
   return {
@@ -553,6 +845,126 @@ function buildRelatedSection(existingRelated, target, resultMeta) {
 
   const values = Array.from(bullets);
   return values.length > 0 ? values.join("\n") : "(교차참조 추가 예정)";
+}
+
+async function ingestDocumentMeta({
+  documentMeta,
+  vaultDir,
+  section = null,
+  slug = null,
+  page = null,
+  title = null,
+  dryRun = false,
+  qaStatus = "passed",
+  sourceLogLabel = null,
+} = {}) {
+  const activeVaultDir = vaultDir ?? resolveVaultDir();
+  const routing = analyzeDocumentRouting({
+    documentMeta,
+    explicitSection: section,
+    page,
+    sourceType: isLikelyUrl(documentMeta?.sourcePath) ? "url" : "text",
+  });
+  const effectiveMeta = {
+    ...documentMeta,
+    project: routing.project ?? documentMeta?.project ?? null,
+  };
+  const target = inferTargetDescriptor(effectiveMeta, { section: routing.section, slug, page });
+  const pagePath = join(activeVaultDir, target.relativePath);
+  const candidateTargets = Array.isArray(routing.candidates)
+    ? routing.candidates
+      .map((candidate) => {
+        if (!candidate?.section) {
+          return null;
+        }
+        const candidateMeta = {
+          ...effectiveMeta,
+          project: candidate.project ?? effectiveMeta.project ?? null,
+        };
+        const candidateTarget = inferTargetDescriptor(candidateMeta, {
+          section: candidate.section,
+          slug,
+          page,
+        });
+        return {
+          section: candidate.section,
+          score: candidate.score,
+          project: candidate.project ?? candidateMeta.project ?? null,
+          relativePath: candidateTarget.relativePath.replace(/\\/gu, "/"),
+        };
+      })
+      .filter(Boolean)
+    : [];
+
+  await ensureVaultScaffold(activeVaultDir);
+  await mkdir(join(activeVaultDir, target.section), { recursive: true });
+
+  const existingContent = existsSync(pagePath) ? await readFile(pagePath, "utf8") : "";
+  const existingPage = parsePageDocument(existingContent);
+  const frontmatter = {
+    title: String(existingPage.frontmatter.title ?? createPageTitle(target, effectiveMeta, title)),
+    domain: String(
+      existingPage.frontmatter.domain ??
+      (target.section === "projects" ? (effectiveMeta.project ?? "projects") : target.section),
+    ),
+    tags: mergeTags(existingPage.frontmatter.tags, inferTags(effectiveMeta, target)),
+    created: String(existingPage.frontmatter.created ?? effectiveMeta.updatedDate),
+    updated: effectiveMeta.updatedDate,
+    sources: mergeTags(existingPage.frontmatter.sources, [effectiveMeta.sourcePath]),
+  };
+
+  const detailsBlockId = sanitizeSlug(effectiveMeta.sourceName || effectiveMeta.sourceSlug || effectiveMeta.taskId);
+  const nextSummary =
+    String(existingPage.sections.get("Summary") ?? "").trim() &&
+    !String(existingPage.sections.get("Summary") ?? "").trim().startsWith("(")
+      ? String(existingPage.sections.get("Summary") ?? "").trim()
+      : effectiveMeta.summary;
+
+  const detailsUpdate = upsertDetailsSection(
+    existingPage.sections.get("Details") ?? "",
+    detailsBlockId,
+    buildIngestBlock(effectiveMeta, qaStatus),
+  );
+
+  const nextSections = new Map();
+  nextSections.set("Summary", nextSummary);
+  nextSections.set("Details", detailsUpdate.content);
+  nextSections.set(
+    "Related",
+    buildRelatedSection(existingPage.sections.get("Related") ?? "", target, effectiveMeta),
+  );
+
+  const pageContent = `${stringifyFrontmatter(frontmatter)}\n\n${formatSections(nextSections)}\n`;
+  const relativePagePath = target.relativePath.replace(/\\/gu, "/");
+  const operation = existsSync(pagePath) ? (detailsUpdate.action === "updated" ? "UPDATE" : "INGEST") : "CREATE";
+  const logLabel = sourceLogLabel ?? documentMeta.sourceName ?? documentMeta.sourcePath;
+
+  if (!dryRun) {
+    await writeFile(pagePath, pageContent, "utf8");
+    await rewriteIndex(activeVaultDir);
+    await appendLogEntry(
+      activeVaultDir,
+      `${operation}: \`${logLabel}\` → \`${relativePagePath}\` (qa: ${qaStatus})`,
+    );
+  }
+
+  return {
+    action: operation,
+    pagePath,
+    relativePagePath,
+    vaultDir: activeVaultDir,
+    taskId: effectiveMeta.taskId,
+    project: effectiveMeta.project,
+    sourcePath: effectiveMeta.sourcePath,
+    dryRun,
+    routing: {
+      ...routing,
+      resolvedSection: target.section,
+      resolvedProject: effectiveMeta.project ?? null,
+      suggestedPath: relativePagePath,
+      candidates: candidateTargets,
+    },
+  };
 }
 
 export async function ensureVaultScaffold(vaultDir) {
@@ -880,6 +1292,411 @@ export async function appendLogEntry(vaultDir, message) {
   await writeFile(logPath, next, "utf8");
 }
 
+async function findTaskMetadataById(taskId, taskDir) {
+  if (!taskId || !taskDir || !existsSync(taskDir)) {
+    return null;
+  }
+
+  const entries = await readdir(taskDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".task.md")) {
+      continue;
+    }
+
+    const fullPath = join(taskDir, entry.name);
+    const content = await readFile(fullPath, "utf8");
+    const metadata = parseTaskLikeMetadata(content);
+    if (String(metadata.id ?? "").trim() === String(taskId).trim()) {
+      return metadata;
+    }
+  }
+
+  return null;
+}
+
+export async function resolveResultPathForTaskId(taskId, {
+  taskDir = DEFAULT_DISPATCH_TASK_DIR,
+  resultDir = DEFAULT_DISPATCH_RESULT_DIR,
+  vaultDir = resolveVaultDir(),
+} = {}) {
+  const normalizedTaskId = String(taskId ?? "").trim();
+  if (!normalizedTaskId) {
+    throw new Error("taskId is required.");
+  }
+
+  const taskMetadata = await findTaskMetadataById(normalizedTaskId, taskDir);
+  if (typeof taskMetadata?.result === "string" && taskMetadata.result.trim()) {
+    const referenced = resolve(taskMetadata.result);
+    if (existsSync(referenced)) {
+      return referenced;
+    }
+  }
+
+  const candidates = [
+    join(resultDir, `${normalizedTaskId}.result.md`),
+    join(vaultDir, "results", `${normalizedTaskId}.result.md`),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      return resolve(candidate);
+    }
+  }
+
+  throw new Error(`Could not resolve result file for task id: ${normalizedTaskId}`);
+}
+
+function normalizeOptionalString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function buildVaultIngestStampKey(resultPath, mtimeMs) {
+  return createHash("sha1")
+    .update(`${resolve(resultPath)}:${Math.trunc(mtimeMs)}`)
+    .digest("hex");
+}
+
+export async function ingestResultFileWithGuards({
+  resultPath,
+  signal = null,
+  taskDir = DEFAULT_DISPATCH_TASK_DIR,
+  stampDir = DEFAULT_VAULT_INGEST_STAMP_DIR,
+  vaultDir,
+  wikiDir,
+  section = null,
+  slug = null,
+  page = null,
+  title = null,
+  dryRun = false,
+} = {}) {
+  const requestedResultPath = normalizeOptionalString(resultPath);
+  if (!requestedResultPath) {
+    return { status: "skipped", reason: "missing-result-path" };
+  }
+
+  const absoluteResultPath = resolve(requestedResultPath);
+  if (!existsSync(absoluteResultPath)) {
+    return { status: "skipped", reason: "missing-result-file", resultPath: absoluteResultPath };
+  }
+
+  const taskMetadata = await findMatchingTaskMetadata(absoluteResultPath, taskDir);
+  if (!taskMetadata) {
+    return { status: "skipped", reason: "missing-task-metadata", resultPath: absoluteResultPath };
+  }
+
+  const qaSurface = normalizeOptionalString(taskMetadata.qa);
+  if (!qaSurface) {
+    return {
+      status: "skipped",
+      reason: "task-has-no-qa",
+      resultPath: absoluteResultPath,
+      taskId: normalizeOptionalString(taskMetadata.id),
+    };
+  }
+
+  const expectedSignal = normalizeOptionalString(taskMetadata.signal);
+  const receivedSignal = normalizeOptionalString(signal);
+  if (receivedSignal && expectedSignal && receivedSignal !== expectedSignal) {
+    return {
+      status: "skipped",
+      reason: "signal-mismatch",
+      resultPath: absoluteResultPath,
+      taskId: normalizeOptionalString(taskMetadata.id),
+      expectedSignal,
+      receivedSignal,
+    };
+  }
+
+  const resultStat = await stat(absoluteResultPath);
+  const resolvedStampDir = resolve(stampDir);
+  const stampPath = join(
+    resolvedStampDir,
+    `${buildVaultIngestStampKey(absoluteResultPath, resultStat.mtimeMs)}.json`,
+  );
+
+  if (existsSync(stampPath)) {
+    return {
+      status: "skipped",
+      reason: "already-ingested",
+      resultPath: absoluteResultPath,
+      taskId: normalizeOptionalString(taskMetadata.id),
+      stampPath,
+    };
+  }
+
+  const ingest = await ingestResultFile({
+    resultPath: absoluteResultPath,
+    vaultDir,
+    wikiDir,
+    taskDir,
+    qaStatus: "passed",
+    section,
+    slug,
+    page,
+    title,
+    dryRun,
+  });
+
+  if (!dryRun) {
+    await mkdir(resolvedStampDir, { recursive: true });
+    await writeFile(
+      stampPath,
+      `${JSON.stringify(
+        {
+          status: "ingested",
+          signal: receivedSignal || expectedSignal || null,
+          resultPath: absoluteResultPath,
+          taskId: normalizeOptionalString(taskMetadata.id) || ingest.taskId || null,
+          ingestedAt: new Date().toISOString(),
+          ingest,
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+  }
+
+  return {
+    status: "ingested",
+    reason: null,
+    resultPath: absoluteResultPath,
+    taskId: normalizeOptionalString(taskMetadata.id) || ingest.taskId || null,
+    stampPath,
+    ingest,
+  };
+}
+
+function extractTextFromHtml(html = "") {
+  return normalizeLineEndings(String(html ?? ""))
+    .replace(/<script\b[\s\S]*?<\/script>/giu, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/giu, " ")
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/giu, " ")
+    .replace(/<\/?(main|article|section|p|div|li|h[1-6]|br|tr|td|th|blockquote)[^>]*>/giu, "\n")
+    .replace(/<[^>]+>/gu, " ")
+    .replace(/&nbsp;/gu, " ")
+    .replace(/&amp;/gu, "&")
+    .replace(/&lt;/gu, "<")
+    .replace(/&gt;/gu, ">")
+    .replace(/\n{3,}/gu, "\n\n")
+    .replace(/[ \t]{2,}/gu, " ")
+    .trim();
+}
+
+async function readUrlAsIngestText(url) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/markdown,text/plain,text/html,application/json;q=0.9,*/*;q=0.8",
+      "User-Agent": "kuma-studio/vault-ingest",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL for vault-ingest: ${url} (${response.status})`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  const raw = await response.text();
+  if (contentType.includes("text/html")) {
+    return extractTextFromHtml(raw);
+  }
+
+  return raw.trim();
+}
+
+export async function ingestGenericSource({
+  source,
+  sourceType = null,
+  vaultDir,
+  taskDir = DEFAULT_DISPATCH_TASK_DIR,
+  section = null,
+  slug = null,
+  page = null,
+  title = null,
+  project = null,
+  qaStatus = "passed",
+  dryRun = false,
+} = {}) {
+  const activeVaultDir = vaultDir ?? resolveVaultDir();
+  const normalizedSource = String(source ?? "").trim();
+  if (!normalizedSource) {
+    throw new Error("source is required.");
+  }
+
+  let effectiveSourceType = sourceType;
+  if (!effectiveSourceType) {
+    if (isLikelyUrl(normalizedSource)) {
+      effectiveSourceType = "url";
+    } else if (existsSync(resolve(normalizedSource))) {
+      effectiveSourceType = "file";
+    } else {
+      effectiveSourceType = "text";
+    }
+  }
+
+  if (effectiveSourceType === "file") {
+    const resolvedPath = resolve(normalizedSource);
+    const content = await readFile(resolvedPath, "utf8");
+    const documentMeta = buildGenericDocumentMeta({
+      content,
+      sourceRef: resolvedPath,
+      title,
+      project,
+    });
+    return ingestDocumentMeta({
+      documentMeta,
+      vaultDir: activeVaultDir,
+      section,
+      slug,
+      page,
+      title,
+      dryRun,
+      qaStatus,
+      sourceLogLabel: basename(resolvedPath),
+    });
+  }
+
+  if (effectiveSourceType === "url") {
+    const content = await readUrlAsIngestText(normalizedSource);
+    const documentMeta = buildGenericDocumentMeta({
+      content,
+      sourceRef: normalizedSource,
+      title,
+      project,
+    });
+    return ingestDocumentMeta({
+      documentMeta,
+      vaultDir: activeVaultDir,
+      section,
+      slug,
+      page,
+      title,
+      dryRun,
+      qaStatus,
+      sourceLogLabel: normalizedSource,
+    });
+  }
+
+  const documentMeta = buildGenericDocumentMeta({
+    content: normalizedSource,
+    sourceRef: `text:${sanitizeSlug(slug ?? title ?? normalizedSource.slice(0, 40) ?? "note")}`,
+    title,
+    taskId: slug ?? null,
+    project,
+  });
+  return ingestDocumentMeta({
+    documentMeta,
+    vaultDir: activeVaultDir,
+    section,
+    slug,
+    page,
+    title,
+    dryRun,
+    qaStatus,
+    sourceLogLabel: "inline-text",
+  });
+}
+
+export async function ingestInbox({
+  vaultDir,
+  taskDir = DEFAULT_DISPATCH_TASK_DIR,
+  section = null,
+  qaStatus = "passed",
+  dryRun = false,
+  routeResolver = null,
+} = {}) {
+  const activeVaultDir = vaultDir ?? resolveVaultDir();
+  const inboxDir = join(activeVaultDir, "inbox");
+  await ensureVaultScaffold(activeVaultDir);
+
+  if (!existsSync(inboxDir)) {
+    return { action: "NONE", vaultDir: activeVaultDir, processed: [] };
+  }
+
+  const entries = await readdir(inboxDir, { withFileTypes: true });
+  const candidates = entries
+    .filter((entry) => entry.isFile())
+    .filter((entry) => !entry.name.endsWith(".done"))
+    .filter((entry) => INGESTIBLE_INBOX_EXTENSIONS.has(extname(entry.name).toLowerCase()))
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  const processed = [];
+
+  for (const entry of candidates) {
+    const originalPath = join(inboxDir, entry.name);
+    const archivedPath = `${originalPath}.done`;
+    const content = await readFile(originalPath, "utf8");
+    const previewDocumentMeta = buildGenericDocumentMeta({
+      content,
+      sourceRef: originalPath,
+      taskId: basename(entry.name, extname(entry.name)),
+      project: null,
+    });
+    const preview = await ingestDocumentMeta({
+      documentMeta: previewDocumentMeta,
+      vaultDir: activeVaultDir,
+      section,
+      slug: null,
+      page: null,
+      title: null,
+      dryRun: true,
+      qaStatus,
+      sourceLogLabel: entry.name,
+    });
+    const override = typeof routeResolver === "function"
+      ? await routeResolver({
+        entryName: entry.name,
+        documentMeta,
+        preview,
+      })
+      : null;
+    if (override?.skip === true) {
+      processed.push({
+        action: "SKIP",
+        vaultDir: activeVaultDir,
+        sourcePath: originalPath,
+        relativePagePath: null,
+        routing: preview.routing,
+      });
+      continue;
+    }
+
+    const sourcePath = dryRun ? originalPath : archivedPath;
+    if (!dryRun) {
+      await rename(originalPath, archivedPath);
+    }
+    const documentMeta = buildGenericDocumentMeta({
+      content,
+      sourceRef: sourcePath,
+      taskId: basename(entry.name, extname(entry.name)),
+      project: null,
+    });
+    const ingestResult = await ingestDocumentMeta({
+      documentMeta,
+      vaultDir: activeVaultDir,
+      section: override?.section ?? section,
+      slug: override?.slug ?? null,
+      page: override?.page ?? null,
+      title: null,
+      dryRun,
+      qaStatus,
+      sourceLogLabel: entry.name,
+    });
+    processed.push({
+      ...ingestResult,
+      inboxPath: originalPath,
+      archivedInboxPath: sourcePath,
+    });
+  }
+
+  return {
+    action: processed.length > 0 ? "INGEST_BATCH" : "NONE",
+    vaultDir: activeVaultDir,
+    processed,
+    dryRun,
+  };
+}
+
 export async function ingestResultFile({
   resultPath,
   vaultDir,
@@ -948,69 +1765,15 @@ export async function ingestResultFile({
     body: parsedResult.body,
     updatedDate: new Date().toISOString().slice(0, 10),
   };
-
-  const target = inferTargetDescriptor(resultMeta, { section, slug, page });
-  const pagePath = join(activeVaultDir, target.relativePath);
-
-  await ensureVaultScaffold(activeVaultDir);
-  await mkdir(join(activeVaultDir, target.section), { recursive: true });
-
-  const existingContent = existsSync(pagePath) ? await readFile(pagePath, "utf8") : "";
-  const existingPage = parsePageDocument(existingContent);
-  const frontmatter = {
-    title: String(existingPage.frontmatter.title ?? createPageTitle(target, resultMeta, title)),
-    domain: String(
-      existingPage.frontmatter.domain ??
-      (target.section === "projects" ? (resultMeta.project ?? "projects") : target.section),
-    ),
-    tags: mergeTags(existingPage.frontmatter.tags, inferTags(resultMeta, target)),
-    created: String(existingPage.frontmatter.created ?? resultMeta.updatedDate),
-    updated: resultMeta.updatedDate,
-    sources: mergeTags(existingPage.frontmatter.sources, [resolvedResultPath]),
-  };
-
-  const detailsBlockId = basename(resolvedResultPath);
-  const nextSummary =
-    String(existingPage.sections.get("Summary") ?? "").trim() &&
-    !String(existingPage.sections.get("Summary") ?? "").trim().startsWith("(")
-      ? String(existingPage.sections.get("Summary") ?? "").trim()
-      : resultMeta.summary;
-
-  const detailsUpdate = upsertDetailsSection(
-    existingPage.sections.get("Details") ?? "",
-    detailsBlockId,
-    buildIngestBlock(resultMeta, qaStatus),
-  );
-
-  const nextSections = new Map();
-  nextSections.set("Summary", nextSummary);
-  nextSections.set("Details", detailsUpdate.content);
-  nextSections.set(
-    "Related",
-    buildRelatedSection(existingPage.sections.get("Related") ?? "", target, resultMeta),
-  );
-
-  const pageContent = `${stringifyFrontmatter(frontmatter)}\n\n${formatSections(nextSections)}\n`;
-  const relativePagePath = target.relativePath.replace(/\\/gu, "/");
-  const operation = existsSync(pagePath) ? (detailsUpdate.action === "updated" ? "UPDATE" : "INGEST") : "CREATE";
-
-  if (!dryRun) {
-    await writeFile(pagePath, pageContent, "utf8");
-    await rewriteIndex(activeVaultDir);
-    await appendLogEntry(
-      activeVaultDir,
-      `${operation}: \`${basename(resolvedResultPath)}\` → \`${relativePagePath}\` (qa: ${qaStatus})`,
-    );
-  }
-
-  return {
-    action: operation,
-    pagePath,
-    relativePagePath,
+  return ingestDocumentMeta({
+    documentMeta: resultMeta,
     vaultDir: activeVaultDir,
-    taskId: resultMeta.taskId,
-    project: resultMeta.project,
-    sourcePath: resolvedResultPath,
+    section,
+    slug,
+    page,
+    title,
     dryRun,
-  };
+    qaStatus,
+    sourceLogLabel: basename(resolvedResultPath),
+  });
 }

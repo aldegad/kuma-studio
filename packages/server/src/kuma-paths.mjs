@@ -20,8 +20,8 @@ export const DEFAULT_DISPATCH_RESULT_DIR = resolve(
 export const DEFAULT_DISPATCH_SIGNAL_DIR = resolve(
   process.env.KUMA_SIGNAL_DIR ?? join(DEFAULT_KUMA_DISPATCH_DIR, "signals"),
 );
-export const DEFAULT_AUTO_INGEST_STAMP_DIR = resolve(
-  process.env.KUMA_AUTO_INGEST_STAMP_DIR ?? join(DEFAULT_KUMA_RUNTIME_DIR, "vault-auto-ingest"),
+export const DEFAULT_VAULT_INGEST_STAMP_DIR = resolve(
+  process.env.KUMA_VAULT_INGEST_STAMP_DIR ?? join(DEFAULT_KUMA_RUNTIME_DIR, "vault-ingest"),
 );
 export const DEFAULT_NIGHTMODE_FLAG_PATH = resolve(
   process.env.KUMA_NIGHTMODE_FLAG ?? join(DEFAULT_KUMA_RUNTIME_DIR, "nightmode.flag"),

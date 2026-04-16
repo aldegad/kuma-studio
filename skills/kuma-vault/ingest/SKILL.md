@@ -17,6 +17,8 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 /vault ingest raw/<filename>      raw/ 아카이브 파일 → learnings/ 또는 domains/ 승격
 /vault ingest result <task-id>    dispatch result 파일에서 vault 지식 추출
 /vault ingest <url-or-text>       URL 또는 raw text → inbox/ 경유 없이 직접 처리
+/vault ingest --full-auto         기본 모드. 애매하면 사용자에게 물어보고 정리
+/vault ingest --bypass            무인 모드. 질문 없이 최선 추정으로 바로 정리
 ```
 
 ## Vault 디렉토리 구조
@@ -57,6 +59,18 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 | 운영 규칙·피드백·디버깅 패턴 | `learnings/` 또는 `learnings/operational-rules/` |
 | 벤치마크·성능 측정 | `learnings/` |
 | 시스템 온톨로지·설계 원칙 | `learnings/kuma-system-ontology.md` 또는 신규 |
+
+### 빠른 분류 예시
+
+| 들어온 소스 | 우선 타깃 | 이유 |
+|-------------|-----------|------|
+| "이 사이트 조사해줘" 결과 정리 | `domains/<slug>.md` | 특정 외부 서비스/회사/제품에 대한 SSOT |
+| "이 프로젝트 어디까지 했지?" 결과 | `projects/<slug>.md` | 진행 상태, 결정, TODO 는 프로젝트 문맥 |
+| "이번 장애 원인/복구 절차" | `learnings/` | 재사용 가능한 디버깅 패턴/운영 인사이트 |
+| "코드 스타일, QA 원칙, 브라우저 사용 규칙" | `learnings/operational-rules/` | 반복 실행되는 운영 규칙 |
+| 개인 이력서/포트폴리오 분석본 | `domains/careers.md` 또는 관련 도메인 | 특정 프로젝트보다 재사용 가능한 후보자/커리어 지식 |
+| 특정 채용건/제안건 진행 메모 | `projects/<slug>.md` | 사람 자료라도 실제 진행 단위가 프로젝트면 project가 우선 |
+| 도메인 설명과 프로젝트 현황이 섞인 문서 | `projects/<slug>.md` 우선, 도메인 지식만 별도 추출 | 실행 맥락을 잃지 않기 위해 project를 canonical로 두고, 재사용 가능한 부분만 domain으로 승격 |
 
 ### Step 3 — 기존 페이지 체크 (SSoT 핵심)
 
@@ -119,6 +133,18 @@ log.md append: {1줄}
 - inbox/ 에서 꺼낸 파일은 인제스트 완료 후 inbox 에서 제거하거나 `_done` suffix 로 마킹
 - log.md 는 항상 **append-only** (덮어쓰기 금지)
 - 판단 불가한 소스는 inbox/ 에 남기고 Findings 에만 보고
+
+## 현재 구현 상태 점검
+
+- 현재 `kuma-studio vault-ingest` CLI 구현은 `result-file`, `result <task-id>`, `inbox/` 일괄 처리, `raw/<name>`, 일반 파일, `URL`, `raw text` 직접 인제스트를 지원한다.
+- 기본 모드는 `--full-auto` 이고, 분류가 애매하면 사용자에게 물어본다. 무인 워커/크론/노을이 같은 자동 실행은 `--bypass` 를 명시해서 질문 없이 진행한다.
+- 인제스트가 실제 쓰기를 하면, 완료 직후 방금 갱신한 페이지와 `index.md`/`log.md` 에 대해 자동 `fast lint` 를 수행한다.
+- 타깃 분류는 **명시 override(`--section`, `--page`) > 프로젝트 감지 > learnings/domains 규칙 기반 자동 분류** 순서로 동작한다.
+- 다만 자동 분류는 아직 LLM 판단이 아니라 **키워드/프로젝트 ID 기반 heuristic** 이다. `--full-auto` 에서는 ambiguous hit 를 사용자에게 확인하고, `--bypass` 에서는 최선 추정으로 바로 반영한다.
+- 따라서 ingest가 Vault 정리를 많이 줄여주긴 하지만, 아래 조합은 여전히 필요하다.
+  - `vault-ingest`: 원본/결과를 canonical page 로 승격
+  - `vault-skill-sync` 또는 수동 동기화: skill 문서와 vault 문서 정렬
+  - `vault-lint --mode full`: 전체 special file / 구조 드리프트 / 링크 상태 정기 점검
 
 ## 도구
 

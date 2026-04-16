@@ -216,6 +216,80 @@ boot_priority: nope
     expect(result.issueCount).toBe(0);
   });
 
+  it("supports ingest follow-up lint for generic pages plus index/log", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "domains"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "domains", "security.md"),
+      `---
+title: Security
+domain: domains
+tags: [security]
+created: 2026-04-16
+updated: 2026-04-16
+sources: [https://example.com/security]
+---
+
+## Summary
+보안 도메인 요약.
+
+## Details
+세부 운영 원칙.
+
+## Related
+- [Dispatch Log](../dispatch-log.md) — 런타임 증적과 연결
+`,
+      "utf8",
+    );
+
+    await writeFile(
+      join(vaultDir, "index.md"),
+      `# Kuma Vault Index
+
+## Domains
+- [Security](domains/security.md) — 보안 지식
+
+## Projects
+(비어 있음)
+
+## Learnings
+(비어 있음)
+
+## Inbox
+(비어 있음)
+
+## Cross References
+- Security → dispatch-log
+`,
+      "utf8",
+    );
+
+    await writeFile(
+      join(vaultDir, "log.md"),
+      `# Kuma Vault Change Log
+
+## 2026-04-16
+- INGEST: \`security-note.md\` → \`domains/security.md\` (qa: passed)
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "fast",
+      files: ["domains/security.md", "index.md", "log.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+    expect(result.fileCount).toBe(3);
+  });
+
   it("fails full lint when a required section is missing and a link is broken", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
     tempRoots.push(root);

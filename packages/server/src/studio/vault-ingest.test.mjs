@@ -1,15 +1,27 @@
+import { existsSync } from "node:fs";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
+import { vi } from "vitest";
 
 import {
+  analyzeDocumentRouting,
   extractIndexStructure,
+  ingestGenericSource,
+  ingestInbox,
   ingestResultFile,
+  ingestResultFileWithGuards,
   parseFrontmatterDocument,
+  resolveResultPathForTaskId,
   rewriteIndex,
 } from "./vault-ingest.mjs";
+
+const execFile = promisify(execFileCallback);
+const CLI_PATH = join(process.cwd(), "packages/server/src/cli.mjs");
 
 async function createResultFile(dir, name, content) {
   const path = join(dir, name);
@@ -171,6 +183,351 @@ status: done
     expect(parsed.frontmatter.title).toBe("Playwright timeout 디버깅");
     expect(parsed.frontmatter.domain).toBe("learnings");
     expect(parsed.body).toContain("Playwright timeout 디버깅");
+  });
+
+  it("ingests a URL source into a domain page using fetched text", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-url-"));
+    const vaultDir = join(tempRoot, "vault");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(
+      "<html><body><main><h1>HAIIP</h1><p>IP rental service summary.</p></main></body></html>",
+      {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+        },
+      },
+    ));
+
+    try {
+      const result = await ingestGenericSource({
+        source: "https://example.com/haiip",
+        vaultDir,
+        section: "domains",
+        slug: "haiip",
+        title: "하이아이피 조사 메모",
+      });
+
+      expect(result.relativePagePath).toBe("domains/haiip.md");
+      const pageContent = await readFile(join(vaultDir, "domains", "haiip.md"), "utf8");
+      expect(pageContent).toContain("하이아이피 조사 메모");
+      expect(pageContent).toContain("IP rental service summary.");
+      expect(pageContent).toContain("sources: [\"https://example.com/haiip\"]");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("routes debugging-oriented URL content into learnings automatically", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-url-learning-"));
+    const vaultDir = join(tempRoot, "vault");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(
+      "<html><body><main><h1>Playwright timeout RCA</h1><p>디버깅 규칙과 복구 패턴을 정리했다.</p></main></body></html>",
+      {
+        status: 200,
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+        },
+      },
+    ));
+
+    try {
+      const result = await ingestGenericSource({
+        source: "https://example.com/playwright-timeout-rca",
+        vaultDir,
+      });
+
+      expect(result.relativePagePath).toBe("learnings/playwright-timeout-rca.md");
+      const pageContent = await readFile(join(vaultDir, "learnings", "playwright-timeout-rca.md"), "utf8");
+      expect(pageContent).toContain("Playwright timeout RCA");
+      expect(pageContent).toContain("디버깅 규칙과 복구 패턴");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("routes project status text into the matching project page automatically", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-project-route-"));
+    const vaultDir = join(tempRoot, "vault");
+
+    const result = await ingestGenericSource({
+      source: `# Kuma Studio 배포 상태
+
+Kuma Studio 프로젝트 배포 이슈와 아키텍처 마이그레이션 TODO를 정리했다.
+`,
+      vaultDir,
+    });
+
+    expect(result.relativePagePath).toBe("projects/kuma-studio.md");
+    const pageContent = await readFile(join(vaultDir, "projects", "kuma-studio.md"), "utf8");
+    expect(pageContent).toContain("Kuma Studio 배포 상태");
+    expect(pageContent).toContain("아키텍처 마이그레이션 TODO");
+    expect(pageContent).toContain("domain: kuma-studio");
+  });
+
+  it("marks mixed project/debug text as ambiguous for full-auto review", () => {
+    const routing = analyzeDocumentRouting({
+      documentMeta: {
+        title: "Kuma Studio 운영 메모",
+        summary: "배포 이슈와 디버깅 패턴을 같이 정리했다.",
+        body: "Kuma Studio 프로젝트 배포 이슈, recovery pattern, debug checklist.",
+        sourcePath: "text:kuma-studio-note",
+        sourceName: "kuma-studio-note.md",
+        sourceSlug: "kuma-studio-note",
+        taskId: "kuma-studio-note",
+        project: null,
+      },
+      sourceType: "text",
+    });
+
+    expect(routing.project).toBe("kuma-studio");
+    expect(routing.section).toBe("projects");
+    expect(routing.ambiguous).toBe(true);
+    expect(routing.candidates[0].section).toBe("projects");
+    expect(routing.candidates[1].section).toBe("learnings");
+  });
+
+  it("ingests inbox files and archives them with .done suffix", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-inbox-"));
+    const vaultDir = join(tempRoot, "vault");
+
+    await mkdir(join(vaultDir, "inbox"), { recursive: true });
+    await writeFile(
+      join(vaultDir, "inbox", "playwright-timeout.md"),
+      `# Playwright timeout 메모
+
+재현 절차와 원인 후보를 정리했다.
+`,
+      "utf8",
+    );
+
+    const result = await ingestInbox({
+      vaultDir,
+      section: "learnings",
+    });
+
+    expect(result.processed).toHaveLength(1);
+    expect(result.processed[0].relativePagePath).toBe("learnings/playwright-timeout.md");
+    const pageContent = await readFile(join(vaultDir, "learnings", "playwright-timeout.md"), "utf8");
+    expect(pageContent).toContain("Playwright timeout 메모");
+    expect(pageContent).toContain("sources: [");
+    expect(pageContent).toContain("playwright-timeout.md.done");
+
+    const archivedInbox = await readFile(join(vaultDir, "inbox", "playwright-timeout.md.done"), "utf8");
+    expect(archivedInbox).toContain("재현 절차와 원인 후보");
+  });
+
+  it("runs automatic fast lint after CLI ingest", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-cli-ingest-"));
+    const vaultDir = join(tempRoot, "vault");
+    const sourcePath = join(tempRoot, "playwright-timeout.md");
+
+    await writeFile(
+      sourcePath,
+      `# Playwright timeout RCA
+
+디버깅 규칙과 복구 절차를 정리했다.
+`,
+      "utf8",
+    );
+
+    const { stdout } = await execFile("node", [
+      CLI_PATH,
+      "vault-ingest",
+      "--vault-dir",
+      vaultDir,
+      "--section",
+      "learnings",
+      sourcePath,
+    ]);
+
+    const payload = JSON.parse(stdout);
+    expect(payload.relativePagePath).toBe("learnings/playwright-timeout.md");
+    expect(payload.lint.ok).toBe(true);
+    expect(payload.lint.fileCount).toBe(3);
+    expect(payload.lint.files.map((entry) => entry.file)).toEqual([
+      "learnings/playwright-timeout.md",
+      "index.md",
+      "log.md",
+    ]);
+  });
+
+  it("resolves a result file path from task id metadata", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-taskid-"));
+    const taskDir = join(tempRoot, "tasks");
+    const resultDir = join(tempRoot, "results");
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+
+    const resultPath = await createResultFile(
+      resultDir,
+      "sync-vault.result.md",
+      `---
+id: sync-vault
+status: done
+---
+
+# Sync vault
+`,
+    );
+    await writeFile(
+      join(taskDir, "sync-vault.task.md"),
+      `---
+id: sync-vault
+result: ${resultPath}
+---
+`,
+      "utf8",
+    );
+
+    const resolved = await resolveResultPathForTaskId("sync-vault", {
+      taskDir,
+      resultDir,
+      vaultDir: join(tempRoot, "vault"),
+    });
+
+    expect(resolved).toBe(resultPath);
+  });
+
+  it("guarded result ingest runs once and skips duplicates via stamp files", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-guarded-"));
+    const vaultDir = join(tempRoot, "vault");
+    const taskDir = join(tempRoot, "tasks");
+    const resultDir = join(tempRoot, "results");
+    const stampDir = join(tempRoot, "stamps");
+
+    await mkdir(join(vaultDir, "projects"), { recursive: true });
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+
+    await writeFile(
+      join(vaultDir, "projects", "kuma-studio.md"),
+      `---
+title: kuma-studio 프로젝트 지식
+domain: projects
+tags: [studio]
+created: 2026-04-07
+updated: 2026-04-07
+sources: []
+---
+
+## Summary
+쿠마 스튜디오 프로젝트 누적 지식.
+
+## Details
+(작업 결과 ingest 시 자동 누적)
+
+## Related
+(교차참조 추가 예정)
+`,
+      "utf8",
+    );
+
+    const resultPath = join(resultDir, "qa-auto-ingest.result.md");
+    await writeFile(
+      resultPath,
+      `---
+task: qa-auto-ingest
+worker: surface:4
+status: done
+qa: surface:7
+---
+
+# QA guarded ingest 연결
+
+## 변경 사항
+- bypass ingest로 통합
+`,
+      "utf8",
+    );
+
+    await writeFile(
+      join(taskDir, "qa-auto-ingest.task.md"),
+      `---
+id: qa-auto-ingest
+project: kuma-studio
+worker: surface:4
+qa: surface:7
+signal: kuma-studio-qa-auto-ingest-done
+result: ${resultPath}
+---
+`,
+      "utf8",
+    );
+
+    const first = await ingestResultFileWithGuards({
+      resultPath,
+      signal: "kuma-studio-qa-auto-ingest-done",
+      taskDir,
+      stampDir,
+      vaultDir,
+    });
+
+    expect(first.status).toBe("ingested");
+    expect(first.ingest.relativePagePath).toBe("projects/kuma-studio.md");
+    expect(existsSync(first.stampPath)).toBe(true);
+
+    const second = await ingestResultFileWithGuards({
+      resultPath,
+      signal: "kuma-studio-qa-auto-ingest-done",
+      taskDir,
+      stampDir,
+      vaultDir,
+    });
+
+    expect(second.status).toBe("skipped");
+    expect(second.reason).toBe("already-ingested");
+  });
+
+  it("guarded result ingest skips signal mismatch", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-guarded-"));
+    const vaultDir = join(tempRoot, "vault");
+    const taskDir = join(tempRoot, "tasks");
+    const resultDir = join(tempRoot, "results");
+    const stampDir = join(tempRoot, "stamps");
+
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+
+    const resultPath = join(resultDir, "mismatch.result.md");
+    await writeFile(
+      resultPath,
+      `---
+task: mismatch
+status: done
+qa: surface:7
+---
+
+# Signal mismatch
+`,
+      "utf8",
+    );
+
+    await writeFile(
+      join(taskDir, "mismatch.task.md"),
+      `---
+id: mismatch
+project: kuma-studio
+qa: surface:7
+signal: expected-signal
+result: ${resultPath}
+---
+`,
+      "utf8",
+    );
+
+    const skipped = await ingestResultFileWithGuards({
+      resultPath,
+      signal: "different-signal",
+      taskDir,
+      stampDir,
+      vaultDir,
+    });
+
+    expect(skipped.status).toBe("skipped");
+    expect(skipped.reason).toBe("signal-mismatch");
+    expect(existsSync(join(vaultDir, "projects", "kuma-studio.md"))).toBe(false);
   });
 
   it("extractIndexStructure captures subsection + root placement per path", () => {

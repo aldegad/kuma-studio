@@ -72,6 +72,8 @@ const PLACEHOLDER_PATTERN = /^\(.*\)$/su;
 const LEDGER_LINE_PATTERN = /^- \d{4}-\d{2}-\d{2}T[^|]+\| .+/u;
 const SECTION_HEADING_PATTERN = /^##\s+/u;
 const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\(([^)]+)\)/gu;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
+const ARRAY_LITERAL_PATTERN = /^\[.*\]$/su;
 
 function normalize(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -207,16 +209,20 @@ function normalizeRequestedFiles(files) {
   }
 
   return [...new Set(rawItems.map((item) => {
-    const fileName = basename(item.trim());
-    if (!SPECIAL_VAULT_FILE_SPECS[fileName]) {
-      throw new Error(`Unsupported vault special file: ${item}`);
+    const normalizedPath = item.trim().replace(/\\/gu, "/").replace(/^\.\//u, "");
+    if (!normalizedPath.endsWith(".md")) {
+      throw new Error(`Unsupported vault file: ${item}`);
     }
-    return fileName;
+    return normalizedPath;
   }))];
 }
 
 function isIsoDateTime(value) {
   return Boolean(value) && /\d{4}-\d{2}-\d{2}T/u.test(value) && !Number.isNaN(Date.parse(value));
+}
+
+function isIsoDate(value) {
+  return ISO_DATE_PATTERN.test(String(value ?? "").trim()) && !Number.isNaN(Date.parse(`${String(value).trim()}T00:00:00Z`));
 }
 
 function validateFrontmatterValue(fileName, key, rule, rawValue) {
@@ -431,23 +437,8 @@ function lintRelativeLinks(fileName, absolutePath, contents) {
   return issues;
 }
 
-function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
-  const spec = SPECIAL_VAULT_FILE_SPECS[fileName];
-  const absolutePath = resolve(vaultDir, fileName);
+function lintGenericPage(fileName, absolutePath, mode) {
   const issues = [];
-
-  if (!existsSync(absolutePath)) {
-    return {
-      file: fileName,
-      path: absolutePath,
-      ok: false,
-      issues: [{
-        code: "missing-file",
-        message: `${fileName}: file does not exist`,
-      }],
-    };
-  }
-
   const contents = readFileSync(absolutePath, "utf8");
   const parsed = parseFrontmatter(contents);
   if (!parsed) {
@@ -462,8 +453,178 @@ function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
     };
   }
 
+  const frontmatter = parsed.frontmatter;
+  if (!normalize(frontmatter.title)) {
+    issues.push({
+      code: "missing-frontmatter-title",
+      message: `${fileName}: frontmatter.title is required`,
+    });
+  }
+  if (!normalize(frontmatter.domain)) {
+    issues.push({
+      code: "missing-frontmatter-domain",
+      message: `${fileName}: frontmatter.domain is required`,
+    });
+  }
+  if (!ARRAY_LITERAL_PATTERN.test(String(frontmatter.tags ?? "").trim())) {
+    issues.push({
+      code: "frontmatter-tags-format",
+      message: `${fileName}: frontmatter.tags must use inline array syntax`,
+    });
+  }
+  if (!isIsoDate(frontmatter.created)) {
+    issues.push({
+      code: "frontmatter-created-format",
+      message: `${fileName}: frontmatter.created must be YYYY-MM-DD`,
+    });
+  }
+  if (!isIsoDate(frontmatter.updated)) {
+    issues.push({
+      code: "frontmatter-updated-format",
+      message: `${fileName}: frontmatter.updated must be YYYY-MM-DD`,
+    });
+  }
+  if (!ARRAY_LITERAL_PATTERN.test(String(frontmatter.sources ?? "").trim())) {
+    issues.push({
+      code: "frontmatter-sources-format",
+      message: `${fileName}: frontmatter.sources must use inline array syntax`,
+    });
+  }
+
+  const sections = parseSections(parsed.body);
+  for (const section of ["Summary", "Details", "Related"]) {
+    if (!Object.prototype.hasOwnProperty.call(sections, section)) {
+      issues.push({
+        code: "missing-section",
+        message: `${fileName}: missing required section "## ${section}"`,
+      });
+    }
+  }
+
+  if (mode === "full") {
+    issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function lintIndexFile(fileName, absolutePath, mode) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+
+  if (!contents.startsWith("# Kuma Vault Index")) {
+    issues.push({
+      code: "index-heading",
+      message: `${fileName}: must start with "# Kuma Vault Index"`,
+    });
+  }
+
+  for (const section of ["## Domains", "## Projects", "## Learnings", "## Inbox", "## Cross References"]) {
+    if (!contents.includes(section)) {
+      issues.push({
+        code: "missing-section",
+        message: `${fileName}: missing required section "${section}"`,
+      });
+    }
+  }
+
+  if (mode === "full") {
+    issues.push(...lintRelativeLinks(fileName, absolutePath, contents));
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function lintLogFile(fileName, absolutePath) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+
+  if (!contents.startsWith("# Kuma Vault Change Log")) {
+    issues.push({
+      code: "log-heading",
+      message: `${fileName}: must start with "# Kuma Vault Change Log"`,
+    });
+  }
+
+  if (!/^## \d{4}-\d{2}-\d{2}$/mu.test(contents)) {
+    issues.push({
+      code: "missing-log-date-section",
+      message: `${fileName}: must include at least one date section heading`,
+    });
+  }
+
+  if (!/^- (INIT|MIGRATE|UPDATE|INGEST|CREATE|SYNC_SKILLS): /mu.test(contents)) {
+    issues.push({
+      code: "missing-log-entry",
+      message: `${fileName}: must include at least one change entry`,
+    });
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
+  const normalizedFileName = fileName.replace(/\\/gu, "/");
+  const baseFileName = basename(normalizedFileName);
+  const spec = normalizedFileName === baseFileName ? SPECIAL_VAULT_FILE_SPECS[baseFileName] : null;
+  const absolutePath = resolve(vaultDir, normalizedFileName);
+
+  if (!existsSync(absolutePath)) {
+    return {
+      file: normalizedFileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-file",
+        message: `${normalizedFileName}: file does not exist`,
+      }],
+    };
+  }
+
+  if (normalizedFileName === "index.md") {
+    return lintIndexFile(normalizedFileName, absolutePath, mode);
+  }
+
+  if (normalizedFileName === "log.md") {
+    return lintLogFile(normalizedFileName, absolutePath);
+  }
+
+  if (!spec) {
+    return lintGenericPage(normalizedFileName, absolutePath, mode);
+  }
+
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+  const parsed = parseFrontmatter(contents);
+  if (!parsed) {
+    return {
+      file: normalizedFileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-frontmatter",
+        message: `${normalizedFileName}: YAML frontmatter is missing or malformed`,
+      }],
+    };
+  }
+
   for (const [key, rule] of Object.entries(spec.frontmatter)) {
-    const issue = validateFrontmatterValue(fileName, key, rule, parsed.frontmatter[key]);
+    const issue = validateFrontmatterValue(normalizedFileName, key, rule, parsed.frontmatter[key]);
     if (issue) {
       issues.push(issue);
     }
@@ -476,18 +637,18 @@ function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
       if (!Object.prototype.hasOwnProperty.call(sections, section)) {
         issues.push({
           code: "missing-section",
-          message: `${fileName}: missing required section "## ${section}"`,
+          message: `${normalizedFileName}: missing required section "## ${section}"`,
         });
       }
     }
 
-    issues.push(...lintSchemaRegistration(fileName, spec, schemaSections));
-    issues.push(...lintStructuralRules(fileName, spec, parsed.frontmatter, sections));
-    issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
+    issues.push(...lintSchemaRegistration(normalizedFileName, spec, schemaSections));
+    issues.push(...lintStructuralRules(normalizedFileName, spec, parsed.frontmatter, sections));
+    issues.push(...lintRelativeLinks(normalizedFileName, absolutePath, parsed.body));
   }
 
   return {
-    file: fileName,
+    file: normalizedFileName,
     path: absolutePath,
     ok: issues.length === 0,
     issues,

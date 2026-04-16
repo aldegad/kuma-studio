@@ -27,7 +27,7 @@ SOURCE_REPO_ROOT="${KUMA_SOURCE_REPO_ROOT:-$(find_repo_root || pwd)}"
 KUMA_SURFACE_CLASSIFIER_CLI="${KUMA_SURFACE_CLASSIFIER_CLI:-$REPO_ROOT/packages/shared/surface-classifier-cli.mjs}"
 AUTO_INGEST_ENABLED="${KUMA_AUTO_VAULT_INGEST:-1}"
 AUTO_INGEST_TASK_DIR="${KUMA_TASK_DIR:-$HOME/.kuma/dispatch/tasks}"
-AUTO_INGEST_STAMP_DIR="${KUMA_AUTO_INGEST_STAMP_DIR:-$HOME/.kuma/runtime/vault-auto-ingest}"
+VAULT_INGEST_STAMP_DIR="${KUMA_VAULT_INGEST_STAMP_DIR:-$HOME/.kuma/runtime/vault-ingest}"
 KUMA_SURFACES_PATH="${KUMA_SURFACES_PATH:-$HOME/.kuma/cmux/surfaces.json}"
 KUMA_CMUX_SEND_SCRIPT="${KUMA_CMUX_SEND_SCRIPT:-$HOME/.kuma/cmux/kuma-cmux-send.sh}"
 AUTO_NOEURI_TRIGGER_ENABLED="${KUMA_AUTO_NOEURI_TRIGGER:-1}"
@@ -1133,10 +1133,10 @@ auto_ingest_result() {
   [ -f "$RESULT_FILE" ] || return 0
 
   local cmd=(
-    npm run --silent --prefix "$REPO_ROOT" kuma-studio -- vault-auto-ingest "$RESULT_FILE"
+    npm run --silent --prefix "$REPO_ROOT" kuma-studio -- vault-ingest --bypass "$RESULT_FILE"
     --signal "$SIGNAL"
     --task-dir "$AUTO_INGEST_TASK_DIR"
-    --stamp-dir "$AUTO_INGEST_STAMP_DIR"
+    --stamp-dir "$VAULT_INGEST_STAMP_DIR"
   )
   local output=""
 

@@ -12,7 +12,7 @@ This keeps active task and result artifacts on disk across normal reboots and ma
 - cmux surface registry: `~/.kuma/cmux/surfaces.json`
 - runtime state: `~/.kuma/runtime/`
 - night mode flag: `~/.kuma/runtime/nightmode.flag`
-- vault auto-ingest stamps: `~/.kuma/runtime/vault-auto-ingest/`
+- vault ingest stamps: `~/.kuma/runtime/vault-ingest/`
 
 ## Source Of Truth
 
@@ -50,4 +50,4 @@ Treat those as legacy paths unless the environment explicitly overrides:
 - `KUMA_SIGNAL_DIR`
 - `KUMA_SURFACES_PATH`
 - `KUMA_NIGHTMODE_FLAG`
-- `KUMA_AUTO_INGEST_STAMP_DIR`
+- `KUMA_VAULT_INGEST_STAMP_DIR`

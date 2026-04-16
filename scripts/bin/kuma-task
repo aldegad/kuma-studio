@@ -175,7 +175,7 @@ if [ "$TRUST_WORKER" = "1" ] && [ -n "$QA_MEMBER_QUERY" ]; then
 fi
 
 if [ "$USED_DEPRECATED_NO_QA" = "1" ]; then
-  printf '%s\n' "--no-qa is deprecated, use --trust-worker instead. This will still route through vault-auto-ingest." >&2
+  printf '%s\n' "--no-qa is deprecated, use --trust-worker instead. This will still route through vault-ingest --bypass." >&2
 fi
 
 ensure_runtime_requirements

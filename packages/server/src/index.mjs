@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -20,13 +21,13 @@ import { BrowserExtensionStatusStore } from "./browser-extension-status-store.mj
 import { DevSelectionStore } from "./dev-selection-store.mjs";
 import { normalizeViewport } from "./scene-schema.mjs";
 import { SceneStore } from "./scene-store.mjs";
-import { maybeAutoIngestResult } from "./studio/vault-auto-ingest.mjs";
-import { ingestResultFile } from "./studio/vault-ingest.mjs";
+import { ingestGenericSource, ingestInbox, ingestResultFile, ingestResultFileWithGuards, resolveResultPathForTaskId } from "./studio/vault-ingest.mjs";
 import { formatVaultLintReport, lintVaultFiles } from "./studio/vault-lint.mjs";
+import { resolveVaultDir } from "./studio/memo-store.mjs";
 import { formatVaultGetText, formatVaultSearchText, getVaultDocuments, searchVault } from "./studio/vault-search.mjs";
 import { resolveAgentIdByDescriptor } from "./team-metadata.mjs";
 import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
-import { DEFAULT_AUTO_INGEST_STAMP_DIR, DEFAULT_DISPATCH_TASK_DIR } from "./kuma-paths.mjs";
+import { DEFAULT_DISPATCH_TASK_DIR, DEFAULT_VAULT_INGEST_STAMP_DIR } from "./kuma-paths.mjs";
 
 const DEFAULT_DAEMON_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
 
@@ -61,9 +62,9 @@ Usage:
   kuma-studio add-node --id node-01 --item-id draft-01 --title "Draft 01" --viewport original --x 0 --y 0 --z-index 1 [--root .]
   kuma-studio move-node --id node-01 --x 120 --y 80 [--root .]
   kuma-studio remove-node --id node-01 [--root .]
-  kuma-studio vault-ingest [result-file] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
-  kuma-studio wiki-ingest [result-file] ...                                   # temporary alias
-  kuma-studio vault-auto-ingest [result-file] [--signal task-done] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--stamp-dir ${DEFAULT_AUTO_INGEST_STAMP_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
+  kuma-studio vault-ingest [result-file|raw/<name>|https://url|inline text] [--full-auto|--bypass] [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--project kuma-studio] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
+  kuma-studio vault-ingest result <task-id> [--full-auto|--bypass] [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] [--qa-status passed] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault]
+  kuma-studio vault-ingest [--full-auto|--bypass]                         # ingest ~/.kuma/vault/inbox/* text files
   kuma-studio vault-lint [current-focus.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files current-focus.md,dispatch-log.md] [--json]
   kuma-studio vault-search --query "task id" [--mode search|timeline] [--limit 20] [--vault-dir ~/.kuma/vault] [--format text|json]
   kuma-studio vault-get <id|path ...> [--vault-dir ~/.kuma/vault] [--format text|json]
@@ -661,58 +662,402 @@ function commandListProjects() {
   process.stdout.write(JSON.stringify(results, null, 2) + "\n");
 }
 
-async function commandVaultIngest(options, fileArg) {
-  if (options.help === true) {
-    printUsage();
-    return;
+function resolveVaultIngestMode(options) {
+  const bypass = options.bypass === true;
+  const fullAuto = options["full-auto"] === true || (!bypass && options["full-auto"] !== false);
+
+  if (bypass && options["full-auto"] === true) {
+    throw new Error("vault-ingest cannot use --bypass and --full-auto together.");
   }
 
-  const resultFile = fileArg ?? readOptionalString(options, "result-file");
-  if (!resultFile) {
-    throw new Error("vault-ingest requires a result file path.");
-  }
-
-  const response = await ingestResultFile({
-    resultPath: resultFile,
-    vaultDir:
-      readOptionalString(options, "vault-dir") ??
-      readOptionalString(options, "wiki-dir") ??
-      undefined,
-    taskDir: readOptionalString(options, "task-dir") ?? undefined,
-    qaStatus: requireString(options, "qa-status"),
-    section: readOptionalString(options, "section") ?? undefined,
-    slug: readOptionalString(options, "slug") ?? undefined,
-    page: readOptionalString(options, "page") ?? undefined,
-    title: readOptionalString(options, "title") ?? undefined,
-    dryRun: options["dry-run"] === true,
-  });
-
-  process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+  return bypass ? "bypass" : "full-auto";
 }
 
-async function commandVaultAutoIngest(options, fileArg) {
+function formatRoutingSummary(preview, sourceLabel = "") {
+  const routing = preview?.routing ?? {};
+  const candidates = Array.isArray(routing.candidates) ? routing.candidates.slice(0, 3) : [];
+  const lines = [
+    sourceLabel ? `Source: ${sourceLabel}` : null,
+    `Suggested: ${routing.suggestedPath ?? preview?.relativePagePath ?? "(unknown)"}`,
+    `Confidence: ${routing.confidence ?? "unknown"}${routing.reason ? ` (${routing.reason})` : ""}`,
+  ].filter(Boolean);
+
+  if (candidates.length > 0) {
+    lines.push("Candidates:");
+    for (const candidate of candidates) {
+      lines.push(`- ${candidate.relativePath} (score ${candidate.score})`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+function collectVaultIngestLintFiles(response, files = new Set()) {
+  if (!response || typeof response !== "object") {
+    return files;
+  }
+
+  if (Array.isArray(response.processed)) {
+    for (const entry of response.processed) {
+      collectVaultIngestLintFiles(entry, files);
+    }
+    return files;
+  }
+
+  if (typeof response.relativePagePath === "string" && response.relativePagePath.trim()) {
+    files.add(response.relativePagePath.trim());
+  }
+
+  if (
+    typeof response.action === "string" &&
+    ["CREATE", "INGEST", "UPDATE", "INGEST_BATCH"].includes(response.action)
+  ) {
+    files.add("index.md");
+    files.add("log.md");
+  }
+
+  return files;
+}
+
+async function promptVaultIngestDecision(preview, sourceLabel = "") {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error(
+      `vault-ingest routing is ambiguous for ${sourceLabel || preview?.sourcePath || "this source"}. ` +
+      `Use --bypass to accept the best guess, or pass --section/--page/--project explicitly.`,
+    );
+  }
+
+  const routing = preview?.routing ?? {};
+  const candidates = Array.isArray(routing.candidates) ? routing.candidates.slice(0, 3) : [];
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    process.stdout.write(`${formatRoutingSummary(preview, sourceLabel)}\n`);
+    process.stdout.write("Routing is ambiguous. Choose one:\n");
+    process.stdout.write("  1) keep suggested\n");
+    candidates.forEach((candidate, index) => {
+      process.stdout.write(`  ${index + 2}) ${candidate.relativePath}\n`);
+    });
+    process.stdout.write(`  ${candidates.length + 2}) skip this source\n`);
+
+    const answer = (await rl.question("Select [1]: ")).trim() || "1";
+    const selected = Number(answer);
+    if (!Number.isInteger(selected) || selected < 1 || selected > candidates.length + 2) {
+      throw new Error("Invalid routing choice.");
+    }
+
+    if (selected === 1) {
+      return { action: "keep" };
+    }
+    if (selected === candidates.length + 2) {
+      return { action: "skip" };
+    }
+
+    const candidate = candidates[selected - 2];
+    return {
+      action: "override",
+      page: candidate.relativePath,
+    };
+  } finally {
+    rl.close();
+  }
+}
+
+async function commandVaultIngest(options, args = []) {
   if (options.help === true) {
     printUsage();
     return;
   }
 
-  const resultFile = fileArg ?? readOptionalString(options, "result-file");
-  if (!resultFile) {
-    throw new Error("vault-auto-ingest requires a result file path.");
+  const positionalArgs = Array.isArray(args) ? args.filter((value) => typeof value === "string" && value.trim()) : [];
+  const primaryArg = positionalArgs[0] ?? readOptionalString(options, "result-file");
+  const activeVaultDir =
+    readOptionalString(options, "vault-dir") ??
+    readOptionalString(options, "wiki-dir") ??
+    undefined;
+  const taskDir = readOptionalString(options, "task-dir") ?? undefined;
+  const qaStatus = readOptionalString(options, "qa-status") ?? "passed";
+  const section = readOptionalString(options, "section") ?? undefined;
+  const slug = readOptionalString(options, "slug") ?? undefined;
+  const page = readOptionalString(options, "page") ?? undefined;
+  const title = readOptionalString(options, "title") ?? undefined;
+  const project = readOptionalString(options, "project") ?? undefined;
+  const dryRun = options["dry-run"] === true;
+  const mode = resolveVaultIngestMode(options);
+  const needsInteractivePreview = mode !== "bypass" && !dryRun;
+  const signal = readOptionalString(options, "signal") ?? undefined;
+  const stampDir = readOptionalString(options, "stamp-dir") ?? undefined;
+  const useGuardedResultIngest = Boolean(signal || stampDir);
+
+  const maybeResolvePromptOverride = async (preview, sourceLabel) => {
+    if (mode === "bypass" || dryRun || preview?.routing?.ambiguous !== true) {
+      return { section, slug, page, title, project };
+    }
+
+    const decision = await promptVaultIngestDecision(preview, sourceLabel);
+    if (decision.action === "skip") {
+      return { skip: true };
+    }
+    if (decision.action === "override") {
+      return {
+        section,
+        slug,
+        page: decision.page,
+        title,
+        project,
+      };
+    }
+
+    return { section, slug, page, title, project };
+  };
+
+  if (!primaryArg) {
+    const response = await ingestInbox({
+      vaultDir: activeVaultDir,
+      taskDir,
+      section,
+      qaStatus,
+      dryRun,
+      routeResolver:
+        !needsInteractivePreview
+          ? null
+          : async ({ entryName, preview }) => {
+            if (preview?.routing?.ambiguous !== true) {
+              return null;
+            }
+            const decision = await promptVaultIngestDecision(preview, entryName);
+            if (decision.action === "skip") {
+              return { skip: true };
+            }
+            if (decision.action === "override") {
+              return { page: decision.page };
+            }
+            return null;
+          },
+    });
+    process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
+    return;
   }
 
-  const response = await maybeAutoIngestResult({
-    resultPath: resultFile,
-    signal: readOptionalString(options, "signal") ?? undefined,
-    taskDir: readOptionalString(options, "task-dir") ?? undefined,
-    stampDir: readOptionalString(options, "stamp-dir") ?? undefined,
-    vaultDir:
-      readOptionalString(options, "vault-dir") ??
-      readOptionalString(options, "wiki-dir") ??
-      undefined,
-    wikiDir: readOptionalString(options, "wiki-dir") ?? undefined,
-    dryRun: options["dry-run"] === true,
-  });
+  let response;
+  if (primaryArg === "result") {
+    const taskId = positionalArgs[1];
+    if (!taskId) {
+      throw new Error("vault-ingest result requires a task id.");
+    }
+    const resultPath = await resolveResultPathForTaskId(taskId, {
+      taskDir,
+      vaultDir: activeVaultDir,
+    });
+    const resolved = needsInteractivePreview
+      ? await (async () => {
+        const preview = await ingestResultFile({
+          resultPath,
+          vaultDir: activeVaultDir,
+          taskDir,
+          qaStatus,
+          section,
+          slug,
+          page,
+          title,
+          dryRun: true,
+        });
+        const next = await maybeResolvePromptOverride(preview, taskId);
+        if (next.skip === true) {
+          process.stdout.write(`${JSON.stringify({ action: "SKIP", source: taskId, routing: preview.routing }, null, 2)}\n`);
+          return null;
+        }
+        return next;
+      })()
+      : { section, slug, page, title, project };
+    if (!resolved) {
+      return;
+    }
+    if (useGuardedResultIngest) {
+      response = await ingestResultFileWithGuards({
+        resultPath,
+        signal,
+        stampDir,
+        vaultDir: activeVaultDir,
+        taskDir,
+        section: resolved.section,
+        slug: resolved.slug,
+        page: resolved.page,
+        title: resolved.title,
+        dryRun,
+      });
+    } else {
+      response = await ingestResultFile({
+        resultPath,
+        vaultDir: activeVaultDir,
+        taskDir,
+        qaStatus,
+        section: resolved.section,
+        slug: resolved.slug,
+        page: resolved.page,
+        title: resolved.title,
+        dryRun,
+      });
+    }
+  } else if (primaryArg.startsWith("raw/")) {
+    const rawPath = primaryArg.slice("raw/".length);
+    if (!rawPath) {
+      throw new Error("vault-ingest raw/<name> requires a raw file path.");
+    }
+    const resolvedRawPath = resolve(activeVaultDir ?? resolveVaultDir(), "raw", rawPath);
+    const resolved = needsInteractivePreview
+      ? await (async () => {
+        const preview = await ingestGenericSource({
+          source: resolvedRawPath,
+          sourceType: "file",
+          vaultDir: activeVaultDir,
+          taskDir,
+          qaStatus,
+          section,
+          slug,
+          page,
+          title,
+          project,
+          dryRun: true,
+        });
+        const next = await maybeResolvePromptOverride(preview, primaryArg);
+        if (next.skip === true) {
+          process.stdout.write(`${JSON.stringify({ action: "SKIP", source: primaryArg, routing: preview.routing }, null, 2)}\n`);
+          return null;
+        }
+        return next;
+      })()
+      : { section, slug, page, title, project };
+    if (!resolved) {
+      return;
+    }
+    response = await ingestGenericSource({
+      source: resolvedRawPath,
+      sourceType: "file",
+      vaultDir: activeVaultDir,
+      taskDir,
+      qaStatus,
+      section: resolved.section,
+      slug: resolved.slug,
+      page: resolved.page,
+      title: resolved.title,
+      project: resolved.project,
+      dryRun,
+    });
+  } else {
+    const looksLikeResultFile =
+      primaryArg.endsWith(".result.md") ||
+      Boolean(readOptionalString(options, "result-file"));
+    if (looksLikeResultFile) {
+      const resolved = needsInteractivePreview
+        ? await (async () => {
+          const preview = await ingestResultFile({
+            resultPath: primaryArg,
+            vaultDir: activeVaultDir,
+            taskDir,
+            qaStatus,
+            section,
+            slug,
+            page,
+            title,
+            dryRun: true,
+          });
+          const next = await maybeResolvePromptOverride(preview, primaryArg);
+          if (next.skip === true) {
+            process.stdout.write(`${JSON.stringify({ action: "SKIP", source: primaryArg, routing: preview.routing }, null, 2)}\n`);
+            return null;
+          }
+          return next;
+        })()
+        : { section, slug, page, title, project };
+      if (!resolved) {
+        return;
+      }
+      if (useGuardedResultIngest) {
+        response = await ingestResultFileWithGuards({
+          resultPath: primaryArg,
+          signal,
+          stampDir,
+          vaultDir: activeVaultDir,
+          taskDir,
+          section: resolved.section,
+          slug: resolved.slug,
+          page: resolved.page,
+          title: resolved.title,
+          dryRun,
+        });
+      } else {
+        response = await ingestResultFile({
+          resultPath: primaryArg,
+          vaultDir: activeVaultDir,
+          taskDir,
+          qaStatus,
+          section: resolved.section,
+          slug: resolved.slug,
+          page: resolved.page,
+          title: resolved.title,
+          dryRun,
+        });
+      }
+    } else {
+      const resolved = needsInteractivePreview
+        ? await (async () => {
+          const preview = await ingestGenericSource({
+            source: primaryArg,
+            vaultDir: activeVaultDir,
+            taskDir,
+            qaStatus,
+            section,
+            slug,
+            page,
+            title,
+            project,
+            dryRun: true,
+          });
+          const next = await maybeResolvePromptOverride(preview, primaryArg);
+          if (next.skip === true) {
+            process.stdout.write(`${JSON.stringify({ action: "SKIP", source: primaryArg, routing: preview.routing }, null, 2)}\n`);
+            return null;
+          }
+          return next;
+        })()
+        : { section, slug, page, title, project };
+      if (!resolved) {
+        return;
+      }
+      response = await ingestGenericSource({
+        source: primaryArg,
+        vaultDir: activeVaultDir,
+        taskDir,
+        qaStatus,
+        section: resolved.section,
+        slug: resolved.slug,
+        page: resolved.page,
+        title: resolved.title,
+        project: resolved.project,
+        dryRun,
+      });
+    }
+  }
+
+  const lintFiles = dryRun ? [] : [...collectVaultIngestLintFiles(response)];
+  if (lintFiles.length > 0) {
+    const lint = lintVaultFiles({
+      vaultDir: response?.vaultDir ?? activeVaultDir,
+      mode: "fast",
+      files: lintFiles,
+    });
+    response = {
+      ...response,
+      lint,
+    };
+    if (!lint.ok) {
+      process.exitCode = 1;
+    }
+  }
 
   process.stdout.write(`${JSON.stringify(response, null, 2)}\n`);
 }
@@ -828,8 +1173,6 @@ export async function main(argv = process.argv.slice(2)) {
   }
 
   const options = parseFlags(rest);
-  const fileArg = typeof options._?.[0] === "string" ? options._[0] : null;
-
   switch (command) {
     case "serve":
       await commandServe(options);
@@ -913,11 +1256,7 @@ export async function main(argv = process.argv.slice(2)) {
       commandRemoveNode(options);
       return;
     case "vault-ingest":
-    case "wiki-ingest":
-      await commandVaultIngest(options, fileArg);
-      return;
-    case "vault-auto-ingest":
-      await commandVaultAutoIngest(options, fileArg);
+      await commandVaultIngest(options, options._);
       return;
     case "vault-lint":
       commandVaultLint(options);
