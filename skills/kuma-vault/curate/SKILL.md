@@ -77,7 +77,8 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
 | orphan raw | raw 파일이 어떤 canonical page 에도 연결되지 않음 | archive 정상인지 / 승격 필요인지 분류 |
 | duplicate page | 같은 지식이 여러 page 에 중복됨 | canonical 하나로 merge 후 나머지는 relink |
 | stale index | `index.md` 설명/경로/교차참조가 실제와 다름 | regenerate 또는 수동 보수 |
-| special file drift | `decisions.md` 등 필수 frontmatter/section 누락 | schema 기준으로 보수 |
+| special file drift | `current-focus.md` / `dispatch-log.md` / `decisions.md` / `thread-map.md` 의 `type: special/*` frontmatter 또는 필수 section 누락 | `~/.kuma/vault/schema.md` 기준으로 보수 |
+| duplicate slot | 같은 knowledge category 가 여러 경로에 흩어짐 (예: 루트 `operational-rules/` 와 `learnings/operational-rules/`) | canonical 슬롯 확정 후 나머지는 relink 또는 archive |
 | mixed page | project 지식과 domain 지식이 한 page 에 과도하게 섞임 | canonical 유지 + 재사용 가능한 부분만 분리 |
 
 ## 판단 원칙
@@ -141,10 +142,28 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
 
 ## 현재 구현 해석
 
-- 현재 CLI 구현은 `vault-ingest`, `vault-lint`, 수동 편집의 조합으로 큐레이션을 수행한다.
+- 현재 CLI 구현은 `kuma-studio vault-ingest`, `kuma-studio vault-lint`, 수동 편집의 조합으로 큐레이션을 수행한다.
 - 즉 `kuma:vault:curate` 는 **전용 CLI가 아니라 운영 스킬**이다.
 - 기계적으로 확인 가능한 부분은 `vault-lint`와 Grep/Glob 으로 먼저 찾고, 구조 판단이 필요한 부분만 큐레이션한다.
+- `vault-skill-sync.mjs` (내부 모듈, HTTP endpoint 경유 호출): skill 문서와 vault 문서 정렬. 현재 독립 CLI 서브커맨드는 없음 — skill ↔ vault drift 는 `vault-lint --mode full` + 수동 동기화로 처리.
 - 자주 반복되는 패턴이 쌓이면 나중에 `vault-curate` CLI 로 분리할 수 있다.
+
+## Vault 디렉토리 구조 (참고)
+
+```
+~/.kuma/vault/
+├── index.md / log.md / schema.md / current-focus.md / decisions.md / dispatch-log.md / thread-map.md
+├── domains/              도메인 지식
+├── projects/             프로젝트별 지식
+├── learnings/            디버깅 패턴, 인사이트
+│   └── operational-rules/
+├── operational-rules/    (루트 레벨 슬롯)
+├── docs/                 참고 문서
+├── images/               이미지 아카이브
+├── raw/                  원본 archive (수정/삭제 금지)
+├── inbox/                인제스트 대기
+└── results/              dispatch result 파일
+```
 
 ## 관련 스킬
 

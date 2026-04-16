@@ -12,28 +12,55 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 ## 사용법
 
 ```
-/vault ingest                     inbox/ 전체 항목 처리
-/vault ingest <file-or-path>      특정 파일 인제스트 (절대/상대 경로 모두 가능)
-/vault ingest raw/<filename>      raw/ 아카이브 파일 → learnings/ 또는 domains/ 승격
-/vault ingest result <task-id>    dispatch result 파일에서 vault 지식 추출
-/vault ingest <url-or-text>       URL 또는 raw text → inbox/ 경유 없이 직접 처리
-/vault ingest --full-auto         기본 모드. 애매하면 사용자에게 물어보고 정리
-/vault ingest --bypass            무인 모드. 질문 없이 최선 추정으로 바로 정리
+/vault ingest                              inbox/ 전체 항목 처리
+/vault ingest <file-or-path>               특정 파일 인제스트 (절대/상대 경로 모두 가능)
+/vault ingest raw/<filename>               raw/ 아카이브 파일 → learnings/ 또는 domains/ 승격
+/vault ingest result <task-id>             dispatch result 파일에서 vault 지식 추출
+/vault ingest <url-or-text>                URL 또는 raw text → inbox/ 경유 없이 직접 처리
+/vault ingest --bypass                     무인 모드. 질문 없이 최선 추정으로 바로 정리
 ```
+
+### 주요 옵션
+
+| 옵션 | 설명 |
+|------|------|
+| `--full-auto` | 기본값. 라우팅이 애매하면 후보 목록을 보여주고 선택 요청 |
+| `--bypass` | 무인 모드. `--full-auto`와 함께 사용 불가 |
+| `--dry-run` | 실제 쓰기 없이 라우팅 결과만 미리 확인 |
+| `--qa-status passed` | QA 상태 명시 (기본값: `passed`) |
+| `--section projects\|domains\|learnings` | 타깃 섹션 명시 override |
+| `--page projects/kuma-studio.md` | 타깃 페이지 경로 직접 지정 |
+| `--slug custom-slug` | page slug override |
+| `--title "Custom Title"` | 페이지 제목 override |
+| `--project kuma-studio` | 프로젝트 ID 명시 (라우팅 힌트) |
+| `--signal task-done` | 완료 시 signal 전송 (guarded ingest 모드 활성화) |
+| `--stamp-dir <path>` | 중복 ingest 방지용 stamp 디렉토리 |
 
 ## Vault 디렉토리 구조
 
 ```
 ~/.kuma/vault/
-├── inbox/            정리 대기 staging (인제스트 입구)
-├── raw/              원본 보존 archive (변경 금지)
-├── domains/          도메인 지식 (security, analytics, image-gen, content-pipeline …)
-├── projects/         프로젝트 상태 (kuma-studio, pqc, artkit …)
-├── learnings/        반복 가능한 인사이트, 운영 규칙, 디버깅 패턴
-│   └── operational-rules/
-├── index.md          교차참조 카탈로그 (갱신 대상)
-└── log.md            append-only 변경 이력 (갱신 대상)
+├── inbox/                정리 대기 staging (인제스트 입구)
+├── raw/                  원본 보존 archive (변경 금지, ingest 대상 아님)
+│   ├── pdf/              PDF 원본
+│   ├── pdf-text/         PDF 텍스트 추출본
+│   └── memos/            메모 원본
+├── results/              dispatch result 파일 (ingest 소스로 사용)
+├── domains/              도메인 지식 (security, analytics, image-gen, content-pipeline, frontend-design …)
+├── projects/             프로젝트 상태 (kuma-studio, pqc, artkit …)
+│   └── <slug>.project-decisions.md   프로젝트별 decision ledger (special file)
+├── learnings/            반복 가능한 인사이트, 운영 규칙, 디버깅 패턴
+│   ├── operational-rules/   feedback 메모리 정제본 (canonical slot)
+│   └── memory-map.md        feedback 원본 ↔ vault 문서 매핑
+├── docs/                 참고 문서 (모델 스펙 등)
+├── images/               이미지 아카이브
+├── index.md              교차참조 카탈로그 (갱신 대상)
+├── log.md                append-only 변경 이력 (갱신 대상)
+├── schema.md             운영 규칙 (SSoT — ingest 시 반드시 참고)
+└── [Special files]       current-focus.md / dispatch-log.md / decisions.md / thread-map.md
 ```
+
+**주의:** 루트 `operational-rules/` 가 존재한다면 이는 드리프트 가능성 — canonical slot 은 `learnings/operational-rules/`. ingest 시 항상 canonical 쪽으로 routing.
 
 ## 인제스트 절차 (순서 고정)
 
@@ -90,6 +117,7 @@ tags: [{태그1}, {태그2}]
 created: {YYYY-MM-DD}
 updated: {YYYY-MM-DD}
 sources: [{원본 파일/링크}]
+source_grade: {foundation|supporting|exploratory|historical}   # 선택 — raw/ 1차 지식일 때만
 ---
 
 ## Summary
@@ -101,6 +129,8 @@ sources: [{원본 파일/링크}]
 ## Related
 - [{관련 페이지}]({경로}) — {연결 이유}
 ```
+
+**Special Files 주의:** `current-focus.md` / `dispatch-log.md` / `decisions.md` / `thread-map.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer 이며, writer 는 `kuma-task lifecycle hook` / `user-direct` 등 고정. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
 
 ### Step 4 — index.md 갱신
 
@@ -127,8 +157,10 @@ log.md append: {1줄}
 
 ## 제약 / 불변식
 
-- `raw/` 는 원본 보존 계층 — **절대 수정하지 않는다**
+- `raw/` 는 원본 보존 계층 — **절대 수정하지 않는다** (ingest 타깃 자체가 아님, rule 0)
+- `raw/<name>` 을 **소스로** 읽어 `domains/`/`projects/`/`learnings/` 로 승격하는 것은 허용 (raw 원본 파일은 그대로 둠)
 - 기존 페이지 내용 **삭제 금지** — 갱신은 append/merge 만
+- Special files (`current-focus.md`, `dispatch-log.md`, `decisions.md`, `thread-map.md`) 는 ingest 로 덮어쓰지 않는다 — 이들은 lifecycle hook 소유
 - `~/.claude/projects/` (user-memo) 는 **read-only** — 이 경로 아래는 쓰지 않는다
 - inbox/ 에서 꺼낸 파일은 인제스트 완료 후 inbox 에서 제거하거나 `_done` suffix 로 마킹
 - log.md 는 항상 **append-only** (덮어쓰기 금지)
@@ -137,7 +169,7 @@ log.md append: {1줄}
 ## 현재 구현 상태 점검
 
 - 현재 `kuma-studio vault-ingest` CLI 구현은 `result-file`, `result <task-id>`, `inbox/` 일괄 처리, `raw/<name>`, 일반 파일, `URL`, `raw text` 직접 인제스트를 지원한다.
-- 기본 모드는 `--full-auto` 이고, 분류가 애매하면 사용자에게 물어본다. 무인 워커/크론/노을이 같은 자동 실행은 `--bypass` 를 명시해서 질문 없이 진행한다.
+- `--full-auto` 가 기본값 (플래그를 생략해도 동일하게 동작). 라우팅이 애매하면 후보 목록(최대 3개)을 보여주고 번호 선택을 요청한다. TTY 가 없는 환경(파이프, 워커)에서는 자동으로 에러를 throw — 반드시 `--bypass` 또는 `--section`/`--page` 명시. 무인 워커/크론/노을이 같은 자동 실행은 `--bypass` 를 명시해서 질문 없이 진행한다.
 - 인제스트가 실제 쓰기를 하면, 완료 직후 방금 갱신한 페이지와 `index.md`/`log.md` 에 대해 자동 `fast lint` 를 수행한다.
 - 타깃 분류는 **명시 override(`--section`, `--page`) > 프로젝트 감지 > learnings/domains 규칙 기반 자동 분류** 순서로 동작한다.
 - 다만 자동 분류는 아직 LLM 판단이 아니라 **키워드/프로젝트 ID 기반 heuristic** 이다. `--full-auto` 에서는 ambiguous hit 를 사용자에게 확인하고, `--bypass` 에서는 최선 추정으로 바로 반영한다.

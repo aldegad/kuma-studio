@@ -20,24 +20,41 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 - "디코 thread 어디", "메시지 어디"
 - 컨텍스트 끊긴 직후 재개 ("세션 끊겼다", "다시 시작")
 
-### Retrieval Chain (순서 고정)
+### Retrieval Chain (Boot Pack Load Order — schema.md 기준)
 
-1. `~/.kuma/vault/current-focus.md` — 현재 dispatch snapshot
-2. `~/.kuma/vault/dispatch-log.md` 최근 N개 — task 사건열
-3. `~/.kuma/vault/decisions.md` 최근 N개 — 결정 이력
-4. `${KUMA_PLANS_DIR:-./.kuma/plans}/index.md` Active — 큰 plan
-5. `~/.kuma/vault/log.md` tail — vault 변경 timeline
-6. `~/.kuma/vault/index.md` — entity 맵
-7. `/vault search <q>` — 가벼운 index hit 확인
-   필요 시 `/vault timeline <q>` → `/vault get <id|path>` 순서로 점진적으로 펼친다.
+1. `~/.kuma/vault/current-focus.md` **full** — working memory (`type: special/current-focus`)
+2. `~/.kuma/vault/dispatch-log.md` **tail 20** — episodic ledger (`type: special/dispatch-log`)
+3. `~/.kuma/vault/decisions.md` global + current project `projects/*.project-decisions.md` — `Ledger open + latest resolved 10 + Inbox unresolved` 로드 (`type: special/decisions` / `special/project-decisions`)
+4. `~/.kuma/vault/thread-map.md` — 현재 thread/session exact match, 없으면 latest 5 (`type: special/thread-map`)
+5. `${KUMA_PLANS_DIR:-./.kuma/plans}/index.md` Active — 큰 plan
+6. Vault retrieval (on demand) — **3-layer progressive disclosure**: `/vault search <q>` (L1: hits-only 리스트) → `/vault timeline <q>` (L2: ±2줄 snippets) → `/vault get <id|path>` (L3: 전문)
 
-상위에서 답이 나오면 하위 단계 skip. 7번까지 다 봐도 답 없으면 그제서야 디스코드 히스토리/Grep 등 외부 탐색.
+상위에서 답이 나오면 하위 단계 skip. 6번까지 다 봐도 답 없으면 그제서야 디스코드 히스토리/Grep 등 외부 탐색.
+
+**불변식:** L1 에서 전문 dump 금지. 순서 고정 `search → timeline → get`.
 
 ### Anti-pattern
 - ❌ literal "vault" keyword 가 없다고 vault 를 안 본다
 - ❌ 디스코드 히스토리부터 fetch 한다
 - ❌ Grep/Glob 로 직접 코드베이스 탐색한다 (vault 부터 보기)
 - ❌ 검색 결과 전문을 바로 읽는다 (`/vault search` 후 바로 전체 본문 dump 기대 금지. 먼저 `search -> timeline -> get`)
+
+## Special Files (4종)
+
+`type: special/*` frontmatter 를 가진 runtime memory layer. 일반 vault page 와 다르게 writer/reader/trigger/retention 이 고정.
+
+| 파일 | type | 역할 | Primary writer | Boot pack 로드 |
+|------|------|------|----------------|----------------|
+| `current-focus.md` | `special/current-focus` | working memory (활성 dispatch snapshot) | `kuma-task lifecycle hook` | full |
+| `dispatch-log.md` | `special/dispatch-log` | episodic ledger (task 사건열) | `kuma-task lifecycle hook` | tail 20 |
+| `decisions.md` | `special/decisions` | global decision memory (Ledger resolved + Inbox verbatim) | `user-direct \| kuma-detect \| lifecycle-emitter \| noeuri-audit` | Ledger open + latest resolved 10 + Inbox unresolved |
+| `projects/<slug>.project-decisions.md` | `special/project-decisions` | 프로젝트별 실행/설계 결정 | 위와 동일 (프로젝트 scope) | 현재 프로젝트 한정 로드 |
+| `thread-map.md` | `special/thread-map` | Discord/thread ↔ task 매핑 | `kuma-task lifecycle hook` + Discord bridge | 현재 thread match 또는 latest 5 |
+
+**decisions.md 2-layer 구조:**
+- **Ledger (resolved)** — 유저가 확정한 원칙. user-direct 또는 Inbox 승격으로만 append.
+- **Inbox (raw triggers)** — 원본 발화/감사 hit. **verbatim-only**, AI 해석·요약 금지.
+- 승격: Inbox entry → 유저 resolved 문장 확정 → Ledger append (`promoted_from: <inbox-id>`). Inbox 는 삭제 없이 `status: promoted` 마킹.
 
 ## 사용법
 
@@ -48,6 +65,20 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 /vault timeline <q> 매칭 라인 주변 스니펫 확인
 /vault get <id>     특정 문서 전문 로드
 ```
+
+## 스킬 경계
+
+이 상위 `kuma:vault` 는 **조회/읽기 전용** 스킬이다. 여기 적힌 `/vault ...` 표는 retrieval interface 만 설명한다.
+
+`ingest` 와 `curate` 는 `/vault` 조회 명령의 하위 서브커맨드가 아니라, **별도 스킬**로 취급한다.
+
+| 역할 | 호출 방식 | 설명 |
+|------|-----------|------|
+| 읽기 | `kuma:vault` | Boot pack + `/vault index/search/timeline/get` 조회 인터페이스 |
+| 쓰기 | `kuma:vault:ingest` | 새 소스를 canonical vault page 로 승격 |
+| 정리 | `kuma:vault:curate` | 기존 vault 의 고아 raw, 깨진 링크, 중복 page, drift 보수 |
+
+**중요:** 상위 스킬만 보고 `/vault curate`, `/vault ingest` 같은 retrieval 서브커맨드를 임의로 추론하지 않는다. 쓰기/정리 작업은 항상 해당 **스킬 이름**으로 분기한다.
 
 ### 예시
 
@@ -62,23 +93,40 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 /vault get domains/security.md → 해당 문서 전문
 ```
 
+### 관련 스킬 예시
+
+```text
+$kuma:vault                   읽기/조회
+$kuma:vault:ingest           새 소스 승격
+$kuma:vault:curate           기존 vault 정리/보수
+```
+
 ## Vault 위치
 
 ```
 ~/.kuma/vault/
-├── index.md          전체 페이지 목록 + 교차참조
-├── schema.md         운영 규칙
-├── domains/          도메인별 지식
-│   ├── analytics.md
-│   ├── content-pipeline.md
-│   ├── image-generation.md
-│   └── security.md
-├── projects/         프로젝트별 누적 지식
-├── learnings/        벤치마크, 디버깅 패턴
-└── inbox/            정리 대기 raw 데이터
+├── index.md              전체 페이지 목록 + 교차참조
+├── schema.md             운영 규칙
+├── current-focus.md      현재 dispatch snapshot
+├── decisions.md          결정 이력
+├── dispatch-log.md       task 사건열
+├── log.md                변경 이력 (append-only)
+├── thread-map.md         Discord/채널 thread 맵
+├── domains/              도메인별 지식 (security, analytics, image-gen 등)
+├── projects/             프로젝트별 누적 지식
+├── learnings/            벤치마크, 디버깅 패턴
+│   └── operational-rules/  반복 운영 규칙
+├── operational-rules/    (learnings/operational-rules/ 와 별도 루트 레벨 슬롯)
+├── docs/                 모델 등 참고 문서
+├── images/               이미지 아카이브
+├── raw/                  원본 보존 archive (변경 금지)
+├── inbox/                정리 대기 raw 데이터
+└── results/              dispatch result 파일
 ```
 
 ## 도메인 별칭 매핑
+
+`vault <alias>` 로 직접 로드 가능한 별칭 (CLI `vault` 바이너리 기준):
 
 | 별칭 | 파일 |
 |------|------|
@@ -86,6 +134,8 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 | `analytics`, `usage`, `insights` | `domains/analytics.md` |
 | `image-gen`, `imagegen`, `image` | `domains/image-generation.md` |
 | `content`, `content-pipeline`, `pipeline` | `domains/content-pipeline.md` |
+
+그 외 `domains/` 하위 파일(예: `careers.md`, `autoresearch.md`, `fatch.md`, `kuma-picker.md` 등)은 별칭 없이 경로 직접 지정 또는 `/vault get domains/<file>.md` 로 접근한다.
 
 ## Role → Domain 자동 로드 매핑
 
