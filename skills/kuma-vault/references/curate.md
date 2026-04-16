@@ -1,8 +1,3 @@
----
-name: kuma:vault:curate
-description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index/log, 링크, canonical page 를 점검하고 정리한다. 사용자가 "vault 정리", "기존 문서 이상한 거 봐줘", "raw 고아 정리", "깨진 링크 보수", "중복 페이지 정리", "vault 큐레이션" 이라고 하면 이 스킬을 사용한다.
----
-
 # /vault curate — Kuma Vault 정리/보수
 
 기존 Vault 를 읽고, 고아 raw, 깨진 링크, 잘못된 source path, 중복/비정상 page, index/log drift 를 정리한다.
@@ -30,7 +25,7 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
 
 ## 범위
 
-이 스킬은 **기존 Vault 보수** 전용이다.
+이 서브커맨드는 **기존 Vault 보수** 전용이다.
 
 - 포함:
   - `raw/` 고아 점검
@@ -43,7 +38,7 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
   - dispatch result / inbox 신규 ingest
   - `raw/` 원본 파일 내용 수정
 
-새 소스를 넣어야 하면 `kuma:vault:ingest`로 넘긴다.
+새 소스를 넣어야 하면 `/vault ingest` 로 넘긴다.
 
 ## 큐레이션 절차
 
@@ -108,7 +103,7 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
 ### 처리 방식
 
 1. 관련 canonical page 가 있으면 `sources`/본문 링크를 보수
-2. 관련 page 가 없고 재사용 가치가 높으면 `kuma:vault:ingest` 대상으로 승격 제안
+2. 관련 page 가 없고 재사용 가치가 높으면 `/vault ingest` 대상으로 승격 제안
 3. 단순 archive 면 그대로 두고 Findings 에만 기록
 
 ## 출력 형식
@@ -143,7 +138,7 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
 ## 현재 구현 해석
 
 - 현재 CLI 구현은 `kuma-studio vault-ingest`, `kuma-studio vault-lint`, 수동 편집의 조합으로 큐레이션을 수행한다.
-- 즉 `kuma:vault:curate` 는 **전용 CLI가 아니라 운영 스킬**이다.
+- 즉 `curate` 는 **전용 CLI가 아니라 운영 서브커맨드**이다.
 - 기계적으로 확인 가능한 부분은 `vault-lint`와 Grep/Glob 으로 먼저 찾고, 구조 판단이 필요한 부분만 큐레이션한다.
 - `vault-skill-sync.mjs` (내부 모듈, HTTP endpoint 경유 호출): skill 문서와 vault 문서 정렬. 현재 독립 CLI 서브커맨드는 없음 — skill ↔ vault drift 는 `vault-lint --mode full` + 수동 동기화로 처리.
 - 자주 반복되는 패턴이 쌓이면 나중에 `vault-curate` CLI 로 분리할 수 있다.
@@ -165,10 +160,10 @@ description: Kuma Vault 큐레이션 — 기존 Vault 문서, raw archive, index
 └── results/              dispatch result 파일
 ```
 
-## 관련 스킬
+## 관련
 
-- `kuma:vault` — 읽기/조회
-- `kuma:vault:ingest` — 새 소스 승격
+- `/vault` (기본) — 읽기/조회
+- `/vault ingest` — 새 소스 승격 (`references/ingest.md`)
 
 ## 도구
 

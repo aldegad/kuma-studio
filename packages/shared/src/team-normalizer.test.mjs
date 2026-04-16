@@ -12,10 +12,9 @@ const execFile = promisify(execFileCallback);
 const TEAM_NORMALIZER_CLI_PATH = resolve(process.cwd(), "packages/shared/team-normalizer-cli.mjs");
 const TEAM_CONFIG_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-team-config.sh");
 const DECISIONS_FIXTURE = `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-13T01:00:00+09:00
-layers: inbox,ledger
 boot_priority: 3
 ---
 
@@ -23,11 +22,7 @@ boot_priority: 3
 
 fixture
 
-## Open Decisions
-
-- 20260413-010000-claude: preference · global · "앞으로 branch/worktree 는 승인 후에만 만든다"
-
-## Ledger
+## Decisions
 
 ### 2026-04-13 01:00 KST · preference · global
 
@@ -36,25 +31,13 @@ fixture
 - scope: global
 - writer: user-direct
 - resolved_text: "앞으로 branch/worktree 는 사용자 승인 후에만 만든다."
-
-## Inbox
-
-fixture
-
-### 20260413-010500-inbox · user-direct
-
-- action: priority
-- scope: global
-- original_text: "앞으로 보고는 짧고 단정하게 해."
-- status: unresolved
 `;
 
 const PROJECT_DECISIONS_FIXTURE = `---
-title: kuma-studio Project Decisions Ledger
+title: kuma-studio Project Decisions
 type: special/project-decisions
 project: kuma-studio
-updated: 2026-04-13T01:05:00+09:00
-layers: inbox,ledger
+updated: 2026-04-13T01:10:00+09:00
 boot_priority: 3
 ---
 
@@ -62,11 +45,15 @@ boot_priority: 3
 
 fixture
 
-## Open Decisions
+## Decisions
 
-- 20260413-010800-kuma: priority · project:kuma-studio · "프로젝트 결정은 project-decisions에서 읽는다"
+### 2026-04-13 01:10 KST · priority · project:kuma-studio
 
-## Ledger
+- id: 20260413-011000-prompt
+- action: priority
+- scope: project:kuma-studio
+- writer: user-direct
+- resolved_text: "이 결정사항을 시스템프롬프트에도 넣어."
 
 ### 2026-04-13 01:08 KST · priority · project:kuma-studio
 
@@ -75,17 +62,6 @@ fixture
 - scope: project:kuma-studio
 - writer: user-direct
 - resolved_text: "프로젝트 결정은 project-decisions에서 읽는다."
-
-## Inbox
-
-fixture
-
-### 20260413-010900-project-inbox · user-direct
-
-- action: priority
-- scope: project:kuma-studio
-- original_text: "이 결정사항을 시스템프롬프트에도 넣어."
-- status: unresolved
 `;
 
 async function writeTeamConfig(root, value) {
@@ -114,10 +90,9 @@ async function writeDecisionsFixtureWithSingleQuotes(root) {
   await writeFile(
     join(vaultDir, "decisions.md"),
     `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-13T02:40:00+09:00
-layers: inbox,ledger
 boot_priority: 3
 ---
 
@@ -125,7 +100,7 @@ boot_priority: 3
 
 fixture
 
-## Ledger
+## Decisions
 
 ### 2026-04-13 02:40 KST · approve · global
 
@@ -145,12 +120,7 @@ async function writeLargeDecisionsFixture(root) {
   const projectDir = join(vaultDir, "projects");
   await mkdir(projectDir, { recursive: true });
 
-  const buildOpenLines = (prefix, scope, total) =>
-    Array.from({ length: total }, (_, index) =>
-      `- 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-open-${index + 1}: rule · ${scope} · "${prefix}-OPEN-${index + 1} ${"very long decision text ".repeat(8).trim()}"`
-    ).join("\n");
-
-  const buildLedgerEntries = (prefix, scope, total) =>
+  const buildDecisionsEntries = (prefix, scope, total) =>
     Array.from({ length: total }, (_, index) => `### 2026-04-13 03:${String(index).padStart(2, "0")} KST · rule · ${scope}
 
 - id: 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-resolved-${index + 1}
@@ -160,22 +130,12 @@ async function writeLargeDecisionsFixture(root) {
 - resolved_text: "${prefix}-RESOLVED-${index + 1} ${"very long resolved text ".repeat(8).trim()}"
 `).join("\n");
 
-  const buildInboxEntries = (prefix, scope, total) =>
-    Array.from({ length: total }, (_, index) => `### 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-inbox-${index + 1} · user-direct
-
-- action: priority
-- scope: ${scope}
-- original_text: "${prefix}-INBOX-${index + 1} ${"very long inbox trigger ".repeat(8).trim()}"
-- status: unresolved
-`).join("\n");
-
   await writeFile(
     join(vaultDir, "decisions.md"),
     `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-13T03:59:00+09:00
-layers: inbox,ledger
 boot_priority: 3
 ---
 
@@ -183,17 +143,9 @@ boot_priority: 3
 
 fixture
 
-## Open Decisions
+## Decisions
 
-${buildOpenLines("GLOBAL", "global", 8)}
-
-## Ledger
-
-${buildLedgerEntries("GLOBAL", "global", 8)}
-
-## Inbox
-
-${buildInboxEntries("GLOBAL", "global", 8)}
+${buildDecisionsEntries("GLOBAL", "global", 8)}
 `,
     "utf8",
   );
@@ -201,11 +153,10 @@ ${buildInboxEntries("GLOBAL", "global", 8)}
   await writeFile(
     join(projectDir, "kuma-studio.project-decisions.md"),
     `---
-title: kuma-studio Project Decisions Ledger
+title: kuma-studio Project Decisions
 type: special/project-decisions
 project: kuma-studio
 updated: 2026-04-13T04:10:00+09:00
-layers: inbox,ledger
 boot_priority: 3
 ---
 
@@ -213,17 +164,9 @@ boot_priority: 3
 
 fixture
 
-## Open Decisions
+## Decisions
 
-${buildOpenLines("PROJECT", "project:kuma-studio", 8)}
-
-## Ledger
-
-${buildLedgerEntries("PROJECT", "project:kuma-studio", 8)}
-
-## Inbox
-
-${buildInboxEntries("PROJECT", "project:kuma-studio", 8)}
+${buildDecisionsEntries("PROJECT", "project:kuma-studio", 8)}
 `,
     "utf8",
   );
@@ -625,13 +568,13 @@ describe("shared team normalizer", () => {
     expect(promptFile).toBeTruthy();
     expect(promptFileContents).toContain("너의 이름은 노을이야.");
     expect(promptFileContents).toContain("Publisher / Designer. HTML/CSS/Graphics");
-    expect(promptFileContents).toContain("Decision Ledger Boot Pack:");
+    expect(promptFileContents).toContain("Decisions Boot Pack:");
     expect(promptFileContents).toContain("Wait for dispatched task");
     expect(promptFileContents).toContain("Do not respond unless there is a startup problem.");
-    expect(command).not.toContain("Decision Ledger Boot Pack:");
+    expect(command).not.toContain("Decisions Boot Pack:");
     expect(startupPrompt).toContain("너의 이름은 노을이야.");
     expect(startupPrompt).toContain("Publisher / Designer. HTML/CSS/Graphics");
-    expect(startupPrompt).toContain("Decision Ledger Boot Pack:");
+    expect(startupPrompt).toContain("Decisions Boot Pack:");
     expect(startupPrompt).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
     expect(startupPrompt).toContain("이 결정사항을 시스템프롬프트에도 넣어.");
     expect(startupPrompt).toContain("Wait for dispatched task");
@@ -694,7 +637,7 @@ describe("shared team normalizer", () => {
 
     const startupPrompt = await readFile(promptFile, "utf8");
     expect(startupPrompt).toContain("You are Kuma session prompt fixture.");
-    expect(startupPrompt).toContain("Decision Ledger Boot Pack:");
+    expect(startupPrompt).toContain("Decisions Boot Pack:");
     expect(startupPrompt).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
     expect(startupPrompt).toContain("프로젝트 결정은 project-decisions에서 읽는다.");
     expect(startupPrompt).not.toContain("Wait for dispatched task.");
@@ -736,7 +679,7 @@ describe("shared team normalizer", () => {
     expect(command).toContain("developer_instructions=");
     expect(developerInstructions).toContain("너의 이름은 밤토리야.");
     expect(developerInstructions).toContain("QA. Build, deploy, screen verification. No code edits");
-    expect(developerInstructions).toContain("Decision Ledger Boot Pack:");
+    expect(developerInstructions).toContain("Decisions Boot Pack:");
     expect(developerInstructions).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
     expect(developerInstructions).toContain("이 결정사항을 시스템프롬프트에도 넣어.");
     expect(developerInstructions).toContain("Wait for dispatched task");
@@ -863,16 +806,15 @@ describe("shared team normalizer", () => {
 
     expect(command).toContain("developer_instructions=");
     expect(Buffer.byteLength(command, "utf8")).toBeLessThan(9000);
-    expect(developerInstructions).toContain("Decision Ledger Boot Pack:");
+    expect(developerInstructions).toContain("Decisions Boot Pack:");
     expect(developerInstructions).toContain("GLOBAL-RESOLVED-8");
-    expect(developerInstructions).toContain("GLOBAL-RESOLVED-5");
-    expect(developerInstructions).not.toContain("GLOBAL-RESOLVED-4");
+    expect(developerInstructions).toContain("GLOBAL-RESOLVED-3");
+    expect(developerInstructions).not.toContain("GLOBAL-RESOLVED-2");
+    expect(developerInstructions).not.toContain("GLOBAL-RESOLVED-1");
     expect(developerInstructions).toContain("PROJECT-RESOLVED-8");
-    expect(developerInstructions).toContain("PROJECT-RESOLVED-6");
-    expect(developerInstructions).not.toContain("PROJECT-RESOLVED-4");
-    expect(developerInstructions).toContain("GLOBAL-INBOX-8");
-    expect(developerInstructions).toContain("GLOBAL-INBOX-6");
-    expect(developerInstructions).not.toContain("GLOBAL-INBOX-5");
+    expect(developerInstructions).toContain("PROJECT-RESOLVED-3");
+    expect(developerInstructions).not.toContain("PROJECT-RESOLVED-2");
+    expect(developerInstructions).not.toContain("PROJECT-RESOLVED-1");
   });
 
   it("resolves the current pane for a surface using pane surface listings", async () => {

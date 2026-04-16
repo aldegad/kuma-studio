@@ -69,10 +69,8 @@ EOF
 
 build_decisions_boot_pack_prompt() {
   local project_name="${1:-}"
-  local open_limit="${2:-10}"
-  local resolved_limit="${3:-10}"
-  local unresolved_limit="${4:-10}"
-  local clip_max="${5:-220}"
+  local limit="${2:-20}"
+  local clip_max="${3:-220}"
   local vault_dir="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 
   [ -n "$vault_dir" ] || return 0
@@ -80,9 +78,7 @@ build_decisions_boot_pack_prompt() {
   KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
   KUMA_VAULT_DIR="$vault_dir" \
   KUMA_PROJECT_NAME="$project_name" \
-  KUMA_DECISIONS_OPEN_LIMIT="$open_limit" \
-  KUMA_DECISIONS_RESOLVED_LIMIT="$resolved_limit" \
-  KUMA_DECISIONS_UNRESOLVED_LIMIT="$unresolved_limit" \
+  KUMA_DECISIONS_LIMIT="$limit" \
   KUMA_DECISIONS_CLIP_MAX="$clip_max" \
   node --input-type=module <<'NODE'
 import { join } from "node:path";
@@ -99,9 +95,7 @@ function clip(text, max = 220) {
 const repoRoot = process.env.KUMA_REPO_ROOT || "";
 const vaultDir = process.env.KUMA_VAULT_DIR || "";
 const projectName = process.env.KUMA_PROJECT_NAME || "";
-const openLedgerLimit = Number.parseInt(process.env.KUMA_DECISIONS_OPEN_LIMIT || "", 10) || 10;
-const latestResolvedLimit = Number.parseInt(process.env.KUMA_DECISIONS_RESOLVED_LIMIT || "", 10) || 10;
-const unresolvedInboxLimit = Number.parseInt(process.env.KUMA_DECISIONS_UNRESOLVED_LIMIT || "", 10) || 10;
+const limit = Number.parseInt(process.env.KUMA_DECISIONS_LIMIT || "", 10) || 20;
 const clipMax = Number.parseInt(process.env.KUMA_DECISIONS_CLIP_MAX || "", 10) || 220;
 if (!repoRoot || !vaultDir) {
   process.exit(0);
@@ -115,31 +109,22 @@ if (typeof storeModule.loadDecisionBootPack !== "function") {
 const pack = await storeModule.loadDecisionBootPack({
   vaultDir,
   projectName,
-  openLedgerLimit,
-  latestResolvedLimit,
-  unresolvedInboxLimit,
+  limit,
 });
 
 function hasSectionEntries(section) {
-  return section &&
-    (
-      Array.isArray(section.ledger_open) && section.ledger_open.length > 0 ||
-      Array.isArray(section.latest_resolved) && section.latest_resolved.length > 0 ||
-      Array.isArray(section.inbox_unresolved) && section.inbox_unresolved.length > 0
-    );
+  return section && Array.isArray(section.decisions) && section.decisions.length > 0;
 }
 
 const globalPack = pack.global || null;
 const projectPack = pack.project || null;
-const hasEntries = hasSectionEntries(globalPack) || hasSectionEntries(projectPack);
-
-if (!hasEntries) {
+if (!hasSectionEntries(globalPack) && !hasSectionEntries(projectPack)) {
   process.exit(0);
 }
 
 const lines = [
-  "Decision Ledger Boot Pack:",
-  "- Treat ledger entries as explicit user decisions unless the user explicitly supersedes them.",
+  "Decisions Boot Pack:",
+  "- Treat these as explicit user-confirmed decisions unless the user explicitly supersedes them.",
 ];
 
 function appendSection(label, section) {
@@ -148,25 +133,8 @@ function appendSection(label, section) {
   }
 
   lines.push(`- ${label}: ${section.source}`);
-  if (Array.isArray(section.ledger_open) && section.ledger_open.length > 0) {
-    lines.push("  - Ledger open decisions:");
-    for (const entry of section.ledger_open) {
-      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text, clipMax)}`);
-    }
-  }
-
-  if (Array.isArray(section.latest_resolved) && section.latest_resolved.length > 0) {
-    lines.push("  - Latest resolved decisions:");
-    for (const entry of section.latest_resolved) {
-      lines.push(`    - ${entry.id} :: ${clip(entry.resolved_text, clipMax)}`);
-    }
-  }
-
-  if (Array.isArray(section.inbox_unresolved) && section.inbox_unresolved.length > 0) {
-    lines.push("  - Unresolved inbox triggers (not yet confirmed decisions):");
-    for (const entry of section.inbox_unresolved) {
-      lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.original_text, clipMax)}`);
-    }
+  for (const entry of section.decisions) {
+    lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text, clipMax)}`);
   }
 }
 
@@ -430,7 +398,7 @@ build_codex_developer_instructions() {
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 4 3 3 120)"
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 6 120)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
@@ -451,7 +419,7 @@ build_claude_startup_system_prompt() {
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 10 3 10)"
+  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 15)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}

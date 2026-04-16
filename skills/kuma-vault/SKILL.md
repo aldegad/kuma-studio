@@ -24,7 +24,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 1. `~/.kuma/vault/current-focus.md` **full** — working memory (`type: special/current-focus`)
 2. `~/.kuma/vault/dispatch-log.md` **tail 20** — episodic ledger (`type: special/dispatch-log`)
-3. `~/.kuma/vault/decisions.md` global + current project `projects/*.project-decisions.md` — `Ledger open + latest resolved 10 + Inbox unresolved` 로드 (`type: special/decisions` / `special/project-decisions`)
+3. `~/.kuma/vault/decisions.md` global + current project `projects/*.project-decisions.md` — 최신 entry 10 로드 (`type: special/decisions` / `special/project-decisions`, writer 는 `user-direct` 전용)
 4. `~/.kuma/vault/thread-map.md` — 현재 thread/session exact match, 없으면 latest 5 (`type: special/thread-map`)
 5. `${KUMA_PLANS_DIR:-./.kuma/plans}/index.md` Active — 큰 plan
 6. Vault retrieval (on demand) — **3-layer progressive disclosure**: `/vault search <q>` (L1: hits-only 리스트) → `/vault timeline <q>` (L2: ±2줄 snippets) → `/vault get <id|path>` (L3: 전문)
@@ -47,38 +47,41 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 |------|------|------|----------------|----------------|
 | `current-focus.md` | `special/current-focus` | working memory (활성 dispatch snapshot) | `kuma-task lifecycle hook` | full |
 | `dispatch-log.md` | `special/dispatch-log` | episodic ledger (task 사건열) | `kuma-task lifecycle hook` | tail 20 |
-| `decisions.md` | `special/decisions` | global decision memory (Ledger resolved + Inbox verbatim) | `user-direct \| kuma-detect \| lifecycle-emitter \| noeuri-audit` | Ledger open + latest resolved 10 + Inbox unresolved |
-| `projects/<slug>.project-decisions.md` | `special/project-decisions` | 프로젝트별 실행/설계 결정 | 위와 동일 (프로젝트 scope) | 현재 프로젝트 한정 로드 |
+| `decisions.md` | `special/decisions` | global decision memory (유저 확정 결정 단일 레이어) | `user-direct` 전용 | 최신 entry 10 |
+| `projects/<slug>.project-decisions.md` | `special/project-decisions` | 프로젝트별 실행/설계 결정 | `user-direct` 전용 (프로젝트 scope) | 현재 프로젝트 한정 로드 |
 | `thread-map.md` | `special/thread-map` | Discord/thread ↔ task 매핑 | `kuma-task lifecycle hook` + Discord bridge | 현재 thread match 또는 latest 5 |
 
-**decisions.md 2-layer 구조:**
-- **Ledger (resolved)** — 유저가 확정한 원칙. user-direct 또는 Inbox 승격으로만 append.
-- **Inbox (raw triggers)** — 원본 발화/감사 hit. **verbatim-only**, AI 해석·요약 금지.
-- 승격: Inbox entry → 유저 resolved 문장 확정 → Ledger append (`promoted_from: <inbox-id>`). Inbox 는 삭제 없이 `status: promoted` 마킹.
+**decisions.md 단일 레이어 구조:**
+- `## About` + `## Decisions` 두 섹션만 존재. Inbox / Ledger / Open Decisions 하위 섹션 없음.
+- writer 는 항상 `user-direct`. detector/lifecycle/audit 자동 append 경로 없음.
+- AI 해석·요약·추론 금지. 유저가 말한 resolved text 그대로 저장.
 
 ## 사용법
 
 ```
-/vault <domain>     해당 도메인 지식 전문 로드
-/vault index        전체 페이지 목록 조회
-/vault search <q>   키워드 검색
-/vault timeline <q> 매칭 라인 주변 스니펫 확인
-/vault get <id>     특정 문서 전문 로드
+/vault <domain>       해당 도메인 지식 전문 로드
+/vault index          전체 페이지 목록 조회
+/vault search <q>     키워드 검색 (L1)
+/vault timeline <q>   매칭 라인 주변 스니펫 (L2)
+/vault get <id>       특정 문서 전문 로드 (L3)
+/vault ingest [args]  새 소스를 canonical vault page 로 승격
+/vault curate [args]  기존 vault 의 고아 raw, 깨진 링크, 중복 page, drift 보수
 ```
 
-## 스킬 경계
+## 서브커맨드
 
-이 상위 `kuma:vault` 는 **조회/읽기 전용** 스킬이다. 여기 적힌 `/vault ...` 표는 retrieval interface 만 설명한다.
+`ingest` / `curate` 는 이 스킬의 서브커맨드다. 상세 규칙/절차/불변식은 진입 시 해당 reference 파일을 Read 로 로드한다.
 
-`ingest` 와 `curate` 는 `/vault` 조회 명령의 하위 서브커맨드가 아니라, **별도 스킬**로 취급한다.
+| 서브커맨드 | 상세 문서 | 요약 |
+|------------|-----------|------|
+| (없음) / domain / index / search / timeline / get | 이 파일 | 읽기·조회 경로 |
+| `ingest` | `references/ingest.md` | 새 소스 승격 — inbox/raw/result/url/text → domains/projects/learnings |
+| `curate` | `references/curate.md` | 기존 vault 정리 — broken link / orphan raw / duplicate page / drift |
 
-| 역할 | 호출 방식 | 설명 |
-|------|-----------|------|
-| 읽기 | `kuma:vault` | Boot pack + `/vault index/search/timeline/get` 조회 인터페이스 |
-| 쓰기 | `kuma:vault:ingest` | 새 소스를 canonical vault page 로 승격 |
-| 정리 | `kuma:vault:curate` | 기존 vault 의 고아 raw, 깨진 링크, 중복 page, drift 보수 |
-
-**중요:** 상위 스킬만 보고 `/vault curate`, `/vault ingest` 같은 retrieval 서브커맨드를 임의로 추론하지 않는다. 쓰기/정리 작업은 항상 해당 **스킬 이름**으로 분기한다.
+**실행 규칙:**
+- `/vault ingest ...` → `references/ingest.md` Read → 규칙대로 승격 절차 수행
+- `/vault curate ...` → `references/curate.md` Read → 규칙대로 정리 절차 수행
+- 읽기/조회 경로는 이 파일만 있으면 된다. reference 로딩 불필요.
 
 ### 예시
 
@@ -91,14 +94,8 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 /vault search vault   → 제목/path/짧은 snippet 목록
 /vault timeline vault → 주변 라인 snippet 2~3개
 /vault get domains/security.md → 해당 문서 전문
-```
-
-### 관련 스킬 예시
-
-```text
-$kuma:vault                   읽기/조회
-$kuma:vault:ingest           새 소스 승격
-$kuma:vault:curate           기존 vault 정리/보수
+/vault ingest raw/memo.md      → 지식 승격 (references/ingest.md 기반)
+/vault curate raw              → raw 고아 점검 (references/curate.md 기반)
 ```
 
 ## Vault 위치
@@ -114,9 +111,8 @@ $kuma:vault:curate           기존 vault 정리/보수
 ├── thread-map.md         Discord/채널 thread 맵
 ├── domains/              도메인별 지식 (security, analytics, image-gen 등)
 ├── projects/             프로젝트별 누적 지식
-├── learnings/            벤치마크, 디버깅 패턴
-│   └── operational-rules/  반복 운영 규칙
-├── operational-rules/    (learnings/operational-rules/ 와 별도 루트 레벨 슬롯)
+├── learnings/            벤치마크, 디버깅 패턴, 누적 관찰
+├── operational-rules/    런타임 rule layer (반복 운영 규칙)
 ├── docs/                 모델 등 참고 문서
 ├── images/               이미지 아카이브
 ├── raw/                  원본 보존 archive (변경 금지)

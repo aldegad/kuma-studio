@@ -1,8 +1,3 @@
----
-name: kuma:vault:ingest
-description: Kuma Vault 인제스트 — inbox 아이템이나 raw 소스를 domains/projects/learnings 로 승격하고, index.md 교차참조 및 log.md 를 갱신한다. 사용자가 "vault 에 넣어", "인제스트", "vault 업데이트", "이걸 vault 에 기록", "raw 파일 승격" 이라고 하면 이 스킬을 사용한다.
----
-
 # /vault ingest — Kuma Vault 지식 승격
 
 inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 index.md / log.md 를 최신화한다.
@@ -130,7 +125,7 @@ source_grade: {foundation|supporting|exploratory|historical}   # 선택 — raw/
 - [{관련 페이지}]({경로}) — {연결 이유}
 ```
 
-**Special Files 주의:** `current-focus.md` / `dispatch-log.md` / `decisions.md` / `thread-map.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer 이며, writer 는 `kuma-task lifecycle hook` / `user-direct` 등 고정. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
+**Special Files 주의:** `current-focus.md` / `dispatch-log.md` / `decisions.md` / `thread-map.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer. 각 writer 고정: current-focus/dispatch-log/thread-map 는 `kuma-task lifecycle hook`, decisions 는 `user-direct` 전용. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
 
 ### Step 4 — index.md 갱신
 
@@ -173,7 +168,7 @@ log.md append: {1줄}
 - 인제스트가 실제 쓰기를 하면, 완료 직후 방금 갱신한 페이지와 `index.md`/`log.md` 에 대해 자동 `fast lint` 를 수행한다.
 - 타깃 분류는 **명시 override(`--section`, `--page`) > 프로젝트 감지 > learnings/domains 규칙 기반 자동 분류** 순서로 동작한다.
 - 다만 자동 분류는 아직 LLM 판단이 아니라 **키워드/프로젝트 ID 기반 heuristic** 이다. `--full-auto` 에서는 ambiguous hit 를 사용자에게 확인하고, `--bypass` 에서는 최선 추정으로 바로 반영한다.
-- 기존 Vault 내부의 고아 raw, 깨진 source path, 중복 page, canonical 재정리는 `kuma:vault:curate` 범위다.
+- 기존 Vault 내부의 고아 raw, 깨진 source path, 중복 page, canonical 재정리는 `curate` 서브커맨드 범위다 (`references/curate.md` 참조).
 - 따라서 ingest가 Vault 정리를 많이 줄여주긴 하지만, 아래 조합은 여전히 필요하다.
   - `vault-ingest`: 원본/결과를 canonical page 로 승격
   - `vault-skill-sync` 또는 수동 동기화: skill 문서와 vault 문서 정렬
