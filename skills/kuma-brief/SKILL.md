@@ -30,7 +30,7 @@ git -C /Users/soohongkim/Documents/workspace/personal/kuma-studio status --short
 ```
 
 infra 발견 기준:
-- `cmux tree` 에서 `kuma-server` / `kuma-frontend` surface 유무로 UP/DOWN 판단
+- `cmux tree` 에서 `kuma-server` surface 유무로 UP/DOWN 판단
 - `tmux ls` 는 사용하지 않음 (cmux 소켓 기반 환경이므로 tmux ls 실패는 정상)
 
 ## 출력 포맷
@@ -44,7 +44,6 @@ infra 발견 기준:
 | Surface | 상태 |
 |---|---|
 | `kuma-server` | surface:XX — UP / DOWN |
-| `kuma-frontend` | surface:XX — UP / DOWN |
 
 **팀 멤버** — 전원 idle / N명 working
 <working 멤버가 있으면 태스크명 포함>

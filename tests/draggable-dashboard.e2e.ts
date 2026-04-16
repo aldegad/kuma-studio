@@ -6,7 +6,7 @@
  */
 import { chromium, type Browser, type Page } from "playwright";
 
-const BASE_URL = "http://localhost:5173";
+const BASE_URL = "http://localhost:4312/studio";
 const VIDEO_DIR = "/tmp/playwright-videos";
 
 async function run() {

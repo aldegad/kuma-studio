@@ -71,7 +71,7 @@ vault contents, review artifacts, screenshots, or machine-specific paths.
 
 - `npm run kuma-server:reload`: reload the daemon inside the managed `kuma-server` surface
 - `npm run server:reload`: restart the daemon on port `4312`
-- `npm run dev:studio`: run the Studio web UI in Vite dev mode
+- `npm run kuma-studio:dashboard`: open the Studio UI served by the daemon on port `4312`
 - `npm run build:studio`: build the production Studio bundle
 - `npm run security:hooks:install`: install the repo-local pre-commit hook that blocks private runtime data and runs `gitleaks`
 - `npm run security:scan`: run a full-repo `gitleaks` scan

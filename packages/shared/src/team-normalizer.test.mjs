@@ -688,9 +688,9 @@ describe("shared team normalizer", () => {
     expect(promptFile).toBeTruthy();
     expect(startupBrief).toContain("쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.");
     expect(startupBrief).toContain("managed infra 상태");
-    expect(startupBrief).toContain("`kuma-server`(port 4312)");
+    expect(startupBrief).toContain("`kuma-server`(port 4312, Studio UI 포함)");
     expect(startupBrief).toContain("bootstrap 직전에 이미 확보된 managed infra 정보를 그대로 요약한다.");
-    expect(startupBrief).toContain("`kuma-server echo STATUS_CHECK`, `kuma-frontend echo STATUS_CHECK` 같은 문자열을 composer에 남기지 않는다.");
+    expect(startupBrief).toContain("`kuma-server echo STATUS_CHECK` 같은 문자열을 composer에 남기지 않는다.");
 
     const startupPrompt = await readFile(promptFile, "utf8");
     expect(startupPrompt).toContain("You are Kuma session prompt fixture.");

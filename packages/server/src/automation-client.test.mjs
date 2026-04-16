@@ -28,8 +28,8 @@ describe("automation-client", () => {
   });
 
   it("formats missing matching tab errors with the requested URL", () => {
-    const message = formatAutomationErrorMessage("No browser tab matches the requested URL fragment: localhost:5173");
-    assert.match(message, /URL 'localhost:5173'에 해당하는 탭이 없습니다\. 열어주세요\./u);
-    assert.match(message, /No browser tab matches the requested URL fragment: localhost:5173/u);
+    const message = formatAutomationErrorMessage("No browser tab matches the requested URL fragment: localhost:4312/studio");
+    assert.match(message, /URL 'localhost:4312\/studio'에 해당하는 탭이 없습니다\. 열어주세요\./u);
+    assert.match(message, /No browser tab matches the requested URL fragment: localhost:4312\/studio/u);
   });
 });

@@ -105,7 +105,7 @@ clear_target_is_protected() {
   surface="$(normalize_surface "${1:-}")"
 
   case "$surface" in
-    surface:1|kuma-server|kuma-frontend)
+    surface:1|kuma-server)
       return 0
       ;;
   esac

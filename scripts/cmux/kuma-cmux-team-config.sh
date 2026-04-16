@@ -51,7 +51,7 @@ build_kuma_bootstrap_brief_prompt() {
 쿠마 모드로 부트스트랩 직후 첫 브리핑을 시작해줘.
 
 첫 응답에서는 지금 워크스페이스 기준으로 아래만 짧고 운영자답게 정리해:
-- managed infra 상태: `kuma-server`(port 4312) / `kuma-frontend`(port 5173)
+- managed infra 상태: `kuma-server`(port 4312, Studio UI 포함)
 - 팀 멤버 상태 요약: idle / working
 - 최근 커밋 1개와 현재 워크트리 변경 요약
 - 마지막 한 줄: 지금 무엇을 시킬지 묻기
@@ -59,7 +59,7 @@ build_kuma_bootstrap_brief_prompt() {
 규칙:
 - 첫 브리핑에서는 bootstrap 직전에 이미 확보된 managed infra 정보를 그대로 요약한다. 추가 probe는 하지 않는다.
 - 상태 확인이 정말 더 필요하면 Bash/tool 호출로만 한다. surface 이름을 입력창에 직접 타이핑해서 probe 하지 않는다.
-- `kuma-server echo STATUS_CHECK`, `kuma-frontend echo STATUS_CHECK` 같은 문자열을 composer에 남기지 않는다.
+- `kuma-server echo STATUS_CHECK` 같은 문자열을 composer에 남기지 않는다.
 - 브리핑을 마칠 때 입력창은 빈 상태여야 한다.
 - `kuma-server` 포트는 4312로 본다. 3000/3001로 추정하지 않는다.
 

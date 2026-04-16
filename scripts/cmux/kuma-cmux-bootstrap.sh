@@ -251,26 +251,20 @@ done < <(list_bootstrap_system_members)
 echo "→ 팀 스폰 중..."
 "$SCRIPT_DIR/kuma-cmux-project-init.sh" "kuma-studio" "$KUMA_STUDIO_DIR" --workspace "$CURRENT_WS"
 
-# 3. 인프라 pane (서버 + 프론트를 탭으로, 아래에 작게)
+# 3. 인프라 pane (서버, 아래에 작게)
 SERVER_ALIVE=false
-FRONT_ALIVE=false
 curl -sf http://localhost:4312/health > /dev/null 2>&1 && SERVER_ALIVE=true
-curl -sf http://localhost:5173/studio/ > /dev/null 2>&1 && FRONT_ALIVE=true
 
 SERVER_SURFACE="$(resolve_infra_surface "server" "kuma-server" 2>/dev/null || true)"
-FRONT_SURFACE="$(resolve_infra_surface "frontend" "kuma-frontend" 2>/dev/null || true)"
 [ -n "$SERVER_SURFACE" ] && register_surface_label "kuma-studio" "server" "$SERVER_SURFACE" "kuma-server"
-[ -n "$FRONT_SURFACE" ] && register_surface_label "kuma-studio" "frontend" "$FRONT_SURFACE" "kuma-frontend"
 
 INFRA_P=""
 if [ -n "$SERVER_SURFACE" ]; then
   INFRA_P="$(get_pane "$SERVER_SURFACE")"
-elif [ -n "$FRONT_SURFACE" ]; then
-  INFRA_P="$(get_pane "$FRONT_SURFACE")"
 fi
 
-if $SERVER_ALIVE && $FRONT_ALIVE; then
-  echo "✓ 서버/프론트 이미 실행 중"
+if $SERVER_ALIVE; then
+  echo "✓ 쿠마 서버 이미 실행 중"
 else
   if ! $SERVER_ALIVE; then
     STALE_PID="$(lsof -i :4312 -t 2>/dev/null || true)"
@@ -315,64 +309,19 @@ else
     fi
   fi
 
-  if [ -z "$INFRA_P" ] && [ -n "$SERVER_SURFACE" ]; then
-    INFRA_P="$(get_pane "$SERVER_SURFACE")"
-  fi
-  if [ -z "$INFRA_P" ] && [ -n "$FRONT_SURFACE" ]; then
-    INFRA_P="$(get_pane "$FRONT_SURFACE")"
-  fi
-
-  if ! $FRONT_ALIVE; then
-    STALE_PID="$(lsof -i :5173 -t 2>/dev/null || true)"
-    [ -n "$STALE_PID" ] && kill "$STALE_PID" 2>/dev/null && sleep 1
-
-    if [ -z "$FRONT_SURFACE" ]; then
-      if [ -n "$INFRA_P" ]; then
-        FR="$(cmux new-surface --pane "$INFRA_P" --workspace "$CURRENT_WS" 2>&1 || true)"
-      else
-        FR="$(cmux new-split down --workspace "$CURRENT_WS" 2>&1 || true)"
-      fi
-      FRONT_SURFACE="$(echo "$FR" | grep -oE 'surface:[0-9]+' | head -1 || true)"
-      if [ -z "$FRONT_SURFACE" ]; then
-        echo "✗ 프론트 surface 생성 실패: $FR"
-        exit 1
-      fi
-    fi
-
-    [ -n "$INFRA_P" ] || INFRA_P="$(get_pane "$FRONT_SURFACE")"
-    echo "→ 스튜디오 프론트 시작 중..."
-    "$SCRIPT_DIR/kuma-cmux-send.sh" "$FRONT_SURFACE" "cd \"$KUMA_STUDIO_DIR\" && npm run dev:studio" > /dev/null
-    register_surface_label "kuma-studio" "frontend" "$FRONT_SURFACE" "kuma-frontend"
-
-    echo -n "  기동 대기"
-    FRONT_OK=false
-    for i in $(seq 1 30); do
-      curl -sf http://localhost:5173/studio/ > /dev/null 2>&1 && FRONT_OK=true && break
-      echo -n "."; sleep 1
-    done
-    echo ""
-    if $FRONT_OK; then
-      echo "✓ 스튜디오 프론트 정상 기동 ($FRONT_SURFACE)"
-    else
-      echo "✗ 스튜디오 프론트 기동 실패"
-      cmux read-screen --surface "$FRONT_SURFACE" --lines 15 2>/dev/null || true
-      exit 1
-    fi
-  fi
-
   [ -n "$INFRA_P" ] && cmux resize-pane --pane "$INFRA_P" -U --amount 15 > /dev/null 2>&1 || true
 fi
 
 # 4. 워크스페이스 + CTO 탭 이름 설정
 cmux workspace-action --action rename --title "🐻 kuma studio" > /dev/null 2>&1 || true
 cmux tab-action --action rename --surface "$KUMA_S" --title "🐻 쿠마" > /dev/null 2>&1 || true
-/usr/bin/open -a 'Google Chrome' http://localhost:5173/studio/
+/usr/bin/open -a 'Google Chrome' http://localhost:4312/studio/
 
 echo ""
 echo "=========================="
 echo "🐻 쿠마 스튜디오 준비 완료!"
 echo ""
-echo "스튜디오: http://localhost:5173/studio/"
+echo "스튜디오: http://localhost:4312/studio/"
 echo "서버 API: http://localhost:4312"
 echo ""
 echo "→ 쿠마 CTO 세션 시작..."

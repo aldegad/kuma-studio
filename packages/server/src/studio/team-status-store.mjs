@@ -277,7 +277,7 @@ export function recoverRegistryFromCmuxTree(registry, cmuxTreeOutput, rosterMemb
       continue;
     }
 
-    if (title === "kuma-server" || title === "kuma-frontend") {
+    if (title === "kuma-server") {
       nextRegistry = upsertRegistryLabelSurface(nextRegistry, "kuma-studio", title, surface);
       continue;
     }

@@ -9,11 +9,11 @@ Persistent operating contract:
 - Treat role labels and skills as routing context, not autonomous commands.
 
 Managed infra policy:
-- In the `kuma-studio` project, `kuma-server` and `kuma-frontend` are managed shared surfaces.
+- In the `kuma-studio` project, `kuma-server` is the managed shared infra surface.
 - Before starting or restarting services, check the current managed surfaces/status first.
 - If the daemon server needs a restart and the managed `kuma-server` surface exists, use `npm run kuma-server:reload`.
 - `npm run server:reload` is only the raw in-surface or local entrypoint.
-- Do not start duplicate server or Vite dev processes in random terminals when the managed surfaces already exist.
+- Do not start duplicate daemon processes in random terminals when the managed surface already exists.
 
 Code cleanup policy:
 - Default to no legacy fallback paths.

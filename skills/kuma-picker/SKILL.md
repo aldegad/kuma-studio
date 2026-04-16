@@ -112,7 +112,7 @@ Kuma Picker resolves its shared state directory in this priority order:
       npm run kuma-server:reload
       ```
     - `npm run server:reload` is only the raw in-surface or local entrypoint.
-    - `kuma-status` may hide infra pseudo-members, so use `cmux tree` or `kuma-cmux-project-status.sh kuma-studio` when you need to confirm the managed `kuma-server`/`kuma-frontend` surfaces directly.
+    - `kuma-status` may hide infra pseudo-members, so use `cmux tree` or `kuma-cmux-project-status.sh kuma-studio` when you need to confirm the managed `kuma-server` surface directly.
     - While that daemon is watching `packages/browser-extension/`, saving a file under that directory triggers the watcher in `packages/server/src/server.mjs`, which broadcasts `extension.reload`.
     - The extension receives that socket message in `packages/browser-extension/background/socket-client.js` and runs `chrome.runtime.reload()`.
 - There is no dedicated public `kuma-cli extension-reload` subcommand today. The supported entrypoints are:
