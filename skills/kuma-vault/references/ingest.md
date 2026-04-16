@@ -44,9 +44,9 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 ├── domains/              도메인 지식 (security, analytics, image-gen, content-pipeline, frontend-design …)
 ├── projects/             프로젝트 상태 (kuma-studio, pqc, artkit …)
 │   └── <slug>.project-decisions.md   프로젝트별 decision ledger (special file)
-├── learnings/            반복 가능한 인사이트, 운영 규칙, 디버깅 패턴
-│   ├── operational-rules/   feedback 메모리 정제본 (canonical slot)
+├── learnings/            반복 가능한 인사이트, 디버깅 패턴
 │   └── memory-map.md        feedback 원본 ↔ vault 문서 매핑
+├── operational-rules/    runtime rule layer (canonical — 2026-04-16 부터 root 슬롯만 유지)
 ├── docs/                 참고 문서 (모델 스펙 등)
 ├── images/               이미지 아카이브
 ├── index.md              교차참조 카탈로그 (갱신 대상)
@@ -54,8 +54,6 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 ├── schema.md             운영 규칙 (SSoT — ingest 시 반드시 참고)
 └── [Special files]       current-focus.md / dispatch-log.md / decisions.md / thread-map.md
 ```
-
-**주의:** 루트 `operational-rules/` 가 존재한다면 이는 드리프트 가능성 — canonical slot 은 `learnings/operational-rules/`. ingest 시 항상 canonical 쪽으로 routing.
 
 ## 인제스트 절차 (순서 고정)
 
@@ -78,7 +76,7 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 |-----------|------|
 | 특정 도메인 지식 (security, analytics, image-gen, content …) | `domains/<domain>.md` |
 | 프로젝트 상태·이슈·아키텍처 | `projects/<slug>.md` |
-| 운영 규칙·피드백·디버깅 패턴 | `learnings/` 또는 `learnings/operational-rules/` |
+| 운영 규칙·피드백·디버깅 패턴 | `operational-rules/` (운영 규칙) · `learnings/` (반복 인사이트/디버깅) |
 | 벤치마크·성능 측정 | `learnings/` |
 | 시스템 온톨로지·설계 원칙 | `learnings/kuma-system-ontology.md` 또는 신규 |
 
@@ -89,7 +87,7 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 | "이 사이트 조사해줘" 결과 정리 | `domains/<slug>.md` | 특정 외부 서비스/회사/제품에 대한 SSOT |
 | "이 프로젝트 어디까지 했지?" 결과 | `projects/<slug>.md` | 진행 상태, 결정, TODO 는 프로젝트 문맥 |
 | "이번 장애 원인/복구 절차" | `learnings/` | 재사용 가능한 디버깅 패턴/운영 인사이트 |
-| "코드 스타일, QA 원칙, 브라우저 사용 규칙" | `learnings/operational-rules/` | 반복 실행되는 운영 규칙 |
+| "코드 스타일, QA 원칙, 브라우저 사용 규칙" | `operational-rules/` | 반복 실행되는 운영 규칙 |
 | 개인 이력서/포트폴리오 분석본 | `domains/careers.md` 또는 관련 도메인 | 특정 프로젝트보다 재사용 가능한 후보자/커리어 지식 |
 | 특정 채용건/제안건 진행 메모 | `projects/<slug>.md` | 사람 자료라도 실제 진행 단위가 프로젝트면 project가 우선 |
 | 도메인 설명과 프로젝트 현황이 섞인 문서 | `projects/<slug>.md` 우선, 도메인 지식만 별도 추출 | 실행 맥락을 잃지 않기 위해 project를 canonical로 두고, 재사용 가능한 부분만 domain으로 승격 |
