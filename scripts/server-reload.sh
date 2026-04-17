@@ -74,6 +74,11 @@ if [[ -z "${WORKSPACE_BINDING}" && -n "${existing_listener_pid}" ]]; then
   fi
 fi
 
+# Default: bind this repo (kuma-studio) as the workspace when nothing else resolved one.
+if [[ -z "${WORKSPACE_BINDING}" ]]; then
+  WORKSPACE_BINDING="${ROOT_DIR}"
+fi
+
 EXPLORER_GLOBAL_ROOTS_BINDING=""
 EXPLORER_GLOBAL_ROOTS_IS_SET=0
 if [[ -n "${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS+x}" ]]; then
@@ -98,14 +103,7 @@ if [[ -n "${existing_pids}" ]]; then
   sleep 2
 fi
 
-if [[ -n "${WORKSPACE_BINDING}" ]]; then
-  echo "Starting kuma-studio server on http://${HOST}:${PORT} (workspace: ${WORKSPACE_BINDING})"
-  exec env KUMA_STUDIO_WORKSPACE="${WORKSPACE_BINDING}" \
-    KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS="${EXPLORER_GLOBAL_ROOTS_BINDING}" \
-    node "${ROOT_DIR}/packages/server/src/cli.mjs" serve --host "${HOST}" --port "${PORT}" --root "${ROOT_DIR}"
-fi
-
-echo "Starting kuma-studio server on http://${HOST}:${PORT} without workspace binding"
-echo "Hint: run from the workspace root with --prefix or set KUMA_STUDIO_WORKSPACE explicitly."
-exec env KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS="${EXPLORER_GLOBAL_ROOTS_BINDING}" \
+echo "Starting kuma-studio server on http://${HOST}:${PORT} (workspace: ${WORKSPACE_BINDING})"
+exec env KUMA_STUDIO_WORKSPACE="${WORKSPACE_BINDING}" \
+  KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS="${EXPLORER_GLOBAL_ROOTS_BINDING}" \
   node "${ROOT_DIR}/packages/server/src/cli.mjs" serve --host "${HOST}" --port "${PORT}" --root "${ROOT_DIR}"
