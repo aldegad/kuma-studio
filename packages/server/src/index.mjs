@@ -65,7 +65,7 @@ Usage:
   kuma-studio vault-ingest [result-file|raw/<name>|https://url|inline text] [--full-auto|--bypass] [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--project kuma-studio] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
   kuma-studio vault-ingest result <task-id> [--full-auto|--bypass] [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] [--qa-status passed] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault]
   kuma-studio vault-ingest [--full-auto|--bypass]                         # ingest ~/.kuma/vault/inbox/* text files
-  kuma-studio vault-lint [current-focus.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files current-focus.md,dispatch-log.md] [--json]
+  kuma-studio vault-lint [dispatch-log.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files dispatch-log.md,decisions.md] [--json]
   kuma-studio vault-search --query "task id" [--mode search|timeline] [--limit 20] [--vault-dir ~/.kuma/vault] [--format text|json]
   kuma-studio vault-get <id|path ...> [--vault-dir ~/.kuma/vault] [--format text|json]
   kuma-studio project-info [--root .]            # show current project hash and state dir

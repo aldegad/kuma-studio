@@ -3,27 +3,11 @@ import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
 export const DEFAULT_SPECIAL_VAULT_FILES = Object.freeze([
-  "current-focus.md",
   "dispatch-log.md",
   "decisions.md",
-  "thread-map.md",
 ]);
 
 export const SPECIAL_VAULT_FILE_SPECS = Object.freeze({
-  "current-focus.md": {
-    frontmatter: {
-      title: { type: "string", exact: "Current Focus" },
-      type: { type: "string", exact: "special/current-focus" },
-      updated: { type: "iso-datetime" },
-      active_count: { type: "integer", min: 0 },
-      source_of_truth: { type: "string", exact: "kuma-task-lifecycle" },
-      boot_priority: { type: "integer", exact: 1 },
-    },
-    requiredSections: ["Summary", "Active Dispatches", "Blockers", "Last Completed"],
-    schemaType: "special/current-focus",
-    schemaWriter: "kuma-task lifecycle hook",
-    structuralChecks: ["active-count"],
-  },
   "dispatch-log.md": {
     frontmatter: {
       title: { type: "string", exact: "Dispatch Log" },
@@ -31,7 +15,7 @@ export const SPECIAL_VAULT_FILE_SPECS = Object.freeze({
       updated: { type: "iso-datetime" },
       entry_format: { type: "string", exact: "append-only-ledger" },
       source_of_truth: { type: "string", exact: "kuma-task-lifecycle" },
-      boot_priority: { type: "integer", exact: 2 },
+      boot_priority: { type: "integer", exact: 1 },
     },
     requiredSections: ["Entries"],
     schemaType: "special/dispatch-log",
@@ -45,26 +29,12 @@ export const SPECIAL_VAULT_FILE_SPECS = Object.freeze({
       updated: { type: "iso-datetime" },
       entry_rule: { type: "string", exact: "explicit-user-decision-only" },
       source_of_truth: { type: "string", exact: "user-direct" },
-      boot_priority: { type: "integer", exact: 3 },
+      boot_priority: { type: "integer", exact: 2 },
     },
     requiredSections: ["Open Decisions", "Ledger"],
     schemaType: "special/decisions",
     schemaWriter: "user-direct",
     structuralChecks: [],
-  },
-  "thread-map.md": {
-    frontmatter: {
-      title: { type: "string", exact: "Thread Map" },
-      type: { type: "string", exact: "special/thread-map" },
-      updated: { type: "iso-datetime" },
-      entry_format: { type: "string", exact: "active-thread-ledger" },
-      source_of_truth: { type: "string", exact: "kuma-task-lifecycle" },
-      boot_priority: { type: "integer", exact: 4 },
-    },
-    requiredSections: ["Active Threads", "Ledger"],
-    schemaType: "special/thread-map",
-    schemaWriter: "kuma-task lifecycle hook",
-    structuralChecks: ["ledger"],
   },
 });
 
@@ -140,44 +110,6 @@ function parseSections(body) {
 
   flush();
   return sections;
-}
-
-function parseNestedEntries(sectionText, primaryKey) {
-  const text = normalize(sectionText);
-  if (!text || PLACEHOLDER_PATTERN.test(text)) {
-    return [];
-  }
-
-  const entries = [];
-  let current = null;
-  const headPattern = new RegExp(`^- ${primaryKey}:\\s*(.*)$`, "u");
-
-  for (const rawLine of text.split("\n")) {
-    const line = rawLine.replace(/\r/gu, "");
-    const headMatch = line.match(headPattern);
-    if (headMatch) {
-      if (current) {
-        entries.push(current);
-      }
-      current = { [primaryKey]: headMatch[1].trim() };
-      continue;
-    }
-
-    if (!current) {
-      continue;
-    }
-
-    const childMatch = line.match(/^\s+- ([a-z_]+):\s*(.*)$/u);
-    if (childMatch) {
-      current[childMatch[1]] = childMatch[2].trim();
-    }
-  }
-
-  if (current) {
-    entries.push(current);
-  }
-
-  return entries;
 }
 
 function parseLedgerLines(sectionText) {
@@ -313,13 +245,15 @@ function cleanLinkTarget(target) {
     .trim();
 }
 
+const SPECIAL_FILES_HEADING_PATTERN = /^## Special Files(?:\s*\([^)]+\))?\s*$/mu;
+
 function extractSchemaSections(schemaContents) {
-  const specialStart = schemaContents.indexOf("## Special Files (4종)");
-  if (specialStart === -1) {
+  const specialMatch = schemaContents.match(SPECIAL_FILES_HEADING_PATTERN);
+  if (!specialMatch) {
     return {};
   }
 
-  const specialSlice = schemaContents.slice(specialStart);
+  const specialSlice = schemaContents.slice(specialMatch.index);
   const sections = {};
   let currentFile = null;
   let buffer = [];
@@ -384,23 +318,11 @@ function lintSchemaRegistration(fileName, spec, schemaSections) {
   return issues;
 }
 
-function lintStructuralRules(fileName, spec, frontmatter, sections) {
+function lintStructuralRules(fileName, spec, sections) {
   const issues = [];
 
-  if (spec.structuralChecks.includes("active-count")) {
-    const activeEntries = parseNestedEntries(sections["Active Dispatches"], "task_id");
-    const declaredCount = Number(normalize(frontmatter.active_count));
-    if (Number.isInteger(declaredCount) && declaredCount !== activeEntries.length) {
-      issues.push({
-        code: "active-count-mismatch",
-        message: `${fileName}: active_count=${declaredCount} but Active Dispatches has ${activeEntries.length} entries`,
-      });
-    }
-  }
-
   if (spec.structuralChecks.includes("ledger")) {
-    const sectionName = fileName === "thread-map.md" ? "Ledger" : "Entries";
-    const lines = parseLedgerLines(sections[sectionName]);
+    const lines = parseLedgerLines(sections["Entries"]);
     for (const line of lines) {
       if (!LEDGER_LINE_PATTERN.test(line)) {
         issues.push({
@@ -643,7 +565,7 @@ function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
     }
 
     issues.push(...lintSchemaRegistration(normalizedFileName, spec, schemaSections));
-    issues.push(...lintStructuralRules(normalizedFileName, spec, parsed.frontmatter, sections));
+    issues.push(...lintStructuralRules(normalizedFileName, spec, sections));
     issues.push(...lintRelativeLinks(normalizedFileName, absolutePath, parsed.body));
   }
 
@@ -685,7 +607,7 @@ export function lintVaultFiles({
         globalIssues.push({
           file: "schema.md",
           code: "schema-special-files-missing",
-          message: "schema.md is missing the `## Special Files (4종)` section",
+          message: "schema.md is missing the `## Special Files` section",
         });
       }
     }

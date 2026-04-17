@@ -25,7 +25,7 @@ user-invocable: true
 
 - broker record 가 canonical source 다. 각 task 는 `~/.kuma/bin/kuma-dispatch status --task-file <path>` 로 조회한다.
 - dispatch runtime home 은 `~/.kuma/dispatch/{tasks,results,signals}` 이다. `/tmp/kuma-*` 는 legacy 경로이므로 복구 근거로 쓰지 않는다.
-- vault summary 는 보조 복구 레일이다. 읽는 순서는 `current-focus -> dispatch-log -> decisions -> thread-map`.
+- vault summary 는 보조 복구 레일이다. 읽는 순서는 `dispatch-log -> decisions`.
 - `~/.kuma/dispatch/` 는 재부팅에도 남지만, 강제 종료 전 snapshot 을 떠두면 복구 단서가 더 안전해진다.
 - managed infra 는 중복 기동하지 않는다. `kuma-server` surface 를 재사용한다.
 

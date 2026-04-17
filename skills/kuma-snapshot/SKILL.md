@@ -29,9 +29,7 @@ bash skills/kuma-recovery/scripts/create_reboot_snapshot.sh
 
 - `~/.kuma/dispatch/tasks`
 - `~/.kuma/dispatch/results`
-- `~/.kuma/vault/current-focus.md`
 - `~/.kuma/vault/dispatch-log.md`
-- `~/.kuma/vault/thread-map.md`
 - `~/.kuma/vault/log.md`
 - `~/.kuma/vault/decisions.md`
 - 최근 Claude project JSONL

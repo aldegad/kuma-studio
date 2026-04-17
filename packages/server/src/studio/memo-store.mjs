@@ -10,10 +10,8 @@ const MEMO_IMAGE_ROUTE_PREFIX = "/studio/memo-images/";
 const USER_MEMORY_INDEX_FILE_NAME = "MEMORY.md";
 const VAULT_SYSTEM_FILE_NAMES = new Set(["index.md", "schema.md", "log.md"]);
 const VAULT_SPECIAL_FILE_NAMES = new Set([
-  "current-focus.md",
   "dispatch-log.md",
   "decisions.md",
-  "thread-map.md",
 ]);
 const VAULT_ENTRY_SKIP_DIRS = new Set(["images", "inbox"]);
 const INBOX_ALLOWED_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);

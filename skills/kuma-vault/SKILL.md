@@ -22,14 +22,12 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 ### Retrieval Chain (Boot Pack Load Order — schema.md 기준)
 
-1. `~/.kuma/vault/current-focus.md` **full** — working memory (`type: special/current-focus`)
-2. `~/.kuma/vault/dispatch-log.md` **tail 20** — episodic ledger (`type: special/dispatch-log`)
-3. `~/.kuma/vault/decisions.md` global + current project `projects/*.project-decisions.md` — 최신 entry 10 로드 (`type: special/decisions` / `special/project-decisions`, writer 는 `user-direct` 전용)
-4. `~/.kuma/vault/thread-map.md` — 현재 thread/session exact match, 없으면 latest 5 (`type: special/thread-map`)
-5. `${KUMA_PLANS_DIR:-./.kuma/plans}/index.md` Active — 큰 plan
-6. Vault retrieval (on demand) — **3-layer progressive disclosure**: `/vault search <q>` (L1: hits-only 리스트) → `/vault timeline <q>` (L2: ±2줄 snippets) → `/vault get <id|path>` (L3: 전문)
+1. `~/.kuma/vault/dispatch-log.md` **tail 20** — episodic ledger (`type: special/dispatch-log`)
+2. `~/.kuma/vault/decisions.md` global + current project `projects/*.project-decisions.md` — 최신 entry 10 로드 (`type: special/decisions` / `special/project-decisions`, writer 는 `user-direct` 전용)
+3. `${KUMA_PLANS_DIR:-./.kuma/plans}/index.md` Active — 큰 plan
+4. Vault retrieval (on demand) — **3-layer progressive disclosure**: `/vault search <q>` (L1: hits-only 리스트) → `/vault timeline <q>` (L2: ±2줄 snippets) → `/vault get <id|path>` (L3: 전문)
 
-상위에서 답이 나오면 하위 단계 skip. 6번까지 다 봐도 답 없으면 그제서야 디스코드 히스토리/Grep 등 외부 탐색.
+상위에서 답이 나오면 하위 단계 skip. 4번까지 다 봐도 답 없으면 그제서야 디스코드 히스토리/Grep 등 외부 탐색.
 
 **불변식:** L1 에서 전문 dump 금지. 순서 고정 `search → timeline → get`.
 
@@ -39,17 +37,15 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 - ❌ Grep/Glob 로 직접 코드베이스 탐색한다 (vault 부터 보기)
 - ❌ 검색 결과 전문을 바로 읽는다 (`/vault search` 후 바로 전체 본문 dump 기대 금지. 먼저 `search -> timeline -> get`)
 
-## Special Files (4종)
+## Special Files
 
 `type: special/*` frontmatter 를 가진 runtime memory layer. 일반 vault page 와 다르게 writer/reader/trigger/retention 이 고정.
 
 | 파일 | type | 역할 | Primary writer | Boot pack 로드 |
 |------|------|------|----------------|----------------|
-| `current-focus.md` | `special/current-focus` | working memory (활성 dispatch snapshot) | `kuma-task lifecycle hook` | full |
 | `dispatch-log.md` | `special/dispatch-log` | episodic ledger (task 사건열) | `kuma-task lifecycle hook` | tail 20 |
 | `decisions.md` | `special/decisions` | global decision memory (유저 확정 결정 단일 레이어) | `user-direct` 전용 | 최신 entry 10 |
 | `projects/<slug>.project-decisions.md` | `special/project-decisions` | 프로젝트별 실행/설계 결정 | `user-direct` 전용 (프로젝트 scope) | 현재 프로젝트 한정 로드 |
-| `thread-map.md` | `special/thread-map` | Discord/thread ↔ task 매핑 | `kuma-task lifecycle hook` + Discord bridge | 현재 thread match 또는 latest 5 |
 
 **decisions.md 단일 레이어 구조:**
 - `## About` + `## Decisions` 두 섹션만 존재. Inbox / Ledger / Open Decisions 하위 섹션 없음.
@@ -104,11 +100,9 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 ~/.kuma/vault/
 ├── index.md              전체 페이지 목록 + 교차참조
 ├── schema.md             운영 규칙
-├── current-focus.md      현재 dispatch snapshot
 ├── decisions.md          결정 이력
 ├── dispatch-log.md       task 사건열
 ├── log.md                변경 이력 (append-only)
-├── thread-map.md         Discord/채널 thread 맵
 ├── domains/              도메인별 지식 (security, analytics, image-gen 등)
 ├── projects/             프로젝트별 누적 지식
 ├── learnings/            벤치마크, 디버깅 패턴, 누적 관찰

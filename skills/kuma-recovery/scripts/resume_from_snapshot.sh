@@ -31,7 +31,7 @@ if [ -f "$BACKUP_DIR/manifest.txt" ]; then
 fi
 
 echo "--- vault summary ---"
-for file_name in current-focus.md dispatch-log.md thread-map.md decisions.md; do
+for file_name in dispatch-log.md decisions.md; do
   if [ -f "$BACKUP_DIR/vault/$file_name" ]; then
     echo "===== $file_name"
     sed -n '1,40p' "$BACKUP_DIR/vault/$file_name"

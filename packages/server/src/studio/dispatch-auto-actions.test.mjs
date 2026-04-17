@@ -194,7 +194,7 @@ describe("runDispatchAutoActions", { timeout: 10000 }, () => {
     expect(prompt).toContain(`plan: ${fm.plan}`);
     expect(prompt).toContain(`npm run --silent --prefix ${root} kuma-studio -- dispatch-status --task-file ${taskPath}`);
     expect(prompt).toContain("broker messages as SSOT");
-    expect(prompt).toContain("dispatch-log.md/thread-map.md are derived lifecycle summaries only");
+    expect(prompt).toContain("dispatch-log.md is a derived append-only ledger only");
     expect(prompt).toContain(`${root}/skills/noeuri/SKILL.md`);
     expect(prompt).toContain("protected user-memo read-only notebook");
     expect(prompt).toContain(userMemoDir);

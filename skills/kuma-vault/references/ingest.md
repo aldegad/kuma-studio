@@ -52,7 +52,7 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 ├── index.md              교차참조 카탈로그 (갱신 대상)
 ├── log.md                append-only 변경 이력 (갱신 대상)
 ├── schema.md             운영 규칙 (SSoT — ingest 시 반드시 참고)
-└── [Special files]       current-focus.md / dispatch-log.md / decisions.md / thread-map.md
+└── [Special files]       dispatch-log.md / decisions.md
 ```
 
 ## 인제스트 절차 (순서 고정)
@@ -123,7 +123,7 @@ source_grade: {foundation|supporting|exploratory|historical}   # 선택 — raw/
 - [{관련 페이지}]({경로}) — {연결 이유}
 ```
 
-**Special Files 주의:** `current-focus.md` / `dispatch-log.md` / `decisions.md` / `thread-map.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer. 각 writer 고정: current-focus/dispatch-log/thread-map 는 `kuma-task lifecycle hook`, decisions 는 `user-direct` 전용. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
+**Special Files 주의:** `dispatch-log.md` / `decisions.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer. 각 writer 고정: dispatch-log 는 `kuma-task lifecycle hook`, decisions 는 `user-direct` 전용. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
 
 ### Step 4 — index.md 갱신
 
@@ -153,7 +153,7 @@ log.md append: {1줄}
 - `raw/` 는 원본 보존 계층 — **절대 수정하지 않는다** (ingest 타깃 자체가 아님, rule 0)
 - `raw/<name>` 을 **소스로** 읽어 `domains/`/`projects/`/`learnings/` 로 승격하는 것은 허용 (raw 원본 파일은 그대로 둠)
 - 기존 페이지 내용 **삭제 금지** — 갱신은 append/merge 만
-- Special files (`current-focus.md`, `dispatch-log.md`, `decisions.md`, `thread-map.md`) 는 ingest 로 덮어쓰지 않는다 — 이들은 lifecycle hook 소유
+- Special files (`dispatch-log.md`, `decisions.md`) 는 ingest 로 덮어쓰지 않는다 — dispatch-log 는 lifecycle hook 소유, decisions 는 user-direct 전용
 - `~/.claude/projects/` (user-memo) 는 **read-only** — 이 경로 아래는 쓰지 않는다
 - inbox/ 에서 꺼낸 파일은 인제스트 완료 후 inbox 에서 제거하거나 `_done` suffix 로 마킹
 - log.md 는 항상 **append-only** (덮어쓰기 금지)

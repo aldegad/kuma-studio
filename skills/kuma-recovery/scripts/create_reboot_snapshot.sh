@@ -17,7 +17,7 @@ if [ -d "$HOME/.kuma/dispatch/results" ]; then
   cp -R "$HOME/.kuma/dispatch/results/." "$BACKUP_DIR/dispatch-results/" 2>/dev/null || true
 fi
 
-for file_name in current-focus.md dispatch-log.md thread-map.md log.md decisions.md index.md; do
+for file_name in dispatch-log.md log.md decisions.md index.md; do
   if [ -f "$HOME/.kuma/vault/$file_name" ]; then
     cp "$HOME/.kuma/vault/$file_name" "$BACKUP_DIR/vault/$file_name"
   fi

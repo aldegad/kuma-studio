@@ -102,59 +102,6 @@ function parseSections(body) {
   return sections;
 }
 
-function parseNestedEntries(sectionText, primaryKey) {
-  const text = normalize(sectionText);
-  if (!text || /^\(.*\)$/u.test(text)) {
-    return [];
-  }
-
-  const entries = [];
-  let current = null;
-  for (const rawLine of text.split("\n")) {
-    const line = rawLine.replace(/\r/gu, "");
-    const headMatch = line.match(new RegExp(`^- ${primaryKey}:\\s*(.*)$`, "u"));
-    if (headMatch) {
-      if (current) {
-        entries.push(current);
-      }
-      current = { [primaryKey]: headMatch[1].trim() };
-      continue;
-    }
-
-    if (!current) {
-      continue;
-    }
-
-    const childMatch = line.match(/^\s+- ([a-z_]+):\s*(.*)$/u);
-    if (childMatch) {
-      current[childMatch[1]] = childMatch[2].trim();
-    }
-  }
-
-  if (current) {
-    entries.push(current);
-  }
-
-  return entries;
-}
-
-function renderNestedEntries(entries, primaryKey, keys, emptyPlaceholder = "(없음)") {
-  if (!Array.isArray(entries) || entries.length === 0) {
-    return emptyPlaceholder;
-  }
-
-  return entries.map((entry) => {
-    const lines = [`- ${primaryKey}: ${normalize(entry[primaryKey])}`];
-    for (const key of keys) {
-      if (key === primaryKey) continue;
-      const value = normalize(entry[key]);
-      if (!value) continue;
-      lines.push(`  - ${key}: ${value}`);
-    }
-    return lines.join("\n");
-  }).join("\n\n");
-}
-
 function parseLedgerLines(sectionText) {
   const text = normalize(sectionText);
   if (!text || /^\(.*\)$/u.test(text)) {
@@ -206,16 +153,6 @@ function loadManagedFile(path, warnings) {
   };
 }
 
-function upsertEntry(entries, primaryKey, value, patch) {
-  const existing = entries.find((entry) => normalize(entry[primaryKey]) === value) ?? {};
-  const filtered = entries.filter((entry) => normalize(entry[primaryKey]) !== value);
-  return [{ ...existing, ...patch, [primaryKey]: value }, ...filtered];
-}
-
-function removeEntry(entries, primaryKey, value) {
-  return entries.filter((entry) => normalize(entry[primaryKey]) !== value);
-}
-
 function ledgerLine(timestamp, fields) {
   const ordered = [];
   for (const [key, value] of Object.entries(fields)) {
@@ -224,122 +161,6 @@ function ledgerLine(timestamp, fields) {
     ordered.push(`${key}=${normalized}`);
   }
   return `- ${timestamp} | ${ordered.join(" | ")}`;
-}
-
-function writeCurrentFocus({ vaultDir, task, event, summaryArg, blockerArg, noteArg, now, warnings }) {
-  const path = join(vaultDir, "current-focus.md");
-  const file = loadManagedFile(path, warnings);
-  if (!file) return;
-
-  let activeEntries = parseNestedEntries(file.sections["Active Dispatches"], "task_id");
-  let blockers = parseNestedEntries(file.sections["Blockers"], "task_id");
-  let lastCompleted = parseNestedEntries(file.sections["Last Completed"], "task_id");
-
-  const basePatch = {
-    project: task.project,
-    initiator: task.initiator,
-    worker: task.worker,
-    qa: task.qa,
-    result: task.result,
-    signal: task.signal,
-    thread_id: task.thread_id,
-    session_id: task.session_id,
-    updated_at: now,
-  };
-
-  switch (event) {
-    case "dispatched":
-      activeEntries = upsertEntry(activeEntries, "task_id", task.id, {
-        ...basePatch,
-        state: "dispatched",
-        summary: normalize(summaryArg) || task.summary || "task dispatched",
-      });
-      blockers = removeEntry(blockers, "task_id", task.id);
-      break;
-    case "worker-done":
-      activeEntries = upsertEntry(activeEntries, "task_id", task.id, {
-        ...basePatch,
-        state: "awaiting-qa",
-        summary: normalize(summaryArg) || (
-          task.qa === "worker-self-report"
-            ? "worker result detected, awaiting final signal"
-            : "worker result detected, awaiting QA"
-        ),
-      });
-      blockers = removeEntry(blockers, "task_id", task.id);
-      break;
-    case "qa-rejected":
-      activeEntries = upsertEntry(activeEntries, "task_id", task.id, {
-        ...basePatch,
-        state: "qa-rejected",
-        summary: normalize(summaryArg) || "QA rejected",
-      });
-      blockers = upsertEntry(blockers, "task_id", task.id, {
-        blocker: normalize(blockerArg) || normalize(noteArg) || "QA rejected",
-        updated_at: now,
-      });
-      break;
-    case "failed":
-      activeEntries = upsertEntry(activeEntries, "task_id", task.id, {
-        ...basePatch,
-        state: "failed",
-        summary: normalize(summaryArg) || normalize(blockerArg) || "worker failed",
-      });
-      blockers = upsertEntry(blockers, "task_id", task.id, {
-        blocker: normalize(blockerArg) || normalize(noteArg) || "worker failed",
-        updated_at: now,
-      });
-      break;
-    case "qa-passed":
-      activeEntries = removeEntry(activeEntries, "task_id", task.id);
-      blockers = removeEntry(blockers, "task_id", task.id);
-      lastCompleted = [{
-        task_id: task.id,
-        closed_at: now,
-        note: normalize(noteArg) || (
-          task.qa === "worker-self-report"
-            ? "worker-self-report signal emitted"
-            : "QA PASS"
-        ),
-      }];
-      break;
-    default:
-      break;
-  }
-
-  const summaryLines = [`- active dispatches: ${activeEntries.length}`];
-  if (activeEntries.length > 0) {
-    summaryLines.push(`- top priority: ${normalize(activeEntries[0].project)} / ${normalize(activeEntries[0].task_id)}`);
-  }
-  summaryLines.push("- resume rule: current-focus -> dispatch-log -> decisions -> thread-map 순으로 이어 읽기");
-
-  file.frontmatter.updated = now;
-  file.frontmatter.active_count = String(activeEntries.length);
-
-  writeFileSync(path, renderMarkdown(file.frontmatter, [
-    ["Summary", summaryLines.join("\n")],
-    ["Active Dispatches", renderNestedEntries(activeEntries, "task_id", [
-      "project",
-      "initiator",
-      "worker",
-      "qa",
-      "state",
-      "result",
-      "signal",
-      "thread_id",
-      "session_id",
-      "updated_at",
-      "summary",
-    ])],
-    ["Blockers", renderNestedEntries(blockers, "task_id", [
-      "blocker",
-      "updated_at",
-    ])],
-    ["Last Completed", renderNestedEntries(lastCompleted, "task_id", [
-      "closed_at",
-      "note",
-    ])],
-  ]), "utf8");
 }
 
 function writeDispatchLog({ vaultDir, task, event, blockerArg, noteArg, now, warnings }) {
@@ -387,74 +208,10 @@ function writeDispatchLog({ vaultDir, task, event, blockerArg, noteArg, now, war
   ]), "utf8");
 }
 
-function writeThreadMap({ vaultDir, task, event, now, warnings }) {
-  if (!task.thread_id) return;
-
-  const path = join(vaultDir, "thread-map.md");
-  const file = loadManagedFile(path, warnings);
-  if (!file) return;
-
-  let activeThreads = parseNestedEntries(file.sections["Active Threads"], "thread_id");
-  const ledger = parseLedgerLines(file.sections["Ledger"]);
-
-  const threadPatch = {
-    channel_id: task.channel_id || task.thread_id,
-    session_id: task.session_id,
-    latest_task_id: task.id,
-    worker: task.worker,
-    qa: task.qa,
-    latest_result: task.result,
-    latest_signal: task.signal,
-    updated_at: now,
-  };
-
-  const ledgerBase = {
-    thread_id: task.thread_id,
-    session_id: task.session_id,
-    task_id: task.id,
-    result: task.result,
-    signal: task.signal,
-  };
-
-  const statusByEvent = {
-    dispatched: "dispatched",
-    "worker-done": "awaiting-qa",
-    "qa-rejected": "qa-rejected",
-    failed: "failed",
-    "qa-passed": "closed",
-  };
-
-  const status = statusByEvent[event];
-  if (!status) return;
-
-  activeThreads = upsertEntry(activeThreads, "thread_id", task.thread_id, {
-    ...threadPatch,
-    status,
-  });
-  ledger.push(ledgerLine(now, { ...ledgerBase, status }));
-
-  file.frontmatter.updated = now;
-  writeFileSync(path, renderMarkdown(file.frontmatter, [
-    ["Active Threads", renderNestedEntries(activeThreads, "thread_id", [
-      "channel_id",
-      "session_id",
-      "latest_task_id",
-      "worker",
-      "qa",
-      "latest_result",
-      "latest_signal",
-      "status",
-      "updated_at",
-    ])],
-    ["Ledger", renderLedgerLines(ledger, "(비어 있음 — lifecycle hook + discord bridge 연결 전)")],
-  ]), "utf8");
-}
-
 export async function runVaultLifecycleHook({
   event,
   taskFile,
   vaultDir,
-  summary,
   blocker,
   note,
 } = {}) {
@@ -476,9 +233,7 @@ export async function runVaultLifecycleHook({
     const warnings = [];
     const now = new Date().toISOString();
 
-    writeCurrentFocus({ vaultDir: resolvedVaultDir, task, event, summaryArg: summary, blockerArg: blocker, noteArg: note, now, warnings });
     writeDispatchLog({ vaultDir: resolvedVaultDir, task, event, blockerArg: blocker, noteArg: note, now, warnings });
-    writeThreadMap({ vaultDir: resolvedVaultDir, task, event, now, warnings });
 
     try {
       const lintResult = lintVaultFiles({ vaultDir: resolvedVaultDir, mode: "fast" });

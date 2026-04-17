@@ -18,7 +18,7 @@ This keeps active task and result artifacts on disk across normal reboots and ma
 
 - Canonical dispatch lifecycle source: broker state via `kuma-studio dispatch-status --task-file <task-file>`
 - Broker persistence: repo-local `.kuma-studio/dispatch-broker.json`
-- Vault files such as `current-focus.md`, `dispatch-log.md`, and `thread-map.md` are derived recovery rails, not the primary source of truth
+- Vault files such as `dispatch-log.md` are derived recovery rails, not the primary source of truth
 
 ## Why This Changed
 
@@ -34,10 +34,9 @@ The new home-based layout keeps the important files in a stable private runtime 
 
 If dispatch looks inconsistent after restart:
 
-1. Read `~/.kuma/vault/current-focus.md`
-2. Read `~/.kuma/vault/dispatch-log.md`
-3. Re-check broker state with `kuma-studio dispatch-status --task-file <task-file>`
-4. Use `~/.kuma/dispatch/tasks/` and `~/.kuma/dispatch/results/` as the first artifact locations to inspect
+1. Read `~/.kuma/vault/dispatch-log.md`
+2. Re-check broker state with `kuma-studio dispatch-status --task-file <task-file>`
+3. Use `~/.kuma/dispatch/tasks/` and `~/.kuma/dispatch/results/` as the first artifact locations to inspect
 
 ## Legacy Note
 

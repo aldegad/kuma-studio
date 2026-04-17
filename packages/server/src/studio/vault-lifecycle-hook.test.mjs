@@ -9,33 +9,6 @@ import { parseFrontmatterDocument } from "./vault-ingest.mjs";
 
 async function writeVaultLifecycleStubFiles(vaultDir) {
   await writeFile(
-    join(vaultDir, "current-focus.md"),
-    `---
-title: Current Focus
-type: special/current-focus
-updated: 2026-04-09T09:00:23Z
-active_count: 0
-source_of_truth: kuma-task-lifecycle
-boot_priority: 1
----
-
-## Summary
-- active dispatches: 0
-- resume rule: current-focus -> dispatch-log -> decisions -> thread-map 순으로 이어 읽기
-
-## Active Dispatches
-(없음)
-
-## Blockers
-(없음)
-
-## Last Completed
-(없음)
-`,
-    "utf8",
-  );
-
-  await writeFile(
     join(vaultDir, "dispatch-log.md"),
     `---
 title: Dispatch Log
@@ -43,31 +16,11 @@ type: special/dispatch-log
 updated: 2026-04-09T09:00:23Z
 entry_format: append-only-ledger
 source_of_truth: kuma-task-lifecycle
-boot_priority: 2
+boot_priority: 1
 ---
 
 ## Entries
 (비어 있음 — lifecycle hook 연결 전)
-`,
-    "utf8",
-  );
-
-  await writeFile(
-    join(vaultDir, "thread-map.md"),
-    `---
-title: Thread Map
-type: special/thread-map
-updated: 2026-04-09T09:00:23Z
-entry_format: active-thread-ledger
-source_of_truth: kuma-task-lifecycle
-boot_priority: 4
----
-
-## Active Threads
-(없음)
-
-## Ledger
-(비어 있음 — lifecycle hook + discord bridge 연결 전)
 `,
     "utf8",
   );
@@ -80,7 +33,7 @@ type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
 source_of_truth: user-direct
-boot_priority: 3
+boot_priority: 2
 ---
 
 ## Open Decisions
@@ -153,7 +106,7 @@ describe("runVaultLifecycleHook", { timeout: 20000 }, () => {
     expect(parseTaskFileMetadata(noFrontmatter)).toBeNull();
   });
 
-  it("records dispatched -> worker-done -> qa-passed transitions in vault special files", async () => {
+  it("appends dispatched -> worker-done -> qa-passed entries to dispatch-log.md", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-hook-"));
     tempRoots.push(root);
 
@@ -163,36 +116,23 @@ describe("runVaultLifecycleHook", { timeout: 20000 }, () => {
     await writeVaultLifecycleStubFiles(vaultDir);
     await createTaskFile(taskPath);
 
-    await runVaultLifecycleHook({
-      event: "dispatched",
-      taskFile: taskPath,
-      vaultDir,
-      summary: "Implement lifecycle hook",
-    });
+    await runVaultLifecycleHook({ event: "dispatched", taskFile: taskPath, vaultDir });
     await runVaultLifecycleHook({ event: "worker-done", taskFile: taskPath, vaultDir });
     await runVaultLifecycleHook({ event: "qa-passed", taskFile: taskPath, vaultDir });
 
-    const currentFocus = await readFile(join(vaultDir, "current-focus.md"), "utf8");
     const dispatchLog = await readFile(join(vaultDir, "dispatch-log.md"), "utf8");
-    const threadMap = await readFile(join(vaultDir, "thread-map.md"), "utf8");
 
-    expect(currentFocus).toContain("active_count: 0");
-    expect(currentFocus).toContain("task_id: tookdaki-20260409-180729");
-    expect(currentFocus).toContain("worker-self-report signal emitted");
+    expect(dispatchLog).toContain("task_id=tookdaki-20260409-180729");
     expect(dispatchLog).toContain("state=dispatched");
     expect(dispatchLog).toContain("state=worker-done");
     expect(dispatchLog).toContain("state=awaiting-qa");
     expect(dispatchLog).toContain("state=qa-passed");
     expect(dispatchLog).toContain("state=signal-emitted");
-    expect(threadMap).toContain("thread_id: discord:thread-123");
-    expect(threadMap).toContain("status: closed");
 
-    expect(parseFrontmatterDocument(currentFocus).frontmatter.type).toBe("special/current-focus");
     expect(parseFrontmatterDocument(dispatchLog).frontmatter.type).toBe("special/dispatch-log");
-    expect(parseFrontmatterDocument(threadMap).frontmatter.type).toBe("special/thread-map");
   });
 
-  it("records qa-rejected state with blocker when given a QA reject reason", async () => {
+  it("records qa-rejected entry with the blocker note", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-hook-"));
     tempRoots.push(root);
 
@@ -210,17 +150,12 @@ describe("runVaultLifecycleHook", { timeout: 20000 }, () => {
       blocker: "missing regression",
     });
 
-    const currentFocus = await readFile(join(vaultDir, "current-focus.md"), "utf8");
     const dispatchLog = await readFile(join(vaultDir, "dispatch-log.md"), "utf8");
-    const threadMap = await readFile(join(vaultDir, "thread-map.md"), "utf8");
-
-    expect(currentFocus).toContain("state: qa-rejected");
-    expect(currentFocus).toContain("blocker: missing regression");
     expect(dispatchLog).toContain("state=qa-rejected");
-    expect(threadMap).toContain("status: qa-rejected");
+    expect(dispatchLog).toContain("note=missing regression");
   });
 
-  it("records failed state with blocker when the worker is declared down", async () => {
+  it("records failed entry with the blocker note when the worker is declared down", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-hook-"));
     tempRoots.push(root);
 
@@ -238,14 +173,9 @@ describe("runVaultLifecycleHook", { timeout: 20000 }, () => {
       blocker: "worker down",
     });
 
-    const currentFocus = await readFile(join(vaultDir, "current-focus.md"), "utf8");
     const dispatchLog = await readFile(join(vaultDir, "dispatch-log.md"), "utf8");
-    const threadMap = await readFile(join(vaultDir, "thread-map.md"), "utf8");
-
-    expect(currentFocus).toContain("state: failed");
-    expect(currentFocus).toContain("worker down");
     expect(dispatchLog).toContain("state=failed");
-    expect(threadMap).toContain("status: failed");
+    expect(dispatchLog).toContain("note=worker down");
   });
 
   it("returns fast-lint warnings when a managed vault file has an invalid field", async () => {
@@ -283,13 +213,12 @@ boot_priority: not-a-number
       event: "dispatched",
       taskFile: taskPath,
       vaultDir,
-      summary: "Lint integration",
     });
 
     expect(warnings.some((warning) => warning.message.includes("fast lint failed for decisions.md"))).toBe(true);
 
-    const currentFocus = await readFile(join(vaultDir, "current-focus.md"), "utf8");
-    expect(currentFocus).toContain("task_id: tookdaki-20260409-190014");
+    const dispatchLog = await readFile(join(vaultDir, "dispatch-log.md"), "utf8");
+    expect(dispatchLog).toContain("task_id=tookdaki-20260409-190014");
   });
 
   it("short-circuits when KUMA_DISABLE_VAULT_HOOK=1 is set", async () => {
@@ -309,7 +238,6 @@ boot_priority: not-a-number
         event: "dispatched",
         taskFile: taskPath,
         vaultDir,
-        summary: "Disabled integration",
       });
       expect(result).toEqual({ warnings: [] });
     } finally {
@@ -320,9 +248,8 @@ boot_priority: not-a-number
       }
     }
 
-    const currentFocus = await readFile(join(vaultDir, "current-focus.md"), "utf8");
-    expect(currentFocus).toContain("active_count: 0");
-    expect(currentFocus).not.toContain("tookdaki-20260409-190014");
+    const dispatchLog = await readFile(join(vaultDir, "dispatch-log.md"), "utf8");
+    expect(dispatchLog).not.toContain("tookdaki-20260409-190014");
   });
 
   it("ignores unknown events without writing vault files", async () => {
@@ -342,8 +269,7 @@ boot_priority: not-a-number
     });
 
     expect(result).toEqual({ warnings: [] });
-    const currentFocus = await readFile(join(vaultDir, "current-focus.md"), "utf8");
-    expect(currentFocus).toContain("active_count: 0");
-    expect(currentFocus).not.toContain("tookdaki-20260409-180729");
+    const dispatchLog = await readFile(join(vaultDir, "dispatch-log.md"), "utf8");
+    expect(dispatchLog).not.toContain("tookdaki-20260409-180729");
   });
 });

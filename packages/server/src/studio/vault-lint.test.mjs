@@ -23,61 +23,17 @@ description: Wiki 페이지 작성 규칙과 운영 원칙
 
 # Kuma Wiki Schema
 
-## Special Files (4종)
+## Special Files
 
-### 1) \`current-focus.md\`
-
-- **Primary writer:** \`kuma-task lifecycle hook\`
-- **Frontmatter type 표준:** \`type: special/current-focus\`
-
-### 2) \`dispatch-log.md\`
+### 1) \`dispatch-log.md\`
 
 - **Primary writer:** \`kuma-task lifecycle hook\`
 - **Frontmatter type 표준:** \`type: special/dispatch-log\`
 
-### 3) \`decisions.md\`
+### 2) \`decisions.md\`
 
 - **Primary writer:** \`user-direct\`
 - **Frontmatter type 표준:** \`type: special/decisions\`
-
-### 4) \`thread-map.md\`
-
-- **Primary writer:** \`kuma-task lifecycle hook\`
-- **Frontmatter type 표준:** \`type: special/thread-map\`
-`,
-    "utf8",
-  );
-
-  await writeFile(
-    join(vaultDir, "current-focus.md"),
-    `---
-title: Current Focus
-type: special/current-focus
-updated: 2026-04-09T09:00:23Z
-active_count: 1
-source_of_truth: kuma-task-lifecycle
-boot_priority: 1
----
-
-## Summary
-- active dispatches: 1
-- resume rule: current-focus -> dispatch-log -> decisions -> thread-map 순으로 이어 읽기
-
-## Active Dispatches
-- task_id: darami-20260409-190014
-  - project: kuma-studio
-  - worker: surface:5
-  - qa: worker-self-report
-  - state: dispatched
-  - result: ~/.kuma/dispatch/results/kuma-studio-darami-20260409-190014.result.md
-  - signal: kuma-studio-darami-20260409-190014-done
-  - updated_at: 2026-04-09T09:00:23Z
-
-## Blockers
-(없음)
-
-## Last Completed
-(없음)
 `,
     "utf8",
   );
@@ -90,7 +46,7 @@ type: special/dispatch-log
 updated: 2026-04-09T09:00:23Z
 entry_format: append-only-ledger
 source_of_truth: kuma-task-lifecycle
-boot_priority: 2
+boot_priority: 1
 ---
 
 ## Entries
@@ -107,7 +63,7 @@ type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
 source_of_truth: user-direct
-boot_priority: 3
+boot_priority: 2
 ---
 
 ## Open Decisions
@@ -115,34 +71,6 @@ boot_priority: 3
 
 ## Ledger
 (비어 있음 — 유저 명시 발화만 기록)
-`,
-    "utf8",
-  );
-
-  await writeFile(
-    join(vaultDir, "thread-map.md"),
-    `---
-title: Thread Map
-type: special/thread-map
-updated: 2026-04-09T09:00:23Z
-entry_format: active-thread-ledger
-source_of_truth: kuma-task-lifecycle
-boot_priority: 4
----
-
-## Active Threads
-- thread_id: discord:1488473532181643345
-  - channel_id: discord:1488473532181643345
-  - latest_task_id: darami-20260409-190014
-  - worker: surface:5
-  - qa: worker-self-report
-  - latest_result: ~/.kuma/dispatch/results/kuma-studio-darami-20260409-190014.result.md
-  - latest_signal: kuma-studio-darami-20260409-190014-done
-  - status: dispatched
-  - updated_at: 2026-04-09T09:00:23Z
-
-## Ledger
-- 2026-04-09T09:00:23Z | thread_id=discord:1488473532181643345 | task_id=darami-20260409-190014 | signal=kuma-studio-darami-20260409-190014-done | status=dispatched
 `,
     "utf8",
   );
@@ -155,7 +83,7 @@ describe("vault lint", () => {
     await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  it("passes fast lint across all four special files within the smoke budget", async () => {
+  it("passes fast lint across all special files within the smoke budget", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
     tempRoots.push(root);
 
@@ -166,7 +94,7 @@ describe("vault lint", () => {
 
     expect(result.ok).toBe(true);
     expect(result.issueCount).toBe(0);
-    expect(result.fileCount).toBe(4);
+    expect(result.fileCount).toBe(2);
     expect(result.durationMs).toBeLessThan(100);
   });
 
@@ -305,7 +233,7 @@ type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
 source_of_truth: user-direct
-boot_priority: 3
+boot_priority: 2
 ---
 
 ## Open Decisions
@@ -332,6 +260,6 @@ boot_priority: 3
 
     const payload = JSON.parse(stdout);
     expect(payload.ok).toBe(true);
-    expect(payload.fileCount).toBe(4);
+    expect(payload.fileCount).toBe(2);
   });
 });

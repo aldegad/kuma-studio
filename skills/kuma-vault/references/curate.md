@@ -72,7 +72,7 @@
 | orphan raw | raw 파일이 어떤 canonical page 에도 연결되지 않음 | archive 정상인지 / 승격 필요인지 분류 |
 | duplicate page | 같은 지식이 여러 page 에 중복됨 | canonical 하나로 merge 후 나머지는 relink |
 | stale index | `index.md` 설명/경로/교차참조가 실제와 다름 | regenerate 또는 수동 보수 |
-| special file drift | `current-focus.md` / `dispatch-log.md` / `decisions.md` / `thread-map.md` 의 `type: special/*` frontmatter 또는 필수 section 누락 | `~/.kuma/vault/schema.md` 기준으로 보수 |
+| special file drift | `dispatch-log.md` / `decisions.md` 의 `type: special/*` frontmatter 또는 필수 section 누락 | `~/.kuma/vault/schema.md` 기준으로 보수 |
 | duplicate slot | 같은 knowledge category 가 여러 경로에 흩어짐 | schema.md 의 canonical 슬롯 기준으로 통합, 나머지는 relink 또는 archive. 예: 운영 규칙은 root `operational-rules/` 가 canonical (2026-04-16 확정) |
 | mixed page | project 지식과 domain 지식이 한 page 에 과도하게 섞임 | canonical 유지 + 재사용 가능한 부분만 분리 |
 
@@ -147,7 +147,7 @@
 
 ```
 ~/.kuma/vault/
-├── index.md / log.md / schema.md / current-focus.md / decisions.md / dispatch-log.md / thread-map.md
+├── index.md / log.md / schema.md / decisions.md / dispatch-log.md
 ├── domains/              도메인 지식
 ├── projects/             프로젝트별 지식
 ├── learnings/            디버깅 패턴, 인사이트
