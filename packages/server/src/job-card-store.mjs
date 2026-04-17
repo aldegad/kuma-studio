@@ -2,7 +2,7 @@ import { dirname, resolve } from "node:path";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 import { sanitizeSessionId } from "./dev-selection-normalize.mjs";
-import { resolveProjectStateDir } from "./state-home.mjs";
+import { resolveKumaPickerStateDir } from "./state-home.mjs";
 
 const MAX_JOB_CARDS = 5;
 const ALLOWED_STATUSES = new Set(["noted", "in_progress", "completed"]);
@@ -164,11 +164,38 @@ function normalizeCard(card, fallback = {}) {
   const target = normalizeTarget(candidate.target) ?? normalizeTarget(fallback.target);
   const anchor = normalizeAnchor(candidate.anchor) ?? normalizeAnchor(fallback.anchor);
   const position = normalizePosition(candidate.position) ?? normalizePosition(fallback.position);
+  const projectId =
+    typeof candidate.projectId === "string" && candidate.projectId.trim()
+      ? candidate.projectId.trim()
+      : typeof fallback.projectId === "string" && fallback.projectId.trim()
+        ? fallback.projectId.trim()
+        : null;
+  const projectRoot =
+    typeof candidate.projectRoot === "string" && candidate.projectRoot.trim()
+      ? candidate.projectRoot.trim()
+      : typeof fallback.projectRoot === "string" && fallback.projectRoot.trim()
+        ? fallback.projectRoot.trim()
+        : null;
+  const taskId =
+    typeof candidate.taskId === "string" && candidate.taskId.trim()
+      ? candidate.taskId.trim()
+      : typeof fallback.taskId === "string" && fallback.taskId.trim()
+        ? fallback.taskId.trim()
+        : null;
+  const tags = Array.isArray(candidate.tags)
+    ? candidate.tags.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean).slice(0, 32)
+    : Array.isArray(fallback.tags)
+      ? fallback.tags.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean).slice(0, 32)
+      : [];
 
   return {
     id,
     sessionId,
     selectionId,
+    projectId,
+    projectRoot,
+    taskId,
+    tags,
     status,
     message,
     requestMessage,
@@ -194,6 +221,10 @@ export function buildJobCardFromSelection(selection, overrides = {}) {
       id: typeof job.id === "string" && job.id.trim() ? job.id.trim() : sessionId,
       sessionId,
       selectionId: typeof job.id === "string" && job.id.trim() ? job.id.trim() : sessionId,
+      projectId: overrides.projectId ?? selection?.projectId ?? null,
+      projectRoot: overrides.projectRoot ?? selection?.projectRoot ?? null,
+      taskId: overrides.taskId ?? selection?.taskId ?? null,
+      tags: overrides.tags ?? selection?.tags ?? [],
       status: overrides.status ?? job.status ?? "noted",
       requestMessage: overrides.requestMessage ?? job.message ?? "",
       resultMessage: overrides.resultMessage ?? "",
@@ -226,7 +257,7 @@ export function buildJobCardFromSelection(selection, overrides = {}) {
 export class JobCardStore {
   constructor(root) {
     this.root = resolve(root);
-    this.stateDir = resolveProjectStateDir(this.root);
+    this.stateDir = resolveKumaPickerStateDir();
     this.feedPath = resolve(this.stateDir, "job-cards.json");
   }
 
@@ -304,7 +335,10 @@ export class JobCardStore {
       (fallback.sessionId ? feed.cards.find((card) => card.sessionId === fallback.sessionId) : null) ??
       (fallback.id ? feed.cards.find((card) => card.id === fallback.id) : null) ??
       null;
-    const nextCard = normalizeCard(cardInput, fallbackCard ?? fallback);
+    const nextCard = normalizeCard(cardInput, {
+      projectRoot: this.root,
+      ...(fallbackCard ?? fallback),
+    });
 
     const nextCards = [...feed.cards.filter((card) => card.id !== nextCard.id && card.sessionId !== nextCard.sessionId), nextCard]
       .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))

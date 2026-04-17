@@ -266,6 +266,27 @@ function normalizeSession(session, defaults = {}) {
   };
 }
 
+function normalizeOptionalString(value, maxLength = 2000) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : null;
+}
+
+function normalizeTags(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry) => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .slice(0, 32);
+}
+
 export function normalizeDevSelection(record, sessionDefaults = {}) {
   const candidate = record && typeof record === "object" ? record : {};
   const page = candidate.page && typeof candidate.page === "object" ? candidate.page : {};
@@ -280,6 +301,14 @@ export function normalizeDevSelection(record, sessionDefaults = {}) {
       typeof candidate.capturedAt === "string" && candidate.capturedAt.trim()
         ? candidate.capturedAt
         : new Date().toISOString(),
+    projectId:
+      normalizeOptionalString(candidate.projectId, 240) ??
+      normalizeOptionalString(sessionDefaults.projectId, 240),
+    projectRoot: normalizeOptionalString(candidate.projectRoot) ?? normalizeOptionalString(sessionDefaults.projectRoot),
+    taskId:
+      normalizeOptionalString(candidate.taskId, 240) ??
+      normalizeOptionalString(sessionDefaults.taskId, 240),
+    tags: Array.isArray(candidate.tags) ? normalizeTags(candidate.tags) : normalizeTags(sessionDefaults.tags),
     page: {
       url: typeof page.url === "string" ? page.url : "",
       pathname: typeof page.pathname === "string" ? page.pathname : "",

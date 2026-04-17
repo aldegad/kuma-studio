@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
@@ -26,7 +26,6 @@ import { formatVaultLintReport, lintVaultFiles } from "./studio/vault-lint.mjs";
 import { resolveVaultDir } from "./studio/memo-store.mjs";
 import { formatVaultGetText, formatVaultSearchText, getVaultDocuments, searchVault } from "./studio/vault-search.mjs";
 import { resolveAgentIdByDescriptor } from "./team-metadata.mjs";
-import { computeProjectHash, resolveKumaPickerStateDir, resolveProjectStateDir } from "./state-home.mjs";
 import { DEFAULT_DISPATCH_TASK_DIR, DEFAULT_VAULT_INGEST_STAMP_DIR } from "./kuma-paths.mjs";
 
 const DEFAULT_DAEMON_URL = `http://127.0.0.1:${DEFAULT_PORT}`;
@@ -68,8 +67,6 @@ Usage:
   kuma-studio vault-lint [current-focus.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files current-focus.md,dispatch-log.md] [--json]
   kuma-studio vault-search --query "task id" [--mode search|timeline] [--limit 20] [--vault-dir ~/.kuma/vault] [--format text|json]
   kuma-studio vault-get <id|path ...> [--vault-dir ~/.kuma/vault] [--format text|json]
-  kuma-studio project-info [--root .]            # show current project hash and state dir
-  kuma-studio list-projects                      # list all known project state directories
   kuma-studio dashboard                          # open http://localhost:${DEFAULT_PORT}/studio
 `);
 }
@@ -610,56 +607,6 @@ function commandRemoveNode(options) {
   const root = typeof options.root === "string" ? options.root : ".";
   const store = new SceneStore(root);
   process.stdout.write(`${JSON.stringify(store.removeNode(requireString(options, "id")), null, 2)}\n`);
-}
-
-function commandProjectInfo(options) {
-  const root = typeof options.root === "string" ? resolve(options.root) : resolve(".");
-  const hash = computeProjectHash(root);
-  const stateDir = resolveProjectStateDir(root);
-  const scenePath = resolve(stateDir, "scene.json");
-  const hasScene = existsSync(scenePath);
-
-  process.stdout.write(
-    JSON.stringify(
-      {
-        projectRoot: root,
-        projectHash: hash,
-        stateDir,
-        hasScene,
-      },
-      null,
-      2,
-    ) + "\n",
-  );
-}
-
-function commandListProjects() {
-  const stateHome = resolveKumaPickerStateDir();
-  const projectsDir = resolve(stateHome, "projects");
-  const results = [];
-
-  if (existsSync(projectsDir)) {
-    for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const dir = resolve(projectsDir, entry.name);
-      const metaPath = resolve(dir, "project.json");
-      const scenePath = resolve(dir, "scene.json");
-      let meta = null;
-      try {
-        meta = JSON.parse(readFileSync(metaPath, "utf8"));
-      } catch {
-        // No project metadata yet.
-      }
-      results.push({
-        hash: entry.name,
-        stateDir: dir,
-        hasScene: existsSync(scenePath),
-        projectRoot: meta?.projectRoot ?? null,
-      });
-    }
-  }
-
-  process.stdout.write(JSON.stringify(results, null, 2) + "\n");
 }
 
 function resolveVaultIngestMode(options) {
@@ -1266,12 +1213,6 @@ export async function main(argv = process.argv.slice(2)) {
       return;
     case "vault-get":
       await commandVaultGet(options);
-      return;
-    case "project-info":
-      commandProjectInfo(options);
-      return;
-    case "list-projects":
-      commandListProjects();
       return;
     default:
       printUsage();

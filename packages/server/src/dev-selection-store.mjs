@@ -8,12 +8,12 @@ import {
   sanitizeAssetFileName,
   sanitizeSessionId,
 } from "./dev-selection-normalize.mjs";
-import { resolveProjectStateDir } from "./state-home.mjs";
+import { resolveKumaPickerStateDir } from "./state-home.mjs";
 
 export class DevSelectionStore {
   constructor(root) {
     this.root = resolve(root);
-    this.stateDir = resolveProjectStateDir(this.root);
+    this.stateDir = resolveKumaPickerStateDir();
     this.selectionPath = resolve(this.stateDir, "dev-selection.json");
     this.selectionDir = resolve(this.stateDir, "dev-selections");
     this.collectionPath = resolve(this.stateDir, "dev-selections.json");
@@ -65,6 +65,7 @@ export class DevSelectionStore {
     try {
       return normalizeDevSelection(JSON.parse(readFileSync(this.getSessionPath(normalizedId), "utf8")), {
         id: normalizedId,
+        projectRoot: this.root,
       });
     } catch {
       return null;
@@ -73,7 +74,9 @@ export class DevSelectionStore {
 
   read() {
     try {
-      return normalizeDevSelection(JSON.parse(readFileSync(this.selectionPath, "utf8")));
+      return normalizeDevSelection(JSON.parse(readFileSync(this.selectionPath, "utf8")), {
+        projectRoot: this.root,
+      });
     } catch {
       return null;
     }
@@ -204,6 +207,7 @@ export class DevSelectionStore {
       index: current.session.index,
       label: current.session.label,
       updatedAt: current.session.updatedAt,
+      projectRoot: current.projectRoot ?? this.root,
     });
 
     writeFileSync(this.getSessionPath(normalizedId), `${JSON.stringify(normalized, null, 2)}\n`, "utf8");
@@ -290,6 +294,7 @@ export class DevSelectionStore {
       id: record?.session?.id,
       index: nextIndex,
       label: existingSession?.label ?? `Session ${nextIndex}`,
+      projectRoot: record?.projectRoot ?? this.root,
     });
     const persisted = this.persistSnapshots(normalized, record);
     persisted.session.updatedAt = persisted.capturedAt;
