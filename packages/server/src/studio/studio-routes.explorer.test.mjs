@@ -129,6 +129,41 @@ describe("studio-routes explorer endpoints", () => {
     assert.deepStrictEqual(deleteRes.json, { success: true });
   });
 
+  it("deletes directories recursively through /studio/fs/delete", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    await mkdir(staticDir, { recursive: true });
+    const folder = join(repoRoot, "tree", "nested");
+    await mkdir(folder, { recursive: true });
+    await writeFile(join(folder, "leaf.md"), "leaf\n", "utf8");
+
+    const broadcasts = [];
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      workspaceRoot: repoRoot,
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
+        },
+      },
+    });
+
+    const deleteRes = createResponse();
+    await handler(createRequest("DELETE", "/studio/fs/delete", { path: join(repoRoot, "tree") }), deleteRes);
+    assert.strictEqual(deleteRes.statusCode, 200);
+    assert.deepStrictEqual(deleteRes.json, { success: true });
+
+    const { existsSync } = await import("node:fs");
+    assert.strictEqual(existsSync(join(repoRoot, "tree")), false);
+    assert.strictEqual(broadcasts.length, 1);
+    assert.strictEqual(broadcasts[0].changes[0].eventType, "delete");
+  });
+
   it("broadcasts filesystem-change events for explorer write/delete mutations", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
     tempDirs.push(root);

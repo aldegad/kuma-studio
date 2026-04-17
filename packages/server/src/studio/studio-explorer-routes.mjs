@@ -1,5 +1,5 @@
 import fs, { existsSync } from "node:fs";
-import { readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 
@@ -529,16 +529,19 @@ export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, s
 
       try {
         const metadata = await stat(resolved);
-        if (!metadata.isFile()) {
-          sendJson(res, 400, { error: "Not a file. Only file deletion is supported." });
+        if (metadata.isDirectory()) {
+          await rm(resolved, { recursive: true, force: false });
+        } else if (metadata.isFile()) {
+          await unlink(resolved);
+        } else {
+          sendJson(res, 400, { error: "Unsupported path type." });
           return true;
         }
-        await unlink(resolved);
         broadcastFilesystemChange(resolved, "delete", "route");
         sendJson(res, 200, { success: true });
       } catch (error) {
         sendJson(res, 500, {
-          error: "Failed to delete file.",
+          error: "Failed to delete path.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }

@@ -592,9 +592,13 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     const data = await r.json();
     if (!data.success) throw new Error(data.error || "Delete failed");
 
-    // If deleted file is currently viewed, close viewer
-    if (viewerFile && "path" in viewerFile && viewerFile.path === path) {
-      setViewerFile(null);
+    // If the deleted path is the viewed file, or the viewed file sat inside
+    // a deleted folder, close the viewer.
+    if (viewerFile && "path" in viewerFile) {
+      const viewed = viewerFile.path;
+      if (viewed === path || viewed.startsWith(`${path}/`)) {
+        setViewerFile(null);
+      }
     }
 
     await reloadRootTree();

@@ -404,13 +404,13 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
           )}
         </button>
 
-        {/* Delete button — hover only, files only */}
-        {onDelete && !isDir && !confirmDelete && !loading && (
+        {/* Delete button — hover only */}
+        {onDelete && !confirmDelete && !loading && (
           <button
             type="button"
             onClick={handleDeleteClick}
             className="explorer-trash-button group/del absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-            title={`${node.name} 삭제`}
+            title={isDir ? `${node.name} 폴더 삭제 (하위 전부)` : `${node.name} 삭제`}
             data-panel-no-drag="true"
           >
             <TrashIcon />
@@ -429,7 +429,7 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
               </svg>
             ) : (
               <>
-                <span className="text-[10px] text-red-600 font-medium whitespace-nowrap">삭제?</span>
+                <span className="text-[10px] text-red-600 font-medium whitespace-nowrap">{isDir ? "폴더 삭제?" : "삭제?"}</span>
                 <button
                   type="button"
                   onClick={handleConfirmDelete}
