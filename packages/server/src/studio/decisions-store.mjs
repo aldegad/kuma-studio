@@ -226,7 +226,7 @@ function parseDecisionEntries(sectionText) {
         id: trimString(fields.id),
         action: trimString(fields.action || action),
         scope: trimString(fields.scope || scope),
-        writer: trimString(fields.writer),
+        writer: trimString(fields.writer) || "user-direct",
         resolved_text: unquoteText(fields.resolved_text),
         context_ref: normalizeString(fields.context_ref),
       };
@@ -261,8 +261,6 @@ function formatDecisionEntries(entries) {
         "",
         `- id: ${entry.id}`,
         `- action: ${entry.action}`,
-        `- scope: ${entry.scope}`,
-        `- writer: ${entry.writer}`,
         `- resolved_text: ${quoteText(entry.resolved_text)}`,
       ];
 
