@@ -257,8 +257,7 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "bamdori",
-          "qaFallback": "saemi",
+          "defaultQa": "self",
           "image": "/characters/ttukddak.jpg",
           "animalKo": "비버",
           "animalEn": "beaver"
@@ -290,8 +289,7 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "bamdori",
-          "qaFallback": "saemi",
+          "defaultQa": "self",
           "image": "/characters/darami.jpg",
           "animalKo": "다람쥐",
           "animalEn": "squirrel"
@@ -358,8 +356,7 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "bamdori",
-          "qaFallback": "saemi",
+          "defaultQa": "self",
           "image": "/characters/koon.jpg",
           "animalKo": "너구리",
           "animalEn": "raccoon"
@@ -511,7 +508,7 @@
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
-          "defaultQa": "buri",
+          "defaultQa": "self",
           "image": "/characters/lumi.jpg",
           "animalKo": "여우",
           "animalEn": "fox"
@@ -548,7 +545,7 @@
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
-          "defaultQa": "buri",
+          "defaultQa": "self",
           "image": "/characters/mungchi.jpg",
           "animalKo": "햄스터",
           "animalEn": "hamster"
@@ -585,7 +582,7 @@
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
-          "defaultQa": "buri",
+          "defaultQa": "self",
           "image": "/characters/shuksshuki.jpg",
           "imagePath": "packages/studio-web/public/characters/shuksshuki.jpg",
           "animalKo": "날다람쥐",
