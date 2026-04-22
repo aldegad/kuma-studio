@@ -63,7 +63,7 @@ Usage:
   kuma-studio move-node --id node-01 --x 120 --y 80 [--root .]
   kuma-studio remove-node --id node-01 [--root .]
   kuma-studio vault-ingest [result-file|raw/<name>|https://url|inline text] [--full-auto|--bypass] [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] --qa-status passed [--section projects|domains|learnings] [--slug custom-slug] [--page projects/kuma-studio.md] [--title "Custom Title"] [--project kuma-studio] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault] [--dry-run]
-  kuma-studio vault-ingest result <task-id> [--full-auto|--bypass] [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] [--qa-status passed] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault]
+  kuma-studio vault-ingest result <task-id> [--signal task-done] [--stamp-dir ${DEFAULT_VAULT_INGEST_STAMP_DIR}] [--qa-status passed] [--page projects/kuma-studio.md|--section learnings] [--task-dir ${DEFAULT_DISPATCH_TASK_DIR}] [--vault-dir ~/.kuma/vault]
   kuma-studio vault-ingest [--full-auto|--bypass]                         # ingest ~/.kuma/vault/inbox/* text files
   kuma-studio vault-lint [dispatch-log.md ...] [--mode fast|full] [--vault-dir ~/.kuma/vault] [--schema-path ~/.kuma/vault/schema.md] [--files dispatch-log.md,decisions.md] [--json]
   kuma-studio vault-search --query "task id" [--mode search|timeline] [--limit 20] [--vault-dir ~/.kuma/vault] [--format text|json]
@@ -710,7 +710,7 @@ function collectVaultIngestLintFiles(response, files = new Set()) {
 
   if (
     typeof response.action === "string" &&
-    ["CREATE", "INGEST", "UPDATE", "INGEST_BATCH"].includes(response.action)
+    ["CREATE", "INGEST", "UPDATE", "INGEST_BATCH", "ARCHIVE"].includes(response.action)
   ) {
     files.add("index.md");
     files.add("log.md");
@@ -852,30 +852,6 @@ async function commandVaultIngest(options, args = []) {
       taskDir,
       vaultDir: activeVaultDir,
     });
-    const resolved = needsInteractivePreview
-      ? await (async () => {
-        const preview = await ingestResultFile({
-          resultPath,
-          vaultDir: activeVaultDir,
-          taskDir,
-          qaStatus,
-          section,
-          slug,
-          page,
-          title,
-          dryRun: true,
-        });
-        const next = await maybeResolvePromptOverride(preview, taskId);
-        if (next.skip === true) {
-          process.stdout.write(`${JSON.stringify({ action: "SKIP", source: taskId, routing: preview.routing }, null, 2)}\n`);
-          return null;
-        }
-        return next;
-      })()
-      : { section, slug, page, title, project };
-    if (!resolved) {
-      return;
-    }
     if (useGuardedResultIngest) {
       response = await ingestResultFileWithGuards({
         resultPath,
@@ -883,10 +859,10 @@ async function commandVaultIngest(options, args = []) {
         stampDir,
         vaultDir: activeVaultDir,
         taskDir,
-        section: resolved.section,
-        slug: resolved.slug,
-        page: resolved.page,
-        title: resolved.title,
+        section,
+        slug,
+        page,
+        title,
         dryRun,
       });
     } else {
@@ -895,10 +871,10 @@ async function commandVaultIngest(options, args = []) {
         vaultDir: activeVaultDir,
         taskDir,
         qaStatus,
-        section: resolved.section,
-        slug: resolved.slug,
-        page: resolved.page,
-        title: resolved.title,
+        section,
+        slug,
+        page,
+        title,
         dryRun,
       });
     }
@@ -952,30 +928,6 @@ async function commandVaultIngest(options, args = []) {
       primaryArg.endsWith(".result.md") ||
       Boolean(readOptionalString(options, "result-file"));
     if (looksLikeResultFile) {
-      const resolved = needsInteractivePreview
-        ? await (async () => {
-          const preview = await ingestResultFile({
-            resultPath: primaryArg,
-            vaultDir: activeVaultDir,
-            taskDir,
-            qaStatus,
-            section,
-            slug,
-            page,
-            title,
-            dryRun: true,
-          });
-          const next = await maybeResolvePromptOverride(preview, primaryArg);
-          if (next.skip === true) {
-            process.stdout.write(`${JSON.stringify({ action: "SKIP", source: primaryArg, routing: preview.routing }, null, 2)}\n`);
-            return null;
-          }
-          return next;
-        })()
-        : { section, slug, page, title, project };
-      if (!resolved) {
-        return;
-      }
       if (useGuardedResultIngest) {
         response = await ingestResultFileWithGuards({
           resultPath: primaryArg,
@@ -983,10 +935,10 @@ async function commandVaultIngest(options, args = []) {
           stampDir,
           vaultDir: activeVaultDir,
           taskDir,
-          section: resolved.section,
-          slug: resolved.slug,
-          page: resolved.page,
-          title: resolved.title,
+          section,
+          slug,
+          page,
+          title,
           dryRun,
         });
       } else {
@@ -995,10 +947,10 @@ async function commandVaultIngest(options, args = []) {
           vaultDir: activeVaultDir,
           taskDir,
           qaStatus,
-          section: resolved.section,
-          slug: resolved.slug,
-          page: resolved.page,
-          title: resolved.title,
+          section,
+          slug,
+          page,
+          title,
           dryRun,
         });
       }

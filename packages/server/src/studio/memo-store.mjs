@@ -13,16 +13,16 @@ const VAULT_SPECIAL_FILE_NAMES = new Set([
   "dispatch-log.md",
   "decisions.md",
 ]);
-const VAULT_ENTRY_SKIP_DIRS = new Set(["images", "inbox"]);
+const VAULT_ENTRY_SKIP_DIRS = new Set(["images", "inbox", "results"]);
 const INBOX_ALLOWED_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
 
 const VAULT_SCAFFOLD_FILES = {
-  "index.md": "# Kuma Vault\n\n- domains/\n- projects/\n- learnings/\n- inbox/\n",
+  "index.md": "# Kuma Vault\n\n- domains/\n- projects/\n- learnings/\n- results/\n- inbox/\n",
   "schema.md": "# Vault Schema\n\n- title\n- created\n- tags(optional)\n- body\n",
   "log.md": "# Vault Log\n\n- 2026-04-07 vault scaffold initialized\n",
 };
 
-const VAULT_SCAFFOLD_DIRS = ["domains", "projects", "learnings", "inbox"];
+const VAULT_SCAFFOLD_DIRS = ["domains", "projects", "learnings", "results", "inbox"];
 
 const SEED_MEMOS = [
   {

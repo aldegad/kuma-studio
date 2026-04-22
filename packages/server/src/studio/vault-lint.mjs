@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
@@ -44,6 +44,7 @@ const SECTION_HEADING_PATTERN = /^##\s+/u;
 const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\(([^)]+)\)/gu;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const ARRAY_LITERAL_PATTERN = /^\[.*\]$/su;
+const RESULT_SOURCE_PATTERN = /(?:^|\/)results\/[^/]+\.result\.md$|\.result\.md$/u;
 
 function normalize(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -122,6 +123,36 @@ function parseLedgerLines(sectionText) {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.startsWith("- "));
+}
+
+function parseInlineArray(rawValue) {
+  const value = String(rawValue ?? "").trim();
+  if (!ARRAY_LITERAL_PATTERN.test(value)) {
+    return [];
+  }
+
+  const inner = value.slice(1, -1).trim();
+  if (!inner) {
+    return [];
+  }
+
+  return inner
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => {
+      if (
+        (item.startsWith('"') && item.endsWith('"')) ||
+        (item.startsWith("'") && item.endsWith("'"))
+      ) {
+        return item.slice(1, -1);
+      }
+      return item;
+    });
+}
+
+function isProjectSummaryPage(fileName) {
+  return fileName.startsWith("projects/") && !fileName.endsWith(".project-decisions.md");
 }
 
 function normalizeRequestedFiles(files) {
@@ -359,6 +390,110 @@ function lintRelativeLinks(fileName, absolutePath, contents) {
   return issues;
 }
 
+function lintProjectPageCanonicalDrift(fileName, parsed) {
+  const issues = [];
+
+  if (!isProjectSummaryPage(fileName)) {
+    return issues;
+  }
+
+  if (String(parsed.body ?? "").includes("<!-- ingest:")) {
+    issues.push({
+      code: "project-ingest-marker",
+      message: `${fileName}: project summary pages must not contain legacy ingest marker blocks`,
+    });
+  }
+
+  const resultSources = parseInlineArray(parsed.frontmatter.sources)
+    .filter((source) => RESULT_SOURCE_PATTERN.test(String(source ?? "").trim().replace(/\\/gu, "/")));
+  if (resultSources.length > 0) {
+    issues.push({
+      code: "project-result-sources",
+      message: `${fileName}: project summary pages must not keep result archives in frontmatter.sources`,
+    });
+  }
+
+  return issues;
+}
+
+function scanCanonicalDrift(vaultDir) {
+  const issues = [];
+
+  const projectsDir = join(vaultDir, "projects");
+  if (existsSync(projectsDir)) {
+    for (const entry of readdirSync(projectsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md") || entry.name.endsWith(".project-decisions.md")) {
+        continue;
+      }
+
+      const relativePath = `projects/${entry.name}`;
+      const absolutePath = join(projectsDir, entry.name);
+      const parsed = parseFrontmatter(readFileSync(absolutePath, "utf8"));
+      if (!parsed) {
+        continue;
+      }
+      issues.push(...lintProjectPageCanonicalDrift(relativePath, parsed).map((issue) => ({
+        file: relativePath,
+        ...issue,
+      })));
+    }
+  }
+
+  const inboxDir = join(vaultDir, "inbox");
+  if (existsSync(inboxDir)) {
+    for (const entry of readdirSync(inboxDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) {
+        continue;
+      }
+
+      const relativePath = `inbox/${entry.name}`;
+      const absolutePath = join(inboxDir, entry.name);
+      const parsed = parseFrontmatter(readFileSync(absolutePath, "utf8"));
+      if (!parsed) {
+        continue;
+      }
+
+      const source = normalize(parsed.frontmatter.source).replace(/\\/gu, "/");
+      if (!source.startsWith("skills/")) {
+        continue;
+      }
+
+      issues.push({
+        file: relativePath,
+        code: "managed-skill-inbox",
+        message: `${relativePath}: managed skill documents must not be staged in inbox/`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+function scanSpecialFileSetMismatch(schemaSections) {
+  const runtimeFiles = new Set(DEFAULT_SPECIAL_VAULT_FILES);
+  const schemaFiles = new Set(Object.keys(schemaSections ?? {}));
+  const missingFromSchema = [...runtimeFiles].filter((fileName) => !schemaFiles.has(fileName));
+  const extraInSchema = [...schemaFiles].filter((fileName) => !runtimeFiles.has(fileName));
+
+  if (missingFromSchema.length === 0 && extraInSchema.length === 0) {
+    return [];
+  }
+
+  const fragments = [];
+  if (missingFromSchema.length > 0) {
+    fragments.push(`missing in schema: ${missingFromSchema.sort((a, b) => a.localeCompare(b)).join(", ")}`);
+  }
+  if (extraInSchema.length > 0) {
+    fragments.push(`unknown in schema: ${extraInSchema.sort((a, b) => a.localeCompare(b)).join(", ")}`);
+  }
+
+  return [{
+    file: "schema.md",
+    code: "schema-runtime-special-file-mismatch",
+    message: `schema.md: special-file set diverges from runtime canonical set (${fragments.join("; ")})`,
+  }];
+}
+
 function lintGenericPage(fileName, absolutePath, mode) {
   const issues = [];
   const contents = readFileSync(absolutePath, "utf8");
@@ -424,6 +559,7 @@ function lintGenericPage(fileName, absolutePath, mode) {
   }
 
   if (mode === "full") {
+    issues.push(...lintProjectPageCanonicalDrift(fileName, parsed));
     issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
   }
 
@@ -446,7 +582,7 @@ function lintIndexFile(fileName, absolutePath, mode) {
     });
   }
 
-  for (const section of ["## Domains", "## Projects", "## Learnings", "## Inbox", "## Cross References"]) {
+  for (const section of ["## Domains", "## Projects", "## Learnings", "## Results", "## Inbox", "## Cross References"]) {
     if (!contents.includes(section)) {
       issues.push({
         code: "missing-section",
@@ -485,7 +621,7 @@ function lintLogFile(fileName, absolutePath) {
     });
   }
 
-  if (!/^- (INIT|MIGRATE|UPDATE|INGEST|CREATE|SYNC_SKILLS): /mu.test(contents)) {
+  if (!/^- (INIT|MIGRATE|UPDATE|INGEST|CREATE|ARCHIVE|SYNC_SKILLS): /mu.test(contents)) {
     issues.push({
       code: "missing-log-entry",
       message: `${fileName}: must include at least one change entry`,
@@ -610,7 +746,10 @@ export function lintVaultFiles({
           message: "schema.md is missing the `## Special Files` section",
         });
       }
+      globalIssues.push(...scanSpecialFileSetMismatch(schemaSections));
     }
+
+    globalIssues.push(...scanCanonicalDrift(resolvedVaultDir));
   }
 
   for (const fileName of targetFiles) {

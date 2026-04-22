@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
 
 import { DEFAULT_DISPATCH_RESULT_DIR, DEFAULT_DISPATCH_TASK_DIR, DEFAULT_VAULT_INGEST_STAMP_DIR } from "../kuma-paths.mjs";
 import { resolveVaultDir } from "./memo-store.mjs";
@@ -12,8 +12,13 @@ import {
   readProjectsRegistry,
 } from "./project-defaults.mjs";
 
-const VAULT_SECTION_DIRS = ["domains", "projects", "learnings", "inbox"];
+const RESULT_ARCHIVE_DIR = "results";
+const VAULT_SECTION_DIRS = ["domains", "projects", "learnings", RESULT_ARCHIVE_DIR, "inbox"];
 const INGESTIBLE_INBOX_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
+const RESULT_FILE_PATTERN = /\.result\.md$/u;
+const PROJECT_STATE_START_MARKER = "<!-- project-state:start -->";
+const PROJECT_STATE_END_MARKER = "<!-- project-state:end -->";
+const LEGACY_PROJECT_INGEST_BLOCK_PATTERN = /<!-- ingest:[^:]+:start -->[\s\S]*?<!-- ingest:[^:]+:end -->/gu;
 const PROJECT_ROUTING_KEYWORDS = [
   "project", "milestone", "roadmap", "backlog", "issue", "issues", "todo", "task", "tasks",
   "architecture", "migration", "release", "deploy", "deployment", "sprint", "spec", "prd",
@@ -46,6 +51,10 @@ description: Vault 페이지 작성 규칙과 운영 원칙
 
 function normalizeLineEndings(value) {
   return String(value ?? "").replace(/\r\n/gu, "\n").replace(/\r/gu, "\n");
+}
+
+function collapseToSingleLine(value) {
+  return String(value ?? "").replace(/\s+/gu, " ").trim();
 }
 
 function normalizeFrontmatterValue(rawValue) {
@@ -221,6 +230,17 @@ function sanitizeSlug(value) {
     .replace(/[^a-z0-9._-]+/gu, "-")
     .replace(/-+/gu, "-")
     .replace(/^-|-$/gu, "") || "untitled";
+}
+
+function stripMarkdownStem(value) {
+  return String(value ?? "")
+    .replace(RESULT_FILE_PATTERN, "")
+    .replace(/\.md$/u, "");
+}
+
+function isResultSourcePath(value) {
+  const normalized = String(value ?? "").trim().replace(/\\/gu, "/");
+  return RESULT_FILE_PATTERN.test(normalized);
 }
 
 function humanizeSlug(value) {
@@ -847,6 +867,92 @@ function buildRelatedSection(existingRelated, target, resultMeta) {
   return values.length > 0 ? values.join("\n") : "(교차참조 추가 예정)";
 }
 
+function normalizeProjectPageSources(existingSources) {
+  return (Array.isArray(existingSources) ? existingSources : [])
+    .map((source) => String(source ?? "").trim())
+    .filter(Boolean)
+    .filter((source) => !isResultSourcePath(source));
+}
+
+function stripLegacyProjectDetails(detailsContent = "") {
+  const stripped = normalizeLineEndings(String(detailsContent ?? ""))
+    .replace(LEGACY_PROJECT_INGEST_BLOCK_PATTERN, "")
+    .replace(new RegExp(
+      `${escapeRegExp(PROJECT_STATE_START_MARKER)}[\\s\\S]*?${escapeRegExp(PROJECT_STATE_END_MARKER)}`,
+      "u",
+    ), "")
+    .replace(/\n{3,}/gu, "\n\n")
+    .trim();
+
+  if (!stripped || /^\(.+\)$/u.test(stripped)) {
+    return "";
+  }
+
+  return stripped;
+}
+
+function renderProjectStateBlock({ pagePath, sourcePath, resultMeta }) {
+  const evidence = renderProjectEvidenceReference(pagePath, sourcePath);
+  const summary = collapseToSingleLine(resultMeta.summary);
+  const title = collapseToSingleLine(resultMeta.title);
+  const lines = [
+    PROJECT_STATE_START_MARKER,
+    "### Current State",
+    `- Updated: ${resultMeta.updatedDate}`,
+  ];
+
+  if (summary) {
+    lines.push(`- Summary: ${summary}`);
+  }
+  if (title && title !== summary) {
+    lines.push(`- Latest topic: ${title}`);
+  }
+  if (resultMeta.status) {
+    lines.push(`- Status: \`${resultMeta.status}\``);
+  }
+  if (evidence) {
+    lines.push(`- Evidence: ${evidence}`);
+  }
+
+  lines.push(PROJECT_STATE_END_MARKER);
+  return lines.join("\n");
+}
+
+function renderProjectEvidenceReference(pagePath, sourcePath) {
+  const normalizedSourcePath = String(sourcePath ?? "").trim();
+  if (!normalizedSourcePath || normalizedSourcePath.startsWith("text:")) {
+    return "";
+  }
+
+  if (isLikelyUrl(normalizedSourcePath)) {
+    return `[source](${normalizedSourcePath})`;
+  }
+
+  if (!normalizedSourcePath.startsWith("/")) {
+    return `\`${normalizedSourcePath}\``;
+  }
+
+  const relativePath = relative(dirname(pagePath), normalizedSourcePath).replace(/\\/gu, "/");
+  if (!relativePath) {
+    return `[${basename(normalizedSourcePath)}](./${basename(normalizedSourcePath)})`;
+  }
+
+  return `[${basename(normalizedSourcePath)}](${relativePath})`;
+}
+
+function upsertProjectDetailsSection(detailsContent, { pagePath, sourcePath, resultMeta }) {
+  const manualDetails = stripLegacyProjectDetails(detailsContent);
+  const projectStateBlock = renderProjectStateBlock({ pagePath, sourcePath, resultMeta });
+  const content = manualDetails
+    ? `${manualDetails}\n\n${projectStateBlock}`.trim()
+    : projectStateBlock;
+
+  return {
+    content,
+    action: manualDetails ? "updated" : "created",
+  };
+}
+
 async function ingestDocumentMeta({
   documentMeta,
   vaultDir,
@@ -899,7 +1005,8 @@ async function ingestDocumentMeta({
   await ensureVaultScaffold(activeVaultDir);
   await mkdir(join(activeVaultDir, target.section), { recursive: true });
 
-  const existingContent = existsSync(pagePath) ? await readFile(pagePath, "utf8") : "";
+  const pageExists = existsSync(pagePath);
+  const existingContent = pageExists ? await readFile(pagePath, "utf8") : "";
   const existingPage = parsePageDocument(existingContent);
   const frontmatter = {
     title: String(existingPage.frontmatter.title ?? createPageTitle(target, effectiveMeta, title)),
@@ -910,7 +1017,10 @@ async function ingestDocumentMeta({
     tags: mergeTags(existingPage.frontmatter.tags, inferTags(effectiveMeta, target)),
     created: String(existingPage.frontmatter.created ?? effectiveMeta.updatedDate),
     updated: effectiveMeta.updatedDate,
-    sources: mergeTags(existingPage.frontmatter.sources, [effectiveMeta.sourcePath]),
+    sources:
+      target.section === "projects"
+        ? normalizeProjectPageSources(existingPage.frontmatter.sources)
+        : mergeTags(existingPage.frontmatter.sources, [effectiveMeta.sourcePath]),
   };
 
   const detailsBlockId = sanitizeSlug(effectiveMeta.sourceName || effectiveMeta.sourceSlug || effectiveMeta.taskId);
@@ -920,11 +1030,21 @@ async function ingestDocumentMeta({
       ? String(existingPage.sections.get("Summary") ?? "").trim()
       : effectiveMeta.summary;
 
-  const detailsUpdate = upsertDetailsSection(
-    existingPage.sections.get("Details") ?? "",
-    detailsBlockId,
-    buildIngestBlock(effectiveMeta, qaStatus),
-  );
+  const detailsUpdate =
+    target.section === "projects"
+      ? upsertProjectDetailsSection(
+        existingPage.sections.get("Details") ?? "",
+        {
+          pagePath,
+          sourcePath: effectiveMeta.sourcePath,
+          resultMeta: effectiveMeta,
+        },
+      )
+      : upsertDetailsSection(
+        existingPage.sections.get("Details") ?? "",
+        detailsBlockId,
+        buildIngestBlock(effectiveMeta, qaStatus),
+      );
 
   const nextSections = new Map();
   nextSections.set("Summary", nextSummary);
@@ -936,7 +1056,9 @@ async function ingestDocumentMeta({
 
   const pageContent = `${stringifyFrontmatter(frontmatter)}\n\n${formatSections(nextSections)}\n`;
   const relativePagePath = target.relativePath.replace(/\\/gu, "/");
-  const operation = existsSync(pagePath) ? (detailsUpdate.action === "updated" ? "UPDATE" : "INGEST") : "CREATE";
+  const operation = pageExists
+    ? (target.section === "projects" ? "UPDATE" : (detailsUpdate.action === "updated" ? "UPDATE" : "INGEST"))
+    : "CREATE";
   const logLabel = sourceLogLabel ?? documentMeta.sourceName ?? documentMeta.sourcePath;
 
   if (!dryRun) {
@@ -988,27 +1110,37 @@ export async function ensureVaultScaffold(vaultDir) {
 async function readVaultEntry(filePath, section, relativePathOverride) {
   const content = await readFile(filePath, "utf8");
   const parsed = parsePageDocument(content);
-  const summary = String(parsed.sections.get("Summary") ?? "").trim() || extractSummary(parsed.body, basename(filePath, ".md"));
+  const fileStem = stripMarkdownStem(basename(filePath));
+  const summary = String(parsed.sections.get("Summary") ?? "").trim() || extractSummary(parsed.body, fileStem);
   const details = String(parsed.sections.get("Details") ?? "").trim();
   const related = String(parsed.sections.get("Related") ?? "").trim();
+  const inferredProject =
+    typeof parsed.frontmatter.project === "string" && parsed.frontmatter.project.trim()
+      ? parsed.frontmatter.project.trim()
+      : section === "projects" && !filePath.endsWith(".project-decisions.md")
+        ? fileStem
+        : section === RESULT_ARCHIVE_DIR
+          ? inferProjectFromSourceName(fileStem)
+          : null;
 
   return {
     section,
     filePath,
     relativePath: relativePathOverride ?? join(section, basename(filePath)),
-    slug: basename(filePath, ".md"),
-    title: String(parsed.frontmatter.title ?? basename(filePath, ".md")),
+    slug: fileStem,
+    title: String(parsed.frontmatter.title ?? extractTitle(parsed.body, fileStem)),
     summary: summary && !summary.startsWith("(") ? summary.replace(/\n+/gu, " ").trim() : "",
     sources: extractFrontmatterSources(parsed.frontmatter),
     relatedBullets: parseRelatedBullets(related),
     details,
+    project: inferredProject,
   };
 }
 
 async function collectVaultEntries(vaultDir) {
   const entries = [];
 
-  for (const section of ["domains", "projects", "learnings"]) {
+  for (const section of ["domains", "projects", "learnings", RESULT_ARCHIVE_DIR]) {
     const sectionDir = join(vaultDir, section);
     if (!existsSync(sectionDir)) {
       continue;
@@ -1140,7 +1272,7 @@ export function extractIndexStructure(indexContent) {
 export async function rewriteIndex(vaultDir) {
   const entries = await collectVaultEntries(vaultDir);
   const bySection = new Map(
-    ["domains", "projects", "learnings", "inbox"].map((section) => [
+    ["domains", "projects", "learnings", RESULT_ARCHIVE_DIR, "inbox"].map((section) => [
       section,
       entries.filter((entry) => entry.section === section),
     ]),
@@ -1163,6 +1295,7 @@ export async function rewriteIndex(vaultDir) {
     ["domains", "Domains"],
     ["projects", "Projects"],
     ["learnings", "Learnings"],
+    [RESULT_ARCHIVE_DIR, "Results"],
     ["inbox", "Inbox"],
   ]) {
     lines.push(`## ${heading}`);
@@ -1174,7 +1307,7 @@ export async function rewriteIndex(vaultDir) {
       continue;
     }
 
-    if (section === "inbox") {
+    if (section === "inbox" || section === RESULT_ARCHIVE_DIR) {
       for (const entry of sectionEntries) {
         lines.push(formatEntry(entry));
       }
@@ -1254,6 +1387,12 @@ export async function rewriteIndex(vaultDir) {
     );
     if (sourceNames.length > 0) {
       crossReferences.push(`- ${entry.slug} ← ${sourceNames.join(", ")}`);
+    }
+
+    if (entry.section === RESULT_ARCHIVE_DIR && entry.project) {
+      crossReferences.push(
+        `- ${entry.project} ← ${entry.relativePath.replace(/\\/gu, "/")} (archived result evidence)`,
+      );
     }
 
     for (const bullet of entry.relatedBullets) {
@@ -1353,6 +1492,62 @@ function buildVaultIngestStampKey(resultPath, mtimeMs) {
   return createHash("sha1")
     .update(`${resolve(resultPath)}:${Math.trunc(mtimeMs)}`)
     .digest("hex");
+}
+
+function resolveResultArchiveTarget(vaultDir, resultPath) {
+  const fileName = basename(resolve(resultPath));
+  return {
+    fileName,
+    filePath: join(vaultDir, RESULT_ARCHIVE_DIR, fileName),
+    relativePath: `${RESULT_ARCHIVE_DIR}/${fileName}`,
+  };
+}
+
+async function archiveResultFile({
+  vaultDir,
+  resultPath,
+  resultContent,
+  qaStatus = "passed",
+  dryRun = false,
+} = {}) {
+  const activeVaultDir = resolve(vaultDir ?? resolveVaultDir());
+  const target = resolveResultArchiveTarget(activeVaultDir, resultPath);
+
+  await ensureVaultScaffold(activeVaultDir);
+  await mkdir(join(activeVaultDir, RESULT_ARCHIVE_DIR), { recursive: true });
+
+  if (!dryRun) {
+    await writeFile(target.filePath, resultContent, "utf8");
+    await rewriteIndex(activeVaultDir);
+    await appendLogEntry(
+      activeVaultDir,
+      `ARCHIVE: \`${basename(resultPath)}\` → \`${target.relativePath}\` (qa: ${qaStatus})`,
+    );
+  }
+
+  return {
+    action: "ARCHIVE",
+    vaultDir: activeVaultDir,
+    archivedResultPath: target.filePath,
+    relativeArchivePath: target.relativePath,
+  };
+}
+
+function buildArchivedResultContent(resultContent, resultMeta = {}) {
+  const parsed = parseFrontmatterDocument(resultContent);
+  const project =
+    typeof resultMeta.project === "string" && resultMeta.project.trim()
+      ? resultMeta.project.trim()
+      : "";
+
+  if (!project || (typeof parsed.frontmatter.project === "string" && parsed.frontmatter.project.trim())) {
+    return resultContent;
+  }
+
+  return `${stringifyFrontmatter({
+    ...parsed.frontmatter,
+    project,
+  })}\n\n${parsed.body.trim()}\n`;
 }
 
 export async function ingestResultFileWithGuards({
@@ -1646,7 +1841,7 @@ export async function ingestInbox({
     const override = typeof routeResolver === "function"
       ? await routeResolver({
         entryName: entry.name,
-        documentMeta,
+        documentMeta: previewDocumentMeta,
         preview,
       })
       : null;
@@ -1765,8 +1960,55 @@ export async function ingestResultFile({
     body: parsedResult.body,
     updatedDate: new Date().toISOString().slice(0, 10),
   };
-  return ingestDocumentMeta({
-    documentMeta: resultMeta,
+  const archivedResultContent = buildArchivedResultContent(resultContent, resultMeta);
+
+  const archive = await archiveResultFile({
+    vaultDir: activeVaultDir,
+    resultPath: resolvedResultPath,
+    resultContent: archivedResultContent,
+    qaStatus,
+    dryRun,
+  });
+
+  const archivedMeta = {
+    ...resultMeta,
+    sourcePath: archive.archivedResultPath,
+    sourceName: basename(archive.archivedResultPath),
+    sourceSlug: sanitizeSlug(stripMarkdownStem(basename(archive.archivedResultPath))),
+  };
+  const hasExplicitCanonicalTarget = Boolean(
+    (typeof section === "string" && section.trim()) ||
+    (typeof page === "string" && page.trim()),
+  );
+
+  if (!hasExplicitCanonicalTarget) {
+    return {
+      action: archive.action,
+      vaultDir: activeVaultDir,
+      resultPath: resolvedResultPath,
+      archivedResultPath: archive.archivedResultPath,
+      relativeArchivePath: archive.relativeArchivePath,
+      taskId: archivedMeta.taskId,
+      project: archivedMeta.project,
+      sourcePath: archive.archivedResultPath,
+      dryRun,
+      routing: {
+        section: RESULT_ARCHIVE_DIR,
+        resolvedSection: RESULT_ARCHIVE_DIR,
+        resolvedProject: archivedMeta.project ?? null,
+        suggestedPath: archive.relativeArchivePath,
+        reason: "result-archive-default",
+        confidence: "explicit",
+        ambiguous: false,
+        candidates: [],
+        archivedOnly: true,
+        requiresExplicitCanonicalTarget: true,
+      },
+    };
+  }
+
+  const promoted = await ingestDocumentMeta({
+    documentMeta: archivedMeta,
     vaultDir: activeVaultDir,
     section,
     slug,
@@ -1776,4 +2018,11 @@ export async function ingestResultFile({
     qaStatus,
     sourceLogLabel: basename(resolvedResultPath),
   });
+
+  return {
+    ...promoted,
+    archivedResultPath: archive.archivedResultPath,
+    relativeArchivePath: archive.relativeArchivePath,
+    archiveAction: archive.action,
+  };
 }

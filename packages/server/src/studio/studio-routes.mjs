@@ -41,7 +41,6 @@ import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
  * @param {import("./studio-ws-events.mjs").StudioWsEvents} [options.studioWsEvents]
  * @param {import("./agent-history-store.mjs").AgentHistoryStore} [options.agentHistoryStore]
  * @param {import("./dispatch-broker.mjs").DispatchBroker} [options.dispatchBroker]
- * @param {(options?: { vaultDir?: string }) => Promise<object>} [options.vaultSkillSyncFn]
  * @param {{
  *   resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null,
  *   registerPendingSelfWrite?: (input: { memberId: string, memberConfig: object, ttlMs?: number }) => void,
@@ -71,7 +70,6 @@ export function createStudioRouteHandler({
   studioWsEvents,
   agentHistoryStore,
   dispatchBroker,
-  vaultSkillSyncFn,
   teamConfigRuntime,
   workspaceRoot,
   explorerGlobalRoots,
@@ -100,7 +98,6 @@ export function createStudioRouteHandler({
   });
   const handleMemoRoute = createStudioMemoRouteHandler({
     memoStore,
-    vaultSkillSyncFn,
   });
   const handleStaticRoute = createStudioStaticRouteHandler({
     staticDir,

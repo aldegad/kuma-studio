@@ -74,7 +74,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 | 서브커맨드 | 상세 문서 | 요약 |
 |------------|-----------|------|
 | (없음) / domain / index / search / timeline / get | 이 파일 | 읽기·조회 경로 |
-| `ingest` | `references/ingest.md` | 새 소스 승격 — inbox/raw/result/url/text → domains/projects/learnings |
+| `ingest` | `references/ingest.md` | 새 소스 승격 — archive-first, explicit canonical promotion |
 | `curate` | `references/curate.md` | 기존 vault 정리 — broken link / orphan raw / duplicate page / drift |
 
 **실행 규칙:**
@@ -107,15 +107,19 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 ├── dispatch-log.md       task 사건열
 ├── log.md                변경 이력 (append-only)
 ├── domains/              도메인별 지식 (security, analytics, image-gen 등)
-├── projects/             프로젝트별 누적 지식
+├── projects/             얇은 canonical project summary
 ├── learnings/            벤치마크, 디버깅 패턴, 누적 관찰
 ├── operational-rules/    런타임 rule layer (반복 운영 규칙)
 ├── docs/                 모델 등 참고 문서
 ├── images/               이미지 아카이브
 ├── raw/                  원본 보존 archive (변경 금지)
 ├── inbox/                정리 대기 raw 데이터
-└── results/              dispatch result 파일
+└── results/              worker result / evidence archive
 ```
+
+**slot contract:**
+- `projects/<slug>.md` 는 chronicle 이 아니라 현재 상태 summary 다. 장문 history 와 result 본문은 `results/`에 둔다.
+- skill 문서는 repo source 가 SSOT 이다. vault 는 curated output 만 유지하고, skill → vault 자동 동기화는 하지 않는다.
 
 ## 도메인 별칭 매핑
 

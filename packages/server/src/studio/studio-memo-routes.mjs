@@ -7,7 +7,6 @@ import { readJsonBody, sendJson } from "../server-support.mjs";
 import { resolveVaultImagesDir } from "./memo-store.mjs";
 import { getStudioMimeType } from "./studio-asset-utils.mjs";
 import { parseFrontmatterDocument, stringifyFrontmatter } from "./vault-ingest.mjs";
-import { syncVaultSkills } from "./vault-skill-sync.mjs";
 
 const THREAD_STATUSES = new Set(["draft", "approved", "posted"]);
 
@@ -89,7 +88,7 @@ async function listThreadDocuments(root) {
   return items;
 }
 
-export function createStudioMemoRouteHandler({ memoStore, vaultSkillSyncFn, threadsContentRoot } = {}) {
+export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } = {}) {
   const resolvedThreadsContentRoot = resolveThreadsContentRoot(threadsContentRoot);
 
   return async (req, res, url) => {
@@ -218,21 +217,6 @@ export function createStudioMemoRouteHandler({ memoStore, vaultSkillSyncFn, thre
       } catch (error) {
         sendJson(res, 500, {
           error: "Failed to update thread document.",
-          details: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-      return true;
-    }
-
-    if (url.pathname === "/studio/vault/sync-skills" && req.method === "POST") {
-      try {
-        const syncResult = await (vaultSkillSyncFn ?? syncVaultSkills)({
-          vaultDir: memoStore?.getVaultDir?.(),
-        });
-        sendJson(res, 200, syncResult);
-      } catch (error) {
-        sendJson(res, 500, {
-          error: "Failed to sync skill documents into the vault.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }

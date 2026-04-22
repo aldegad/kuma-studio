@@ -43,6 +43,7 @@ describe("memo-store", () => {
         "domains",
         "projects",
         "learnings",
+        "results",
         "inbox",
         "index.md",
         "schema.md",

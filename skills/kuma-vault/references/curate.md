@@ -140,7 +140,7 @@
 - 현재 CLI 구현은 `kuma-studio vault-ingest`, `kuma-studio vault-lint`, 수동 편집의 조합으로 큐레이션을 수행한다.
 - 즉 `curate` 는 **전용 CLI가 아니라 운영 서브커맨드**이다.
 - 기계적으로 확인 가능한 부분은 `vault-lint`와 Grep/Glob 으로 먼저 찾고, 구조 판단이 필요한 부분만 큐레이션한다.
-- `vault-skill-sync.mjs` (내부 모듈, HTTP endpoint 경유 호출): skill 문서와 vault 문서 정렬. 현재 독립 CLI 서브커맨드는 없음 — skill ↔ vault drift 는 `vault-lint --mode full` + 수동 동기화로 처리.
+- skill 문서는 repo source 가 SSOT 이다. vault 에 managed skill mirror 를 만들지 않고, legacy skill inbox 문서는 `vault-lint --mode full` 에서 drift 로만 보고한다.
 - 자주 반복되는 패턴이 쌓이면 나중에 `vault-curate` CLI 로 분리할 수 있다.
 
 ## Vault 디렉토리 구조 (참고)
@@ -149,14 +149,14 @@
 ~/.kuma/vault/
 ├── index.md / log.md / schema.md / decisions.md / dispatch-log.md
 ├── domains/              도메인 지식
-├── projects/             프로젝트별 지식
+├── projects/             얇은 canonical project summary
 ├── learnings/            디버깅 패턴, 인사이트
 ├── operational-rules/    runtime rule layer (canonical)
 ├── docs/                 참고 문서
 ├── images/               이미지 아카이브
 ├── raw/                  원본 archive (수정/삭제 금지)
 ├── inbox/                인제스트 대기
-└── results/              dispatch result 파일
+└── results/              dispatch result / evidence archive
 ```
 
 ## 관련

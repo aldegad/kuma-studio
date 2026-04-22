@@ -190,6 +190,9 @@ sources: [https://example.com/security]
 ## Learnings
 (비어 있음)
 
+## Results
+(아직 없음)
+
 ## Inbox
 (비어 있음)
 
@@ -218,6 +221,161 @@ sources: [https://example.com/security]
     expect(result.ok).toBe(true);
     expect(result.issueCount).toBe(0);
     expect(result.fileCount).toBe(3);
+  });
+
+  it("reports legacy ingest markers inside project summary pages", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "projects"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "projects", "kuma-studio.md"),
+      `---
+title: kuma-studio 프로젝트 지식
+domain: projects
+tags: [studio]
+created: 2026-04-16
+updated: 2026-04-16
+sources: []
+---
+
+## Summary
+쿠마 스튜디오 요약.
+
+## Details
+<!-- ingest:qa-auto-ingest:start -->
+legacy result merge
+<!-- ingest:qa-auto-ingest:end -->
+
+## Related
+(비어 있음)
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["projects/kuma-studio.md"],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.file === "projects/kuma-studio.md" && issue.code === "project-ingest-marker")).toBe(true);
+  });
+
+  it("reports result archives leaking into project summary frontmatter sources", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "projects"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "projects", "kuma-studio.md"),
+      `---
+title: kuma-studio 프로젝트 지식
+domain: projects
+tags: [studio]
+created: 2026-04-16
+updated: 2026-04-16
+sources: ["results/qa-auto-ingest.result.md"]
+---
+
+## Summary
+쿠마 스튜디오 요약.
+
+## Details
+현재 상태.
+
+## Related
+(비어 있음)
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["projects/kuma-studio.md"],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.file === "projects/kuma-studio.md" && issue.code === "project-result-sources")).toBe(true);
+  });
+
+  it("reports managed skill documents staged in inbox as drift", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "inbox"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "inbox", "kuma-vault.md"),
+      `---
+title: kuma:vault
+domain: inbox
+tags: []
+created: 2026-04-16
+updated: 2026-04-16
+sources: []
+source: skills/kuma-vault
+---
+
+managed skill mirror
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.file === "inbox/kuma-vault.md" && issue.code === "managed-skill-inbox")).toBe(true);
+  });
+
+  it("reports schema/runtime special-file set mismatches", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "schema.md"),
+      `---
+title: Kuma Wiki Schema
+description: Wiki 페이지 작성 규칙과 운영 원칙
+---
+
+# Kuma Wiki Schema
+
+## Special Files
+
+### 1) \`dispatch-log.md\`
+
+- **Primary writer:** \`kuma-task lifecycle hook\`
+- **Frontmatter type 표준:** \`type: special/dispatch-log\`
+
+### 2) \`legacy-skill-sync.md\`
+
+- **Primary writer:** \`legacy skill sync\`
+- **Frontmatter type 표준:** \`type: special/legacy\`
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({ vaultDir, mode: "full" });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.file === "schema.md" && issue.code === "schema-runtime-special-file-mismatch")).toBe(true);
   });
 
   it("fails full lint when a required section is missing and a link is broken", async () => {

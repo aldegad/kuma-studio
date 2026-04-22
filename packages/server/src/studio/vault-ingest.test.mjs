@@ -30,7 +30,7 @@ async function createResultFile(dir, name, content) {
 }
 
 describe("vault-ingest", () => {
-  it("upserts a project vault page from a result file matched through the task metadata", async () => {
+  it("archives a result file by default and leaves the project summary page untouched", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-ingest-"));
     const vaultDir = join(tempRoot, "vault");
     const taskDir = join(tempRoot, "tasks");
@@ -101,54 +101,28 @@ result: ${resultPath}
       qaStatus: "passed",
     });
 
-    expect(first.relativePagePath).toBe("projects/kuma-studio.md");
+    expect(first.action).toBe("ARCHIVE");
+    expect(first.relativeArchivePath).toBe("results/vault-ingest-pipeline.result.md");
+    expect(first.relativePagePath).toBeUndefined();
 
     const pageAfterFirstIngest = await readFile(join(vaultDir, "projects", "kuma-studio.md"), "utf8");
-    expect(pageAfterFirstIngest).toContain("<!-- ingest:vault-ingest-pipeline.result.md:start -->");
-    expect(pageAfterFirstIngest).toContain("Vault ingest 파이프라인 구현");
-    expect(pageAfterFirstIngest).toContain(`sources: [${resultPath}]`);
+    expect(pageAfterFirstIngest).not.toContain("<!-- ingest:vault-ingest-pipeline.result.md:start -->");
+    expect(pageAfterFirstIngest).not.toContain("Vault ingest 파이프라인 구현");
+    expect(pageAfterFirstIngest).toContain("sources: []");
     expect(pageAfterFirstIngest).toContain("domain: projects");
-
-    await writeFile(
-      resultPath,
-      `---
-id: vault-ingest-pipeline
-status: done
-worker: surface:8
-qa: surface:7
----
-
-# Vault ingest 파이프라인 구현
-
-## 변경 사항
-- ingest CLI 추가
-- index/log 자동 갱신
-- Details idempotent upsert
-`,
-      "utf8",
-    );
-
-    await ingestResultFile({
-      resultPath,
-      vaultDir,
-      taskDir,
-      qaStatus: "passed",
-    });
-
-    const pageAfterSecondIngest = await readFile(join(vaultDir, "projects", "kuma-studio.md"), "utf8");
-    expect(pageAfterSecondIngest.match(/<!-- ingest:vault-ingest-pipeline\.result\.md:start -->/gu)).toHaveLength(1);
-    expect(pageAfterSecondIngest).toContain("Details idempotent upsert");
+    expect(await readFile(join(vaultDir, "results", "vault-ingest-pipeline.result.md"), "utf8")).toContain("Vault ingest 파이프라인 구현");
 
     const indexContent = await readFile(join(vaultDir, "index.md"), "utf8");
+    expect(indexContent).toContain("## Results");
+    expect(indexContent).toContain("[Vault ingest 파이프라인 구현](results/vault-ingest-pipeline.result.md)");
     expect(indexContent).toContain("[kuma-studio 프로젝트 지식](projects/kuma-studio.md)");
-    expect(indexContent).toContain("kuma-studio ← vault-ingest-pipeline.result.md");
+    expect(indexContent).toContain("kuma-studio ← results/vault-ingest-pipeline.result.md (archived result evidence)");
 
     const logContent = await readFile(join(vaultDir, "log.md"), "utf8");
-    expect(logContent).toContain("INGEST: `vault-ingest-pipeline.result.md` → `projects/kuma-studio.md`");
-    expect(logContent).toContain("UPDATE: `vault-ingest-pipeline.result.md` → `projects/kuma-studio.md`");
+    expect(logContent).toContain("ARCHIVE: `vault-ingest-pipeline.result.md` → `results/vault-ingest-pipeline.result.md`");
   });
 
-  it("creates a new learning page when no project metadata is available", async () => {
+  it("creates a new learning page when an explicit canonical target is provided", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-ingest-"));
     const vaultDir = join(tempRoot, "vault");
     const resultDir = join(tempRoot, "results");
@@ -174,15 +148,102 @@ status: done
       vaultDir,
       taskDir: join(tempRoot, "missing-tasks"),
       qaStatus: "passed",
+      section: "learnings",
     });
 
     expect(result.relativePagePath).toBe("learnings/debug-playwright-timeouts.md");
+    expect(result.relativeArchivePath).toBe("results/debug-playwright-timeouts.result.md");
 
     const pageContent = await readFile(join(vaultDir, "learnings", "debug-playwright-timeouts.md"), "utf8");
     const parsed = parseFrontmatterDocument(pageContent);
     expect(parsed.frontmatter.title).toBe("Playwright timeout 디버깅");
     expect(parsed.frontmatter.domain).toBe("learnings");
     expect(parsed.body).toContain("Playwright timeout 디버깅");
+    expect(await readFile(join(vaultDir, "results", "debug-playwright-timeouts.result.md"), "utf8")).toContain("Playwright timeout 디버깅");
+  });
+
+  it("promotes a result archive into a project summary only when an explicit page override is provided", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-ingest-"));
+    const vaultDir = join(tempRoot, "vault");
+    const taskDir = join(tempRoot, "tasks");
+    const resultDir = join(tempRoot, "results");
+
+    await mkdir(join(vaultDir, "projects"), { recursive: true });
+    await mkdir(taskDir, { recursive: true });
+    await mkdir(resultDir, { recursive: true });
+
+    await writeFile(
+      join(vaultDir, "projects", "kuma-studio.md"),
+      `---
+title: kuma-studio 프로젝트 지식
+domain: projects
+tags: [studio]
+created: 2026-04-07
+updated: 2026-04-07
+sources: ["results/legacy.result.md"]
+---
+
+## Summary
+쿠마 스튜디오 현재 상태 요약.
+
+## Details
+기존 수동 메모.
+
+## Related
+(교차참조 추가 예정)
+`,
+      "utf8",
+    );
+
+    const resultPath = await createResultFile(
+      resultDir,
+      "kuma-studio-serve-hardening.result.md",
+      `---
+id: kuma-studio-serve-hardening
+status: done
+project: kuma-studio
+---
+
+# Kuma Studio 서빙 하드닝
+
+## 변경 사항
+- workspace root 고정 로직 수정
+- 서빙 진입점 검증
+`,
+    );
+
+    await writeFile(
+      join(taskDir, "kuma-studio-serve-hardening.task.md"),
+      `---
+id: kuma-studio-serve-hardening
+project: kuma-studio
+result: ${resultPath}
+---
+`,
+      "utf8",
+    );
+
+    const result = await ingestResultFile({
+      resultPath,
+      vaultDir,
+      taskDir,
+      qaStatus: "passed",
+      page: "projects/kuma-studio.md",
+    });
+
+    expect(result.relativeArchivePath).toBe("results/kuma-studio-serve-hardening.result.md");
+    expect(result.relativePagePath).toBe("projects/kuma-studio.md");
+
+    const pageContent = await readFile(join(vaultDir, "projects", "kuma-studio.md"), "utf8");
+    expect(pageContent).toContain("## Details");
+    expect(pageContent).toContain("기존 수동 메모.");
+    expect(pageContent).toContain("### Current State");
+    expect(pageContent).toContain("Latest topic: Kuma Studio 서빙 하드닝");
+    expect(pageContent).toContain("[kuma-studio-serve-hardening.result.md](../results/kuma-studio-serve-hardening.result.md)");
+    expect(pageContent).not.toContain("<!-- ingest:");
+    expect(pageContent).toContain("sources: []");
+    expect(pageContent).not.toContain("legacy.result.md");
+    expect(pageContent).not.toContain("## 변경 사항");
   });
 
   it("ingests a URL source into a domain page using fetched text", async () => {
@@ -401,9 +462,7 @@ result: ${resultPath}
     await mkdir(taskDir, { recursive: true });
     await mkdir(resultDir, { recursive: true });
 
-    await writeFile(
-      join(vaultDir, "projects", "kuma-studio.md"),
-      `---
+    const originalProjectPage = `---
 title: kuma-studio 프로젝트 지식
 domain: projects
 tags: [studio]
@@ -420,7 +479,11 @@ sources: []
 
 ## Related
 (교차참조 추가 예정)
-`,
+`;
+
+    await writeFile(
+      join(vaultDir, "projects", "kuma-studio.md"),
+      originalProjectPage,
       "utf8",
     );
 
@@ -465,8 +528,12 @@ result: ${resultPath}
     });
 
     expect(first.status).toBe("ingested");
-    expect(first.ingest.relativePagePath).toBe("projects/kuma-studio.md");
+    expect(first.ingest.action).toBe("ARCHIVE");
+    expect(first.ingest.relativePagePath).toBeUndefined();
+    expect(first.ingest.relativeArchivePath).toBe("results/qa-auto-ingest.result.md");
     expect(existsSync(first.stampPath)).toBe(true);
+    expect(await readFile(join(vaultDir, "projects", "kuma-studio.md"), "utf8")).toBe(originalProjectPage);
+    expect(await readFile(join(vaultDir, "results", "qa-auto-ingest.result.md"), "utf8")).toContain("QA guarded ingest 연결");
 
     const second = await ingestResultFileWithGuards({
       resultPath,

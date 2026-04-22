@@ -97,37 +97,6 @@ describe("studio-routes vault", () => {
     assert.strictEqual(res.json.section, "inbox");
   });
 
-  it("runs vault skill sync via /studio/vault/sync-skills", async () => {
-    const calls = [];
-    const handler = createStudioRouteHandler({
-      staticDir: process.cwd(),
-      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
-      sceneStore: {},
-      memoStore: {
-        getVaultDir() {
-          return "/tmp/test-vault";
-        },
-      },
-      vaultSkillSyncFn: async (input) => {
-        calls.push(input);
-        return {
-          skillsSynced: 3,
-          created: 2,
-          updated: 1,
-          deleted: 0,
-        };
-      },
-    });
-
-    const res = createResponse();
-    await handler(createRequest("POST", "/studio/vault/sync-skills"), res);
-
-    assert.strictEqual(res.statusCode, 200);
-    assert.deepStrictEqual(calls, [{ vaultDir: "/tmp/test-vault" }]);
-    assert.strictEqual(res.json.skillsSynced, 3);
-    assert.strictEqual(res.json.created, 2);
-  });
-
   it("/studio/memos returns canonical vault memos without inbox", async () => {
     const handler = createStudioRouteHandler({
       staticDir: process.cwd(),
