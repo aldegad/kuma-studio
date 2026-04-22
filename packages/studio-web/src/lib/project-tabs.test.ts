@@ -70,15 +70,15 @@ describe("splitHudProjectTabs", () => {
     ]);
   });
 
-  it("falls back to the first non-core project when nothing is pinned", () => {
+  it("shows only kuma-studio on the HUD when nothing is pinned", () => {
     const { visibleProjects, overflowProjects, pinnedProjectId } = splitHudProjectTabs(projectTabs, null);
 
     expect(pinnedProjectId).toBeNull();
     expect(visibleProjects.map((project) => project.projectId)).toEqual([
       CORE_PROJECT_TAB_ID,
-      "my-agent-girlfriend",
     ]);
     expect(overflowProjects.map((project) => project.projectId)).toEqual([
+      "my-agent-girlfriend",
       "pqc-unified",
       "life-ai",
     ]);

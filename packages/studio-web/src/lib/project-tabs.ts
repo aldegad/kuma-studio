@@ -61,25 +61,15 @@ export function splitHudProjectTabs<Member>(
 ) {
   const resolvedPinnedProjectId = resolvePinnedHudProjectId(projectTabs, pinnedProjectId);
   const coreProject = projectTabs.find((project) => project.projectId === CORE_PROJECT_TAB_ID) ?? null;
-  const nonCoreProjects = projectTabs.filter((project) => project.projectId !== CORE_PROJECT_TAB_ID);
   const extraProjectIds: string[] = [];
 
   if (resolvedPinnedProjectId) {
     extraProjectIds.push(resolvedPinnedProjectId);
   }
 
-  for (const project of nonCoreProjects) {
-    if (extraProjectIds.length >= extraLimit) {
-      break;
-    }
-    if (!extraProjectIds.includes(project.projectId)) {
-      extraProjectIds.push(project.projectId);
-    }
-  }
-
   const visibleProjectIds = new Set([
     ...(coreProject ? [coreProject.projectId] : []),
-    ...extraProjectIds,
+    ...extraProjectIds.slice(0, extraLimit),
   ]);
 
   return {
