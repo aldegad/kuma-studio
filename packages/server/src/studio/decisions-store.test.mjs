@@ -24,13 +24,7 @@ fixture
 
 ## Decisions
 
-### 2026-04-12 07:05 KST · approve · global
-
-- id: 20260412-070500-global1
-- action: approve
-- scope: global
-- writer: user-direct
-- resolved_text: "SSoT 원칙은 유지한다."
+- SSoT 원칙은 유지한다.
 `;
 
 const PROJECT_FIXTURE = `---
@@ -47,43 +41,7 @@ fixture
 
 ## Decisions
 
-### 2026-04-12 07:05 KST · approve · project:kuma-studio
-
-- id: 20260412-070500-project1
-- action: approve
-- scope: project:kuma-studio
-- writer: user-direct
-- resolved_text: "decisions-capture 구현 분업: Claude=spec, 부리=코드."
-`;
-
-const MIXED_GLOBAL_FIXTURE = `---
-title: Decisions
-type: special/decisions
-updated: 2026-04-13T12:00:00+09:00
-boot_priority: 3
----
-
-## About
-
-fixture
-
-## Decisions
-
-### 2026-04-13 11:00 KST · preference · global
-
-- id: 20260413-110000-global
-- action: preference
-- scope: global
-- writer: user-direct
-- resolved_text: "branch/worktree 는 승인 후에만 만든다."
-
-### 2026-04-13 11:15 KST · preference · project:kuma-studio
-
-- id: 20260413-111500-project
-- action: preference
-- scope: project:kuma-studio
-- writer: user-direct
-- resolved_text: "bootstrap 은 surface registry 를 유지해야 한다."
+- decisions-capture 구현 분업: Claude=spec, 부리=코드.
 `;
 
 describe("decisions-store", () => {
@@ -130,7 +88,6 @@ describe("decisions-store", () => {
       appendDecision({
         vaultDir,
         entry: {
-          action: "approve",
           scope: "global",
           writer: "kuma-detect",
           resolvedText: "auto-detect 는 허용되지 않는다.",
@@ -146,28 +103,25 @@ describe("decisions-store", () => {
     const result = await appendDecision({
       vaultDir,
       entry: {
-        action: "approve",
         scope: "project:kuma-studio",
         writer: "user-direct",
         resolvedText: "이 방향으로 간다.",
-        contextRef: "task:demo",
         createdAt: "2026-04-12T06:00:00.000Z",
       },
     });
 
     expect(result.skipped).toBeNull();
     expect(result.entry).toMatchObject({
-      action: "approve",
       scope: "project:kuma-studio",
       resolved_text: "이 방향으로 간다.",
       writer: "user-direct",
     });
 
     const savedProject = await readFile(join(vaultDir, "projects", "kuma-studio.project-decisions.md"), "utf8");
-    expect(savedProject).toContain('resolved_text: "이 방향으로 간다."');
+    expect(savedProject).toContain("- 이 방향으로 간다.");
 
     const savedGlobal = await readFile(join(vaultDir, "decisions.md"), "utf8").catch(() => "");
-    expect(savedGlobal).not.toContain('resolved_text: "이 방향으로 간다."');
+    expect(savedGlobal).not.toContain("- 이 방향으로 간다.");
   });
 
   it("aggregates global and project decisions when listing", async () => {
@@ -178,9 +132,9 @@ describe("decisions-store", () => {
     const decisions = await listDecisions({ vaultDir });
 
     expect(decisions).toHaveLength(2);
-    expect(decisions.map((entry) => entry.scope)).toEqual([
-      "project:kuma-studio",
+    expect(decisions.map((entry) => entry.scope).sort()).toEqual([
       "global",
+      "project:kuma-studio",
     ]);
   });
 
@@ -190,7 +144,6 @@ describe("decisions-store", () => {
     await appendDecision({
       vaultDir,
       entry: {
-        action: "approve",
         scope: "project:kuma-studio",
         writer: "user-direct",
         resolvedText: "이 방향으로 간다.",
@@ -201,7 +154,6 @@ describe("decisions-store", () => {
     const duplicate = await appendDecision({
       vaultDir,
       entry: {
-        action: "approve",
         scope: "project:kuma-studio",
         writer: "user-direct",
         resolvedText: "이 방향으로 간다.",
@@ -227,25 +179,19 @@ describe("decisions-store", () => {
 
     expect(pack.global?.source).toContain("decisions.md");
     expect(pack.project?.source).toContain("kuma-studio.project-decisions.md");
-    expect(pack.global?.decisions[0]?.scope).toBe("global");
-    expect(pack.project?.decisions[0]?.scope).toBe("project:kuma-studio");
+    expect(pack.global?.decisions[0]?.resolved_text).toBe("SSoT 원칙은 유지한다.");
+    expect(pack.project?.decisions[0]?.resolved_text).toBe("decisions-capture 구현 분업: Claude=spec, 부리=코드.");
   });
 
-  it("repartitions legacy mixed project entries into a project-decisions file", async () => {
+  it("treats repartition as a no-op once scope is owned by the file path", async () => {
     const vaultDir = await createVaultRoot();
-    await seedGlobalFixture(vaultDir, MIXED_GLOBAL_FIXTURE);
+    await seedGlobalFixture(vaultDir);
 
     const result = await repartitionDecisionStores({ vaultDir });
 
     expect(result).toEqual({
-      movedProjectScopes: ["project:kuma-studio"],
-      movedCount: 1,
+      movedProjectScopes: [],
+      movedCount: 0,
     });
-
-    const globalSaved = await readFile(join(vaultDir, "decisions.md"), "utf8");
-    const projectSaved = await readFile(join(vaultDir, "projects", "kuma-studio.project-decisions.md"), "utf8");
-    expect(globalSaved).toContain("20260413-110000-global");
-    expect(globalSaved).not.toContain("20260413-111500-project");
-    expect(projectSaved).toContain("20260413-111500-project");
   });
 });

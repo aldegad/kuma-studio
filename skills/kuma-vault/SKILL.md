@@ -49,7 +49,8 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 **decisions.md 단일 레이어 구조:**
 - `## About` + `## Decisions` 두 섹션만 존재. Inbox / Ledger / Open Decisions 하위 섹션 없음.
-- writer 는 항상 `user-direct`. detector/lifecycle/audit 자동 append 경로 없음.
+- `## Decisions` 는 `- <resolved_text>` 한 줄씩만 쓴다. 날짜 / id / action / scope / context_ref 필드 없음.
+- writer 는 항상 `user-direct`. detector/lifecycle/audit/noeuri 자동 append 경로 없음. 노을이는 후보를 제안할 수 있어도 canonical writer 가 아니다.
 - AI 해석·요약·추론 금지. 유저가 말한 resolved text 그대로 저장.
 
 ## 사용법

@@ -28,19 +28,20 @@ boot_priority: 1
   await writeFile(
     join(vaultDir, "decisions.md"),
     `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
 source_of_truth: user-direct
-boot_priority: 2
+boot_priority: 3
 ---
 
-## Open Decisions
-(없음)
+## About
 
-## Ledger
-(비어 있음 — 유저 명시 발화만 기록)
+fixture
+
+## Decisions
+(비어 있음)
 `,
     "utf8",
   );
@@ -192,7 +193,7 @@ describe("runVaultLifecycleHook", { timeout: 20000 }, () => {
     await writeFile(
       join(vaultDir, "decisions.md"),
       `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
@@ -200,11 +201,12 @@ source_of_truth: user-direct
 boot_priority: not-a-number
 ---
 
-## Open Decisions
-(없음)
+## About
 
-## Ledger
-(비어 있음 — 유저 명시 발화만 기록)
+fixture
+
+## Decisions
+(비어 있음)
 `,
       "utf8",
     );

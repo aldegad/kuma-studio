@@ -28,13 +28,7 @@ fixture
 
 ## Decisions
 
-### 2026-04-13 01:00 KST · preference · global
-
-- id: 20260413-010000-identity
-- action: preference
-- scope: global
-- writer: user-direct
-- resolved_text: "에이전트 이름과 결정사항은 startup/system prompt에 직접 넣는다."
+- 에이전트 이름과 결정사항은 startup/system prompt에 직접 넣는다.
 `;
 
 const PROJECT_DECISIONS_FIXTURE = `---
@@ -51,21 +45,8 @@ fixture
 
 ## Decisions
 
-### 2026-04-13 01:10 KST · priority · project:kuma-studio
-
-- id: 20260413-011000-prompt
-- action: priority
-- scope: project:kuma-studio
-- writer: user-direct
-- resolved_text: "decision 사항이 프롬프트에도 들어가야 해."
-
-### 2026-04-13 01:08 KST · priority · project:kuma-studio
-
-- id: 20260413-010800-project
-- action: priority
-- scope: project:kuma-studio
-- writer: user-direct
-- resolved_text: "프로젝트 결정은 project-decisions에서 읽는다."
+- decision 사항이 프롬프트에도 들어가야 해.
+- 프로젝트 결정은 project-decisions에서 읽는다.
 `;
 
 async function waitFor(assertion, timeoutMs = 4_000) {

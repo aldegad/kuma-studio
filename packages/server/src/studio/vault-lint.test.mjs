@@ -58,19 +58,20 @@ boot_priority: 1
   await writeFile(
     join(vaultDir, "decisions.md"),
     `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
 source_of_truth: user-direct
-boot_priority: 2
+boot_priority: 3
 ---
 
-## Open Decisions
-- [Dispatch Log](dispatch-log.md) 를 boot pack 에 포함할지 검토
+## About
 
-## Ledger
-(비어 있음 — 유저 명시 발화만 기록)
+fixture
+
+## Decisions
+- [Dispatch Log](dispatch-log.md) 를 boot pack 에 포함할지 검토
 `,
     "utf8",
   );
@@ -108,7 +109,7 @@ describe("vault lint", () => {
     await writeFile(
       join(vaultDir, "decisions.md"),
       `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
@@ -116,11 +117,12 @@ source_of_truth: user-direct
 boot_priority: nope
 ---
 
-## Open Decisions
-(없음)
+## About
 
-## Ledger
-(비어 있음 — 유저 명시 발화만 기록)
+fixture
+
+## Decisions
+(비어 있음)
 `,
       "utf8",
     );
@@ -228,15 +230,16 @@ sources: [https://example.com/security]
     await writeFile(
       join(vaultDir, "decisions.md"),
       `---
-title: Decisions Ledger
+title: Decisions
 type: special/decisions
 updated: 2026-04-09T09:00:23Z
 entry_rule: explicit-user-decision-only
 source_of_truth: user-direct
-boot_priority: 2
+boot_priority: 3
 ---
 
-## Open Decisions
+## About
+
 - [Missing Page](missing-page.md) 확인 필요
 `,
       "utf8",

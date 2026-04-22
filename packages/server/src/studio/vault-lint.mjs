@@ -24,14 +24,14 @@ export const SPECIAL_VAULT_FILE_SPECS = Object.freeze({
   },
   "decisions.md": {
     frontmatter: {
-      title: { type: "string", exact: "Decisions Ledger" },
+      title: { type: "string", exact: "Decisions" },
       type: { type: "string", exact: "special/decisions" },
       updated: { type: "iso-datetime" },
       entry_rule: { type: "string", exact: "explicit-user-decision-only" },
       source_of_truth: { type: "string", exact: "user-direct" },
-      boot_priority: { type: "integer", exact: 2 },
+      boot_priority: { type: "integer", exact: 3 },
     },
-    requiredSections: ["Open Decisions", "Ledger"],
+    requiredSections: ["About", "Decisions"],
     schemaType: "special/decisions",
     schemaWriter: "user-direct",
     structuralChecks: [],

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -7,15 +6,12 @@ import {
   GLOBAL_DECISION_SCOPE,
   PROJECT_DECISION_FILE_SUFFIX,
   formatProjectDecisionScope,
-  isProjectDecisionScope,
   parseDecisionScope,
   projectDecisionFileName,
 } from "./decision-scope.mjs";
 
 const GLOBAL_DECISIONS_FILE_NAME = "decisions.md";
 const PROJECTS_DIR_NAME = "projects";
-const DECISION_ACTIONS = new Set(["approve", "reject", "hold", "priority", "preference"]);
-const KST_TIME_ZONE = "Asia/Seoul";
 const DEDUPE_WINDOW = 10;
 
 function normalizeString(value) {
@@ -26,63 +22,8 @@ function trimString(value) {
   return normalizeString(value).trim();
 }
 
-function isDecisionAction(value) {
-  return DECISION_ACTIONS.has(trimString(value));
-}
-
-function formatParts(date) {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: KST_TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  return Object.fromEntries(
-    formatter
-      .formatToParts(date)
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-}
-
-function formatHeadingTimestamp(date) {
-  const parts = formatParts(date);
-  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} KST`;
-}
-
-function formatIdTimestamp(date) {
-  const parts = formatParts(date);
-  return `${parts.year}${parts.month}${parts.day}-${parts.hour}${parts.minute}${parts.second}`;
-}
-
-function buildDecisionId(date, entry) {
-  const hash = createHash("sha1")
-    .update(`${entry.action}|${entry.scope}|${entry.resolvedText}`)
-    .digest("hex")
-    .slice(0, 6);
-  return `${formatIdTimestamp(date)}-${hash}`;
-}
-
-function quoteText(value) {
-  return JSON.stringify(normalizeString(value));
-}
-
-function unquoteText(value) {
-  const raw = trimString(value);
-  if (!raw) {
-    return "";
-  }
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return raw.replace(/^"(.*)"$/u, "$1");
-  }
+function collapseToSingleLine(value) {
+  return normalizeString(value).replace(/\s+/gu, " ").trim();
 }
 
 function parseFrontmatter(contents) {
@@ -137,10 +78,10 @@ function createDefaultFrontmatter(target, updatedAt = "") {
 
 function createDefaultAboutText(target) {
   if (target.kind === "project") {
-    return `\`project:${target.projectName}\` 로 분류된 유저 확정 결정만 기록한다. writer 는 항상 \`user-direct\`. 자동 추론/감사 append 금지.`;
+    return `\`project:${target.projectName}\` 로 분류된 유저 확정 결정만 기록한다. writer 는 항상 \`user-direct\`. 자동 캡처는 사용하지 않고, 노을이는 후보를 제안할 수 있어도 writer 가 아니다. 각 결정은 \`## Decisions\` 아래 resolved 문장 한 줄로만 적는다.`;
   }
 
-  return "유저가 전역 원칙으로 확정한 결정만 기록한다. writer 는 항상 `user-direct`. 자동 추론/감사 append 금지.";
+  return "유저가 전역 원칙으로 확정한 결정만 기록한다. writer 는 항상 `user-direct`. 자동 캡처는 사용하지 않고, 노을이는 후보를 제안할 수 있어도 writer 가 아니다. 각 결정은 `## Decisions` 아래 resolved 문장 한 줄로만 적는다.";
 }
 
 function parseSections(body) {
@@ -174,64 +115,20 @@ function parseSections(body) {
   return sections;
 }
 
-function parseMarkdownFields(lines) {
-  const fields = {};
-  for (const rawLine of lines) {
-    const line = rawLine.replace(/\r/gu, "");
-    const match = line.match(/^\s*-\s+([a-z_]+):\s*(.*)$/u);
-    if (!match) {
-      continue;
-    }
-
-    const [, key, value] = match;
-    fields[key] = value;
-  }
-  return fields;
-}
-
-function splitSectionIntoBlocks(sectionText) {
-  const text = trimString(sectionText);
-  if (!text || /^\(.*\)$/su.test(text)) {
-    return [];
-  }
-
-  const firstHeadingIndex = text.indexOf("### ");
-  if (firstHeadingIndex === -1) {
-    return [];
-  }
-
-  return text.slice(firstHeadingIndex).trim().split(/\n(?=### )/u);
-}
-
-function parseDecisionEntries(sectionText) {
-  const blocks = splitSectionIntoBlocks(sectionText);
-  if (blocks.length === 0) {
-    return [];
-  }
-
-  return blocks
-    .map((chunk) => {
-      const lines = chunk.split("\n");
-      const heading = trimString(lines.shift());
-      if (!heading.startsWith("### ")) {
-        return null;
-      }
-
-      const headingText = heading.slice(4).trim();
-      const [headingTimestamp = "", action = "", scope = ""] = headingText.split(" · ").map((part) => part.trim());
-      const fields = parseMarkdownFields(lines);
-
-      return {
-        headingTimestamp,
-        id: trimString(fields.id),
-        action: trimString(fields.action || action),
-        scope: trimString(fields.scope || scope),
-        writer: trimString(fields.writer) || "user-direct",
-        resolved_text: unquoteText(fields.resolved_text),
-        context_ref: normalizeString(fields.context_ref),
-      };
-    })
-    .filter(Boolean);
+function parseDecisionEntries(sectionText, scope) {
+  return String(sectionText ?? "")
+    .replace(/\r/gu, "")
+    .split("\n")
+    .map((line) => trimString(line))
+    .filter((line) => line && line !== "(비어 있음)")
+    .filter((line) => line.startsWith("- "))
+    .map((line) => collapseToSingleLine(line.slice(2)))
+    .filter(Boolean)
+    .map((resolvedText) => ({
+      scope,
+      writer: "user-direct",
+      resolved_text: resolvedText,
+    }));
 }
 
 function normalizeFrontmatter(frontmatter, updatedAt, target) {
@@ -255,22 +152,8 @@ function formatDecisionEntries(entries) {
   }
 
   return entries
-    .map((entry) => {
-      const lines = [
-        `### ${entry.headingTimestamp} · ${entry.action} · ${entry.scope}`,
-        "",
-        `- id: ${entry.id}`,
-        `- action: ${entry.action}`,
-        `- resolved_text: ${quoteText(entry.resolved_text)}`,
-      ];
-
-      if (trimString(entry.context_ref)) {
-        lines.push(`- context_ref: ${trimString(entry.context_ref)}`);
-      }
-
-      return lines.join("\n");
-    })
-    .join("\n\n");
+    .map((entry) => `- ${collapseToSingleLine(entry.resolved_text)}`)
+    .join("\n");
 }
 
 function renderDecisionsFile(document) {
@@ -339,7 +222,7 @@ async function readDecisionsDocument(target) {
     filePath,
     frontmatter: normalizeFrontmatter(parsed?.frontmatter, trimString(parsed?.frontmatter?.updated), target),
     aboutText: sections.About || createDefaultAboutText(target),
-    entries: parseDecisionEntries(sections.Decisions),
+    entries: parseDecisionEntries(sections.Decisions, target.scope),
   };
 }
 
@@ -367,18 +250,16 @@ async function readAllDecisionDocuments(vaultDir) {
   return Promise.all(targets.map((target) => readDecisionsDocument(target)));
 }
 
-function normalizeDecisionEntry(entry, now = new Date()) {
-  const action = trimString(entry?.action);
-  const scope = trimString(entry?.scope);
+function normalizeDecisionEntry(entry, target) {
+  const scope = trimString(entry?.scope) || target.scope;
   const writer = trimString(entry?.writer);
-  const resolvedText = normalizeString(entry?.resolved_text ?? entry?.resolvedText);
-  const contextRef = normalizeString(entry?.context_ref ?? entry?.contextRef);
+  const resolvedText = collapseToSingleLine(entry?.resolved_text ?? entry?.resolvedText);
 
-  if (!isDecisionAction(action)) {
-    throw new Error("decision action is required");
-  }
   if (!scope) {
     throw new Error("decision scope is required");
+  }
+  if (scope !== target.scope) {
+    throw new Error("decision scope must match the target store");
   }
   if (writer !== "user-direct") {
     throw new Error("decision writer must be user-direct");
@@ -388,13 +269,9 @@ function normalizeDecisionEntry(entry, now = new Date()) {
   }
 
   return {
-    id: trimString(entry?.id) || buildDecisionId(now, { action, scope, resolvedText }),
-    headingTimestamp: trimString(entry?.headingTimestamp) || formatHeadingTimestamp(now),
-    writer,
-    action,
     scope,
+    writer,
     resolved_text: resolvedText,
-    context_ref: contextRef,
   };
 }
 
@@ -409,13 +286,9 @@ async function persistDocument(filePath, document, updatedAt) {
 
 function toPublicEntry(entry) {
   return {
-    id: entry.id,
-    action: entry.action,
     scope: entry.scope,
     writer: entry.writer,
     resolved_text: normalizeString(entry.resolved_text),
-    context_ref: normalizeString(entry.context_ref),
-    headingTimestamp: trimString(entry.headingTimestamp),
   };
 }
 
@@ -423,12 +296,10 @@ export async function appendDecision({ vaultDir, entry }) {
   const target = resolveDecisionStoreTarget(vaultDir, entry?.scope);
   const document = await readDecisionsDocument(target);
   const createdAt = trimString(entry?.createdAt);
-  const now = new Date(createdAt || Date.now());
-  const normalized = normalizeDecisionEntry(entry, now);
+  const normalized = normalizeDecisionEntry(entry, target);
 
   const recentEntries = document.entries.slice(-DEDUPE_WINDOW);
   const duplicate = recentEntries.find((candidate) =>
-    candidate.action === normalized.action &&
     normalizeString(candidate.resolved_text) === normalized.resolved_text,
   );
   if (duplicate) {
@@ -439,15 +310,18 @@ export async function appendDecision({ vaultDir, entry }) {
     ...document,
     entries: [...document.entries, normalized],
   };
-  await persistDocument(document.filePath, nextDocument, createdAt || now.toISOString());
+  await persistDocument(document.filePath, nextDocument, createdAt || new Date().toISOString());
   return { skipped: null, entry: toPublicEntry(normalized) };
 }
 
 export async function listDecisions({ vaultDir }) {
   const documents = await readAllDecisionDocuments(vaultDir);
-  return documents
-    .flatMap((document) => document.entries.map(toPublicEntry))
-    .sort((left, right) => right.id.localeCompare(left.id));
+  return documents.flatMap((document) =>
+    document.entries
+      .slice()
+      .reverse()
+      .map((entry) => toPublicEntry(entry)),
+  );
 }
 
 function buildBootPackSection(target, document, { limit }) {
@@ -485,70 +359,11 @@ export async function loadDecisionBootPack({
   };
 }
 
-function mergeEntriesById(existingEntries, incomingEntries) {
-  const merged = existingEntries.slice();
-  const seenIds = new Set(existingEntries.map((entry) => entry.id));
-  for (const entry of incomingEntries) {
-    if (seenIds.has(entry.id)) {
-      continue;
-    }
-    seenIds.add(entry.id);
-    merged.push(entry);
-  }
-  return merged;
-}
-
-export async function repartitionDecisionStores({ vaultDir } = {}) {
-  const activeVaultDir = resolve(vaultDir ?? join(process.env.HOME ?? ".", ".kuma", "vault"));
-  const globalTarget = resolveDecisionStoreTarget(activeVaultDir, GLOBAL_DECISION_SCOPE);
-  if (!existsSync(globalTarget.filePath)) {
-    return {
-      movedProjectScopes: [],
-      movedCount: 0,
-    };
-  }
-
-  const globalDocument = await readDecisionsDocument(globalTarget);
-  const nextGlobalEntries = [];
-  const projectGroups = new Map();
-
-  for (const entry of globalDocument.entries) {
-    if (isProjectDecisionScope(entry.scope)) {
-      const target = resolveDecisionStoreTarget(activeVaultDir, entry.scope);
-      const current = projectGroups.get(target.scope) ?? { target, entries: [] };
-      current.entries.push(entry);
-      projectGroups.set(target.scope, current);
-    } else {
-      nextGlobalEntries.push(entry);
-    }
-  }
-
-  if (projectGroups.size === 0) {
-    return {
-      movedProjectScopes: [],
-      movedCount: 0,
-    };
-  }
-
-  const updatedAt = new Date().toISOString();
-  for (const { target, entries } of projectGroups.values()) {
-    const projectDocument = existsSync(target.filePath)
-      ? await readDecisionsDocument(target)
-      : createEmptyDocument(target, updatedAt);
-
-    await persistDocument(target.filePath, {
-      ...projectDocument,
-      entries: mergeEntriesById(projectDocument.entries, entries),
-    }, updatedAt);
-  }
-
-  await persistDocument(globalTarget.filePath, {
-    ...globalDocument,
-    entries: nextGlobalEntries,
-  }, updatedAt);
-
+export async function repartitionDecisionStores() {
+  // Decision scope is now owned by the file path, so there is no mixed-entry
+  // repartition step left to perform.
   return {
-    movedProjectScopes: [...projectGroups.keys()].sort(),
-    movedCount: [...projectGroups.values()].reduce((sum, group) => sum + group.entries.length, 0),
+    movedProjectScopes: [],
+    movedCount: 0,
   };
 }

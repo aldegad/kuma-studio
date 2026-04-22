@@ -62,8 +62,4 @@
 - `Consistency / 정합성` — 데이터·상태·표현이 시스템 전반에서 서로 어긋나지 않아야 한다.
 - `Atomicity / 원자성` — 작업은 전부 성공하거나 전부 롤백해야 하며 중간 상태를 노출하지 않는다.
 - `Idempotency / 멱등성` — 같은 요청을 여러 번 받아도 결과가 같아야 한다.
-- `No Fallback` — silent fallback, guessed path, shadow path, legacy backfill 로 primary truth 실패를 가리지 않는다. live truth 가 비어 있거나 어긋나면 canonical source 를 바로 고친다.
-
-허용 예외:
-- provider failover 처럼 설계 단계에서 명시적이고 관측 가능한 failover 는 둘 수 있다. 예: Gemini 실패 시 GPT API 로 전환.
-- 이런 failover 도 canonical truth 를 둘로 쪼개거나 divergence 를 숨기면 안 된다. secondary path 는 대체 실행 경로일 뿐, 다른 truth source 가 되면 안 된다.
+- `No Silent Fallback` — fallback / legacy / shadow path 금지. primary 실패를 조용히 가리거나 truth 를 둘로 만드는 우회는 금지한다. 단, 가용성을 위한 명시적 failover 는 허용한다. failover 는 관측 가능해야 하고 canonical truth 를 바꾸면 안 된다.

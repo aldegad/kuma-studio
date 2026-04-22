@@ -43,7 +43,7 @@ inbox/ 또는 명시 소스를 읽고, 적절한 vault 위치로 승격한 뒤 i
 ├── results/              dispatch result 파일 (ingest 소스로 사용)
 ├── domains/              도메인 지식 (security, analytics, image-gen, content-pipeline, frontend-design …)
 ├── projects/             프로젝트 상태 (kuma-studio, pqc, artkit …)
-│   └── <slug>.project-decisions.md   프로젝트별 decision ledger (special file)
+│   └── <slug>.project-decisions.md   프로젝트별 decision memory (special file)
 ├── learnings/            반복 가능한 인사이트, 디버깅 패턴
 │   └── memory-map.md        feedback 원본 ↔ vault 문서 매핑
 ├── operational-rules/    runtime rule layer (canonical — 2026-04-16 부터 root 슬롯만 유지)

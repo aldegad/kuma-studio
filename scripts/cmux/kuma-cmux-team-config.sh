@@ -134,7 +134,7 @@ function appendSection(label, section) {
 
   lines.push(`- ${label}: ${section.source}`);
   for (const entry of section.decisions) {
-    lines.push(`    - [${entry.action}] ${entry.scope} :: ${clip(entry.resolved_text, clipMax)}`);
+    lines.push(`    - ${clip(entry.resolved_text, clipMax)}`);
   }
 }
 

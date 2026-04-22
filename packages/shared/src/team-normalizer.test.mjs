@@ -24,13 +24,7 @@ fixture
 
 ## Decisions
 
-### 2026-04-13 01:00 KST · preference · global
-
-- id: 20260413-010000-claude
-- action: preference
-- scope: global
-- writer: user-direct
-- resolved_text: "앞으로 branch/worktree 는 사용자 승인 후에만 만든다."
+- 앞으로 branch/worktree 는 사용자 승인 후에만 만든다.
 `;
 
 const PROJECT_DECISIONS_FIXTURE = `---
@@ -47,21 +41,8 @@ fixture
 
 ## Decisions
 
-### 2026-04-13 01:10 KST · priority · project:kuma-studio
-
-- id: 20260413-011000-prompt
-- action: priority
-- scope: project:kuma-studio
-- writer: user-direct
-- resolved_text: "이 결정사항을 시스템프롬프트에도 넣어."
-
-### 2026-04-13 01:08 KST · priority · project:kuma-studio
-
-- id: 20260413-010800-kuma
-- action: priority
-- scope: project:kuma-studio
-- writer: user-direct
-- resolved_text: "프로젝트 결정은 project-decisions에서 읽는다."
+- 이 결정사항을 시스템프롬프트에도 넣어.
+- 프로젝트 결정은 project-decisions에서 읽는다.
 `;
 
 async function writeTeamConfig(root, value) {
@@ -102,13 +83,7 @@ fixture
 
 ## Decisions
 
-### 2026-04-13 02:40 KST · approve · global
-
-- id: 20260413-024000-hookrelax
-- action: approve
-- scope: global
-- writer: user-direct
-- resolved_text: "서브에이전트 대상 execution gate 훅 완화. '직접 작업 막는 훅들' 만 해제."
+- 서브에이전트 대상 execution gate 훅 완화. '직접 작업 막는 훅들' 만 해제.
 `,
     "utf8",
   );
@@ -121,14 +96,10 @@ async function writeLargeDecisionsFixture(root) {
   await mkdir(projectDir, { recursive: true });
 
   const buildDecisionsEntries = (prefix, scope, total) =>
-    Array.from({ length: total }, (_, index) => `### 2026-04-13 03:${String(index).padStart(2, "0")} KST · rule · ${scope}
-
-- id: 20260413-${String(index + 1).padStart(6, "0")}-${prefix.toLowerCase()}-resolved-${index + 1}
-- action: rule
-- scope: ${scope}
-- writer: user-direct
-- resolved_text: "${prefix}-RESOLVED-${index + 1} ${"very long resolved text ".repeat(8).trim()}"
-`).join("\n");
+    Array.from(
+      { length: total },
+      (_, index) => `- ${prefix}-RESOLVED-${index + 1} ${"very long resolved text ".repeat(8).trim()}`,
+    ).join("\n");
 
   await writeFile(
     join(vaultDir, "decisions.md"),
