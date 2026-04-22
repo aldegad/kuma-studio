@@ -40,6 +40,10 @@ and should be committed to a private remote, not copied back into
 - operator knowledge or private memory -> private repo
 - machine-specific execution state or secrets -> keep local
 
+Bias toward the private repo. If something is part of the long-lived operator
+brain, commit it to `kuma-studio-private`; use local-only only when the state
+is runtime-only, secret, or safely re-creatable.
+
 If the public repository needs to document a local file format, prefer:
 
 - `*.example.json`

@@ -16,6 +16,7 @@ const RESULT_ARCHIVE_DIR = "results";
 const VAULT_SECTION_DIRS = ["domains", "projects", "memos", "learnings", RESULT_ARCHIVE_DIR, "inbox"];
 const INGESTIBLE_INBOX_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
 const RESULT_FILE_PATTERN = /\.result\.md$/u;
+const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\(([^)]+)\)/gu;
 const PROJECT_STATE_START_MARKER = "<!-- project-state:start -->";
 const PROJECT_STATE_END_MARKER = "<!-- project-state:end -->";
 const LEGACY_PROJECT_INGEST_BLOCK_PATTERN = /<!-- ingest:[^:]+:start -->[\s\S]*?<!-- ingest:[^:]+:end -->/gu;
@@ -51,6 +52,10 @@ description: Vault 페이지 작성 규칙과 운영 원칙
 
 function normalizeLineEndings(value) {
   return String(value ?? "").replace(/\r\n/gu, "\n").replace(/\r/gu, "\n");
+}
+
+function normalizePathSeparators(value) {
+  return String(value ?? "").replace(/\\/gu, "/");
 }
 
 function collapseToSingleLine(value) {
@@ -836,6 +841,74 @@ function normalizeSourceDisplayName(source) {
   return normalized;
 }
 
+function isExternalLinkTarget(target) {
+  return (
+    target.startsWith("http://") ||
+    target.startsWith("https://") ||
+    target.startsWith("mailto:") ||
+    target.startsWith("obsidian://")
+  );
+}
+
+function parseMarkdownLinkTarget(rawTarget) {
+  const trimmed = String(rawTarget ?? "").trim();
+  if (!trimmed) {
+    return { targetPath: "", anchor: "", suffix: "" };
+  }
+
+  const firstWhitespace = trimmed.search(/\s/u);
+  const pathAndAnchor = firstWhitespace === -1 ? trimmed : trimmed.slice(0, firstWhitespace);
+  const suffix = firstWhitespace === -1 ? "" : trimmed.slice(firstWhitespace);
+  const hashIndex = pathAndAnchor.indexOf("#");
+
+  if (hashIndex === -1) {
+    return { targetPath: pathAndAnchor, anchor: "", suffix };
+  }
+
+  return {
+    targetPath: pathAndAnchor.slice(0, hashIndex),
+    anchor: pathAndAnchor.slice(hashIndex),
+    suffix,
+  };
+}
+
+function rewriteCrossReferenceBullet(bullet, entry, indexPath, vaultDir) {
+  return bullet.replace(MARKDOWN_LINK_PATTERN, (match, label, rawTarget) => {
+    const parsedTarget = parseMarkdownLinkTarget(rawTarget);
+    const targetPath = parsedTarget.targetPath.trim();
+
+    if (!targetPath) {
+      return label;
+    }
+
+    if (isExternalLinkTarget(targetPath)) {
+      return match;
+    }
+
+    if (targetPath.startsWith("#")) {
+      return label;
+    }
+
+    const resolvedTarget = resolve(dirname(entry.filePath), targetPath);
+    const normalizedVaultDir = normalizePathSeparators(resolve(vaultDir));
+    const normalizedResolvedTarget = normalizePathSeparators(resolvedTarget);
+
+    if (
+      !(
+        normalizedResolvedTarget === normalizedVaultDir ||
+        normalizedResolvedTarget.startsWith(`${normalizedVaultDir}/`)
+      ) ||
+      !existsSync(resolvedTarget)
+    ) {
+      return label;
+    }
+
+    const rebasedTarget = normalizePathSeparators(relative(dirname(indexPath), resolvedTarget));
+    const finalTarget = `${rebasedTarget || basename(resolvedTarget)}${parsedTarget.anchor}${parsedTarget.suffix}`;
+    return `[${label}](${finalTarget})`;
+  });
+}
+
 function parseRelatedBullets(relatedContent = "") {
   return normalizeLineEndings(relatedContent)
     .split("\n")
@@ -1288,9 +1361,10 @@ export async function rewriteIndex(vaultDir) {
   const { pathToSubsection, subsectionOrder } = extractIndexStructure(existingContent);
 
   const lines = ["# Kuma Vault Index", ""];
+  const indexAbsolutePath = join(vaultDir, "index.md");
 
   const formatEntry = (entry) => {
-    const summary = entry.summary || "요약 없음";
+    const summary = rewriteCrossReferenceBullet(entry.summary || "요약 없음", entry, indexAbsolutePath, vaultDir);
     return `- [${entry.title}](${entry.relativePath.replace(/\\/gu, "/")}) — ${summary}`;
   };
 
@@ -1400,7 +1474,7 @@ export async function rewriteIndex(vaultDir) {
     }
 
     for (const bullet of entry.relatedBullets) {
-      crossReferences.push(`- ${entry.slug} ${bullet.slice(1).trim()}`);
+      crossReferences.push(`- ${entry.slug} ${rewriteCrossReferenceBullet(bullet.slice(1).trim(), entry, indexAbsolutePath, vaultDir)}`);
     }
   }
 

@@ -28,6 +28,9 @@ Kuma Studio works best with two Git repositories plus one local-only runtime lay
 `kuma-studio-private` is not an inbox that later gets copied into the public
 repo.
 
+Default to the private repo for canonical user knowledge. Treat local-only as a
+strict exception for runtime, secrets, and re-creatable machine state.
+
 The workflow is:
 
 - code changes -> commit/push `kuma-studio`

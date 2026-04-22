@@ -753,4 +753,101 @@ ${summary}
     expect(afterGroupABlock).toContain("projects/gamma.md");
     expect(afterGroupABlock).toContain("projects/delta.md");
   });
+
+  it("rewriteIndex rebases related links for cross references and downgrades invalid local links to plain text", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-rewrite-"));
+    const vaultDir = join(tempRoot, "vault");
+
+    await mkdir(join(vaultDir, "domains"), { recursive: true });
+
+    const domainFrontmatter = (title, body) => `---
+title: ${title}
+domain: domains
+tags: []
+created: 2026-04-23
+updated: 2026-04-23
+sources: []
+---
+
+## Summary
+${title} summary
+
+## Details
+${title} details
+
+## Related
+${body}
+`;
+
+    await writeFile(
+      join(vaultDir, "domains", "analytics.md"),
+      domainFrontmatter("analytics", "(교차참조 추가 예정)"),
+      "utf8",
+    );
+    await writeFile(
+      join(vaultDir, "domains", "content-pipeline.md"),
+      domainFrontmatter(
+        "content-pipeline",
+        [
+          "- [analytics](analytics.md) — sibling domain",
+          "- [Kuma Vault Schema](../schema.md) — parent schema",
+          "- [StudioPage.tsx](packages/studio-web/src/pages/StudioPage.tsx) — repo-only path",
+          "- [OpenAI](https://openai.com) — external",
+        ].join("\n"),
+      ),
+      "utf8",
+    );
+    await writeFile(
+      join(vaultDir, "schema.md"),
+      `---
+title: Kuma Vault Schema
+description: fixture
+---
+
+# Kuma Vault Schema
+
+## Special Files
+`,
+      "utf8",
+    );
+
+    await rewriteIndex(vaultDir);
+
+    const regenerated = await readFile(join(vaultDir, "index.md"), "utf8");
+
+    expect(regenerated).toContain("- content-pipeline [analytics](domains/analytics.md) — sibling domain");
+    expect(regenerated).toContain("- content-pipeline [Kuma Vault Schema](schema.md) — parent schema");
+    expect(regenerated).toContain("- content-pipeline StudioPage.tsx — repo-only path");
+    expect(regenerated).toContain("- content-pipeline [OpenAI](https://openai.com) — external");
+    expect(regenerated).not.toContain("(packages/studio-web/src/pages/StudioPage.tsx)");
+  });
+
+  it("rewriteIndex sanitizes result summaries so repo-local links do not leak broken markdown into the index", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "kuma-vault-rewrite-"));
+    const vaultDir = join(tempRoot, "vault");
+
+    await mkdir(join(vaultDir, "results"), { recursive: true });
+
+    await writeFile(
+      join(vaultDir, "results", "speech-bubble.result.md"),
+      `---
+id: speech-bubble
+status: done
+---
+
+# 말풍선 5줄 확장
+
+**5줄 OK.** [StudioPage.tsx:295](packages/studio-web/src/pages/StudioPage.tsx) 에서 line cap 을 확인했다.
+`,
+      "utf8",
+    );
+
+    await rewriteIndex(vaultDir);
+
+    const regenerated = await readFile(join(vaultDir, "index.md"), "utf8");
+
+    expect(regenerated).toContain("[말풍선 5줄 확장](results/speech-bubble.result.md)");
+    expect(regenerated).toContain("StudioPage.tsx:295 에서 line cap 을 확인했다.");
+    expect(regenerated).not.toContain("(packages/studio-web/src/pages/StudioPage.tsx)");
+  });
 });

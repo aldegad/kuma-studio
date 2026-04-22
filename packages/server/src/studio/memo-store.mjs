@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, rmdir, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, extname, join, normalize, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -141,6 +141,10 @@ export function resolveVaultImagesDir() {
   return join(resolveVaultDir(), "images");
 }
 
+function resolveLegacyRawMemosDir() {
+  return join(resolveVaultDir(), "raw", "memos");
+}
+
 function resolveLegacyMemoDir() {
   return resolve(homedir(), ".kuma", "memos");
 }
@@ -155,6 +159,11 @@ async function moveFile(sourcePath, targetPath) {
     await copyFile(sourcePath, targetPath);
     await unlink(sourcePath);
   }
+}
+
+async function filesHaveSameBytes(leftPath, rightPath) {
+  const [left, right] = await Promise.all([readFile(leftPath), readFile(rightPath)]);
+  return left.equals(right);
 }
 
 async function walkFiles(dir, {
@@ -195,12 +204,9 @@ async function walkFiles(dir, {
 }
 
 export class MemoStore {
-  #root;
   #ensurePromise = null;
 
-  constructor(root) {
-    this.#root = resolve(root);
-  }
+  constructor(_root) {}
 
   getVaultDir() {
     return resolveVaultDir();
@@ -226,22 +232,6 @@ export class MemoStore {
       });
     }
     return this.#ensurePromise;
-  }
-
-  async #copySeedImagesInto(targetDir) {
-    const publicImagesDir = join(this.#root, "packages", "studio-web", "public", "memo-images");
-    if (!existsSync(publicImagesDir)) {
-      return;
-    }
-
-    const imageNames = await readdir(publicImagesDir);
-    for (const imageName of imageNames) {
-      const sourcePath = join(publicImagesDir, imageName);
-      const targetPath = join(targetDir, imageName);
-      if (!existsSync(targetPath)) {
-        await copyFile(sourcePath, targetPath);
-      }
-    }
   }
 
   async #migrateLegacyMemos() {
@@ -283,6 +273,99 @@ export class MemoStore {
     }
   }
 
+  async #migrateLegacyRawMemos() {
+    const legacyRawMemoDir = resolveLegacyRawMemosDir();
+    if (!existsSync(legacyRawMemoDir)) {
+      return;
+    }
+
+    const memosDir = this.getMemosDir();
+    const vaultImagesDir = this.getImagesDir();
+    const legacyRawImagesDir = join(legacyRawMemoDir, "images");
+
+    await mkdir(memosDir, { recursive: true });
+    await mkdir(vaultImagesDir, { recursive: true });
+
+    const legacyMemoFiles = await walkFiles(legacyRawMemoDir, {
+      recursive: false,
+      allowedExtensions: new Set([".md"]),
+    });
+
+    for (const legacyFile of legacyMemoFiles) {
+      const fileName = basename(legacyFile);
+      const targetPath = join(memosDir, fileName);
+
+      if (existsSync(targetPath)) {
+        await unlink(legacyFile).catch((error) => {
+          if (error?.code !== "ENOENT") {
+            throw error;
+          }
+        });
+        continue;
+      }
+
+      const rawContent = await readFile(legacyFile, "utf8");
+      const { frontmatter, body } = parseFrontmatterDocument(rawContent);
+      const legacyStat = await stat(legacyFile);
+      const createdAt =
+        typeof frontmatter.created === "string" && frontmatter.created.trim()
+          ? frontmatter.created.trim()
+          : legacyStat.mtime.toISOString();
+      const updatedAt =
+        typeof frontmatter.updated === "string" && frontmatter.updated.trim()
+          ? frontmatter.updated.trim()
+          : createdAt;
+      const normalizedMemo = {
+        title: typeof frontmatter.title === "string" ? frontmatter.title : titleFromPath(fileName),
+        text: body,
+        images: Array.isArray(frontmatter.images)
+          ? frontmatter.images.map((image) => toMemoImageFilename(image)).filter(Boolean)
+          : [],
+        createdAt,
+        updatedAt,
+      };
+
+      await writeFile(targetPath, toMemoMarkdown(normalizedMemo), "utf8");
+      await unlink(legacyFile);
+    }
+
+    const legacyImageFiles = await walkFiles(legacyRawImagesDir, {
+      recursive: false,
+    });
+
+    for (const legacyImagePath of legacyImageFiles) {
+      const imageName = basename(legacyImagePath);
+      const targetPath = join(vaultImagesDir, imageName);
+
+      if (!existsSync(targetPath)) {
+        await moveFile(legacyImagePath, targetPath);
+        continue;
+      }
+
+      if (!(await filesHaveSameBytes(legacyImagePath, targetPath))) {
+        throw new Error(
+          `Legacy raw memo image conflicts with canonical vault image: ${imageName}`,
+        );
+      }
+
+      await unlink(legacyImagePath);
+    }
+
+    if (existsSync(legacyRawImagesDir)) {
+      const remainingImageEntries = await readdir(legacyRawImagesDir);
+      if (remainingImageEntries.length === 0) {
+        await rmdir(legacyRawImagesDir);
+      }
+    }
+
+    if (existsSync(legacyRawMemoDir)) {
+      const remainingEntries = await readdir(legacyRawMemoDir);
+      if (remainingEntries.length === 0) {
+        await rmdir(legacyRawMemoDir);
+      }
+    }
+  }
+
   async #ensureSeedData() {
     const vaultDir = this.getVaultDir();
     const inboxDir = this.getInboxDir();
@@ -305,8 +388,8 @@ export class MemoStore {
       }
     }
 
-    await this.#copySeedImagesInto(vaultImagesDir);
     await this.#migrateLegacyMemos();
+    await this.#migrateLegacyRawMemos();
   }
 
   async #readEntryFile(fullPath, rootDir, { source, section, prefix = "" }) {

@@ -258,6 +258,48 @@ images: ["memo.png"]
     expect(result.issueCount).toBe(0);
   });
 
+  it("accepts canonical pages with block-array sources and explicit Details/Related sections", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "domains"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "domains", "analytics.md"),
+      `---
+title: Analytics
+domain: domains
+tags: [analytics]
+created: 2026-04-16
+updated: 2026-04-16
+sources:
+  - https://example.com/analytics
+---
+
+## Summary
+요약.
+
+## Details
+세부.
+
+## Related
+- [Dispatch Log](../dispatch-log.md) — runtime evidence
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["domains/analytics.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
   it("rejects memo pages that miss the memo-specific frontmatter contract", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
     tempRoots.push(root);
@@ -407,6 +449,65 @@ managed skill mirror
     expect(result.issues.some((issue) => issue.file === "inbox/kuma-vault.md" && issue.code === "managed-skill-inbox")).toBe(true);
   });
 
+  it("reports legacy raw memo artifacts as canonical drift", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "raw", "memos", "images"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await Promise.all([
+      writeFile(
+        join(vaultDir, "raw", "memos", "favorite.md"),
+        "---\ntitle: Favorite\ncreated: 2026-04-16T09:00:00.000Z\nupdated: 2026-04-16T09:30:00.000Z\nimages: [favorite.png]\n---\n\nmemo\n",
+        "utf8",
+      ),
+      writeFile(join(vaultDir, "raw", "memos", "images", "favorite.png"), "png", "utf8"),
+    ]);
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.file === "raw/memos" && issue.code === "legacy-raw-memos")).toBe(true);
+  });
+
+  it("treats result archives as archive evidence instead of generic knowledge pages", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "results"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "results", "qa-pass.result.md"),
+      `---
+id: qa-pass
+status: done
+worker: surface:1
+---
+
+# QA PASS
+
+- summary only archive evidence
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["results/qa-pass.result.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
   it("reports schema/runtime special-file set mismatches", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
     tempRoots.push(root);
@@ -442,6 +543,185 @@ description: Wiki 페이지 작성 규칙과 운영 원칙
 
     expect(result.ok).toBe(false);
     expect(result.issues.some((issue) => issue.file === "schema.md" && issue.code === "schema-runtime-special-file-mismatch")).toBe(true);
+  });
+
+  it("accepts the canonical schema page when linted directly", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "schema.md"),
+      `---
+title: Kuma Vault Schema
+description: Vault contract
+updated: 2026-04-23
+---
+
+# Kuma Vault Schema
+
+## Summary
+contract summary
+
+## Directories
+- domains/
+
+## Special Files
+
+### 1) \`dispatch-log.md\`
+- Primary writer: \`kuma-task lifecycle hook\`
+
+### 2) \`decisions.md\`
+- Primary writer: \`user-direct\`
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["schema.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
+  it("accepts managed skill domain pages without forcing the generic knowledge schema", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "domains"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "domains", "kuma-vault.md"),
+      `---
+title: /vault
+source: skills/kuma-vault
+sourcePath: /Users/test/.claude/skills/kuma-vault/SKILL.md
+---
+
+# /vault
+
+legacy skill mirror body
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["domains/kuma-vault.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
+  it("accepts operational rule pages with the operational-rules contract", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "operational-rules"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "operational-rules", "code-hygiene.md"),
+      `---
+title: Code Hygiene Rules
+source: migration
+last_verified: 2026-04-09
+tags: [code, hygiene]
+---
+
+# Code Hygiene Rules
+
+## Summary
+요약.
+
+## Rules
+1. stale fallback 금지
+
+## Related
+- [Dispatch Log](../dispatch-log.md) — runtime evidence
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["operational-rules/code-hygiene.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
+  it("accepts project decision pages with the dedicated project-decisions contract", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "projects"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "projects", "kuma-studio.project-decisions.md"),
+      `---
+title: kuma-studio Project Decisions
+type: special/project-decisions
+project: kuma-studio
+updated: 2026-04-23T01:00:00.000Z
+boot_priority: 3
+---
+
+## About
+결정 SSOT.
+
+## Decisions
+- 하나의 truth만 유지한다.
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["projects/kuma-studio.project-decisions.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
+  it("treats nested project reference docs as non-canonical reference pages", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "projects", "pqc", "faq"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "projects", "pqc", "faq", "tls.md"),
+      `# TLS FAQ\n\nreference body only\n`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["projects/pqc/faq/tls.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
   });
 
   it("fails full lint when a required section is missing and a link is broken", async () => {

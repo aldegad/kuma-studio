@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -80,6 +81,57 @@ describe("memo-store", () => {
 
     expect(await readdir(join(vaultDir, "memos"))).toEqual(["user-note.md"]);
     expect(await readdir(legacyMemoDir)).toEqual([]);
+  });
+
+  it("migrates legacy raw memo artifacts into canonical vault slots and deduplicates images", async () => {
+    const { vaultDir } = await setupMemoEnv();
+    const legacyRawMemoDir = join(vaultDir, "raw", "memos");
+    const legacyRawImagesDir = join(legacyRawMemoDir, "images");
+    const canonicalImagesDir = join(vaultDir, "images");
+
+    await mkdir(legacyRawImagesDir, { recursive: true });
+    await mkdir(canonicalImagesDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(
+        join(legacyRawMemoDir, "favorite.md"),
+        [
+          "---",
+          "title: Favorite",
+          "created: 2026-04-10T00:00:00.000Z",
+          "updated: 2026-04-10T00:00:00.000Z",
+          "images: [shared.png, moved.png]",
+          "---",
+          "",
+          "hello",
+          "",
+        ].join("\n"),
+      ),
+      writeFile(join(legacyRawImagesDir, "shared.png"), "same-bytes"),
+      writeFile(join(legacyRawImagesDir, "moved.png"), "move-me"),
+      writeFile(join(canonicalImagesDir, "shared.png"), "same-bytes"),
+    ]);
+
+    const store = new MemoStore(process.cwd());
+    const memos = await store.list();
+
+    expect(memos).toHaveLength(1);
+    expect(memos[0]).toMatchObject({
+      id: "favorite.md",
+      source: "vault",
+      section: "memos",
+      images: [
+        "/studio/memo-images/shared.png",
+        "/studio/memo-images/moved.png",
+      ],
+    });
+
+    const saved = await readFile(join(vaultDir, "memos", "favorite.md"), "utf8");
+    expect(saved).toContain("title: Favorite");
+    expect(saved).toContain("updated: 2026-04-10T00:00:00.000Z");
+    expect(await readFile(join(canonicalImagesDir, "shared.png"), "utf8")).toBe("same-bytes");
+    expect(await readFile(join(canonicalImagesDir, "moved.png"), "utf8")).toBe("move-me");
+    expect(existsSync(join(vaultDir, "raw", "memos"))).toBe(false);
   });
 
   it("writes canonical memos into vault/memos and preserves image routes", async () => {

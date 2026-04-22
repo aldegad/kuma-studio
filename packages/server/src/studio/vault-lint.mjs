@@ -45,6 +45,7 @@ const MARKDOWN_LINK_PATTERN = /\[[^\]]+\]\(([^)]+)\)/gu;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 const ARRAY_LITERAL_PATTERN = /^\[.*\]$/su;
 const RESULT_SOURCE_PATTERN = /(?:^|\/)results\/[^/]+\.result\.md$|\.result\.md$/u;
+const RESULT_ARCHIVE_FILE_PATTERN = /^results\/.+\.result\.md$/u;
 
 function normalize(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -172,6 +173,30 @@ function isProjectSummaryPage(fileName) {
 
 function isMemoPage(fileName) {
   return fileName.startsWith("memos/");
+}
+
+function isResultArchivePage(fileName) {
+  return RESULT_ARCHIVE_FILE_PATTERN.test(fileName);
+}
+
+function isProjectDecisionPage(fileName) {
+  return /^projects\/[^/]+\.project-decisions\.md$/u.test(fileName);
+}
+
+function isTopLevelDomainPage(fileName) {
+  return /^domains\/[^/]+\.md$/u.test(fileName);
+}
+
+function isOperationalRulePage(fileName) {
+  return /^operational-rules\/[^/]+\.md$/u.test(fileName);
+}
+
+function isNestedReferenceDocPage(fileName) {
+  return (
+    fileName.startsWith("docs/") ||
+    /^domains\/[^/]+\/.+\.md$/u.test(fileName) ||
+    /^projects\/[^/]+\/.+\.md$/u.test(fileName)
+  );
 }
 
 function normalizeRequestedFiles(files) {
@@ -485,6 +510,25 @@ function scanCanonicalDrift(vaultDir) {
     }
   }
 
+  const legacyRawMemosDir = join(vaultDir, "raw", "memos");
+  if (existsSync(legacyRawMemosDir)) {
+    const legacyEntries = readdirSync(legacyRawMemosDir, { withFileTypes: true });
+    const hasLegacyMemoFiles = legacyEntries.some((entry) => entry.isFile() && entry.name.endsWith(".md"));
+    const imagesEntry = legacyEntries.find((entry) => entry.isDirectory() && entry.name === "images");
+    const hasLegacyMemoImages =
+      Boolean(imagesEntry) &&
+      readdirSync(join(legacyRawMemosDir, "images"), { withFileTypes: true })
+        .some((entry) => entry.isFile());
+
+    if (hasLegacyMemoFiles || hasLegacyMemoImages) {
+      issues.push({
+        file: "raw/memos",
+        code: "legacy-raw-memos",
+        message: "raw/memos: legacy memo artifacts must be migrated into memos/ and images/",
+      });
+    }
+  }
+
   return issues;
 }
 
@@ -560,7 +604,13 @@ function lintGenericPage(fileName, absolutePath, mode) {
       message: `${fileName}: frontmatter.updated must be YYYY-MM-DD`,
     });
   }
-  if (!ARRAY_LITERAL_PATTERN.test(String(frontmatter.sources ?? "").trim())) {
+  if (
+    normalize(frontmatter.sources) &&
+    !(
+      Array.isArray(frontmatter.sources) ||
+      ARRAY_LITERAL_PATTERN.test(String(frontmatter.sources ?? "").trim())
+    )
+  ) {
     issues.push({
       code: "frontmatter-sources-format",
       message: `${fileName}: frontmatter.sources must use inline array syntax`,
@@ -649,6 +699,216 @@ function lintMemoPage(fileName, absolutePath, mode) {
   };
 }
 
+function lintManagedSkillPage(fileName, absolutePath) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+  const parsed = parseFrontmatter(contents);
+  if (!parsed) {
+    return {
+      file: fileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-frontmatter",
+        message: `${fileName}: YAML frontmatter is missing or malformed`,
+      }],
+    };
+  }
+
+  const frontmatter = parsed.frontmatter;
+  if (!normalize(frontmatter.title)) {
+    issues.push({
+      code: "missing-frontmatter-title",
+      message: `${fileName}: managed skill pages require frontmatter.title`,
+    });
+  }
+  if (!normalize(frontmatter.source).startsWith("skills/")) {
+    issues.push({
+      code: "managed-skill-source",
+      message: `${fileName}: managed skill pages require frontmatter.source starting with "skills/"`,
+    });
+  }
+  if (!normalize(frontmatter.sourcePath)) {
+    issues.push({
+      code: "managed-skill-source-path",
+      message: `${fileName}: managed skill pages require frontmatter.sourcePath`,
+    });
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function lintOperationalRulePage(fileName, absolutePath, mode) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+  const parsed = parseFrontmatter(contents);
+  if (!parsed) {
+    return {
+      file: fileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-frontmatter",
+        message: `${fileName}: YAML frontmatter is missing or malformed`,
+      }],
+    };
+  }
+
+  const frontmatter = parsed.frontmatter;
+  if (!normalize(frontmatter.title)) {
+    issues.push({
+      code: "missing-frontmatter-title",
+      message: `${fileName}: frontmatter.title is required`,
+    });
+  }
+  if (!ARRAY_LITERAL_PATTERN.test(String(frontmatter.tags ?? "").trim())) {
+    issues.push({
+      code: "frontmatter-tags-format",
+      message: `${fileName}: frontmatter.tags must use inline array syntax`,
+    });
+  }
+
+  const lastVerified = normalize(frontmatter.last_verified);
+  const updated = normalize(frontmatter.updated);
+  if (!lastVerified && !updated) {
+    issues.push({
+      code: "missing-frontmatter-verification",
+      message: `${fileName}: operational rule pages require frontmatter.last_verified or frontmatter.updated`,
+    });
+  }
+  if (lastVerified && !isIsoDate(lastVerified)) {
+    issues.push({
+      code: "frontmatter-last-verified-format",
+      message: `${fileName}: frontmatter.last_verified must be YYYY-MM-DD`,
+    });
+  }
+  if (updated && !isIsoDate(updated)) {
+    issues.push({
+      code: "frontmatter-updated-format",
+      message: `${fileName}: frontmatter.updated must be YYYY-MM-DD`,
+    });
+  }
+
+  const sections = parseSections(parsed.body);
+  if (!Object.prototype.hasOwnProperty.call(sections, "Summary")) {
+    issues.push({
+      code: "missing-section",
+      message: `${fileName}: missing required section "## Summary"`,
+    });
+  }
+  if (!Object.prototype.hasOwnProperty.call(sections, "Related")) {
+    issues.push({
+      code: "missing-section",
+      message: `${fileName}: missing required section "## Related"`,
+    });
+  }
+
+  const additionalSections = Object.keys(sections).filter((section) => !["Summary", "Related"].includes(section));
+  if (additionalSections.length === 0) {
+    issues.push({
+      code: "missing-section",
+      message: `${fileName}: operational rule pages must include at least one rule/details section besides Summary and Related`,
+    });
+  }
+
+  if (mode === "full") {
+    issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function lintProjectDecisionPage(fileName, absolutePath, mode) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+  const parsed = parseFrontmatter(contents);
+  if (!parsed) {
+    return {
+      file: fileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-frontmatter",
+        message: `${fileName}: YAML frontmatter is missing or malformed`,
+      }],
+    };
+  }
+
+  const frontmatter = parsed.frontmatter;
+  if (!normalize(frontmatter.title)) {
+    issues.push({
+      code: "missing-frontmatter-title",
+      message: `${fileName}: frontmatter.title is required`,
+    });
+  }
+  if (normalize(frontmatter.type) !== "special/project-decisions") {
+    issues.push({
+      code: "frontmatter-type-mismatch",
+      message: `${fileName}: frontmatter.type must be "special/project-decisions"`,
+    });
+  }
+  if (!normalize(frontmatter.project)) {
+    issues.push({
+      code: "missing-frontmatter-project",
+      message: `${fileName}: frontmatter.project is required`,
+    });
+  }
+  if (!isIsoDateTime(frontmatter.updated)) {
+    issues.push({
+      code: "frontmatter-updated-format",
+      message: `${fileName}: frontmatter.updated must be an ISO datetime`,
+    });
+  }
+
+  const bootPriority = Number(normalize(frontmatter.boot_priority));
+  if (!Number.isInteger(bootPriority)) {
+    issues.push({
+      code: "frontmatter-boot-priority-format",
+      message: `${fileName}: frontmatter.boot_priority must be an integer`,
+    });
+  }
+
+  const sections = parseSections(parsed.body);
+  for (const section of ["About", "Decisions"]) {
+    if (!Object.prototype.hasOwnProperty.call(sections, section)) {
+      issues.push({
+        code: "missing-section",
+        message: `${fileName}: missing required section "## ${section}"`,
+      });
+    }
+  }
+
+  if (mode === "full") {
+    issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function lintReferenceDocPage(fileName, absolutePath) {
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: true,
+    issues: [],
+  };
+}
+
 function lintIndexFile(fileName, absolutePath, mode) {
   const issues = [];
   const contents = readFileSync(absolutePath, "utf8");
@@ -714,6 +974,65 @@ function lintLogFile(fileName, absolutePath) {
   };
 }
 
+function lintResultArchivePage(fileName, absolutePath) {
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: true,
+    issues: [],
+  };
+}
+
+function lintSchemaFile(fileName, absolutePath, mode) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+  const parsed = parseFrontmatter(contents);
+  if (!parsed) {
+    return {
+      file: fileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-frontmatter",
+        message: `${fileName}: YAML frontmatter is missing or malformed`,
+      }],
+    };
+  }
+
+  if (!normalize(parsed.frontmatter.title)) {
+    issues.push({
+      code: "missing-frontmatter-title",
+      message: `${fileName}: frontmatter.title is required`,
+    });
+  }
+  if (!contents.includes("# Kuma Vault Schema")) {
+    issues.push({
+      code: "schema-heading",
+      message: `${fileName}: must declare "# Kuma Vault Schema"`,
+    });
+  }
+
+  for (const section of ["## Summary", "## Directories", "## Special Files"]) {
+    if (!contents.includes(section)) {
+      issues.push({
+        code: "missing-section",
+        message: `${fileName}: missing required section "${section}"`,
+      });
+    }
+  }
+
+  if (mode === "full") {
+    issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
 function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
   const normalizedFileName = fileName.replace(/\\/gu, "/");
   const baseFileName = basename(normalizedFileName);
@@ -740,8 +1059,35 @@ function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
     return lintLogFile(normalizedFileName, absolutePath);
   }
 
+  if (normalizedFileName === "schema.md") {
+    return lintSchemaFile(normalizedFileName, absolutePath, mode);
+  }
+
   if (isMemoPage(normalizedFileName)) {
     return lintMemoPage(normalizedFileName, absolutePath, mode);
+  }
+
+  if (isResultArchivePage(normalizedFileName)) {
+    return lintResultArchivePage(normalizedFileName, absolutePath);
+  }
+
+  if (isNestedReferenceDocPage(normalizedFileName)) {
+    return lintReferenceDocPage(normalizedFileName, absolutePath);
+  }
+
+  if (isOperationalRulePage(normalizedFileName)) {
+    return lintOperationalRulePage(normalizedFileName, absolutePath, mode);
+  }
+
+  if (isProjectDecisionPage(normalizedFileName)) {
+    return lintProjectDecisionPage(normalizedFileName, absolutePath, mode);
+  }
+
+  if (isTopLevelDomainPage(normalizedFileName)) {
+    const parsed = parseFrontmatter(readFileSync(absolutePath, "utf8"));
+    if (parsed && normalize(parsed.frontmatter.source).startsWith("skills/")) {
+      return lintManagedSkillPage(normalizedFileName, absolutePath);
+    }
   }
 
   if (!spec) {
