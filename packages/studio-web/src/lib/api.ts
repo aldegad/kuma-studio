@@ -188,15 +188,12 @@ function isMemo(value: unknown): value is Memo {
     typeof value.createdAt === "string" &&
     (
       value.source === undefined ||
-      value.source === "vault" ||
-      value.source === "legacy-memo" ||
-      value.source === "user-memo"
+      value.source === "vault"
     ) &&
     (
       value.section === undefined ||
-      value.section === "vault" ||
-      value.section === "inbox" ||
-      value.section === "user-memo"
+      value.section === "memos" ||
+      value.section === "inbox"
     )
   );
 }
@@ -409,7 +406,7 @@ export async function createMemo(input: {
   text?: string;
   images: string[];
 }): Promise<Memo> {
-  const res = await fetch(`${BASE_URL}/studio/vault`, {
+  const res = await fetch(`${BASE_URL}/studio/memos`, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -426,7 +423,7 @@ export async function createMemo(input: {
 }
 
 export async function deleteMemo(id: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/studio/vault/${encodeURIComponent(id)}`, {
+  const res = await fetch(`${BASE_URL}/studio/memos/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: { Accept: "application/json" },
   });

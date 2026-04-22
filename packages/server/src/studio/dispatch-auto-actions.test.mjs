@@ -101,7 +101,7 @@ describe("runDispatchAutoActions", { timeout: 10000 }, () => {
       teamJsonPath: join(root, "team.json"),
       registryPath: join(root, "surfaces.json"),
       sendScriptPath: join(root, "missing-send.sh"),
-      userMemoDir: join(root, "user-memo"),
+      memoDir: join(root, "vault-memos"),
       execFile: async (...args) => {
         noeuriCalls.push(args);
         return { stdout: "", stderr: "" };
@@ -146,7 +146,7 @@ describe("runDispatchAutoActions", { timeout: 10000 }, () => {
     const taskDir = join(root, "tasks");
     const resultDir = join(root, "results");
     const signalDir = join(root, "signals");
-    const userMemoDir = join(root, "user-memo");
+    const memoDir = join(root, "vault-memos");
     const sendScriptPath = join(root, "kuma-cmux-send.sh");
     const teamJsonPath = join(root, "team.json");
     const registryPath = join(root, "surfaces.json");
@@ -172,7 +172,7 @@ describe("runDispatchAutoActions", { timeout: 10000 }, () => {
       teamJsonPath,
       registryPath,
       sendScriptPath,
-      userMemoDir,
+      memoDir,
       execFile: async (cmd, args) => {
         calls.push({ cmd, args });
         return { stdout: "", stderr: "" };
@@ -196,8 +196,9 @@ describe("runDispatchAutoActions", { timeout: 10000 }, () => {
     expect(prompt).toContain("broker messages as SSOT");
     expect(prompt).toContain("dispatch-log.md is a derived append-only ledger only");
     expect(prompt).toContain(`${root}/skills/noeuri/SKILL.md`);
-    expect(prompt).toContain("protected user-memo read-only notebook");
-    expect(prompt).toContain(userMemoDir);
+    expect(prompt).toContain("protected vault/memos read-only favorites notebook");
+    expect(prompt).toContain(memoDir);
+    expect(prompt).toContain("outside vault/memos");
     expect(prompt).toContain(`${resultDir}/noeuri-audit-kuma-task-allowlist-noeuri-phase4.result.md`);
     expect(prompt).toContain(`${signalDir}/noeuri-auto-kuma-task-allowlist-noeuri-phase4-done`);
   });
@@ -220,7 +221,7 @@ describe("runDispatchAutoActions", { timeout: 10000 }, () => {
       teamJsonPath,
       registryPath,
       sendScriptPath: join(root, "missing.sh"),
-      userMemoDir: join(root, "user-memo"),
+      memoDir: join(root, "vault-memos"),
       execFile: async (...args) => {
         calls.push(args);
         return { stdout: "", stderr: "" };

@@ -1,14 +1,20 @@
-import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
+
 import { MemoStore } from "./memo-store.mjs";
 
-const TEMP_ENV_KEYS = ["KUMA_VAULT_DIR", "KUMA_USER_MEMO_DIR"];
+const TEMP_ENV_KEYS = ["KUMA_VAULT_DIR", "HOME"];
 
 async function setupMemoEnv() {
-  process.env.KUMA_VAULT_DIR = await mkdtemp(join(tmpdir(), "kuma-vault-"));
-  process.env.KUMA_USER_MEMO_DIR = await mkdtemp(join(tmpdir(), "kuma-user-memo-"));
+  const homeDir = await mkdtemp(join(tmpdir(), "kuma-home-"));
+  const vaultDir = join(homeDir, ".kuma", "vault");
+  const legacyMemoDir = join(homeDir, ".kuma", "memos");
+  process.env.HOME = homeDir;
+  process.env.KUMA_VAULT_DIR = vaultDir;
+  await mkdir(join(homeDir, ".kuma"), { recursive: true });
+  return { homeDir, vaultDir, legacyMemoDir };
 }
 
 describe("memo-store", () => {
@@ -18,30 +24,20 @@ describe("memo-store", () => {
     }
   });
 
-  it("scaffolds vault storage and seeds canonical vault memos", async () => {
-    await setupMemoEnv();
+  it("scaffolds vault storage with a canonical memos directory and no demo seed memos", async () => {
+    const { vaultDir } = await setupMemoEnv();
     const store = new MemoStore(process.cwd());
 
     const memos = await store.list();
 
-    expect(memos).toHaveLength(4);
-    expect(memos[0]?.id).toBe("token-efficiency-report-2026-04-06.md");
-    expect(memos[0]?.source).toBe("user-memo");
-    expect(memos[0]?.images).toContain("/studio/memo-images/token-efficiency-2026-04-06-today.png");
+    expect(memos).toEqual([]);
 
-    const userMemoEntries = await readdir(process.env.KUMA_USER_MEMO_DIR);
-    expect(userMemoEntries).toEqual(
-      expect.arrayContaining([
-        "bench-sdxl-vs-hyper.md",
-        "token-efficiency-report-2026-04-06.md",
-      ]),
-    );
-
-    const vaultRootEntries = await readdir(process.env.KUMA_VAULT_DIR);
+    const vaultRootEntries = await readdir(vaultDir);
     expect(vaultRootEntries).toEqual(
       expect.arrayContaining([
         "domains",
         "projects",
+        "memos",
         "learnings",
         "results",
         "inbox",
@@ -51,10 +47,43 @@ describe("memo-store", () => {
         "images",
       ]),
     );
+
+    expect(await readdir(join(vaultDir, "memos"))).toEqual([]);
   });
 
-  it("writes user memos into the user-memo root and preserves image routes", async () => {
-    await setupMemoEnv();
+  it("migrates legacy memos into vault/memos and drops seeded demo memo artifacts", async () => {
+    const { legacyMemoDir, vaultDir } = await setupMemoEnv();
+    await mkdir(legacyMemoDir, { recursive: true });
+    await Promise.all([
+      writeFile(join(legacyMemoDir, "MEMORY.md"), "# legacy index\n"),
+      writeFile(
+        join(legacyMemoDir, "user-note.md"),
+        "---\ntitle: User Note\ncreated: 2026-04-10T00:00:00.000Z\nupdated: 2026-04-10T00:00:00.000Z\nimages: []\n---\n\nhello\n",
+      ),
+      writeFile(
+        join(legacyMemoDir, "bench-euler-grid.md"),
+        "---\ntitle: Seed Demo\ncreated: 2026-04-03T01:52:00.000Z\nupdated: 2026-04-03T01:52:00.000Z\nimages: []\n---\n\nseed\n",
+      ),
+    ]);
+
+    const store = new MemoStore(process.cwd());
+    const memos = await store.list();
+
+    expect(memos).toHaveLength(1);
+    expect(memos[0]).toMatchObject({
+      id: "user-note.md",
+      title: "User Note",
+      text: "hello",
+      source: "vault",
+      section: "memos",
+    });
+
+    expect(await readdir(join(vaultDir, "memos"))).toEqual(["user-note.md"]);
+    expect(await readdir(legacyMemoDir)).toEqual([]);
+  });
+
+  it("writes canonical memos into vault/memos and preserves image routes", async () => {
+    const { vaultDir } = await setupMemoEnv();
     const store = new MemoStore(process.cwd());
 
     const created = await store.add({
@@ -63,13 +92,14 @@ describe("memo-store", () => {
       images: ["/studio/memo-images/lightning-warm.png"],
     });
 
-    const saved = await readFile(join(process.env.KUMA_USER_MEMO_DIR, created.id), "utf8");
+    const saved = await readFile(join(vaultDir, "memos", created.id), "utf8");
 
-    expect(created.section).toBe("user-memo");
-    expect(created.source).toBe("user-memo");
+    expect(created.section).toBe("memos");
+    expect(created.source).toBe("vault");
     expect(saved).toContain("title: 위키 문서");
+    expect(saved).toContain("updated:");
+    expect(saved).toContain("images: [lightning-warm.png]");
     expect(saved).toContain("hello\nvault");
-    expect(saved).toContain("  - lightning-warm.png");
     expect(created.images).toEqual(["/studio/memo-images/lightning-warm.png"]);
 
     const memos = await store.list();
@@ -79,82 +109,49 @@ describe("memo-store", () => {
     expect(deleted.success).toBe(true);
   });
 
-  it("writes inbox entries separately from vault pages", async () => {
-    await setupMemoEnv();
-    const store = new MemoStore(process.cwd());
-
-    const created = await store.addInbox({
-      title: "원문",
-      text: "{\"raw\":true}",
-    });
-
-    expect(created.id.startsWith("inbox/")).toBe(true);
-    expect(created.section).toBe("inbox");
-
-    const inboxFileName = created.id.slice("inbox/".length);
-    const saved = await readFile(join(process.env.KUMA_VAULT_DIR, "inbox", inboxFileName), "utf8");
-    expect(saved).toContain("title: 원문");
-    expect(saved).toContain("{\"raw\":true}");
-
-    const inboxEntries = await store.listInbox();
-    expect(inboxEntries.map((entry) => entry.id)).toContain(created.id);
-
-    const vaultEntries = await store.list();
-    expect(vaultEntries.map((entry) => entry.id)).not.toContain(created.id);
-  });
-
-  it("lists user-memo files only, excludes MEMORY.md, and ignores vault files", async () => {
-    await setupMemoEnv();
+  it("lists memo files only from vault/memos and ignores other vault pages", async () => {
+    const { vaultDir } = await setupMemoEnv();
     const store = new MemoStore(process.cwd());
     await store.list();
 
     await Promise.all([
-      writeFile(join(process.env.KUMA_USER_MEMO_DIR, "MEMORY.md"), "# memory index\n"),
-      writeFile(join(process.env.KUMA_USER_MEMO_DIR, "user-note.md"), "---\ntitle: User Note\ncreated: 2026-04-10T00:00:00.000Z\n---\n\nhello\n"),
-      writeFile(join(process.env.KUMA_VAULT_DIR, "token-efficiency-report-2026-04-06.md"), "---\ntitle: Wrong Vault Source\n---\n"),
-      writeFile(join(process.env.KUMA_VAULT_DIR, "current-focus.md"), "---\ntitle: Current Focus\n---\n"),
-      writeFile(join(process.env.KUMA_VAULT_DIR, "domains", "security.md"), "---\ntitle: Security\n---\n"),
+      writeFile(
+        join(vaultDir, "memos", "user-note.md"),
+        "---\ntitle: User Note\ncreated: 2026-04-10T00:00:00.000Z\nupdated: 2026-04-10T00:00:00.000Z\nimages: []\n---\n\nhello\n",
+      ),
+      writeFile(join(vaultDir, "current-focus.md"), "---\ntitle: Current Focus\n---\n"),
+      mkdir(join(vaultDir, "domains"), { recursive: true }),
+      writeFile(join(vaultDir, "domains", "security.md"), "---\ntitle: Security\n---\n"),
     ]);
 
     const memos = await store.list();
 
-    expect(memos).toHaveLength(5);
-    expect(memos.map((memo) => memo.id)).toEqual(expect.arrayContaining([
-      "bench-sdxl-vs-hyper.md",
-      "bench-euler-grid.md",
-      "bench-euler_a-grid.md",
-      "token-efficiency-report-2026-04-06.md",
-      "user-note.md",
-    ]));
-    expect(memos.map((memo) => memo.id)).not.toEqual(expect.arrayContaining([
-      "MEMORY.md",
-      "current-focus.md",
-      "domains/security.md",
-    ]));
-    expect(memos.every((memo) => memo.source === "user-memo")).toBe(true);
+    expect(memos).toHaveLength(1);
+    expect(memos[0]?.id).toBe("user-note.md");
+    expect(memos.every((memo) => memo.source === "vault" && memo.section === "memos")).toBe(true);
   });
 
-  it("parses frontmatter arrays, quoted values, and trims body when reading user memos", async () => {
-    await setupMemoEnv();
+  it("parses memo frontmatter arrays and trims memo body", async () => {
+    const { vaultDir } = await setupMemoEnv();
     const store = new MemoStore(process.cwd());
     await store.list();
 
-    const memoPath = join(process.env.KUMA_USER_MEMO_DIR, "shared-parser.md");
-    const content = [
-      "---",
-      'title: "Quoted 제목"',
-      "created: 2026-04-11T09:00:00.000Z",
-      "images:",
-      "  - first.png",
-      '  - "second.png"',
-      "---",
-      "",
-      "",
-      "  body content  ",
-      "",
-      "",
-    ].join("\n");
-    await writeFile(memoPath, content, "utf8");
+    await writeFile(
+      join(vaultDir, "memos", "shared-parser.md"),
+      [
+        "---",
+        'title: "Quoted 제목"',
+        "created: 2026-04-11T09:00:00.000Z",
+        "updated: 2026-04-11T09:30:00.000Z",
+        'images: ["first.png", "second.png"]',
+        "---",
+        "",
+        "",
+        "  body content  ",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
 
     const memos = await store.list();
     const parsed = memos.find((memo) => memo.id === "shared-parser.md");
@@ -169,13 +166,13 @@ describe("memo-store", () => {
     ]);
   });
 
-  it("falls back to derived title and mtime when frontmatter is missing, and trims bare body", async () => {
-    await setupMemoEnv();
+  it("falls back to derived title and mtime when frontmatter is missing", async () => {
+    const { vaultDir } = await setupMemoEnv();
     const store = new MemoStore(process.cwd());
     await store.list();
 
     await writeFile(
-      join(process.env.KUMA_USER_MEMO_DIR, "no-frontmatter_note.md"),
+      join(vaultDir, "memos", "no-frontmatter_note.md"),
       "\n\nplain body only\n\n",
       "utf8",
     );
@@ -189,19 +186,5 @@ describe("memo-store", () => {
     expect(bare?.images).toEqual([]);
     expect(typeof bare?.createdAt).toBe("string");
     expect(bare?.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/u);
-  });
-
-  it("seeds user-memo files only once even when list() runs multiple times", async () => {
-    await setupMemoEnv();
-    const store = new MemoStore(process.cwd());
-
-    await store.list();
-    await store.list();
-
-    const entries = await readdir(process.env.KUMA_USER_MEMO_DIR);
-    expect(entries.filter((name) => name === "bench-sdxl-vs-hyper.md")).toHaveLength(1);
-    expect(entries.filter((name) => name === "bench-euler-grid.md")).toHaveLength(1);
-    expect(entries.filter((name) => name === "bench-euler_a-grid.md")).toHaveLength(1);
-    expect(entries.filter((name) => name === "token-efficiency-report-2026-04-06.md")).toHaveLength(1);
   });
 });

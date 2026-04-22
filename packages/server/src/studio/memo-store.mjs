@@ -1,88 +1,80 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, extname, join, normalize, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 
-import { parseFrontmatterDocument } from "./vault-ingest.mjs";
+import { parseFrontmatterDocument, stringifyFrontmatter } from "./vault-ingest.mjs";
 
 const MEMO_IMAGE_ROUTE_PREFIX = "/studio/memo-images/";
-const USER_MEMORY_INDEX_FILE_NAME = "MEMORY.md";
-const VAULT_SYSTEM_FILE_NAMES = new Set(["index.md", "schema.md", "log.md"]);
-const VAULT_SPECIAL_FILE_NAMES = new Set([
-  "dispatch-log.md",
-  "decisions.md",
-]);
-const VAULT_ENTRY_SKIP_DIRS = new Set(["images", "inbox", "results"]);
+const LEGACY_MEMORY_INDEX_FILE_NAME = "MEMORY.md";
 const INBOX_ALLOWED_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
+const LEGACY_SEED_MEMO_IDS = new Set([
+  "bench-sdxl-vs-hyper",
+  "bench-euler-grid",
+  "bench-euler_a-grid",
+  "token-efficiency-report-2026-04-06",
+]);
 
 const VAULT_SCAFFOLD_FILES = {
-  "index.md": "# Kuma Vault\n\n- domains/\n- projects/\n- learnings/\n- results/\n- inbox/\n",
-  "schema.md": "# Vault Schema\n\n- title\n- created\n- tags(optional)\n- body\n",
-  "log.md": "# Vault Log\n\n- 2026-04-07 vault scaffold initialized\n",
+  "index.md": `# Kuma Vault Index
+
+## Domains
+(아직 없음)
+
+## Projects
+(아직 없음)
+
+## Memos
+(아직 없음)
+
+## Learnings
+(아직 없음)
+
+## Results
+(아직 없음)
+
+## Inbox
+(비어 있음)
+
+## Cross References
+(아직 없음)
+`,
+  "schema.md": `---
+title: Kuma Vault Schema
+description: Vault 페이지 작성 규칙과 운영 원칙
+---
+
+# Kuma Vault Schema
+
+## Canonical Slots
+- domains/
+- projects/
+- memos/
+- learnings/
+- results/
+- inbox/
+
+## Special Files
+
+### 1) \`dispatch-log.md\`
+
+- **Primary writer:** \`kuma-task lifecycle hook\`
+- **Frontmatter type 표준:** \`type: special/dispatch-log\`
+
+### 2) \`decisions.md\`
+
+- **Primary writer:** \`user-direct\`
+- **Frontmatter type 표준:** \`type: special/decisions\`
+`,
+  "log.md": `# Kuma Vault Change Log
+
+## 2026-04-07
+- INIT: vault scaffold initialized
+`,
 };
 
-const VAULT_SCAFFOLD_DIRS = ["domains", "projects", "learnings", "results", "inbox"];
-
-const SEED_MEMOS = [
-  {
-    id: "bench-sdxl-vs-hyper",
-    title: "SDXL vs Hyper-SD 벤치마크",
-    createdAt: "2026-04-03T01:50:00.000Z",
-    text: "동일 모델(amanatsu v11) 640×960\nLightning(4step,euler_a,cfg1.5): 웜 22.1s\nHyper-SD(2step,euler,cfg1.0): 웜 6.0s → 73% 빠름",
-    images: ["lightning-warm.png", "hyper-warm.png"],
-  },
-  {
-    id: "bench-euler-grid",
-    title: "Hyper-SD euler 그리드 (12장)",
-    createdAt: "2026-04-03T01:52:00.000Z",
-    text: "step(1,2,4) × cfg(0.5,1.0,1.5,2.0)\n모델: amanatsu v11, 640×960, seed=42",
-    images: [
-      "euler-s1-cfg0.5.png",
-      "euler-s1-cfg1.png",
-      "euler-s1-cfg1.5.png",
-      "euler-s1-cfg2.png",
-      "euler-s2-cfg0.5.png",
-      "euler-s2-cfg1.png",
-      "euler-s2-cfg1.5.png",
-      "euler-s2-cfg2.png",
-      "euler-s4-cfg0.5.png",
-      "euler-s4-cfg1.png",
-      "euler-s4-cfg1.5.png",
-      "euler-s4-cfg2.png",
-    ],
-  },
-  {
-    id: "bench-euler_a-grid",
-    title: "Hyper-SD euler_a 그리드 (12장)",
-    createdAt: "2026-04-03T01:55:00.000Z",
-    text: "step(1,2,4) × cfg(0.5,1.0,1.5,2.0)\n최종 선택: euler_a / 4step / cfg1.5",
-    images: [
-      "euler_a-s1-cfg0.5.png",
-      "euler_a-s1-cfg1.png",
-      "euler_a-s1-cfg1.5.png",
-      "euler_a-s1-cfg2.png",
-      "euler_a-s2-cfg0.5.png",
-      "euler_a-s2-cfg1.png",
-      "euler_a-s2-cfg1.5.png",
-      "euler_a-s2-cfg2.png",
-      "euler_a-s4-cfg0.5.png",
-      "euler_a-s4-cfg1.png",
-      "euler_a-s4-cfg1.5.png",
-      "euler_a-s4-cfg2.png",
-    ],
-  },
-  {
-    id: "token-efficiency-report-2026-04-06",
-    title: "쿠마팀 토큰 효율 리포트 (2026-04-06)",
-    createdAt: "2026-04-06T09:00:00.000Z",
-    text: "cmux 위임 구조 토큰 절약 증거\n오늘: 627.6M / 4,139 메시지 (메시지당 ~152K)\n이번달: 307.8M / 2,737 메시지 / $229 (메시지당 ~112K)",
-    images: [
-      "token-efficiency-2026-04-06-today.png",
-      "token-efficiency-2026-04-06-monthly.png",
-    ],
-  },
-];
+const VAULT_SCAFFOLD_DIRS = ["domains", "projects", "memos", "learnings", "results", "inbox"];
 
 function toMemoImageFilename(image) {
   if (typeof image !== "string") {
@@ -103,9 +95,13 @@ function sortMemosDesc(memos) {
 }
 
 function toMemoMarkdown(memo) {
-  const imageLines = memo.images.map((image) => `  - ${image}`).join("\n");
   const body = memo.text?.trim() ?? "";
-  return `---\ntitle: ${memo.title}\ncreated: ${memo.createdAt}\nimages:\n${imageLines}\n---\n\n${body}\n`;
+  return `${stringifyFrontmatter({
+    title: memo.title,
+    created: memo.createdAt,
+    updated: memo.updatedAt ?? memo.createdAt,
+    images: memo.images,
+  })}\n\n${body}\n`;
 }
 
 function normalizeRelativePath(pathValue) {
@@ -137,16 +133,28 @@ export function resolveVaultDir() {
   return resolve(homedir(), ".kuma", "vault");
 }
 
-export function resolveUserMemoDir() {
-  if (process.env.KUMA_USER_MEMO_DIR) {
-    return resolve(process.env.KUMA_USER_MEMO_DIR);
-  }
-
-  return resolve(homedir(), ".kuma", "memos");
+export function resolveVaultMemosDir() {
+  return join(resolveVaultDir(), "memos");
 }
 
 export function resolveVaultImagesDir() {
   return join(resolveVaultDir(), "images");
+}
+
+function resolveLegacyMemoDir() {
+  return resolve(homedir(), ".kuma", "memos");
+}
+
+async function moveFile(sourcePath, targetPath) {
+  try {
+    await rename(sourcePath, targetPath);
+  } catch (error) {
+    if (error?.code !== "EXDEV") {
+      throw error;
+    }
+    await copyFile(sourcePath, targetPath);
+    await unlink(sourcePath);
+  }
 }
 
 async function walkFiles(dir, {
@@ -202,6 +210,14 @@ export class MemoStore {
     return join(this.getVaultDir(), "inbox");
   }
 
+  getMemosDir() {
+    return resolveVaultMemosDir();
+  }
+
+  getImagesDir() {
+    return resolveVaultImagesDir();
+  }
+
   async #ensureReady() {
     if (!this.#ensurePromise) {
       this.#ensurePromise = this.#ensureSeedData().catch((error) => {
@@ -228,15 +244,54 @@ export class MemoStore {
     }
   }
 
+  async #migrateLegacyMemos() {
+    const legacyMemoDir = resolveLegacyMemoDir();
+    if (!existsSync(legacyMemoDir)) {
+      return;
+    }
+
+    const legacyFiles = await walkFiles(legacyMemoDir, {
+      recursive: false,
+      allowedExtensions: new Set([".md"]),
+    });
+
+    for (const legacyFile of legacyFiles) {
+      const relativePath = normalizeRelativePath(relative(legacyMemoDir, legacyFile));
+      const fileName = basename(relativePath);
+      const memoId = basename(fileName, extname(fileName));
+
+      if (fileName === LEGACY_MEMORY_INDEX_FILE_NAME || LEGACY_SEED_MEMO_IDS.has(memoId)) {
+        await unlink(legacyFile).catch((error) => {
+          if (error?.code !== "ENOENT") {
+            throw error;
+          }
+        });
+        continue;
+      }
+
+      const targetPath = join(this.getMemosDir(), fileName);
+      if (existsSync(targetPath)) {
+        await unlink(legacyFile).catch((error) => {
+          if (error?.code !== "ENOENT") {
+            throw error;
+          }
+        });
+        continue;
+      }
+
+      await moveFile(legacyFile, targetPath);
+    }
+  }
+
   async #ensureSeedData() {
     const vaultDir = this.getVaultDir();
     const inboxDir = this.getInboxDir();
-    const userMemoDir = resolveUserMemoDir();
+    const memosDir = this.getMemosDir();
     const vaultImagesDir = resolveVaultImagesDir();
 
     await mkdir(vaultDir, { recursive: true });
     await mkdir(inboxDir, { recursive: true });
-    await mkdir(userMemoDir, { recursive: true });
+    await mkdir(memosDir, { recursive: true });
     await mkdir(vaultImagesDir, { recursive: true });
 
     for (const dirName of VAULT_SCAFFOLD_DIRS) {
@@ -251,13 +306,7 @@ export class MemoStore {
     }
 
     await this.#copySeedImagesInto(vaultImagesDir);
-
-    for (const memo of SEED_MEMOS) {
-      const memoPath = join(userMemoDir, `${memo.id}.md`);
-      if (!existsSync(memoPath)) {
-        await writeFile(memoPath, toMemoMarkdown(memo), "utf8");
-      }
-    }
+    await this.#migrateLegacyMemos();
   }
 
   async #readEntryFile(fullPath, rootDir, { source, section, prefix = "" }) {
@@ -300,21 +349,21 @@ export class MemoStore {
     };
   }
 
-  async #readUserMemoEntries() {
-    const userMemoDir = resolveUserMemoDir();
-    const files = await walkFiles(userMemoDir, {
+  async #readMemoEntries() {
+    const memosDir = this.getMemosDir();
+    const files = await walkFiles(memosDir, {
       recursive: false,
       allowedExtensions: new Set([".md"]),
     });
 
     const entries = [];
     for (const file of files) {
-      const relativePath = normalizeRelativePath(relative(userMemoDir, file));
+      const relativePath = normalizeRelativePath(relative(memosDir, file));
       const fileName = basename(relativePath);
-      if (fileName === USER_MEMORY_INDEX_FILE_NAME) {
+      if (fileName === LEGACY_MEMORY_INDEX_FILE_NAME) {
         continue;
       }
-      entries.push(await this.#readEntryFile(file, userMemoDir, { source: "user-memo", section: "user-memo" }));
+      entries.push(await this.#readEntryFile(file, memosDir, { source: "vault", section: "memos" }));
     }
     return entries;
   }
@@ -338,7 +387,7 @@ export class MemoStore {
 
   async list() {
     await this.#ensureReady();
-    return sortMemosDesc(await this.#readUserMemoEntries());
+    return sortMemosDesc(await this.#readMemoEntries());
   }
 
   async listInbox() {
@@ -351,16 +400,18 @@ export class MemoStore {
 
     const fileName = `${randomUUID()}.md`;
     const createdAt = new Date().toISOString();
+    const updatedAt = createdAt;
     const memo = {
-      title: String(input?.title ?? "").trim(),
+      title: String(input?.title ?? "").trim() || "Untitled Memo",
       text: typeof input?.text === "string" ? input.text.trim() : "",
       images: Array.isArray(input?.images)
         ? input.images.map((image) => toMemoImageFilename(image)).filter(Boolean)
         : [],
       createdAt,
+      updatedAt,
     };
 
-    await writeFile(join(resolveUserMemoDir(), fileName), toMemoMarkdown(memo), "utf8");
+    await writeFile(join(this.getMemosDir(), fileName), toMemoMarkdown(memo), "utf8");
 
     return {
       id: fileName,
@@ -369,8 +420,8 @@ export class MemoStore {
       text: memo.text || undefined,
       images: memo.images.map((image) => memoImageUrl(image)),
       createdAt,
-      source: "user-memo",
-      section: "user-memo",
+      source: "vault",
+      section: "memos",
     };
   }
 
@@ -379,12 +430,14 @@ export class MemoStore {
 
     const fileName = `${randomUUID()}.md`;
     const createdAt = new Date().toISOString();
+    const updatedAt = createdAt;
     const title = String(input?.title ?? "").trim() || "Inbox";
     const memo = {
       title,
       text: typeof input?.text === "string" ? input.text.trim() : "",
       images: [],
       createdAt,
+      updatedAt,
     };
 
     await writeFile(join(this.getInboxDir(), fileName), toMemoMarkdown(memo), "utf8");
@@ -413,9 +466,9 @@ export class MemoStore {
       return targetPath.startsWith(vaultDir) ? targetPath : null;
     }
 
-    const userMemoDir = resolveUserMemoDir();
-    const targetPath = resolve(userMemoDir, normalize(sanitizedId));
-    return targetPath.startsWith(userMemoDir) ? targetPath : null;
+    const memosDir = this.getMemosDir();
+    const targetPath = resolve(memosDir, normalize(sanitizedId));
+    return targetPath.startsWith(memosDir) ? targetPath : null;
   }
 
   async delete(id) {
@@ -450,7 +503,7 @@ export class MemoStore {
       return null;
     }
 
-    const vaultImagePath = join(resolveVaultImagesDir(), safeName);
+    const vaultImagePath = join(this.getImagesDir(), safeName);
     if (existsSync(vaultImagePath)) {
       return vaultImagePath;
     }

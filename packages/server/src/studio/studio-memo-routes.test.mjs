@@ -172,6 +172,100 @@ describe("studio memo routes", () => {
     assert.strictEqual(res.json.section, "inbox");
   });
 
+  it("uses canonical /studio/memos CRUD routes for memo create/delete", async () => {
+    const calls = [];
+    const handler = createStudioMemoRouteHandler({
+      memoStore: {
+        async add(input) {
+          calls.push({ type: "add", input });
+          return {
+            id: "memo.md",
+            path: "memo.md",
+            title: input.title,
+            text: input.text,
+            images: input.images,
+            createdAt: "2026-04-07T00:00:00.000Z",
+            source: "vault",
+            section: "memos",
+          };
+        },
+        async delete(id) {
+          calls.push({ type: "delete", id });
+          return { success: true, status: 200 };
+        },
+      },
+    });
+
+    const createRes = createResponse();
+    await handler(
+      createRequest("POST", "/studio/memos", {
+        title: "즐겨찾기",
+        text: "canonical memo",
+        images: [],
+      }),
+      createRes,
+      new URL("http://localhost:4312/studio/memos"),
+    );
+
+    assert.strictEqual(createRes.statusCode, 201);
+    assert.strictEqual(createRes.json.section, "memos");
+    assert.strictEqual(createRes.json.source, "vault");
+
+    const deleteRes = createResponse();
+    await handler(
+      createRequest("DELETE", "/studio/memos/memo.md"),
+      deleteRes,
+      new URL("http://localhost:4312/studio/memos/memo.md"),
+    );
+
+    assert.strictEqual(deleteRes.statusCode, 200);
+    assert.deepStrictEqual(calls, [
+      {
+        type: "add",
+        input: {
+          title: "즐겨찾기",
+          text: "canonical memo",
+          images: [],
+        },
+      },
+      {
+        type: "delete",
+        id: "memo.md",
+      },
+    ]);
+  });
+
+  it("does not expose legacy /studio/vault memo CRUD aliases", async () => {
+    const handler = createStudioMemoRouteHandler({
+      memoStore: {
+        async add() {
+          throw new Error("should not be called");
+        },
+        async delete() {
+          throw new Error("should not be called");
+        },
+      },
+    });
+
+    const createHandled = await handler(
+      createRequest("POST", "/studio/vault", {
+        title: "legacy",
+        text: "alias",
+        images: [],
+      }),
+      createResponse(),
+      new URL("http://localhost:4312/studio/vault"),
+    );
+    const deleteHandled = await handler(
+      createRequest("DELETE", "/studio/vault/legacy.md"),
+      createResponse(),
+      new URL("http://localhost:4312/studio/vault/legacy.md"),
+    );
+
+    assert.strictEqual(createHandled, false);
+    assert.strictEqual(deleteHandled, false);
+  });
+
   it("serves memo images through the memo handler", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-memo-routes-"));
     tempDirs.push(root);

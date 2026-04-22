@@ -177,6 +177,7 @@ function parseIndexMd(content: string): TocSection[] {
 const VAULT_SECTIONS_META: Record<string, { accent: string; textClass: string; icon: string }> = {
   domains:          { accent: "#8b5cf6", textClass: "text-violet-400", icon: "🏛" },
   projects:         { accent: "#f59e0b", textClass: "text-amber-400", icon: "📁" },
+  memos:            { accent: "#ec4899", textClass: "text-pink-400", icon: "📝" },
   learnings:        { accent: "#10b981", textClass: "text-emerald-400", icon: "💡" },
   inbox:            { accent: "#64748b", textClass: "text-slate-400", icon: "📥" },
   "cross-references": { accent: "#0ea5e9", textClass: "text-sky-400", icon: "🔗" },

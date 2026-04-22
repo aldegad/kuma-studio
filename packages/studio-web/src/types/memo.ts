@@ -5,8 +5,8 @@ export interface Memo {
   text?: string;
   images: string[];
   createdAt: string;
-  source?: "vault" | "legacy-memo" | "user-memo";
-  section?: "vault" | "inbox" | "user-memo";
+  source?: "vault";
+  section?: "memos" | "inbox";
 }
 
 export interface MemoListResponse {

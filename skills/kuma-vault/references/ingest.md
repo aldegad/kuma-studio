@@ -35,11 +35,11 @@ inbox/ 또는 명시 소스를 읽고, canonical slot 에 맞춰 정리한 뒤 i
 
 ```
 ~/.kuma/vault/
+├── memos/                유저 즐겨찾기 메모 (background ingest 대상 아님)
 ├── inbox/                정리 대기 staging (인제스트 입구)
 ├── raw/                  원본 보존 archive (변경 금지, ingest 대상 아님)
 │   ├── pdf/              PDF 원본
 │   ├── pdf-text/         PDF 텍스트 추출본
-│   └── memos/            메모 원본
 ├── results/              dispatch result / evidence archive
 ├── domains/              도메인 지식 (security, analytics, image-gen, content-pipeline, frontend-design …)
 ├── projects/             얇은 canonical project summary
@@ -164,7 +164,7 @@ log.md append: {1줄}
 - `raw/<name>` 을 **소스로** 읽어 `domains/`/`projects/`/`learnings/` 로 승격하는 것은 허용 (raw 원본 파일은 그대로 둠)
 - 기존 페이지 내용 **삭제 금지** — 다만 project summary contract 를 깨는 legacy ingest block 은 제거 대상이다
 - Special files (`dispatch-log.md`, `decisions.md`) 는 ingest 로 덮어쓰지 않는다 — dispatch-log 는 lifecycle hook 소유, decisions 는 user-direct 전용
-- `~/.claude/projects/` (user-memo) 는 **read-only** — 이 경로 아래는 쓰지 않는다
+- `~/.kuma/vault/memos/` 는 user-owned favorites layer 다. background ingest 는 이 경로를 쓰지 않는다
 - inbox/ 에서 꺼낸 파일은 인제스트 완료 후 inbox 에서 제거하거나 `_done` suffix 로 마킹
 - log.md 는 항상 **append-only** (덮어쓰기 금지)
 - 판단 불가한 소스는 inbox/ 에 남기고 Findings 에만 보고

@@ -9,7 +9,7 @@ beforeEach(() => {
 });
 
 describe("memo api payload validation", () => {
-  it("accepts memo list payloads with user-memo source", async () => {
+  it("accepts memo list payloads with canonical vault memo source", async () => {
     vi.resetModules();
     const payload = {
       memos: [
@@ -20,8 +20,8 @@ describe("memo api payload validation", () => {
           text: "hello",
           images: [],
           createdAt: "2026-04-10T00:00:00.000Z",
-          source: "user-memo",
-          section: "user-memo",
+          source: "vault",
+          section: "memos",
         },
       ],
     };
@@ -35,7 +35,7 @@ describe("memo api payload validation", () => {
     await expect(fetchMemos()).resolves.toEqual(payload);
   });
 
-  it("accepts created memo payloads with user-memo source", async () => {
+  it("accepts created memo payloads with canonical vault memo source", async () => {
     vi.resetModules();
     const payload = {
       id: "memo.md",
@@ -44,8 +44,8 @@ describe("memo api payload validation", () => {
       text: "hello",
       images: [],
       createdAt: "2026-04-10T00:00:00.000Z",
-      source: "user-memo",
-      section: "user-memo",
+      source: "vault",
+      section: "memos",
     };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,

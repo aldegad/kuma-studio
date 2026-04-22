@@ -261,7 +261,7 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
       return true;
     }
 
-    if ((url.pathname === "/studio/vault" || url.pathname === "/studio/memos") && req.method === "POST") {
+    if (url.pathname === "/studio/memos" && req.method === "POST") {
       if (!memoStore) {
         sendJson(res, 503, { error: "Memo store is not available." });
         return true;
@@ -300,15 +300,13 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
       return true;
     }
 
-    if ((url.pathname.startsWith("/studio/vault/") || url.pathname.startsWith("/studio/memos/")) && req.method === "DELETE") {
+    if (url.pathname.startsWith("/studio/memos/") && req.method === "DELETE") {
       if (!memoStore) {
         sendJson(res, 503, { error: "Memo store is not available." });
         return true;
       }
 
-      const memoId = url.pathname.startsWith("/studio/vault/")
-        ? decodeURIComponent(url.pathname.slice("/studio/vault/".length))
-        : decodeURIComponent(url.pathname.slice("/studio/memos/".length));
+      const memoId = decodeURIComponent(url.pathname.slice("/studio/memos/".length));
       const result = await memoStore.delete(memoId);
       if (result.success) {
         sendJson(res, 200, { success: true });

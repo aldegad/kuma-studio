@@ -31,7 +31,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 **불변식:** L1 에서 전문 dump 금지. 순서 고정 `search → timeline → get`.
 
-**우선순위 규칙:** 현재 canonical truth 가 필요한 질의에서는 `decisions.md`, `projects/*.project-decisions.md`, `schema.md`, `operational-rules/` 를 `results/`, `dispatch-log.md`, 장문 프로젝트 history 문서보다 먼저 본다. 결과 리포트와 dispatch log 는 증적/역사 계층이지 정책 SSOT 가 아니다.
+**우선순위 규칙:** 현재 canonical truth 가 필요한 질의에서는 `decisions.md` / `projects/*.project-decisions.md` → `projects/<slug>.md` → `memos/` → `learnings/` / `domains/` / `operational-rules/` → `results/` / `raw/` 순으로 본다. 결과 리포트와 dispatch log 는 증적/역사 계층이지 정책 SSOT 가 아니다.
 
 ### Anti-pattern
 - ❌ literal "vault" keyword 가 없다고 vault 를 안 본다
@@ -108,6 +108,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 ├── log.md                변경 이력 (append-only)
 ├── domains/              도메인별 지식 (security, analytics, image-gen 등)
 ├── projects/             얇은 canonical project summary
+├── memos/                유저 즐겨찾기 메모 layer (read-only user-owned)
 ├── learnings/            벤치마크, 디버깅 패턴, 누적 관찰
 ├── operational-rules/    런타임 rule layer (반복 운영 규칙)
 ├── docs/                 모델 등 참고 문서
@@ -119,6 +120,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 **slot contract:**
 - `projects/<slug>.md` 는 chronicle 이 아니라 현재 상태 summary 다. 장문 history 와 result 본문은 `results/`에 둔다.
+- `memos/` 는 메모 전용 canonical slot 이다. 결정이나 일반화 지식과 섞지 않고, background agent 는 read-only 로 취급한다.
 - skill 문서는 repo source 가 SSOT 이다. vault 는 curated output 만 유지하고, skill → vault 자동 동기화는 하지 않는다.
 
 ## 도메인 별칭 매핑

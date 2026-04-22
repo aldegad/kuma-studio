@@ -104,10 +104,10 @@ describe("studio-routes vault", () => {
       sceneStore: {},
       memoStore: {
         async list() {
-          return [{ id: "doc.md", title: "Doc", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "vault" }];
+          return [{ id: "doc.md", title: "Doc", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "vault", section: "memos" }];
         },
         async listInbox() {
-          return [{ id: "inbox/raw.md", title: "Raw", images: [], createdAt: "2026-04-07T00:00:00.000Z" }];
+          return [{ id: "inbox/raw.md", title: "Raw", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "vault", section: "inbox" }];
         },
       },
     });
@@ -121,6 +121,35 @@ describe("studio-routes vault", () => {
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.json.memos[0].id, "doc.md");
     assert.strictEqual(res.json.memos[0].source, "vault");
+    assert.strictEqual(res.json.memos[0].section, "memos");
     assert.strictEqual(res.json.inbox, undefined);
+  });
+
+  it("/studio/vault exposes inspector view with memos plus inbox", async () => {
+    const handler = createStudioRouteHandler({
+      staticDir: process.cwd(),
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      memoStore: {
+        async list() {
+          return [{ id: "memo.md", title: "Memo", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "vault", section: "memos" }];
+        },
+        async listInbox() {
+          return [{ id: "inbox/raw.md", title: "Raw", images: [], createdAt: "2026-04-07T00:00:00.000Z", source: "vault", section: "inbox" }];
+        },
+      },
+    });
+
+    const res = createResponse();
+    await handler(
+      createRequest("GET", "/studio/vault"),
+      res,
+    );
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(res.json.memos.length, 1);
+    assert.strictEqual(res.json.inbox.length, 1);
+    assert.strictEqual(res.json.memos[0].section, "memos");
+    assert.strictEqual(res.json.inbox[0].section, "inbox");
   });
 });

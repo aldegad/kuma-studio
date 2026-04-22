@@ -13,7 +13,7 @@ import {
 } from "./project-defaults.mjs";
 
 const RESULT_ARCHIVE_DIR = "results";
-const VAULT_SECTION_DIRS = ["domains", "projects", "learnings", RESULT_ARCHIVE_DIR, "inbox"];
+const VAULT_SECTION_DIRS = ["domains", "projects", "memos", "learnings", RESULT_ARCHIVE_DIR, "inbox"];
 const INGESTIBLE_INBOX_EXTENSIONS = new Set([".md", ".txt", ".json", ".log"]);
 const RESULT_FILE_PATTERN = /\.result\.md$/u;
 const PROJECT_STATE_START_MARKER = "<!-- project-state:start -->";
@@ -1111,9 +1111,12 @@ async function readVaultEntry(filePath, section, relativePathOverride) {
   const content = await readFile(filePath, "utf8");
   const parsed = parsePageDocument(content);
   const fileStem = stripMarkdownStem(basename(filePath));
-  const summary = String(parsed.sections.get("Summary") ?? "").trim() || extractSummary(parsed.body, fileStem);
-  const details = String(parsed.sections.get("Details") ?? "").trim();
-  const related = String(parsed.sections.get("Related") ?? "").trim();
+  const isMemo = section === "memos";
+  const summary = isMemo
+    ? extractSummary(parsed.body, fileStem)
+    : String(parsed.sections.get("Summary") ?? "").trim() || extractSummary(parsed.body, fileStem);
+  const details = isMemo ? "" : String(parsed.sections.get("Details") ?? "").trim();
+  const related = isMemo ? "" : String(parsed.sections.get("Related") ?? "").trim();
   const inferredProject =
     typeof parsed.frontmatter.project === "string" && parsed.frontmatter.project.trim()
       ? parsed.frontmatter.project.trim()
@@ -1140,7 +1143,7 @@ async function readVaultEntry(filePath, section, relativePathOverride) {
 async function collectVaultEntries(vaultDir) {
   const entries = [];
 
-  for (const section of ["domains", "projects", "learnings", RESULT_ARCHIVE_DIR]) {
+  for (const section of ["domains", "projects", "memos", "learnings", RESULT_ARCHIVE_DIR]) {
     const sectionDir = join(vaultDir, section);
     if (!existsSync(sectionDir)) {
       continue;
@@ -1272,7 +1275,7 @@ export function extractIndexStructure(indexContent) {
 export async function rewriteIndex(vaultDir) {
   const entries = await collectVaultEntries(vaultDir);
   const bySection = new Map(
-    ["domains", "projects", "learnings", RESULT_ARCHIVE_DIR, "inbox"].map((section) => [
+    ["domains", "projects", "memos", "learnings", RESULT_ARCHIVE_DIR, "inbox"].map((section) => [
       section,
       entries.filter((entry) => entry.section === section),
     ]),
@@ -1294,6 +1297,7 @@ export async function rewriteIndex(vaultDir) {
   for (const [section, heading] of [
     ["domains", "Domains"],
     ["projects", "Projects"],
+    ["memos", "Memos"],
     ["learnings", "Learnings"],
     [RESULT_ARCHIVE_DIR, "Results"],
     ["inbox", "Inbox"],

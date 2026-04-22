@@ -16,8 +16,23 @@ async function createVaultFixture() {
   const vaultDir = await mkdtemp(join(tmpdir(), "vault-search-"));
 
   await mkdir(join(vaultDir, "projects"), { recursive: true });
+  await mkdir(join(vaultDir, "memos"), { recursive: true });
   await mkdir(join(vaultDir, "learnings"), { recursive: true });
   await mkdir(join(vaultDir, "domains"), { recursive: true });
+
+  await writeFile(
+    join(vaultDir, "memos", "favorite-stack.md"),
+    `---
+title: Favorite Stack
+created: 2026-04-20T09:00:00.000Z
+updated: 2026-04-20T09:30:00.000Z
+images: []
+---
+
+pqc-unified와 kuma-studio를 자주 같이 본다.
+`,
+    "utf8",
+  );
 
   await writeFile(
     join(vaultDir, "projects", "entity-catalog.md"),
@@ -158,6 +173,24 @@ describe("vault search", () => {
 
     expect(result.hits).toEqual([]);
     expect(formatVaultSearchText(result)).toContain("no matches");
+  });
+
+  it("searches canonical vault memos without a separate memo backend", async () => {
+    const vaultDir = await createVaultFixture();
+    tempDirs.push(vaultDir);
+
+    const result = await searchVault({
+      vaultDir,
+      query: "pqc-unified",
+    });
+
+    expect(result.hits).toEqual([
+      expect.objectContaining({
+        id: "memos/favorite-stack.md",
+        path: "memos/favorite-stack.md",
+        title: "Favorite Stack",
+      }),
+    ]);
   });
 
   it("returns timeline snippets without dumping the full document", async () => {

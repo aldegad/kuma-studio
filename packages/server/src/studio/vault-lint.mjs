@@ -57,6 +57,7 @@ function parseFrontmatter(contents) {
   }
 
   const frontmatter = {};
+  let currentArrayKey = null;
   let index = 1;
   for (; index < lines.length; index += 1) {
     const line = lines[index];
@@ -65,13 +66,27 @@ function parseFrontmatter(contents) {
       break;
     }
 
+    const arrayItem = line.match(/^\s*-\s*(.+)$/u);
+    if (currentArrayKey && arrayItem) {
+      frontmatter[currentArrayKey].push(arrayItem[1].trim());
+      continue;
+    }
+
     const separator = line.indexOf(":");
     if (separator === -1) {
+      currentArrayKey = null;
       continue;
     }
 
     const key = line.slice(0, separator).trim();
     const value = line.slice(separator + 1).trim();
+    if (value === "") {
+      frontmatter[key] = [];
+      currentArrayKey = key;
+      continue;
+    }
+
+    currentArrayKey = null;
     frontmatter[key] = value;
   }
 
@@ -153,6 +168,10 @@ function parseInlineArray(rawValue) {
 
 function isProjectSummaryPage(fileName) {
   return fileName.startsWith("projects/") && !fileName.endsWith(".project-decisions.md");
+}
+
+function isMemoPage(fileName) {
+  return fileName.startsWith("memos/");
 }
 
 function normalizeRequestedFiles(files) {
@@ -571,6 +590,65 @@ function lintGenericPage(fileName, absolutePath, mode) {
   };
 }
 
+function lintMemoPage(fileName, absolutePath, mode) {
+  const issues = [];
+  const contents = readFileSync(absolutePath, "utf8");
+  const parsed = parseFrontmatter(contents);
+  if (!parsed) {
+    return {
+      file: fileName,
+      path: absolutePath,
+      ok: false,
+      issues: [{
+        code: "missing-frontmatter",
+        message: `${fileName}: YAML frontmatter is missing or malformed`,
+      }],
+    };
+  }
+
+  const frontmatter = parsed.frontmatter;
+  if (!normalize(frontmatter.title)) {
+    issues.push({
+      code: "missing-frontmatter-title",
+      message: `${fileName}: frontmatter.title is required`,
+    });
+  }
+  if (!isIsoDateTime(frontmatter.created)) {
+    issues.push({
+      code: "frontmatter-created-format",
+      message: `${fileName}: frontmatter.created must be an ISO datetime`,
+    });
+  }
+  if (!isIsoDateTime(frontmatter.updated)) {
+    issues.push({
+      code: "frontmatter-updated-format",
+      message: `${fileName}: frontmatter.updated must be an ISO datetime`,
+    });
+  }
+  if (
+    !(
+      Array.isArray(frontmatter.images) ||
+      ARRAY_LITERAL_PATTERN.test(String(frontmatter.images ?? "").trim())
+    )
+  ) {
+    issues.push({
+      code: "frontmatter-images-format",
+      message: `${fileName}: frontmatter.images must be an array`,
+    });
+  }
+
+  if (mode === "full") {
+    issues.push(...lintRelativeLinks(fileName, absolutePath, parsed.body));
+  }
+
+  return {
+    file: fileName,
+    path: absolutePath,
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
 function lintIndexFile(fileName, absolutePath, mode) {
   const issues = [];
   const contents = readFileSync(absolutePath, "utf8");
@@ -582,7 +660,7 @@ function lintIndexFile(fileName, absolutePath, mode) {
     });
   }
 
-  for (const section of ["## Domains", "## Projects", "## Learnings", "## Results", "## Inbox", "## Cross References"]) {
+  for (const section of ["## Domains", "## Projects", "## Memos", "## Learnings", "## Results", "## Inbox", "## Cross References"]) {
     if (!contents.includes(section)) {
       issues.push({
         code: "missing-section",
@@ -660,6 +738,10 @@ function lintSingleFile({ vaultDir, fileName, mode, schemaSections }) {
 
   if (normalizedFileName === "log.md") {
     return lintLogFile(normalizedFileName, absolutePath);
+  }
+
+  if (isMemoPage(normalizedFileName)) {
+    return lintMemoPage(normalizedFileName, absolutePath, mode);
   }
 
   if (!spec) {

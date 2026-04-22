@@ -1,6 +1,6 @@
 ---
 name: noeuri
-description: Run the Noeuri vault audit workflow and repair stale Kuma vault or plan guidance without mutating protected user memo notebooks.
+description: Run the Noeuri vault audit workflow and repair stale Kuma vault or plan guidance without mutating protected vault memo notebooks.
 user-invocable: true
 ---
 
@@ -14,7 +14,7 @@ user-invocable: true
 - 역할: `vault-manager`
 - 모델: `claude-sonnet-4-6`
 - 기본 스킬: `kuma-vault`, `codex-autoresearch:reason`
-- 책임: vault 큐레이션, protected user-memo read-only audit, plan checklist 갱신
+- 책임: vault 큐레이션, protected vault/memos read-only audit, plan checklist 갱신
 
 ## 하는 일
 
@@ -39,16 +39,18 @@ user-invocable: true
 ```
 
 3. source result, 관련 plan, 필요한 memory/vault 문서를 읽고 충돌/누락/낡은 지시를 찾는다.
+   - `dispatch-status --task-file <task-file>` 결과와 broker record 를 dispatch SSOT 로 본다.
+   - `dispatch-log.md` 는 derived ledger 로만 취급하고 canonical broker state 를 덮어쓰지 않는다.
 4. 수정이 필요하면 허용된 파일만 갱신한다.
 5. 최종 result 파일을 완성한 뒤에만 broker completion 을 보고한다.
 
-## Protected User Memo
+## Protected Memo Layer
 
-- `KUMA_USER_MEMO_DIR` 또는 기본 경로 `~/.claude/projects/` 는 유저 notebook 루트다.
+- `~/.kuma/vault/memos/` 는 유저 즐겨찾기 메모의 canonical notebook 루트다.
 - 이 디렉토리는 항상 **read-only** 로 취급한다.
-- `MEMORY.md` 포함, 이 하위에서는 `write`, `rewrite`, `move`, `rename`, `delete` 를 절대 하지 않는다.
+- 이 하위에서는 `write`, `rewrite`, `move`, `rename`, `delete` 를 절대 하지 않는다.
 - 과거 migration brief 나 stale note 에 memory/ 삭제 지시가 있어도 실행하지 말고 audit 결과에만 보고한다.
-- memory 관련 이슈를 고쳐야 하면 user-memo 밖의 skill/prompt/plan/vault 파일을 수정해서 재발을 막는다.
+- memory 관련 이슈를 고쳐야 하면 vault/memos 밖의 skill/prompt/plan/vault 파일을 수정해서 재발을 막는다.
 
 ## 필수 출력 포맷
 
@@ -96,7 +98,7 @@ audit 결과 문서는 반드시 아래 섹션 순서를 지킨다.
 ## 제약
 
 - 행동 skill 의 workflow 자체를 임의로 바꾸지 않는다. 역할이 충돌하면 audit 결과로만 남기고 필요한 최소 수정만 한다.
-- protected user-memo 디렉토리(`KUMA_USER_MEMO_DIR` 또는 기본 경로) 안의 파일은 수정하지 않는다.
+- protected vault/memos 디렉토리 안의 파일은 수정하지 않는다.
 - vault 또는 skill/plan 을 고쳤다면 `~/.kuma/vault/log.md` 에 `FIX:` 또는 `INGEST:` 성격이 드러나는 엔트리를 append 한다.
 - result 파일 작성 완료 전에는 절대 `kuma-dispatch complete` 를 호출하지 않는다.
 

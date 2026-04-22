@@ -187,6 +187,9 @@ sources: [https://example.com/security]
 ## Projects
 (비어 있음)
 
+## Memos
+(아직 없음)
+
 ## Learnings
 (비어 있음)
 
@@ -221,6 +224,69 @@ sources: [https://example.com/security]
     expect(result.ok).toBe(true);
     expect(result.issueCount).toBe(0);
     expect(result.fileCount).toBe(3);
+  });
+
+  it("accepts canonical memo pages with memo-specific schema", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "memos"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "memos", "favorite.md"),
+      `---
+title: Favorite
+created: 2026-04-16T09:00:00.000Z
+updated: 2026-04-16T09:30:00.000Z
+images: ["memo.png"]
+---
+
+자주 보는 메모.
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["memos/favorite.md"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.issueCount).toBe(0);
+  });
+
+  it("rejects memo pages that miss the memo-specific frontmatter contract", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-vault-lint-"));
+    tempRoots.push(root);
+
+    const vaultDir = join(root, "vault");
+    await mkdir(join(vaultDir, "memos"), { recursive: true });
+    await writeVaultLintFixture(vaultDir);
+
+    await writeFile(
+      join(vaultDir, "memos", "broken.md"),
+      `---
+title: Broken
+created: 2026-04-16
+---
+
+누락된 메모.
+`,
+      "utf8",
+    );
+
+    const result = lintVaultFiles({
+      vaultDir,
+      mode: "full",
+      files: ["memos/broken.md"],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((issue) => issue.file === "memos/broken.md" && issue.code === "frontmatter-updated-format")).toBe(true);
+    expect(result.issues.some((issue) => issue.file === "memos/broken.md" && issue.code === "frontmatter-images-format")).toBe(true);
   });
 
   it("reports legacy ingest markers inside project summary pages", async () => {
