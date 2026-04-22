@@ -1,40 +1,50 @@
 # Runtime State Boundary
 
-Kuma Studio keeps a strict boundary between:
+Kuma Studio keeps a strict 3-way boundary:
 
-- repo-tracked product code and reusable templates
-- machine-local runtime state and operator-specific data
+1. public repo `kuma-studio`
+2. private repo `kuma-studio-private`
+3. local-only runtime and secrets
 
-## Track in Git
+## 1. Track in the public repo
 
 - source code under `packages/` and `scripts/`
 - reusable skills under `skills/`
-- public docs and examples
+- public docs and diagrams
 - templates such as [`config/projects.example.json`](../config/projects.example.json)
+- bootstrap code that knows how to work with private state without shipping it
 
-## Keep local and untracked
+## 2. Track in the private repo
 
-- `~/.kuma/projects.json`
-- `~/.kuma/team.json`
-- `~/.kuma/vault/`
+- `vault/`
+- `plans/`
+- `team.json`
+
+This is the canonical operator brain layer. It is separate from the public repo
+and should be committed to a private remote, not copied back into
+`kuma-studio`.
+
+## 3. Keep local-only and untracked
+
+- `~/.kuma/runtime/`
+- `~/.kuma/dispatch/`
 - `~/.kuma/cmux/`
-- `~/.claude/`
+- `~/.kuma/projects.json`
+- `~/.claude/projects/`
 - repo-local runtime folders such as `.kuma/`, `.kuma-picker/`, `.kuma-studio/`, `output/`, `artifacts/`, `.codex-review/`
+- secrets, `.env*`, screenshots, caches, logs, `*.task.md`, `*.result.md`
 
 ## Rule of thumb
 
-If a file contains any of the following, it should stay out of git:
+- code or reusable product behavior -> public repo
+- operator knowledge or private memory -> private repo
+- machine-specific execution state or secrets -> keep local
 
-- personal paths
-- other private project names
-- operator memory or notes
-- runtime logs, task files, result files, screenshots, or local caches
-
-If the repository needs to document a local file format, prefer:
+If the public repository needs to document a local file format, prefer:
 
 - `*.example.json`
 - seed/example markdown
-- docs that describe the structure without shipping personal contents
+- public docs that describe the structure without shipping personal contents
 
 ## Explorer defaults
 
@@ -47,6 +57,5 @@ boundary.
 
 ## Related
 
-- [`dispatch-runtime-home.md`](./dispatch-runtime-home.md) documents the default
-  Kuma dispatch runtime paths under `~/.kuma/dispatch`, `~/.kuma/cmux`, and
-  `~/.kuma/runtime`.
+- [`private-repo-model.md`](./private-repo-model.md) describes the recommended public/private repo workflow.
+- [`dispatch-runtime-home.md`](./dispatch-runtime-home.md) documents the local-only runtime paths under `~/.kuma/dispatch`, `~/.kuma/cmux`, and `~/.kuma/runtime`.

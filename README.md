@@ -24,10 +24,17 @@ git clone https://github.com/aldegad/kuma-studio.git
 cd kuma-studio
 npm install
 node scripts/install.mjs
+npm run kuma-private:bootstrap
+npm run skill:doctor
 ```
 
 If you only want one agent catalog refreshed, use `--claude-only` or
 `--codex-only`.
+
+`npm run kuma-private:bootstrap` creates a sibling `../kuma-studio-private`
+target by default, seeds it from your current `~/.kuma/vault`,
+`~/.kuma/plans`, and `~/.kuma/team.json` when needed, then relinks those
+canonical paths as symlinks.
 
 Then:
 
@@ -60,22 +67,46 @@ against your top-level work root.
 
 ## Local State Boundary
 
-This repository tracks product code, reusable skills, and public templates. It
-does not track personal runtime state such as local project registries, memory,
-vault contents, review artifacts, screenshots, or machine-specific paths.
+Kuma Studio uses a 3-way boundary:
+
+- public repo `kuma-studio` — product code, reusable skills, docs, and templates
+- private repo `kuma-studio-private` — your canonical `vault/`, `plans/`, and `team.json`
+- local-only runtime/secrets — `runtime`, `dispatch`, `cmux`, `projects.json`, `.env*`, caches, screenshots
+
+This public repository does not track personal runtime state such as local
+project registries, operator memory, live vault contents, review artifacts,
+screenshots, or machine-specific paths.
 
 - Use [`config/projects.example.json`](./config/projects.example.json) as the
   format reference for the machine-local `~/.kuma/projects.json`.
+- Use `npm run kuma-private:bootstrap` to bootstrap and relink a sibling
+  `kuma-studio-private` repo instead of copying private knowledge into this repo.
 - See [`docs/runtime-state-boundary.md`](./docs/runtime-state-boundary.md) for
-  the repo-vs-runtime boundary used for open-source distribution.
+  the public/private/runtime boundary used for open-source distribution.
+- See [`docs/private-repo-model.md`](./docs/private-repo-model.md) for the
+  recommended public/private repo workflow and remote setup.
 - The Studio file explorer now exposes only the workspace root by default. To
   opt into home-level roots such as `vault`, `claude`, or `codex`, set
   `KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=vault,claude,codex`.
+
+## Public / Private Repo Model
+
+![Kuma Studio public/private repo model](./docs/images/private-repo-model.png)
+
+The important rule is simple:
+
+- code changes -> commit/push `kuma-studio`
+- vault, memos, plans, team changes -> commit/push `kuma-studio-private`
+- runtime and secrets -> do not commit
+
+`kuma-studio-private` is not a staging area that later gets copied into the
+public repo. It is a separate canonical repo for private brain data.
 
 ## Main Commands
 
 - `npm run kuma-server:reload`: reload the daemon inside the managed `kuma-server` surface
 - `npm run server:reload`: restart the daemon on port `4312`
+- `npm run kuma-private:bootstrap`: create/link the sibling `kuma-studio-private` repo
 - `npm run kuma-studio:dashboard`: open the Studio UI served by the daemon on port `4312`
 - `npm run build:studio`: build the production Studio bundle
 - `npm run security:hooks:install`: install the repo-local pre-commit hook that blocks private runtime data and runs `gitleaks`
@@ -89,6 +120,7 @@ vault contents, review artifacts, screenshots, or machine-specific paths.
 This repo ships a repo-local pre-commit hook under `.githooks/pre-commit`.
 
 - It blocks staging known private Kuma runtime roots such as `.kuma/`, `.claude/projects/`, top-level `vault/`, `memory/`, `memo/`, and `*.task.md` / `*.result.md`.
+- It blocks nested `kuma-studio-private/` clones from being committed inside the public repo.
 - It blocks staged references to protected private project identifiers.
 - It then runs `gitleaks` against staged changes.
 - The hook uses a local `gitleaks` binary when available, or Docker when the daemon is running.

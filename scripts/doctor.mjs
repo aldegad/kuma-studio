@@ -11,6 +11,7 @@ import { resolve, dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_PORT } from "../packages/server/src/constants.mjs";
+import { inspectPrivateRepoLinks, PRIVATE_REPO_NAME } from "../packages/server/src/private-repo-bootstrap.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -32,10 +33,18 @@ function check(label, condition) {
   return condition;
 }
 
+function report(label, status) {
+  const normalized = status === "warn" ? "WARN" : status === "fail" ? "FAIL" : "OK";
+  const icon = status === "warn" ? "[!]" : status === "fail" ? "[-]" : "[+]";
+  process.stdout.write(`  ${icon} ${label}: ${normalized}\n`);
+  return status;
+}
+
 async function main() {
   process.stdout.write("kuma-studio doctor\n\n");
 
   let allOk = true;
+  let hasWarnings = false;
 
   // Check Node.js version
   const nodeVersion = parseInt(process.versions.node.split(".")[0], 10);
@@ -99,6 +108,46 @@ async function main() {
     process.stdout.write(`    For image generation: source ${OPENAI_ENV_PATH}\n`);
   }
 
+  const privateRepoLinks = await inspectPrivateRepoLinks();
+  for (const item of privateRepoLinks.items) {
+    let status = "ok";
+    if (item.status === "missing") {
+      status = "warn";
+    } else if (item.status !== "ok") {
+      status = "fail";
+    }
+
+    const result = report(`Kuma private link: ${item.id}`, status);
+    if (result === "warn") {
+      hasWarnings = true;
+      process.stdout.write("    Run: npm run kuma-private:bootstrap\n");
+    } else if (result === "fail") {
+      allOk = false;
+      process.stdout.write("    Expected a symlink into kuma-studio-private. Run: npm run kuma-private:bootstrap\n");
+    }
+
+    if (item.targetPath) {
+      process.stdout.write(`    Target: ${item.targetPath}\n`);
+    }
+  }
+
+  if (privateRepoLinks.sharedRepoRoot) {
+    const result = report(
+      `Private repo root (${PRIVATE_REPO_NAME})`,
+      privateRepoLinks.ok ? "ok" : "fail",
+    );
+    if (result === "fail") {
+      allOk = false;
+      process.stdout.write(`    Shared root should resolve to a ${PRIVATE_REPO_NAME} clone.\n`);
+    } else {
+      process.stdout.write(`    Root: ${privateRepoLinks.sharedRepoRoot}\n`);
+    }
+  } else {
+    hasWarnings = true;
+    report(`Private repo root (${PRIVATE_REPO_NAME})`, "warn");
+    process.stdout.write("    No shared private repo root detected yet. Run: npm run kuma-private:bootstrap\n");
+  }
+
   // Try to reach the daemon
   try {
     const res = await fetch(HEALTHCHECK_URL, { signal: AbortSignal.timeout(2000) });
@@ -109,7 +158,14 @@ async function main() {
     process.stdout.write("    Start server: npm run server:reload\n");
   }
 
-  process.stdout.write(`\n${allOk ? "All critical checks passed!" : "Some checks failed. See above."}\n`);
+  let summary = "All critical checks passed!";
+  if (!allOk) {
+    summary = "Some checks failed. See above.";
+  } else if (hasWarnings) {
+    summary = "Critical checks passed with warnings.";
+  }
+
+  process.stdout.write(`\n${summary}\n`);
 }
 
 main().catch((err) => {

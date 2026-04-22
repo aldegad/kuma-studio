@@ -63,6 +63,11 @@ is_blocked_path() {
     return 0
   fi
 
+  # A nested private clone inside the public repo is always a mistake.
+  if [[ "$path" =~ (^|/)kuma-studio-private(/|$) ]]; then
+    return 0
+  fi
+
   # Top-level knowledge roots are treated as private content, not public docs.
   if [[ "$path" =~ ^(vault|memory|memo)/ ]]; then
     return 0
