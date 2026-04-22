@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 import { afterEach, assert, describe, it } from "vitest";
 
 import { createStudioRouteHandler } from "./studio-routes.mjs";
-import { watchStudioExplorerRoots } from "./studio-explorer-routes.mjs";
+import { createStudioExplorerRouteHandler, watchStudioExplorerRoots } from "./studio-explorer-routes.mjs";
 import { readProjectsRegistry } from "./project-defaults.mjs";
 
 function createRequest(method, url, body) {
@@ -49,6 +49,10 @@ function createResponse() {
       return state.body.length > 0 ? JSON.parse(state.body.toString("utf8")) : null;
     },
   };
+}
+
+async function callExplorerHandler(handler, req, res) {
+  return handler(req, res, new URL(req.url, `http://${req.headers.host}`));
 }
 
 async function waitForCondition(assertion, { timeoutMs = 1500, intervalMs = 25 } = {}) {
@@ -238,6 +242,49 @@ describe("studio-routes explorer endpoints", () => {
     }
   });
 
+  it("syncs watcher roots from the live registry and prefers the most specific project root id", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-watch-"));
+    tempDirs.push(root);
+
+    const workspaceRoot = join(root, "workspace");
+    const projectRoot = join(workspaceRoot, "apps", "project-one");
+    await mkdir(projectRoot, { recursive: true });
+
+    let configuredProjectRoots = {};
+    const broadcasts = [];
+    const stopWatching = watchStudioExplorerRoots({
+      workspaceRoot,
+      debounceMs: 20,
+      rescanRootsMs: 40,
+      readProjectRoots() {
+        return configuredProjectRoots;
+      },
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
+        },
+      },
+    });
+
+    try {
+      configuredProjectRoots = { "project-one": projectRoot };
+      await new Promise((resolve) => setTimeout(resolve, 120));
+
+      const target = join(projectRoot, "external.md");
+      await writeFile(target, "# project-one\n", "utf8");
+
+      await waitForCondition(() => {
+        assert.ok(
+          broadcasts.some((payload) =>
+            payload.changes.some((change) => change.path === target && change.rootId === "project-one"),
+          ),
+        );
+      });
+    } finally {
+      stopWatching();
+    }
+  });
+
   it("returns the default bootstrap explorer roots when the server env opts them in", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
     tempDirs.push(root);
@@ -361,6 +408,52 @@ describe("studio-routes explorer endpoints", () => {
     );
     assert.strictEqual(readRes.statusCode, 200);
     assert.strictEqual(readRes.json.content, "# Vault\n");
+  });
+
+  it("reads project roots from the live registry on each request instead of caching startup state", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const workspaceRoot = join(root, "workspace");
+    const projectOneRoot = join(root, "project-one");
+    const projectTwoRoot = join(root, "project-two");
+    await mkdir(workspaceRoot, { recursive: true });
+    await mkdir(projectOneRoot, { recursive: true });
+    await mkdir(projectTwoRoot, { recursive: true });
+    await writeFile(join(projectOneRoot, "README.md"), "# project-one\n", "utf8");
+    await writeFile(join(projectTwoRoot, "README.md"), "# project-two\n", "utf8");
+
+    let configuredProjectRoots = { "project-one": projectOneRoot };
+    const handler = createStudioExplorerRouteHandler({
+      workspaceRoot,
+      readProjectRoots() {
+        return configuredProjectRoots;
+      },
+    });
+
+    const firstRootsReq = createRequest("GET", "/studio/fs/roots");
+    const firstRootsRes = createResponse();
+    await callExplorerHandler(handler, firstRootsReq, firstRootsRes);
+    assert.strictEqual(firstRootsRes.statusCode, 200);
+    assert.deepStrictEqual(firstRootsRes.json.projectRoots, { "project-one": projectOneRoot });
+
+    configuredProjectRoots = { "project-two": projectTwoRoot };
+    const rootsRes = createResponse();
+    const rootsReq = createRequest("GET", "/studio/fs/roots");
+    await callExplorerHandler(handler, rootsReq, rootsRes);
+    assert.strictEqual(rootsRes.statusCode, 200);
+    assert.deepStrictEqual(rootsRes.json.projectRoots, { "project-two": projectTwoRoot });
+
+    const staleTreeReq = createRequest("GET", `/studio/fs/tree?root=${encodeURIComponent(projectOneRoot)}&depth=2`);
+    const staleTreeRes = createResponse();
+    await callExplorerHandler(handler, staleTreeReq, staleTreeRes);
+    assert.strictEqual(staleTreeRes.statusCode, 403);
+
+    const currentTreeReq = createRequest("GET", `/studio/fs/tree?root=${encodeURIComponent(projectTwoRoot)}&depth=2`);
+    const currentTreeRes = createResponse();
+    await callExplorerHandler(handler, currentTreeReq, currentTreeRes);
+    assert.strictEqual(currentTreeRes.statusCode, 200);
+    assert.strictEqual(currentTreeRes.json.path, projectTwoRoot);
   });
 
   it("rejects explorer access outside the allowed roots", async () => {

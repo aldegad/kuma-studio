@@ -34,6 +34,15 @@ describe("buildStudioProjectTabs", () => {
       "life-ai",
     ]);
   });
+
+  it("does not invent priority projects that are missing from live and configured data", () => {
+    const projectTabs = buildStudioProjectTabs([], ["life-ai"]);
+
+    expect(projectTabs.map((project) => project.projectId)).toEqual([
+      CORE_PROJECT_TAB_ID,
+      "life-ai",
+    ]);
+  });
 });
 
 describe("resolvePinnedHudProjectId", () => {

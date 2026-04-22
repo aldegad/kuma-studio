@@ -95,7 +95,13 @@ function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORE
   }, {});
 }
 
-function resolveExplorerRootsConfig({ workspaceRoot, globalRoots, systemRoot, includeProjectRoots = true } = {}) {
+function resolveExplorerRootsConfig({
+  workspaceRoot,
+  globalRoots,
+  systemRoot,
+  includeProjectRoots = true,
+  readProjectRoots = readProjectsRegistry,
+} = {}) {
   const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : resolveConfiguredWorkspaceRoot();
   const resolvedSystemRoot = resolve(systemRoot ?? defaultRoot);
   const configuredGlobalRoots = Object.fromEntries(
@@ -103,8 +109,7 @@ function resolveExplorerRootsConfig({ workspaceRoot, globalRoots, systemRoot, in
   );
   const configuredProjectRoots = includeProjectRoots
     ? Object.fromEntries(
-      Object.entries(readProjectsRegistry())
-        .map(([id, root]) => [id, resolve(root)]),
+      Object.entries(readProjectRoots()).map(([id, root]) => [id, resolve(root)]),
     )
     : {};
   const rootEntries = [
@@ -130,7 +135,19 @@ function resolveExplorerRootsConfig({ workspaceRoot, globalRoots, systemRoot, in
 
 function resolveExplorerRootEntry(rootEntries, candidatePath) {
   const resolvedPath = resolve(candidatePath);
-  return rootEntries.find((entry) => isWithinRoot(entry.path, resolvedPath)) ?? null;
+  let bestMatch = null;
+
+  for (const entry of rootEntries) {
+    if (!isWithinRoot(entry.path, resolvedPath)) {
+      continue;
+    }
+
+    if (!bestMatch || entry.path.length > bestMatch.path.length) {
+      bestMatch = entry;
+    }
+  }
+
+  return bestMatch;
 }
 
 function buildFilesystemChangePayload(rootEntries, candidatePath, eventType, origin) {
@@ -225,20 +242,26 @@ export function watchStudioExplorerRoots({
   studioWsEvents,
   debounceMs = 120,
   onError,
+  readProjectRoots = readProjectsRegistry,
+  rescanRootsMs = 1000,
 } = {}) {
   if (!studioWsEvents?.broadcastFilesystemChange) {
     return () => {};
   }
 
-  const { rootEntries } = resolveExplorerRootsConfig({
-    workspaceRoot,
-    globalRoots,
-    systemRoot,
-    includeProjectRoots: false,
-  });
-  const watchers = [];
+  const reportWatchError = (error) => {
+    if (typeof onError === "function") {
+      onError(error);
+    } else {
+      console.error("studio explorer watch failed:", error);
+    }
+  };
+
+  const watcherMap = new Map();
+  const rootEntriesRef = { current: [] };
   const pendingChanges = new Map();
   let flushTimer = null;
+  let rescanTimer = null;
 
   const flush = () => {
     if (flushTimer) {
@@ -262,11 +285,7 @@ export function watchStudioExplorerRoots({
     flushTimer = setTimeout(flush, debounceMs);
   };
 
-  for (const rootEntry of rootEntries) {
-    if (!existsSync(rootEntry.path)) {
-      continue;
-    }
-
+  const createRootWatcher = (rootEntry) => {
     const createPollingWatcher = () => {
       let previousEntries = new Set();
       try {
@@ -312,7 +331,7 @@ export function watchStudioExplorerRoots({
         typeof filename === "string" && filename.trim().length > 0
           ? resolve(rootEntry.path, filename)
           : rootEntry.path;
-      const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, "watch");
+      const change = buildFilesystemChangePayload(rootEntriesRef.current, candidatePath, eventType, "watch");
       if (!change) {
         return;
       }
@@ -321,8 +340,10 @@ export function watchStudioExplorerRoots({
       scheduleFlush();
     };
 
+    let watcher = null;
+    let fallbackWatcher = null;
+
     try {
-      let watcher;
       try {
         watcher = fs.watch(rootEntry.path, { recursive: true }, handleWatchEvent);
       } catch (error) {
@@ -331,15 +352,10 @@ export function watchStudioExplorerRoots({
         } catch {
           watcher = createPollingWatcher();
         }
-        if (typeof onError === "function") {
-          onError(error);
-        } else {
-          console.error("studio explorer watch failed:", error);
-        }
+        reportWatchError(error);
       }
 
       if (typeof watcher.on === "function") {
-        let fallbackWatcher = null;
         watcher.on("error", (error) => {
           if (!fallbackWatcher && error?.code === "EMFILE") {
             try {
@@ -348,66 +364,124 @@ export function watchStudioExplorerRoots({
               // ignore close failures before fallback
             }
             fallbackWatcher = createPollingWatcher();
-            watchers.push(fallbackWatcher);
           }
-          if (typeof onError === "function") {
-            onError(error);
-          } else {
-            console.error("studio explorer watch failed:", error);
-          }
+          reportWatchError(error);
         });
       }
-      watchers.push(watcher);
     } catch (error) {
-      if (typeof onError === "function") {
-        onError(error);
-      } else {
-        console.error("studio explorer watch failed:", error);
-      }
+      reportWatchError(error);
     }
+
+    return {
+      close() {
+        try {
+          watcher?.close?.();
+        } catch {
+          // ignore close errors while shutting down watchers
+        }
+        try {
+          fallbackWatcher?.close?.();
+        } catch {
+          // ignore close errors while shutting down fallback watchers
+        }
+      },
+    };
+  };
+
+  const syncRootWatchers = () => {
+    const { rootEntries } = resolveExplorerRootsConfig({
+      workspaceRoot,
+      globalRoots,
+      systemRoot,
+      includeProjectRoots: true,
+      readProjectRoots,
+    });
+    const liveRootEntries = rootEntries.filter((entry) => existsSync(entry.path));
+    rootEntriesRef.current = liveRootEntries;
+    const desiredKeys = new Set(liveRootEntries.map((entry) => `${entry.id}:${entry.path}`));
+
+    for (const [key, watcher] of watcherMap) {
+      if (desiredKeys.has(key)) {
+        continue;
+      }
+      watcher.close();
+      watcherMap.delete(key);
+    }
+
+    for (const entry of liveRootEntries) {
+      const key = `${entry.id}:${entry.path}`;
+      if (watcherMap.has(key)) {
+        continue;
+      }
+      watcherMap.set(key, createRootWatcher(entry));
+    }
+  };
+
+  try {
+    syncRootWatchers();
+  } catch (error) {
+    reportWatchError(error);
   }
+
+  rescanTimer = setInterval(() => {
+    try {
+      syncRootWatchers();
+    } catch (error) {
+      reportWatchError(error);
+    }
+  }, Math.max(rescanRootsMs, debounceMs));
 
   return () => {
     if (flushTimer) {
       clearTimeout(flushTimer);
       flushTimer = null;
     }
-    for (const watcher of watchers) {
+    if (rescanTimer) {
+      clearInterval(rescanTimer);
+      rescanTimer = null;
+    }
+    for (const watcher of watcherMap.values()) {
       watcher.close();
     }
+    watcherMap.clear();
   };
 }
 
-export function createStudioExplorerRouteHandler({ workspaceRoot, globalRoots, systemRoot, studioWsEvents } = {}) {
-  const {
-    defaultRoot,
-    systemRoot: resolvedSystemRoot,
-    configuredGlobalRoots,
-    configuredProjectRoots,
-    rootEntries,
-    allowedRoots,
-  } = resolveExplorerRootsConfig({
-    workspaceRoot,
-    globalRoots,
-    systemRoot,
-  });
-
-  function isAllowedPath(candidatePath) {
-    const resolved = resolve(candidatePath);
-    return allowedRoots.some((root) => isWithinRoot(root, resolved));
-  }
-
-  function broadcastFilesystemChange(candidatePath, eventType, origin) {
-    const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, origin);
-    if (!change) {
-      return;
-    }
-    studioWsEvents?.broadcastFilesystemChange({
-      changes: [change],
-    });
-  }
-
+export function createStudioExplorerRouteHandler({
+  workspaceRoot,
+  globalRoots,
+  systemRoot,
+  studioWsEvents,
+  readProjectRoots = readProjectsRegistry,
+} = {}) {
   return async (req, res, url) => {
+    const {
+      defaultRoot,
+      systemRoot: resolvedSystemRoot,
+      configuredGlobalRoots,
+      configuredProjectRoots,
+      rootEntries,
+      allowedRoots,
+    } = resolveExplorerRootsConfig({
+      workspaceRoot,
+      globalRoots,
+      systemRoot,
+      readProjectRoots,
+    });
+    const isAllowedPath = (candidatePath) => {
+      const resolved = resolve(candidatePath);
+      return allowedRoots.some((root) => isWithinRoot(root, resolved));
+    };
+    const broadcastFilesystemChange = (candidatePath, eventType, origin) => {
+      const change = buildFilesystemChangePayload(rootEntries, candidatePath, eventType, origin);
+      if (!change) {
+        return;
+      }
+      studioWsEvents?.broadcastFilesystemChange({
+        changes: [change],
+      });
+    };
+
     if (url.pathname === "/studio/fs/roots" && req.method === "GET") {
       sendJson(res, 200, {
         workspaceRoot: defaultRoot,

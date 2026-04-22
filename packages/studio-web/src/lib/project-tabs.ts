@@ -30,11 +30,17 @@ export function buildStudioProjectTabs<Member>(
     projectById.set(project.projectId, project);
   }
 
-  const orderedIds = [
-    ...PROJECT_TAB_PRIORITY,
+  const discoveredProjectIds = [
     ...configuredProjectIds,
     ...liveProjects.map((project) => project.projectId),
   ].filter((projectId, index, allIds) => isSelectableProjectId(projectId) && allIds.indexOf(projectId) === index);
+  const orderedIds = [
+    CORE_PROJECT_TAB_ID,
+    ...PROJECT_TAB_PRIORITY.filter(
+      (projectId) => projectId !== CORE_PROJECT_TAB_ID && discoveredProjectIds.includes(projectId),
+    ),
+    ...discoveredProjectIds.filter((projectId) => !PROJECT_TAB_PRIORITY.includes(projectId)),
+  ].filter((projectId, index, allIds) => allIds.indexOf(projectId) === index);
 
   return orderedIds.map((projectId) =>
     projectById.get(projectId) ?? { projectId, projectName: projectId, members: [] },

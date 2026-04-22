@@ -5,6 +5,8 @@ import { ImageViewer } from "./ImageViewer";
 import { PdfViewer } from "./PdfViewer";
 import { MarkdownBody } from "../dashboard/MarkdownBody";
 import { useWsStore } from "../../stores/use-ws-store";
+import { fetchExplorerRoots, type ExplorerRootsResponse } from "../../lib/api";
+import { formatMissingExplorerRootMessage, resolveActiveExplorerRoot } from "../../lib/explorer-roots";
 
 interface FrontmatterMeta {
   title?: string;
@@ -324,12 +326,7 @@ const TREE_WIDTH_INITIAL = 260;
 const TREE_WIDTH_MIN = 180;
 const TREE_WIDTH_MAX = 420;
 
-interface ExplorerRoots {
-  workspaceRoot: string;
-  systemRoot: string;
-  projectRoots: Record<string, string>;
-  globalRoots: Partial<Record<"vault" | "claude" | "codex", string>>;
-}
+type ExplorerRoots = ExplorerRootsResponse;
 
 interface GlobalSection {
   id: string;
@@ -359,23 +356,6 @@ const GLOBAL_SECTION_DEFS: GlobalSection[] = [
   { id: "claude", label: ".claude", icon: "C", color: "text-violet-500" },
   { id: "codex", label: ".codex", icon: "X", color: "text-emerald-500" },
 ];
-
-function inferProjectRoot(explorerRoots: ExplorerRoots | null, activeProjectId: string | null | undefined) {
-  if (!explorerRoots) {
-    return "";
-  }
-
-  if (!activeProjectId) {
-    return explorerRoots.workspaceRoot;
-  }
-
-  if (activeProjectId === "system") {
-    return explorerRoots.systemRoot;
-  }
-
-  return explorerRoots.projectRoots[activeProjectId]
-    ?? `${explorerRoots.workspaceRoot}/${activeProjectId}`;
-}
 
 export function FileExplorer({ onCollapse, activeProjectId = null, activeProjectName = null }: FileExplorerProps) {
   const ws = useWsStore((state) => state.ws);
@@ -408,7 +388,11 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadGitStatus = useCallback(async (root: string) => {
-    if (!root) return;
+    if (!root) {
+      setGitStatus({});
+      setGitRoot("");
+      return;
+    }
     const response = await fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`);
     const data: { root: string; files: GitStatusMap } = await response.json();
     setGitStatus(data.files);
@@ -421,24 +405,45 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       return null;
     }
     const response = await fetch(`${BASE_URL}/studio/fs/tree?root=${encodeURIComponent(target)}&depth=${depth}`);
-    return response.json() as Promise<FsNode>;
+    const data: unknown = await response.json();
+    if (!response.ok || (data && typeof data === "object" && "error" in data)) {
+      const message =
+        data && typeof data === "object" && "error" in data && typeof data.error === "string"
+          ? data.error
+          : `Failed to load directory tree: ${target}`;
+      throw new Error(message);
+    }
+    return data as FsNode;
   }, []);
 
   const reloadRootTree = useCallback(async () => {
-    const roots = await fetch(`${BASE_URL}/studio/fs/roots`).then((r) => r.json());
-    const activeRoot = inferProjectRoot(roots, activeProjectId);
-    let data = activeRoot ? await fetchTreeForRoot(activeRoot, 2) : null;
-    if (data && "error" in data) {
-      const fallbackRoot = roots.workspaceRoot;
-      data = fallbackRoot && fallbackRoot !== activeRoot
-        ? await fetchTreeForRoot(fallbackRoot, 2)
-        : null;
-    }
+    const roots = await fetchExplorerRoots();
+    const activeRoot = resolveActiveExplorerRoot(roots, activeProjectId);
     setExplorerRoots(roots);
-    setTree(data);
-    setError(null);
-    setRefreshToken((current) => current + 1);
-    return { roots, tree: data as FsNode };
+
+    if (!activeRoot) {
+      setTree(null);
+      setGitStatus({});
+      setGitRoot("");
+      setError(formatMissingExplorerRootMessage(activeProjectId));
+      setRefreshToken((current) => current + 1);
+      return { roots, tree: null };
+    }
+
+    try {
+      const data = await fetchTreeForRoot(activeRoot.path, 2);
+      setTree(data);
+      setError(null);
+      setRefreshToken((current) => current + 1);
+      return { roots, tree: data };
+    } catch (error) {
+      setTree(null);
+      setGitStatus({});
+      setGitRoot("");
+      setError(error instanceof Error ? error.message : "Failed to load directory tree.");
+      setRefreshToken((current) => current + 1);
+      return { roots, tree: null };
+    }
   }, [activeProjectId, fetchTreeForRoot]);
 
   const reloadVaultIndex = useCallback(async () => {
@@ -513,6 +518,10 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     [explorerRoots],
   );
   const hasVaultRoot = Boolean(explorerRoots?.globalRoots.vault);
+  const activeExplorerRoot = useMemo(
+    () => resolveActiveExplorerRoot(explorerRoots, activeProjectId),
+    [activeProjectId, explorerRoots],
+  );
 
   // Fetch root tree
   useEffect(() => {
@@ -601,9 +610,9 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       }
     }
 
-    await reloadRootTree();
-    await loadGitStatus(tree?.path || "");
-  }, [loadGitStatus, reloadRootTree, tree?.path, viewerFile]);
+    const nextExplorerState = await reloadRootTree();
+    await loadGitStatus(nextExplorerState.tree?.path || activeExplorerRoot?.path || "");
+  }, [activeExplorerRoot?.path, loadGitStatus, reloadRootTree, viewerFile]);
 
   // Tree panel resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -649,7 +658,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       refreshTimerRef.current = setTimeout(() => {
         refreshTimerRef.current = null;
         void reloadRootTree().catch(() => {});
-        void loadGitStatus(tree?.path || explorerRoots?.workspaceRoot || "").catch(() => {});
+        void loadGitStatus(activeExplorerRoot?.path || "").catch(() => {});
         void Promise.all(
           globalSections
             .filter((section) => globalExpanded[section.id])
@@ -684,14 +693,13 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       ws.removeEventListener("message", handleMessage);
     };
   }, [
-    explorerRoots?.workspaceRoot,
+    activeExplorerRoot?.path,
     globalExpanded,
     globalSections,
     loadGitStatus,
     loadGlobalTree,
     reloadRootTree,
     reloadVaultIndex,
-    tree?.path,
     ws,
   ]);
 
@@ -738,7 +746,11 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   const projectName = activeProjectId
     ? activeProjectName ?? activeProjectId
     : "workspace";
-  const workspaceRootLabel = tree?.path || inferProjectRoot(explorerRoots, activeProjectId) || explorerRoots?.workspaceRoot || "workspace";
+  const workspaceRootLabel =
+    tree?.path
+    || activeExplorerRoot?.path
+    || (activeProjectId ? formatMissingExplorerRootMessage(activeProjectId) : explorerRoots?.workspaceRoot)
+    || "workspace";
   const hasViewer = viewerFile !== null;
   const effectiveTreeWidth = viewerFile?.type === "pdf" ? Math.min(treeWidth, 220) : treeWidth;
 

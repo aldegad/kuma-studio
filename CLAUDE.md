@@ -54,3 +54,16 @@
 - 한쪽 에이전트 전용 휴리스틱/선호만 해당 에이전트 메모리(쿠마는 `~/.claude/.../memory/`, Codex 는 자체 채널)에 둔다. SSoT 내용을 에이전트 전용 메모리에 중복 박지 않는다 — 비대칭 기록은 오해의 원인이다.
 - AGENTS.md 와 CLAUDE.md 는 병렬 SSoT (Codex 는 AGENTS.md, Claude Code 는 CLAUDE.md 를 읽는다). 공유 규칙을 바꿀 때는 **같은 커밋에서 두 파일을 함께** 갱신한다.
 - 규칙을 바꿀 때는 SSoT 를 먼저 갱신하고, 그와 중복되는 에이전트 전용 메모리를 정리한다.
+
+## 알렉스 핵심 불변 6종
+
+- `SSoT (Single Source of Truth)` — 상태·데이터·지식·설정·식별자는 한 곳에서만 canonical 하게 소유한다. 같은 truth 를 두 군데 두지 않는다. cache/index miss 가 나면 live truth 기준으로 canonical state 를 복구하는 self-heal 을 선호한다.
+- `SRP (Single Responsibility Principle)` — 모듈/파일/함수는 책임 하나만 가진다.
+- `Consistency / 정합성` — 데이터·상태·표현이 시스템 전반에서 서로 어긋나지 않아야 한다.
+- `Atomicity / 원자성` — 작업은 전부 성공하거나 전부 롤백해야 하며 중간 상태를 노출하지 않는다.
+- `Idempotency / 멱등성` — 같은 요청을 여러 번 받아도 결과가 같아야 한다.
+- `No Fallback` — silent fallback, guessed path, shadow path, legacy backfill 로 primary truth 실패를 가리지 않는다. live truth 가 비어 있거나 어긋나면 canonical source 를 바로 고친다.
+
+허용 예외:
+- provider failover 처럼 설계 단계에서 명시적이고 관측 가능한 failover 는 둘 수 있다. 예: Gemini 실패 시 GPT API 로 전환.
+- 이런 failover 도 canonical truth 를 둘로 쪼개거나 divergence 를 숨기면 안 된다. secondary path 는 대체 실행 경로일 뿐, 다른 truth source 가 되면 안 된다.

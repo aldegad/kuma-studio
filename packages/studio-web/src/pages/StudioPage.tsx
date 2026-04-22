@@ -149,20 +149,26 @@ export function StudioPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    const refreshConfiguredProjects = async () => {
       try {
         const roots = await fetchExplorerRoots();
         if (!cancelled) {
           setConfiguredProjectIds(Object.keys(roots.projectRoots));
         }
       } catch {
-        if (!cancelled) {
-          setConfiguredProjectIds([]);
-        }
+        // Keep the last known registry-backed snapshot until the live roots endpoint recovers.
       }
-    })();
+    };
+
+    void refreshConfiguredProjects();
+    const handleWindowFocus = () => {
+      void refreshConfiguredProjects();
+    };
+    window.addEventListener("focus", handleWindowFocus);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", handleWindowFocus);
     };
   }, []);
 
