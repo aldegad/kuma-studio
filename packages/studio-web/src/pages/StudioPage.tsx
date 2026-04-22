@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { fetchOfficeLayout } from "../lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchExplorerRoots, fetchOfficeLayout } from "../lib/api";
 import { useWebSocket } from "../hooks/use-websocket";
 import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
@@ -29,6 +29,11 @@ import { SettingsPanel } from "../components/office/SettingsPanel";
 import { useActivityStore } from "../stores/use-activity-store";
 import { FileExplorer } from "../components/ide/FileExplorer";
 import { useCanvasInteraction, CANVAS_WIDTH, CANVAS_HEIGHT, ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX, clamp } from "../hooks/use-canvas-interaction";
+import {
+  buildStudioProjectTabs,
+  CORE_PROJECT_TAB_ID,
+  splitHudProjectTabs,
+} from "../lib/project-tabs";
 
 interface StudioEvent {
   type: "kuma-studio:event";
@@ -38,6 +43,7 @@ interface StudioEvent {
 }
 
 const GIT_ACTIVITY_REFRESH_MS = 5 * 60 * 1000;
+const HUD_PINNED_PROJECT_STORAGE_KEY = "kuma-studio-hud-pinned-project";
 
 export function StudioPage() {
   const { status } = useWebSocket();
@@ -64,6 +70,7 @@ export function StudioPage() {
 
   // Canvas interaction
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const {
     dragState, setDragState,
     zoom, setZoom,
@@ -79,6 +86,12 @@ export function StudioPage() {
   const [particlesEnabled, setParticlesEnabled] = useState(true);
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [nightShiftEnabled, setNightShiftEnabled] = useState(false);
+  const [configuredProjectIds, setConfiguredProjectIds] = useState<string[]>([]);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [hudPinnedProjectId, setHudPinnedProjectId] = useState<string | null>(() => {
+    const stored = localStorage.getItem(HUD_PINNED_PROJECT_STORAGE_KEY)?.trim();
+    return stored ? stored : null;
+  });
   const [themeMode, setThemeMode] = useState<"auto" | "light" | "dark">(() => {
     const stored = localStorage.getItem("kuma-studio-theme-mode");
     return stored === "light" || stored === "dark" ? stored : "auto";
@@ -137,6 +150,25 @@ export function StudioPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      try {
+        const roots = await fetchExplorerRoots();
+        if (!cancelled) {
+          setConfiguredProjectIds(Object.keys(roots.projectRoots));
+        }
+      } catch {
+        if (!cancelled) {
+          setConfiguredProjectIds([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
       try { const layout = await fetchOfficeLayout(); if (!cancelled) applyLayout(layout); }
       catch { /* keep local */ }
     })();
@@ -178,6 +210,22 @@ export function StudioPage() {
     : "linear-gradient(135deg, #fefce8 0%, #fef08a 30%, #fffbeb 100%)";
 
   const activityCount = useActivityStore((s) => s.events.length);
+  const projectTabs = useMemo(
+    () => buildStudioProjectTabs(projects, configuredProjectIds),
+    [configuredProjectIds, projects],
+  );
+  const {
+    pinnedProjectId: resolvedHudPinnedProjectId,
+    visibleProjects: hudProjects,
+    overflowProjects,
+  } = useMemo(
+    () => splitHudProjectTabs(projectTabs, hudPinnedProjectId),
+    [hudPinnedProjectId, projectTabs],
+  );
+  const projectMenuProjects = useMemo(
+    () => projectTabs.filter((project) => project.projectId !== CORE_PROJECT_TAB_ID),
+    [projectTabs],
+  );
 
   // "system" project members (e.g. kuma, jjooni) are always visible
   const systemApiMemberIds = projects.find((p) => p.projectId === "system")?.members.map((m) => m.id) ?? [];
@@ -186,7 +234,7 @@ export function StudioPage() {
   const systemMemberIdSet = new Set(systemMemberIds);
   const activeProjectMemberIds = activeProjectId
     ? [
-        ...(projects.find((p) => p.projectId === activeProjectId)?.members.map((m) => m.id) ?? []),
+        ...(projectTabs.find((p) => p.projectId === activeProjectId)?.members.map((m) => m.id) ?? []),
         ...systemMemberIds,
       ]
     : null;
@@ -205,7 +253,7 @@ export function StudioPage() {
   const visibleCharacters = activeProjectId
     ? scene.characters.filter((c) => {
         if (systemMemberIdSet.has(c.id)) return true;
-        const projectMembers = projects.find((p) => p.projectId === activeProjectId)?.members;
+        const projectMembers = projectTabs.find((p) => p.projectId === activeProjectId)?.members;
         if (!projectMembers) return true;
         return projectMembers.some((m) => m.id === c.id);
       })
@@ -213,8 +261,58 @@ export function StudioPage() {
 
   // Active project name for office header
   const activeProjectName = activeProjectId
-    ? projects.find((p) => p.projectId === activeProjectId)?.projectName ?? activeProjectId
+    ? projectTabs.find((p) => p.projectId === activeProjectId)?.projectName ?? activeProjectId
     : null;
+  const activeOverflowProject = activeProjectId
+    ? overflowProjects.find((project) => project.projectId === activeProjectId) ?? null
+    : null;
+  const projectMenuLabel = activeOverflowProject?.projectName ?? (overflowProjects.length > 0 ? `프로젝트 ${overflowProjects.length}` : "프로젝트");
+
+  useEffect(() => {
+    if (resolvedHudPinnedProjectId !== hudPinnedProjectId) {
+      setHudPinnedProjectId(resolvedHudPinnedProjectId);
+    }
+  }, [hudPinnedProjectId, resolvedHudPinnedProjectId]);
+
+  useEffect(() => {
+    if (hudPinnedProjectId) {
+      localStorage.setItem(HUD_PINNED_PROJECT_STORAGE_KEY, hudPinnedProjectId);
+      return;
+    }
+    localStorage.removeItem(HUD_PINNED_PROJECT_STORAGE_KEY);
+  }, [hudPinnedProjectId]);
+
+  useEffect(() => {
+    if (!projectMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      if (projectMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setProjectMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProjectMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [projectMenuOpen]);
+
+  useEffect(() => {
+    if (activeProjectId && !projectTabs.some((project) => project.projectId === activeProjectId)) {
+      setActiveProject(null);
+    }
+  }, [activeProjectId, projectTabs, setActiveProject]);
 
   const dashboardPanels: DashboardPanelItem[] = [
     { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel /> },
@@ -316,8 +414,8 @@ export function StudioPage() {
           <span className="rounded-full bg-amber-400/20 text-amber-200 text-[10px] font-semibold px-2 py-0.5 border border-amber-400/25">{visibleCharacters.length}명</span>
 
           {/* Project tabs — zone selector */}
-          {projects.length > 1 && (
-            <div className="flex items-center gap-0.5 ml-2">
+          {projectTabs.length > 0 && (
+            <div className="ml-2 flex items-center gap-1">
               <button type="button" onClick={() => setActiveProject(null)}
                 className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
                   activeProjectId === null
@@ -330,7 +428,7 @@ export function StudioPage() {
                 }`}>
                 전체
               </button>
-              {projects.map((p) => (
+              {hudProjects.map((p) => (
                 <button key={p.projectId} type="button" onClick={() => setActiveProject(p.projectId)}
                   className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
                     activeProjectId === p.projectId
@@ -344,6 +442,108 @@ export function StudioPage() {
                   {p.projectName}
                 </button>
               ))}
+              {projectMenuProjects.length > 0 && (
+                <div ref={projectMenuRef} className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setProjectMenuOpen((open) => !open)}
+                    className={`flex items-center gap-1 rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
+                      activeOverflowProject || projectMenuOpen
+                        ? isNight
+                          ? "bg-amber-400/24 text-amber-50 border-amber-300/35"
+                          : "bg-amber-500/24 text-amber-100 border-amber-400/30"
+                        : isNight
+                          ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
+                          : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
+                    }`}
+                    title="프로젝트 선택"
+                    aria-haspopup="menu"
+                    aria-expanded={projectMenuOpen}
+                  >
+                    <span className="truncate max-w-[9rem]">{projectMenuLabel}</span>
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 16 16"
+                      className={`transition-transform ${projectMenuOpen ? "rotate-180" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3.5 6l4.5 4 4.5-4" />
+                    </svg>
+                  </button>
+                  {projectMenuOpen && (
+                    <div
+                      className="absolute left-0 top-[calc(100%+0.45rem)] z-[70] w-80 overflow-hidden rounded-2xl border shadow-[0_22px_48px_-20px_rgba(15,23,42,0.5)] backdrop-blur-xl"
+                      style={{
+                        background: isNight ? "rgba(33, 22, 12, 0.92)" : "rgba(79, 54, 28, 0.92)",
+                        borderColor: "rgba(251, 191, 36, 0.18)",
+                      }}
+                    >
+                      <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: "rgba(251, 191, 36, 0.12)" }}>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-100/90">프로젝트 선택</p>
+                          <p className="text-[9px] text-amber-100/55">별표를 누르면 상단 바에 고정됩니다.</p>
+                        </div>
+                        <span className="rounded-full border px-2 py-0.5 text-[9px] font-semibold text-amber-100/80" style={{ borderColor: "rgba(251, 191, 36, 0.16)" }}>
+                          {projectMenuProjects.length}개
+                        </span>
+                      </div>
+                      <div className="max-h-72 overflow-y-auto px-2 py-2">
+                        {projectMenuProjects.map((project) => {
+                          const isActive = activeProjectId === project.projectId;
+                          const isPinned = resolvedHudPinnedProjectId === project.projectId;
+                          const isVisibleOnHud = hudProjects.some((entry) => entry.projectId === project.projectId);
+                          return (
+                            <div key={project.projectId} className="flex items-center gap-1.5 py-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveProject(project.projectId);
+                                  setProjectMenuOpen(false);
+                                }}
+                                className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors ${
+                                  isActive ? "bg-amber-300/14" : "hover:bg-white/6"
+                                }`}
+                              >
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? "bg-amber-300" : "bg-amber-100/35"}`} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-[11px] font-semibold text-amber-50">
+                                    {project.projectName}
+                                  </span>
+                                  <span className="block text-[9px] text-amber-100/55">
+                                    {project.members.length}명
+                                    {isVisibleOnHud ? " • 상단 노출" : ""}
+                                  </span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setHudPinnedProjectId(isPinned ? null : project.projectId);
+                                }}
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border text-sm transition-colors ${
+                                  isPinned
+                                    ? "border-amber-300/35 bg-amber-300/16 text-amber-200"
+                                    : "border-transparent bg-white/5 text-amber-100/45 hover:border-amber-300/18 hover:text-amber-100"
+                                }`}
+                                title={isPinned ? "상단 고정 해제" : "상단 고정"}
+                                aria-label={isPinned ? `${project.projectName} 상단 고정 해제` : `${project.projectName} 상단 고정`}
+                              >
+                                {isPinned ? "★" : "☆"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

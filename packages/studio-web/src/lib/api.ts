@@ -19,8 +19,19 @@ import { normalizeTeamStatusSnapshot, type TeamStatusSnapshot } from "../stores/
 const KUMA_PORT = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
 const BASE_URL = `http://${window.location.hostname}:${KUMA_PORT}`;
 
+export interface ExplorerRootsResponse {
+  workspaceRoot: string;
+  systemRoot: string;
+  projectRoots: Record<string, string>;
+  globalRoots: Partial<Record<"vault" | "claude" | "codex", string>>;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object";
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -259,6 +270,17 @@ function isExtensionsCatalogResponse(value: unknown): value is ExtensionsCatalog
       Array.isArray(ecosystem.categories) &&
       ecosystem.categories.every(isExtensionsCatalogCategory),
     )
+  );
+}
+
+function isExplorerRootsResponse(value: unknown): value is ExplorerRootsResponse {
+  return (
+    isRecord(value) &&
+    typeof value.workspaceRoot === "string" &&
+    typeof value.systemRoot === "string" &&
+    isStringRecord(value.projectRoots) &&
+    isRecord(value.globalRoots) &&
+    Object.values(value.globalRoots).every((entry) => typeof entry === "string")
   );
 }
 
@@ -521,6 +543,18 @@ export async function fetchTeamStatus(project?: string | null): Promise<TeamStat
     throw new Error("Failed to fetch team status: invalid response payload");
   }
   return snapshot;
+}
+
+export async function fetchExplorerRoots(): Promise<ExplorerRootsResponse> {
+  const res = await fetch(`${BASE_URL}/studio/fs/roots`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch explorer roots: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isExplorerRootsResponse(payload)) {
+    throw new Error("Failed to fetch explorer roots: invalid response payload");
+  }
+  return payload;
 }
 
 export async function fetchContentItems(project?: string, assignee?: string | null, postStatus?: ContentPostStatus): Promise<ContentListResponse> {
