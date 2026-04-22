@@ -31,6 +31,8 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 **불변식:** L1 에서 전문 dump 금지. 순서 고정 `search → timeline → get`.
 
+**우선순위 규칙:** 현재 canonical truth 가 필요한 질의에서는 `decisions.md`, `projects/*.project-decisions.md`, `schema.md`, `operational-rules/` 를 `results/`, `dispatch-log.md`, 장문 프로젝트 history 문서보다 먼저 본다. 결과 리포트와 dispatch log 는 증적/역사 계층이지 정책 SSOT 가 아니다.
+
 ### Anti-pattern
 - ❌ literal "vault" keyword 가 없다고 vault 를 안 본다
 - ❌ 디스코드 히스토리부터 fetch 한다
