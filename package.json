@@ -50,6 +50,7 @@
     "security:scan": "bash ./scripts/security/run-gitleaks.sh --repo",
     "security:scan:staged": "bash ./scripts/security/run-gitleaks.sh --staged",
     "test": "vitest run --passWithNoTests",
+    "hwp-fonts:install": "node ./scripts/install-hwp-fonts.mjs",
     "skill:install": "node ./scripts/install.mjs",
     "skill:doctor": "node ./scripts/doctor.mjs"
   },

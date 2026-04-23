@@ -69,9 +69,15 @@ describe("studio memo routes", () => {
   it("lists, creates, and updates vault-backed thread documents", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-thread-docs-"));
     tempDirs.push(root);
+    const broadcasts = [];
 
     const handler = createStudioMemoRouteHandler({
       threadsContentRoot: root,
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
+        },
+      },
     });
 
     const initialListRes = createResponse();
@@ -128,6 +134,11 @@ describe("studio memo routes", () => {
     assert.strictEqual(listRes.json.items.length, 1);
     assert.strictEqual(listRes.json.items[0].id, createRes.json.id);
     assert.strictEqual(listRes.json.items[0].fileName, `${createRes.json.id}.md`);
+    assert.strictEqual(broadcasts.length, 2);
+    assert.strictEqual(broadcasts[0].changes[0].rootId, "threads-content");
+    assert.strictEqual(broadcasts[0].changes[0].rootPath, root);
+    assert.strictEqual(broadcasts[0].changes[0].eventType, "change");
+    assert.strictEqual(broadcasts[1].changes[0].path, createRes.json.path);
   });
 
   it("uses addInbox for /studio/vault/inbox", async () => {
@@ -174,8 +185,20 @@ describe("studio memo routes", () => {
 
   it("uses canonical /studio/memos CRUD routes for memo create/delete", async () => {
     const calls = [];
+    const broadcasts = [];
+    const vaultDir = await mkdtemp(join(tmpdir(), "kuma-studio-vault-"));
+    tempDirs.push(vaultDir);
     const handler = createStudioMemoRouteHandler({
       memoStore: {
+        getVaultDir() {
+          return vaultDir;
+        },
+        getMemosDir() {
+          return join(vaultDir, "memos");
+        },
+        resolveEntryPath(id) {
+          return join(vaultDir, "memos", id);
+        },
         async add(input) {
           calls.push({ type: "add", input });
           return {
@@ -192,6 +215,11 @@ describe("studio memo routes", () => {
         async delete(id) {
           calls.push({ type: "delete", id });
           return { success: true, status: 200 };
+        },
+      },
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
         },
       },
     });
@@ -219,6 +247,14 @@ describe("studio memo routes", () => {
     );
 
     assert.strictEqual(deleteRes.statusCode, 200);
+    assert.strictEqual(broadcasts.length, 2);
+    assert.strictEqual(broadcasts[0].changes[0].rootId, "vault");
+    assert.strictEqual(broadcasts[0].changes[0].relativePath, "memos/memo.md");
+    assert.strictEqual(broadcasts[0].changes[0].eventType, "change");
+    assert.strictEqual(broadcasts[0].changes[0].origin, "memo-route");
+    assert.strictEqual(broadcasts[1].changes[0].relativePath, "memos/memo.md");
+    assert.strictEqual(broadcasts[1].changes[0].eventType, "delete");
+    assert.strictEqual(broadcasts[1].changes[0].origin, "memo-route");
     assert.deepStrictEqual(calls, [
       {
         type: "add",

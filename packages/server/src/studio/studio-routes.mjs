@@ -23,6 +23,8 @@ import { createStudioMemoRouteHandler } from "./studio-memo-routes.mjs";
 import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { readStudioPlugins, readStudioSkills } from "./studio-skill-catalog.mjs";
 import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
+import { createStudioHwpFontRouteHandler } from "./studio-hwp-font-routes.mjs";
+import { createStudioMarkdownPdfRouteHandler } from "./studio-markdown-pdf-routes.mjs";
 import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
 
 /**
@@ -41,6 +43,7 @@ import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
  * @param {import("./studio-ws-events.mjs").StudioWsEvents} [options.studioWsEvents]
  * @param {import("./agent-history-store.mjs").AgentHistoryStore} [options.agentHistoryStore]
  * @param {import("./dispatch-broker.mjs").DispatchBroker} [options.dispatchBroker]
+ * @param {import("./studio-ui-state-store.mjs").StudioUiStateStore} [options.studioUiStateStore]
  * @param {{
  *   resolveMemberContext?: (memberName: string, emoji?: string) => { project?: string, label?: string, surface?: string } | null,
  *   registerPendingSelfWrite?: (input: { memberId: string, memberConfig: object, ttlMs?: number }) => void,
@@ -70,6 +73,7 @@ export function createStudioRouteHandler({
   studioWsEvents,
   agentHistoryStore,
   dispatchBroker,
+  studioUiStateStore,
   teamConfigRuntime,
   workspaceRoot,
   explorerGlobalRoots,
@@ -98,6 +102,13 @@ export function createStudioRouteHandler({
   });
   const handleMemoRoute = createStudioMemoRouteHandler({
     memoStore,
+    studioWsEvents,
+  });
+  const handleHwpFontRoute = createStudioHwpFontRouteHandler();
+  const handleMarkdownPdfRoute = createStudioMarkdownPdfRouteHandler({
+    workspaceRoot,
+    globalRoots: explorerGlobalRoots,
+    systemRoot: process.cwd(),
   });
   const handleStaticRoute = createStudioStaticRouteHandler({
     staticDir,
@@ -120,6 +131,51 @@ export function createStudioRouteHandler({
     }
 
     if (await handleExplorerRoute(req, res, url)) {
+      return true;
+    }
+
+    if (await handleHwpFontRoute(req, res, url)) {
+      return true;
+    }
+
+    if (await handleMarkdownPdfRoute(req, res, url)) {
+      return true;
+    }
+
+    if (url.pathname === "/studio/ui-state" && req.method === "GET") {
+      if (!studioUiStateStore) {
+        sendJson(res, 503, { error: "Studio UI state store is not available." });
+        return true;
+      }
+      sendJson(res, 200, await studioUiStateStore.read());
+      return true;
+    }
+
+    if (url.pathname === "/studio/ui-state" && req.method === "PATCH") {
+      if (!studioUiStateStore) {
+        sendJson(res, 503, { error: "Studio UI state store is not available." });
+        return true;
+      }
+
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, {
+          error: "Invalid UI state payload.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+        return true;
+      }
+
+      try {
+        sendJson(res, 200, await studioUiStateStore.patch(body));
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to persist UI state.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
       return true;
     }
 

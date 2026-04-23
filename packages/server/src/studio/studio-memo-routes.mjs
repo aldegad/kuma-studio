@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 
 import { readJsonBody, sendJson } from "../server-support.mjs";
-import { resolveVaultImagesDir } from "./memo-store.mjs";
+import { resolveVaultDir, resolveVaultImagesDir } from "./memo-store.mjs";
 import { getStudioMimeType } from "./studio-asset-utils.mjs";
 import { parseFrontmatterDocument, stringifyFrontmatter } from "./vault-ingest.mjs";
 
@@ -12,6 +12,11 @@ const THREAD_STATUSES = new Set(["draft", "approved", "posted"]);
 
 function resolveThreadsContentRoot(rootOverride) {
   return resolve(rootOverride ?? join(homedir(), ".kuma", "vault", "domains", "threads-content"));
+}
+
+function isWithinRoot(root, candidatePath) {
+  const relativePath = relative(root, candidatePath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith("/"));
 }
 
 function normalizeThreadStatus(value) {
@@ -88,8 +93,39 @@ async function listThreadDocuments(root) {
   return items;
 }
 
-export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } = {}) {
+export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot, studioWsEvents } = {}) {
   const resolvedThreadsContentRoot = resolveThreadsContentRoot(threadsContentRoot);
+  const vaultRoot = resolve(memoStore?.getVaultDir?.() ?? resolveVaultDir());
+
+  function broadcastFilesystemRouteChange(filePath, eventType, origin) {
+    if (!studioWsEvents?.broadcastFilesystemChange) {
+      return;
+    }
+
+    const resolvedPath = resolve(filePath);
+    const isVaultBacked = isWithinRoot(vaultRoot, resolvedPath);
+    const rootPath = isVaultBacked ? vaultRoot : resolvedThreadsContentRoot;
+
+    studioWsEvents.broadcastFilesystemChange({
+      changes: [{
+        rootId: isVaultBacked ? "vault" : "threads-content",
+        rootPath,
+        eventType,
+        path: resolvedPath,
+        relativePath: relative(rootPath, resolvedPath) || ".",
+        origin,
+        changedAt: new Date().toISOString(),
+      }],
+    });
+  }
+
+  function broadcastThreadDocumentChange(filePath, eventType) {
+    broadcastFilesystemRouteChange(filePath, eventType, "thread-document-route");
+  }
+
+  function broadcastMemoChange(filePath, eventType) {
+    broadcastFilesystemRouteChange(filePath, eventType, "memo-route");
+  }
 
   return async (req, res, url) => {
     if (url.pathname === "/studio/memos" && req.method === "GET") {
@@ -171,6 +207,7 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
           body: typeof body?.body === "string" ? body.body : "",
         });
         await writeFile(filePath, content, "utf8");
+        broadcastThreadDocumentChange(filePath, "change");
         sendJson(res, 201, await readThreadDocument(resolvedThreadsContentRoot, basename(filePath)));
       } catch (error) {
         sendJson(res, 500, {
@@ -213,6 +250,7 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
           body: typeof body?.body === "string" ? body.body : current.body,
         });
         await writeFile(filePath, content, "utf8");
+        broadcastThreadDocumentChange(filePath, "change");
         sendJson(res, 200, await readThreadDocument(resolvedThreadsContentRoot, basename(filePath)));
       } catch (error) {
         sendJson(res, 500, {
@@ -251,6 +289,8 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
           title: typeof body?.title === "string" ? body.title : "Inbox",
           text,
         });
+        const inboxPath = memoStore.resolveEntryPath?.(`inbox/${memo.id}`) ?? resolve(join(memoStore.getInboxDir?.() ?? join(vaultRoot, "inbox"), memo.id));
+        broadcastMemoChange(inboxPath, "change");
         sendJson(res, 201, memo);
       } catch (error) {
         sendJson(res, 500, {
@@ -290,6 +330,8 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
           text: typeof body?.text === "string" ? body.text : "",
           images: Array.isArray(body?.images) ? body.images : [],
         });
+        const memoPath = memoStore.resolveEntryPath?.(memo.id) ?? resolve(join(memoStore.getMemosDir?.() ?? join(vaultRoot, "memos"), memo.id));
+        broadcastMemoChange(memoPath, "change");
         sendJson(res, 201, memo);
       } catch (error) {
         sendJson(res, 500, {
@@ -307,8 +349,10 @@ export function createStudioMemoRouteHandler({ memoStore, threadsContentRoot } =
       }
 
       const memoId = decodeURIComponent(url.pathname.slice("/studio/memos/".length));
+      const memoPath = memoStore.resolveEntryPath?.(memoId) ?? resolve(join(memoStore.getMemosDir?.() ?? join(vaultRoot, "memos"), memoId));
       const result = await memoStore.delete(memoId);
       if (result.success) {
+        broadcastMemoChange(memoPath, "delete");
         sendJson(res, 200, { success: true });
       } else {
         sendJson(res, result.status || 500, { error: result.error });

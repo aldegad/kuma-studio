@@ -26,6 +26,43 @@ export interface ExplorerRootsResponse {
   globalRoots: Partial<Record<"vault" | "claude" | "codex", string>>;
 }
 
+export interface StudioViewerScrollPosition {
+  top: number;
+  left: number;
+}
+
+export interface StudioExplorerProjectState {
+  selectedPath: string | null;
+  sidebarTab: "files" | "vault";
+  expandedPaths: string[];
+  scrollTop: number;
+  globalExpanded: Record<string, boolean>;
+  vaultExpanded: Record<string, boolean>;
+  viewerScrollByPath: Record<string, StudioViewerScrollPosition>;
+}
+
+export interface StudioUiState {
+  version: 1;
+  updatedAt: string;
+  hud: {
+    pinnedProjectId: string | null;
+  };
+  explorer: {
+    open: boolean;
+    projects: Record<string, StudioExplorerProjectState>;
+  };
+}
+
+export type StudioUiStatePatch = {
+  hud?: {
+    pinnedProjectId?: string | null;
+  };
+  explorer?: {
+    open?: boolean;
+    projects?: Record<string, Partial<StudioExplorerProjectState>>;
+  };
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object";
 }
@@ -34,8 +71,48 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((entry) => typeof entry === "string");
 }
 
+function isBooleanRecord(value: unknown): value is Record<string, boolean> {
+  return isRecord(value) && Object.values(value).every((entry) => typeof entry === "boolean");
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isViewerScrollPosition(value: unknown): value is StudioViewerScrollPosition {
+  return isRecord(value) && isFiniteNumber(value.top) && isFiniteNumber(value.left);
+}
+
+function isViewerScrollRecord(value: unknown): value is Record<string, StudioViewerScrollPosition> {
+  return isRecord(value) && Object.values(value).every(isViewerScrollPosition);
+}
+
+function isStudioExplorerProjectState(value: unknown): value is StudioExplorerProjectState {
+  return (
+    isRecord(value) &&
+    (value.selectedPath === null || typeof value.selectedPath === "string") &&
+    (value.sidebarTab === "files" || value.sidebarTab === "vault") &&
+    Array.isArray(value.expandedPaths) &&
+    value.expandedPaths.every((entry) => typeof entry === "string") &&
+    isFiniteNumber(value.scrollTop) &&
+    isBooleanRecord(value.globalExpanded) &&
+    isBooleanRecord(value.vaultExpanded) &&
+    isViewerScrollRecord(value.viewerScrollByPath)
+  );
+}
+
+function isStudioUiState(value: unknown): value is StudioUiState {
+  return (
+    isRecord(value) &&
+    value.version === 1 &&
+    typeof value.updatedAt === "string" &&
+    isRecord(value.hud) &&
+    (value.hud.pinnedProjectId === null || typeof value.hud.pinnedProjectId === "string") &&
+    isRecord(value.explorer) &&
+    typeof value.explorer.open === "boolean" &&
+    isRecord(value.explorer.projects) &&
+    Object.values(value.explorer.projects).every(isStudioExplorerProjectState)
+  );
 }
 
 function isTeamMetadataMember(
@@ -512,6 +589,51 @@ export async function writeStudioFile(path: string, content: string): Promise<vo
   if (!isRecord(payload) || payload.success !== true) {
     throw new Error("Failed to save file: invalid response payload");
   }
+}
+
+export async function writeStudioBinaryFile(path: string, content: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/studio/fs/write-binary`, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, content }),
+  });
+  const payload: unknown = await res.json();
+  if (!res.ok) throw new Error(`Failed to save binary file: ${res.statusText}`);
+  if (!isRecord(payload) || payload.success !== true) {
+    throw new Error("Failed to save binary file: invalid response payload");
+  }
+}
+
+export async function fetchStudioUiState(): Promise<StudioUiState> {
+  const res = await fetch(`${BASE_URL}/studio/ui-state`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch studio UI state: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isStudioUiState(payload)) {
+    throw new Error("Failed to fetch studio UI state: invalid response payload");
+  }
+  return payload;
+}
+
+export async function patchStudioUiState(patch: StudioUiStatePatch): Promise<StudioUiState> {
+  const res = await fetch(`${BASE_URL}/studio/ui-state`, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`Failed to update studio UI state: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isStudioUiState(payload)) {
+    throw new Error("Failed to update studio UI state: invalid response payload");
+  }
+  return payload;
 }
 
 export async function saveOfficeLayout(layout: OfficeLayoutSnapshot): Promise<OfficeLayoutSnapshot> {

@@ -3,9 +3,17 @@ import { FileTreeNode, type FsNode, type GitStatusMap } from "./FileTreeNode";
 import { CodeViewer } from "./CodeViewer";
 import { ImageViewer } from "./ImageViewer";
 import { PdfViewer } from "./PdfViewer";
+import { HwpViewer } from "./HwpViewer";
 import { MarkdownBody } from "../dashboard/MarkdownBody";
 import { useWsStore } from "../../stores/use-ws-store";
-import { fetchExplorerRoots, type ExplorerRootsResponse } from "../../lib/api";
+import {
+  fetchExplorerRoots,
+  fetchStudioUiState,
+  patchStudioUiState,
+  type ExplorerRootsResponse,
+  type StudioExplorerProjectState,
+  type StudioViewerScrollPosition,
+} from "../../lib/api";
 import { formatMissingExplorerRootMessage, resolveActiveExplorerRoot } from "../../lib/explorer-roots";
 
 interface FrontmatterMeta {
@@ -188,6 +196,7 @@ type ViewerFile =
   | { type: "code"; content: string; language: string; path: string }
   | { type: "image"; content: string; mimeType: string; path: string }
   | { type: "pdf"; content: string; mimeType: string; path: string }
+  | { type: "hwp"; content: string; mimeType: string; path: string }
   | { type: "binary"; size: number; path: string }
   | { type: "vault"; content: string; title: string; path: string; meta: FrontmatterMeta }
   | null;
@@ -326,8 +335,17 @@ const BASE_URL = `http://${window.location.hostname}:${KUMA_PORT}`;
 const TREE_WIDTH_INITIAL = 260;
 const TREE_WIDTH_MIN = 180;
 const TREE_WIDTH_MAX = 420;
+const VIEWER_WIDTH_MAX = 1280;
+const EXPLORER_LAYOUT_STORAGE_KEY = "kuma-studio-file-explorer-layout:v1";
+const EXPLORER_STATE_DEBOUNCE_MS = 350;
 
 type ExplorerRoots = ExplorerRootsResponse;
+
+type SidebarTab = "files" | "vault";
+
+interface ExplorerLayoutState {
+  projects?: Record<string, { treeWidth?: number }>;
+}
 
 interface GlobalSection {
   id: string;
@@ -358,8 +376,53 @@ const GLOBAL_SECTION_DEFS: GlobalSection[] = [
   { id: "codex", label: ".codex", icon: "X", color: "text-emerald-500" },
 ];
 
+function isHwpMimeType(mimeType?: string): boolean {
+  return mimeType === "application/x-hwp" || mimeType === "application/x-hwpx";
+}
+
+function clampTreeWidth(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(Math.max(value, TREE_WIDTH_MIN), TREE_WIDTH_MAX)
+    : TREE_WIDTH_INITIAL;
+}
+
+function readExplorerLayout(projectKey: string): number {
+  try {
+    const raw = localStorage.getItem(EXPLORER_LAYOUT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as ExplorerLayoutState : null;
+    return clampTreeWidth(parsed?.projects?.[projectKey]?.treeWidth);
+  } catch {
+    return TREE_WIDTH_INITIAL;
+  }
+}
+
+function writeExplorerLayout(projectKey: string, treeWidth: number) {
+  try {
+    const raw = localStorage.getItem(EXPLORER_LAYOUT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) as ExplorerLayoutState : {};
+    const projects = parsed.projects ?? {};
+    projects[projectKey] = { ...projects[projectKey], treeWidth: clampTreeWidth(treeWidth) };
+    localStorage.setItem(EXPLORER_LAYOUT_STORAGE_KEY, JSON.stringify({ ...parsed, projects }));
+  } catch {
+    // GUI sizing is browser-local preference only; ignore storage quota/private-mode failures.
+  }
+}
+
+function emptyProjectState(): StudioExplorerProjectState {
+  return {
+    selectedPath: null,
+    sidebarTab: "files",
+    expandedPaths: [],
+    scrollTop: 0,
+    globalExpanded: {},
+    vaultExpanded: {},
+    viewerScrollByPath: {},
+  };
+}
+
 export function FileExplorer({ onCollapse, activeProjectId = null, activeProjectName = null }: FileExplorerProps) {
   const ws = useWsStore((state) => state.ws);
+  const projectStateKey = activeProjectId ?? "workspace";
   const [tree, setTree] = useState<FsNode | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<ExplorerRoots | null>(null);
   const [globalTrees, setGlobalTrees] = useState<Record<string, FsNode | null>>({});
@@ -369,10 +432,24 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   const [treeWidth, setTreeWidth] = useState(TREE_WIDTH_INITIAL);
   const [viewerFile, setViewerFile] = useState<ViewerFile>(null);
   const [fileLoading, setFileLoading] = useState(false);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
+  const [viewerScrollByPath, setViewerScrollByPath] = useState<Record<string, StudioViewerScrollPosition>>({});
+  const viewerFileRef = useRef<ViewerFile>(null);
   const resizingRef = useRef(false);
+  const treeWidthRef = useRef(TREE_WIDTH_INITIAL);
+  const treeScrollRef = useRef<HTMLDivElement | null>(null);
+  const vaultViewerScrollRef = useRef<HTMLDivElement | null>(null);
+  const appliedVaultScrollKeyRef = useRef("");
+  const uiStateReadyRef = useRef(false);
+  const restoreInProgressRef = useRef(false);
+  const pendingTreeScrollTopRef = useRef<number | null>(null);
+  const restoredStateKeyRef = useRef("");
+  const saveExplorerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveExplorerProjectKeyRef = useRef(projectStateKey);
+  const saveExplorerPatchRef = useRef<Partial<StudioExplorerProjectState>>({});
 
   // Sidebar tab state
-  const [sidebarTab, setSidebarTab] = useState<"files" | "vault">("files");
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("files");
 
   // Vault state
   const [vaultIndexLoaded, setVaultIndexLoaded] = useState(false);
@@ -387,6 +464,105 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   const [gitRoot, setGitRoot] = useState<string>("");
   const [refreshToken, setRefreshToken] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    treeWidthRef.current = treeWidth;
+  }, [treeWidth]);
+
+  useEffect(() => {
+    viewerFileRef.current = viewerFile;
+  }, [viewerFile]);
+
+  useEffect(() => {
+    saveExplorerProjectKeyRef.current = projectStateKey;
+    uiStateReadyRef.current = false;
+    restoreInProgressRef.current = false;
+    pendingTreeScrollTopRef.current = null;
+    restoredStateKeyRef.current = "";
+    if (saveExplorerTimerRef.current) {
+      clearTimeout(saveExplorerTimerRef.current);
+      saveExplorerTimerRef.current = null;
+    }
+    saveExplorerPatchRef.current = {};
+    setTreeWidth(readExplorerLayout(projectStateKey));
+    setViewerFile(null);
+    setExpandedPaths(new Set());
+    setGlobalExpanded({});
+    setVaultSectionExpanded({});
+    setViewerScrollByPath({});
+    setSidebarTab("files");
+  }, [projectStateKey]);
+
+  const scheduleExplorerStatePatch = useCallback((patch: Partial<StudioExplorerProjectState>) => {
+    if (!uiStateReadyRef.current || restoreInProgressRef.current) {
+      return;
+    }
+
+    saveExplorerPatchRef.current = {
+      ...saveExplorerPatchRef.current,
+      ...patch,
+      viewerScrollByPath: {
+        ...saveExplorerPatchRef.current.viewerScrollByPath,
+        ...patch.viewerScrollByPath,
+      },
+      globalExpanded: {
+        ...saveExplorerPatchRef.current.globalExpanded,
+        ...patch.globalExpanded,
+      },
+      vaultExpanded: {
+        ...saveExplorerPatchRef.current.vaultExpanded,
+        ...patch.vaultExpanded,
+      },
+    };
+
+    if (saveExplorerTimerRef.current) {
+      clearTimeout(saveExplorerTimerRef.current);
+    }
+
+    const targetProjectKey = saveExplorerProjectKeyRef.current;
+    saveExplorerTimerRef.current = setTimeout(() => {
+      saveExplorerTimerRef.current = null;
+      const pending = saveExplorerPatchRef.current;
+      saveExplorerPatchRef.current = {};
+      void patchStudioUiState({
+        explorer: {
+          projects: {
+            [targetProjectKey]: pending,
+          },
+        },
+      }).catch(() => {});
+    }, EXPLORER_STATE_DEBOUNCE_MS);
+  }, []);
+
+  const selectSidebarTab = useCallback((nextTab: SidebarTab) => {
+    setSidebarTab(nextTab);
+    scheduleExplorerStatePatch({ sidebarTab: nextTab });
+  }, [scheduleExplorerStatePatch]);
+
+  const closeViewer = useCallback(() => {
+    setViewerFile(null);
+    scheduleExplorerStatePatch({ selectedPath: null });
+  }, [scheduleExplorerStatePatch]);
+
+  useEffect(() => {
+    return () => {
+      if (saveExplorerTimerRef.current) {
+        clearTimeout(saveExplorerTimerRef.current);
+        saveExplorerTimerRef.current = null;
+      }
+      const pending = saveExplorerPatchRef.current;
+      saveExplorerPatchRef.current = {};
+      if (Object.keys(pending).length > 0) {
+        void patchStudioUiState({
+          explorer: {
+            projects: {
+              [saveExplorerProjectKeyRef.current]: pending,
+            },
+          },
+        }).catch(() => {});
+      }
+    };
+  }, []);
 
   const loadGitStatus = useCallback(async (root: string) => {
     if (!root) {
@@ -534,9 +710,9 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
 
   useEffect(() => {
     if (!hasVaultRoot && sidebarTab === "vault") {
-      setSidebarTab("files");
+      selectSidebarTab("files");
     }
-  }, [hasVaultRoot, sidebarTab]);
+  }, [hasVaultRoot, selectSidebarTab, sidebarTab]);
 
   // Load global config tree on demand
   const loadGlobalTree = useCallback(async (section: GlobalSection & { path: string }, force = false) => {
@@ -553,10 +729,11 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   const toggleGlobalSection = useCallback((section: GlobalSection & { path: string }) => {
     const willExpand = !globalExpanded[section.id];
     setGlobalExpanded((prev) => ({ ...prev, [section.id]: willExpand }));
+    scheduleExplorerStatePatch({ globalExpanded: { [section.id]: willExpand } });
     if (willExpand) {
       void loadGlobalTree(section);
     }
-  }, [globalExpanded, loadGlobalTree]);
+  }, [globalExpanded, loadGlobalTree, scheduleExplorerStatePatch]);
 
   // Load children for lazy expansion
   const handleLoadChildren = useCallback(async (path: string): Promise<FsNode> => {
@@ -564,11 +741,26 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     return r.json();
   }, []);
 
-  // File select → load content into viewer
-  const handleFileSelect = useCallback(async (path: string) => {
-    // If clicking the same file, do nothing
-    if (viewerFile && "path" in viewerFile && viewerFile.path === path) return;
+  const handleDirectoryToggle = useCallback((path: string, expanded: boolean) => {
+    setExpandedPaths((previous) => {
+      const next = new Set(previous);
+      if (expanded) {
+        next.add(path);
+      } else {
+        next.delete(path);
+      }
+      scheduleExplorerStatePatch({ expandedPaths: [...next] });
+      return next;
+    });
+  }, [scheduleExplorerStatePatch]);
 
+  // File select → load content into viewer
+  const handleFileSelect = useCallback(async (path: string, options: { persist?: boolean } = {}) => {
+    // If clicking the same file, do nothing
+    const currentViewerFile = viewerFileRef.current;
+    if (currentViewerFile && "path" in currentViewerFile && currentViewerFile.path === path) return;
+
+    const shouldPersist = options.persist !== false;
     setFileLoading(true);
     try {
       const r = await fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(path)}`);
@@ -581,16 +773,21 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
         setViewerFile({ type: "binary", size: data.size, path });
       } else if (data.mimeType === "application/pdf") {
         setViewerFile({ type: "pdf", content: data.content, mimeType: data.mimeType, path });
+      } else if (isHwpMimeType(data.mimeType)) {
+        setViewerFile({ type: "hwp", content: data.content, mimeType: data.mimeType, path });
       } else if (data.mimeType) {
         setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path });
       } else {
         setViewerFile({ type: "code", content: data.content, language: data.language || "plaintext", path });
       }
+      if (shouldPersist) {
+        scheduleExplorerStatePatch({ selectedPath: path });
+      }
     } catch {
       // ignore
     }
     setFileLoading(false);
-  }, [viewerFile]);
+  }, [scheduleExplorerStatePatch]);
 
   // File delete handler
   const handleFileDelete = useCallback(async (path: string) => {
@@ -607,13 +804,13 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     if (viewerFile && "path" in viewerFile) {
       const viewed = viewerFile.path;
       if (viewed === path || viewed.startsWith(`${path}/`)) {
-        setViewerFile(null);
+        closeViewer();
       }
     }
 
     const nextExplorerState = await reloadRootTree();
     await loadGitStatus(nextExplorerState.tree?.path || activeExplorerRoot?.path || "");
-  }, [activeExplorerRoot?.path, loadGitStatus, reloadRootTree, viewerFile]);
+  }, [activeExplorerRoot?.path, closeViewer, loadGitStatus, reloadRootTree, viewerFile]);
 
   // Tree panel resize
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -625,6 +822,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
       const newWidth = Math.min(Math.max(startWidth + ev.clientX - startX, TREE_WIDTH_MIN), TREE_WIDTH_MAX);
+      treeWidthRef.current = newWidth;
       setTreeWidth(newWidth);
     };
 
@@ -634,13 +832,14 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       document.removeEventListener("mouseup", onUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
+      writeExplorerLayout(projectStateKey, treeWidthRef.current);
     };
 
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [treeWidth]);
+  }, [projectStateKey, treeWidth]);
 
   // Parse index.md when vault tab is selected
   useEffect(() => {
@@ -704,18 +903,23 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     ws,
   ]);
 
-  const handleVaultSelect = useCallback(async (doc: TocDoc) => {
+  const handleVaultSelect = useCallback(async (doc: TocDoc, options: { persist?: boolean } = {}) => {
     if (!explorerRoots?.globalRoots.vault) return;
-    if (viewerFile?.type === "vault" && viewerFile.path === doc.path) return;
-    if (viewerFile?.type === "image" && viewerFile.path === doc.path) return;
-    if (viewerFile?.type === "pdf" && viewerFile.path === doc.path) return;
+    const currentViewerFile = viewerFileRef.current;
+    if (currentViewerFile?.type === "vault" && currentViewerFile.path === doc.path) return;
+    if (currentViewerFile?.type === "image" && currentViewerFile.path === doc.path) return;
+    if (currentViewerFile?.type === "pdf" && currentViewerFile.path === doc.path) return;
+    if (currentViewerFile?.type === "hwp" && currentViewerFile.path === doc.path) return;
     const filePath = `${explorerRoots.globalRoots.vault}/${doc.path}`;
+    const shouldPersist = options.persist !== false;
     setFileLoading(true);
     try {
       const r = await fetch(`${BASE_URL}/studio/fs/read?path=${encodeURIComponent(filePath)}`);
       const data = await r.json();
       if (data.mimeType === "application/pdf") {
         setViewerFile({ type: "pdf", content: data.content, mimeType: data.mimeType, path: doc.path });
+      } else if (isHwpMimeType(data.mimeType)) {
+        setViewerFile({ type: "hwp", content: data.content, mimeType: data.mimeType, path: doc.path });
       } else if (data.mimeType) {
         // Image file from vault TOC
         setViewerFile({ type: "image", content: data.content, mimeType: data.mimeType, path: doc.path });
@@ -729,20 +933,125 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
           meta,
         });
       }
+      if (shouldPersist) {
+        scheduleExplorerStatePatch({ selectedPath: doc.path });
+      }
     } catch { /* ignore */ }
     setFileLoading(false);
-  }, [explorerRoots, viewerFile]);
+  }, [explorerRoots, scheduleExplorerStatePatch]);
+
+  const setVaultExpandedPersistently = useCallback<React.Dispatch<React.SetStateAction<Record<string, boolean>>>>((updater) => {
+    setVaultSectionExpanded((previous) => {
+      const next = typeof updater === "function" ? updater(previous) : updater;
+      scheduleExplorerStatePatch({ vaultExpanded: next });
+      return next;
+    });
+  }, [scheduleExplorerStatePatch]);
+
+  useEffect(() => {
+    if (!explorerRoots) {
+      return;
+    }
+    const restoreKey = `${projectStateKey}:${hasVaultRoot ? "vault" : "files"}:${explorerRoots.workspaceRoot}`;
+    if (restoredStateKeyRef.current === restoreKey) {
+      return;
+    }
+    restoredStateKeyRef.current = restoreKey;
+
+    let cancelled = false;
+    restoreInProgressRef.current = true;
+    uiStateReadyRef.current = false;
+    pendingTreeScrollTopRef.current = null;
+
+    void fetchStudioUiState()
+      .then((state) => {
+        if (cancelled) {
+          return;
+        }
+        const projectState = state.explorer.projects[projectStateKey] ?? emptyProjectState();
+        const nextTab = projectState.sidebarTab === "vault" && hasVaultRoot ? "vault" : "files";
+        setSidebarTab(nextTab);
+        setExpandedPaths(new Set(projectState.expandedPaths));
+        setGlobalExpanded(projectState.globalExpanded);
+        setVaultSectionExpanded(projectState.vaultExpanded);
+        setViewerScrollByPath(projectState.viewerScrollByPath);
+        pendingTreeScrollTopRef.current = projectState.scrollTop;
+        window.requestAnimationFrame(() => {
+          if (treeScrollRef.current && pendingTreeScrollTopRef.current !== null) {
+            treeScrollRef.current.scrollTop = pendingTreeScrollTopRef.current;
+          }
+        });
+
+        if (projectState.selectedPath) {
+          if (nextTab === "vault") {
+            void handleVaultSelect({ title: projectState.selectedPath.split("/").pop() ?? projectState.selectedPath, path: projectState.selectedPath }, { persist: false });
+          } else {
+            void handleFileSelect(projectState.selectedPath, { persist: false });
+          }
+        } else {
+          setViewerFile(null);
+        }
+
+        uiStateReadyRef.current = true;
+        window.setTimeout(() => {
+          if (!cancelled) {
+            restoreInProgressRef.current = false;
+          }
+        }, 0);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          uiStateReadyRef.current = true;
+          restoreInProgressRef.current = false;
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [explorerRoots, handleFileSelect, handleVaultSelect, hasVaultRoot, projectStateKey]);
+
+  useEffect(() => {
+    if (!globalSections.length) {
+      return;
+    }
+    for (const section of globalSections) {
+      if (globalExpanded[section.id]) {
+        void loadGlobalTree(section);
+      }
+    }
+  }, [globalExpanded, globalSections, loadGlobalTree]);
+
+  useEffect(() => {
+    if (viewerFile?.type !== "vault" || !vaultViewerScrollRef.current) {
+      return;
+    }
+    if (appliedVaultScrollKeyRef.current === viewerFile.path) {
+      return;
+    }
+    const scroll = viewerScrollByPath[viewerFile.path];
+    if (!scroll) {
+      return;
+    }
+    appliedVaultScrollKeyRef.current = viewerFile.path;
+    window.requestAnimationFrame(() => {
+      if (vaultViewerScrollRef.current) {
+        vaultViewerScrollRef.current.scrollTop = scroll.top;
+        vaultViewerScrollRef.current.scrollLeft = scroll.left;
+      }
+    });
+  }, [viewerFile, viewerScrollByPath]);
 
   // Keyboard: Esc closes viewer
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape" && viewerFile) {
-        setViewerFile(null);
+        closeViewer();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [viewerFile]);
+  }, [closeViewer, viewerFile]);
 
   const projectName = activeProjectId
     ? activeProjectName ?? activeProjectId
@@ -754,9 +1063,10 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     || "workspace";
   const hasViewer = viewerFile !== null;
   const effectiveTreeWidth = viewerFile?.type === "pdf" ? Math.min(treeWidth, 220) : treeWidth;
+  const shellWidth = hasViewer ? `min(${effectiveTreeWidth + VIEWER_WIDTH_MAX}px, 94vw)` : undefined;
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full" style={shellWidth ? { width: shellWidth } : undefined}>
       {/* ── Left: File tree panel ── */}
       <div
         className={[
@@ -806,7 +1116,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
         <div className="flex border-b" style={{ borderColor: "var(--card-border)" }}>
           <button
             type="button"
-            onClick={() => setSidebarTab("files")}
+            onClick={() => selectSidebarTab("files")}
             className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
             style={{
               color: sidebarTab === "files" ? "var(--t-primary)" : "var(--t-faint)",
@@ -819,7 +1129,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
           {hasVaultRoot && (
             <button
               type="button"
-              onClick={() => setSidebarTab("vault")}
+              onClick={() => selectSidebarTab("vault")}
               className="flex-1 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-colors"
               style={{
                 color: sidebarTab === "vault" ? "var(--t-primary)" : "var(--t-faint)",
@@ -833,7 +1143,13 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
         </div>
 
         {/* Scrollable tree content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin">
+        <div
+          ref={treeScrollRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin"
+          onScroll={(event) => {
+            scheduleExplorerStatePatch({ scrollTop: event.currentTarget.scrollTop });
+          }}
+        >
           {sidebarTab === "files" && (<>
           {/* Search bar */}
           <div className="px-2 py-1.5" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
@@ -910,6 +1226,8 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                 gitStatus={gitStatus}
                 gitRoot={gitRoot}
                 refreshToken={refreshToken}
+                expandedPaths={expandedPaths}
+                onDirectoryToggle={handleDirectoryToggle}
               />
             ))}
             {searchQuery && (!filteredTree?.children || filteredTree.children.length === 0) && (
@@ -966,6 +1284,8 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                         onLoadChildren={handleLoadChildren}
                         onDelete={handleFileDelete}
                         refreshToken={refreshToken}
+                        expandedPaths={expandedPaths}
+                        onDirectoryToggle={handleDirectoryToggle}
                       />
                     ))}
                     {sectionTree && (!sectionTree.children || sectionTree.children.length === 0) && (
@@ -1025,7 +1345,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                 const meta = VAULT_SECTIONS_META[sec.id] ?? VAULT_FALLBACK_META;
                 const isExpanded = vaultSectionExpanded[sec.id] ?? false;
                 const selectedPath =
-                  viewerFile?.type === "vault" || viewerFile?.type === "image" || viewerFile?.type === "pdf"
+                  viewerFile?.type === "vault" || viewerFile?.type === "image" || viewerFile?.type === "pdf" || viewerFile?.type === "hwp"
                     ? viewerFile.path
                     : null;
                 const isMeta = sec.id === "cross-references";
@@ -1035,7 +1355,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                     {/* Section header — wiki category */}
                     <button
                       type="button"
-                      onClick={() => setVaultSectionExpanded((prev) => ({ ...prev, [sec.id]: !prev[sec.id] }))}
+                      onClick={() => setVaultExpandedPersistently((prev) => ({ ...prev, [sec.id]: !prev[sec.id] }))}
                       className="group flex w-full items-center gap-1.5 py-1.5 pl-3 pr-2 transition-colors hover:bg-white/5"
                       style={{ borderLeft: `3px solid ${meta.accent}`, opacity: isMeta ? 0.75 : 1 }}
                     >
@@ -1062,7 +1382,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                             depth={1}
                             accent={meta.accent}
                             expanded={vaultSectionExpanded}
-                            setExpanded={setVaultSectionExpanded}
+                            setExpanded={setVaultExpandedPersistently}
                             selectedPath={selectedPath}
                             onSelect={handleVaultSelect}
                           />
@@ -1137,8 +1457,13 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
               content={viewerFile.content}
               language={viewerFile.language}
               filePath={viewerFile.path}
-              onClose={() => setViewerFile(null)}
+              onClose={closeViewer}
               onSave={(newContent) => setViewerFile({ ...viewerFile, content: newContent })}
+              initialScroll={viewerScrollByPath[viewerFile.path]}
+              onScrollPositionChange={(position) => {
+                setViewerScrollByPath((previous) => ({ ...previous, [viewerFile.path]: position }));
+                scheduleExplorerStatePatch({ viewerScrollByPath: { [viewerFile.path]: position } });
+              }}
             />
           )}
 
@@ -1148,7 +1473,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
               content={viewerFile.content}
               mimeType={viewerFile.mimeType}
               filePath={viewerFile.path}
-              onClose={() => setViewerFile(null)}
+              onClose={closeViewer}
             />
           )}
 
@@ -1158,7 +1483,17 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
               content={viewerFile.content}
               mimeType={viewerFile.mimeType}
               filePath={viewerFile.path}
-              onClose={() => setViewerFile(null)}
+              onClose={closeViewer}
+            />
+          )}
+
+          {viewerFile?.type === "hwp" && (
+            <HwpViewer
+              inline
+              content={viewerFile.content}
+              mimeType={viewerFile.mimeType}
+              filePath={viewerFile.path}
+              onClose={closeViewer}
             />
           )}
 
@@ -1176,7 +1511,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                 </div>
                 <button
                   type="button"
-                  onClick={() => setViewerFile(null)}
+                  onClick={closeViewer}
                   className="mt-1 rounded px-3 py-1 text-[10px] font-medium transition-colors"
                   style={{ color: "var(--t-muted)", background: "var(--badge-bg)" }}
                 >
@@ -1217,7 +1552,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                 </div>
                 <button
                   type="button"
-                  onClick={() => setViewerFile(null)}
+                  onClick={closeViewer}
                   className="shrink-0 rounded p-1 text-[10px] transition-colors"
                   style={{ color: "var(--t-faint)" }}
                   title="닫기"
@@ -1228,7 +1563,18 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                 </button>
               </div>
               {/* Vault doc body */}
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div
+                ref={vaultViewerScrollRef}
+                className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+                onScroll={(event) => {
+                  const position = {
+                    top: event.currentTarget.scrollTop,
+                    left: event.currentTarget.scrollLeft,
+                  };
+                  setViewerScrollByPath((previous) => ({ ...previous, [viewerFile.path]: position }));
+                  scheduleExplorerStatePatch({ viewerScrollByPath: { [viewerFile.path]: position } });
+                }}
+              >
                 {viewerFile.content ? (
                   <MarkdownBody content={viewerFile.content} />
                 ) : (

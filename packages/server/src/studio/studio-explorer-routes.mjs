@@ -32,6 +32,8 @@ const PREVIEWABLE_BINARY_MIME_MAP = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
   ".pdf": "application/pdf",
+  ".hwp": "application/x-hwp",
+  ".hwpx": "application/x-hwpx",
 };
 const PREVIEWABLE_BINARY_EXTENSIONS = new Set(Object.keys(PREVIEWABLE_BINARY_MIME_MAP));
 const LANGUAGE_BY_EXTENSION = {
@@ -43,6 +45,7 @@ const LANGUAGE_BY_EXTENSION = {
   ".cjs": "javascript",
   ".json": "json",
   ".md": "markdown",
+  ".mdx": "markdown",
   ".html": "html",
   ".css": "css",
   ".scss": "scss",
@@ -65,7 +68,7 @@ const LANGUAGE_BY_EXTENSION = {
   ".swift": "swift",
 };
 
-function isWithinRoot(root, candidatePath) {
+export function isWithinRoot(root, candidatePath) {
   const relativePath = relative(root, candidatePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith(`${sep}..`));
 }
@@ -95,7 +98,7 @@ function resolveConfiguredGlobalRoots(envValue = process.env.KUMA_STUDIO_EXPLORE
   }, {});
 }
 
-function resolveExplorerRootsConfig({
+export function resolveExplorerRootsConfig({
   workspaceRoot,
   globalRoots,
   systemRoot,
@@ -233,6 +236,24 @@ function parseGitStatus(output) {
     files[filePath] = status;
   }
   return files;
+}
+
+function decodeBase64Payload(value) {
+  if (typeof value !== "string" || value.length === 0 || value.length % 4 !== 0) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) {
+    return null;
+  }
+
+  try {
+    const buffer = Buffer.from(value, "base64");
+    const normalizedInput = value.replace(/=+$/u, "");
+    const normalizedOutput = buffer.toString("base64").replace(/=+$/u, "");
+    return normalizedInput === normalizedOutput ? buffer : null;
+  } catch {
+    return null;
+  }
 }
 
 export function watchStudioExplorerRoots({
@@ -644,6 +665,40 @@ export function createStudioExplorerRouteHandler({
       } catch (error) {
         sendJson(res, 500, {
           error: "Failed to write file.",
+          details: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+      return true;
+    }
+
+    if (url.pathname === "/studio/fs/write-binary" && req.method === "PUT") {
+      const body = await readJsonBody(req);
+      const filePath = body?.path;
+      const fileContent = body?.content;
+      if (!filePath || typeof fileContent !== "string") {
+        sendJson(res, 400, { error: "Missing path or content." });
+        return true;
+      }
+
+      const resolved = resolve(filePath);
+      if (!isAllowedPath(resolved)) {
+        sendJson(res, 403, { error: "Path outside allowed directories." });
+        return true;
+      }
+
+      const buffer = decodeBase64Payload(fileContent);
+      if (!buffer) {
+        sendJson(res, 400, { error: "Invalid base64 content." });
+        return true;
+      }
+
+      try {
+        await writeFile(resolved, buffer);
+        broadcastFilesystemChange(resolved, "change", "route");
+        sendJson(res, 200, { success: true });
+      } catch (error) {
+        sendJson(res, 500, {
+          error: "Failed to write binary file.",
           details: error instanceof Error ? error.message : "Unknown error",
         });
       }

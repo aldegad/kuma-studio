@@ -32,6 +32,8 @@ interface CodeViewerProps {
   onClose: () => void;
   onSave?: (newContent: string) => void;
   inline?: boolean;
+  initialScroll?: { top: number; left: number };
+  onScrollPositionChange?: (position: { top: number; left: number }) => void;
 }
 
 // Map server-reported language tokens to the hljs identifiers we registered above.
@@ -103,22 +105,53 @@ function insertTextAtSelection(text: string): boolean {
   return false;
 }
 
-export function CodeViewer({ content, language, filePath, onClose, onSave, inline }: CodeViewerProps) {
+export function CodeViewer({
+  content,
+  language,
+  filePath,
+  onClose,
+  onSave,
+  inline,
+  initialScroll,
+  onScrollPositionChange,
+}: CodeViewerProps) {
+  const initialViewMode = normalizeLang(language) === "markdown" ? "preview" : "code";
   const [editContent, setEditContent] = useState(content);
   const [saving, setSaving] = useState(false);
   const [wrap, setWrap] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState<"code" | "preview">("code");
+  const [pdfDownloading, setPdfDownloading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"code" | "preview">(initialViewMode);
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const previewScrollerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const appliedScrollKeyRef = useRef("");
   const fileName = filePath.split("/").pop() || filePath;
   const badgeColor = LANG_COLOR[language] || "bg-stone-100 text-stone-500";
   const isDirty = editContent !== content;
 
   useEffect(() => {
     setEditContent(content);
-    setViewMode("code");
+    setViewMode(normalizeLang(language) === "markdown" ? "preview" : "code");
+    setPdfError(null);
   }, [content, language]);
+
+  useEffect(() => {
+    const element = viewMode === "preview" ? previewScrollerRef.current : scrollerRef.current;
+    if (!element || !initialScroll) {
+      return;
+    }
+    const scrollKey = `${filePath}:${viewMode}`;
+    if (appliedScrollKeyRef.current === scrollKey) {
+      return;
+    }
+    appliedScrollKeyRef.current = scrollKey;
+    window.requestAnimationFrame(() => {
+      element.scrollTop = initialScroll.top;
+      element.scrollLeft = initialScroll.left;
+    });
+  }, [filePath, initialScroll, viewMode]);
 
   useEffect(() => {
     if (!editorRef.current || viewMode !== "code") return;
@@ -167,6 +200,48 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
   const normalizedLanguage = useMemo(() => normalizeLang(language), [language]);
   const canPreviewMarkdown = normalizedLanguage === "markdown";
 
+  const handleDownloadMarkdownPdf = async () => {
+    if (!canPreviewMarkdown || isDirty || pdfDownloading) return;
+    setPdfDownloading(true);
+    setPdfError(null);
+
+    try {
+      const port = Number(import.meta.env.VITE_KUMA_PORT) || 4312;
+      const base = `http://${window.location.hostname}:${port}`;
+      const response = await fetch(`${base}/studio/fs/markdown-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: filePath }),
+      });
+
+      if (!response.ok) {
+        let message = "PDF 다운로드 실패";
+        try {
+          const data = await response.json();
+          message = data.details || data.error || message;
+        } catch {
+          message = await response.text();
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = fileName.replace(/\.(md|mdx)$/iu, ".pdf");
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      setPdfError(error instanceof Error ? error.message : "PDF 다운로드 실패");
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
+
   const lineCount = useMemo(() => {
     if (!editContent) return 1;
     // A trailing newline should not render an extra empty gutter row.
@@ -201,7 +276,7 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
       className={
         inline
           ? "flex h-full w-full flex-col overflow-hidden"
-          : "relative mx-4 flex max-h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)]"
+          : "relative mx-4 flex max-h-[85vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)]"
       }
       onClick={inline ? undefined : (e) => e.stopPropagation()}
       style={{
@@ -264,18 +339,33 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
           </>
         )}
         {canPreviewMarkdown && (
-          <button
-            type="button"
-            onClick={() => setViewMode((current) => (current === "preview" ? "code" : "preview"))}
-            className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
-            style={{
-              color: viewMode === "preview" ? "var(--t-primary)" : "var(--t-faint)",
-              background: viewMode === "preview" ? "var(--badge-bg)" : "transparent",
-            }}
-            title={viewMode === "preview" ? "코드 보기" : "프리뷰 보기"}
-          >
-            {viewMode === "preview" ? "코드" : "프리뷰"}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void handleDownloadMarkdownPdf()}
+              disabled={isDirty || pdfDownloading}
+              className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-45"
+              style={{
+                color: pdfError ? "#dc2626" : "var(--t-primary)",
+                background: pdfError ? "rgba(220,38,38,0.1)" : "var(--badge-bg)",
+              }}
+              title={isDirty ? "수정 내용을 저장한 뒤 PDF로 받을 수 있습니다." : pdfError || "Markdown을 PDF로 다운로드"}
+            >
+              {pdfDownloading ? "PDF 생성 중" : pdfError ? "PDF 실패" : "PDF"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode((current) => (current === "preview" ? "code" : "preview"))}
+              className="shrink-0 mr-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
+              style={{
+                color: viewMode === "preview" ? "var(--t-primary)" : "var(--t-faint)",
+                background: viewMode === "preview" ? "var(--badge-bg)" : "transparent",
+              }}
+              title={viewMode === "preview" ? "코드 보기" : "프리뷰 보기"}
+            >
+              {viewMode === "preview" ? "코드" : "프리뷰"}
+            </button>
+          </>
         )}
         {isDirty || saving ? (
           <div className="flex items-center gap-1 mr-2">
@@ -310,7 +400,17 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
 
       {/* Code area */}
       {viewMode === "preview" && canPreviewMarkdown ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4" style={{ background: "var(--ide-bg-alt)" }}>
+        <div
+          ref={previewScrollerRef}
+          className="min-h-0 flex-1 overflow-y-auto px-5 py-4"
+          style={{ background: "var(--ide-bg-alt)" }}
+          onScroll={(event) => {
+            onScrollPositionChange?.({
+              top: event.currentTarget.scrollTop,
+              left: event.currentTarget.scrollLeft,
+            });
+          }}
+        >
           {editContent ? (
             <MarkdownBody content={editContent} />
           ) : (
@@ -322,6 +422,12 @@ export function CodeViewer({ content, language, filePath, onClose, onSave, inlin
           ref={scrollerRef}
           className="kuma-code-scroll flex-1 overflow-auto"
           style={{ background: "var(--ide-bg-alt)" }}
+          onScroll={(event) => {
+            onScrollPositionChange?.({
+              top: event.currentTarget.scrollTop,
+              left: event.currentTarget.scrollLeft,
+            });
+          }}
         >
           <div className="flex min-h-full items-stretch">
             {/* Line-number gutter — sticky on horizontal scroll so numbers stay visible. */}

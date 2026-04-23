@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Routes, Route } from "react-router-dom";
 import { StudioPage } from "./pages/StudioPage";
+import { MarkdownPrintPage } from "./pages/MarkdownPrintPage";
 import { useOfficeStore } from "./stores/use-office-store";
 import { useTeamConfigStore } from "./stores/use-team-config-store";
 import { useWsStore } from "./stores/use-ws-store";
@@ -47,6 +48,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<StudioPage />} />
+      <Route path="/markdown-print" element={<MarkdownPrintPage />} />
     </Routes>
   );
 }

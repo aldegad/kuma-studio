@@ -41,6 +41,7 @@ import { createTeamConfigWatcherHandler } from "./studio/team-config-watcher.mjs
 import { isNightModeEnabled } from "./studio/nightmode-store.mjs";
 import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
 import { DispatchBroker } from "./studio/dispatch-broker.mjs";
+import { StudioUiStateStore } from "./studio/studio-ui-state-store.mjs";
 import { runVaultLifecycleHook } from "./studio/vault-lifecycle-hook.mjs";
 import { runDispatchAutoActions } from "./studio/dispatch-auto-actions.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
@@ -145,6 +146,7 @@ export async function createServer({ host, port, root }) {
   const tokenTracker = new TokenTracker();
   const teamStatusStore = new TeamStatusStore();
   const agentHistoryStore = new AgentHistoryStore();
+  const studioUiStateStore = new StudioUiStateStore();
   const contentStore = new ContentStore(root);
   const trendStore = new TrendStore(root);
   const experimentStore = new ExperimentStore(root);
@@ -832,6 +834,7 @@ export async function createServer({ host, port, root }) {
     studioWsEvents,
     agentHistoryStore,
     dispatchBroker,
+    studioUiStateStore,
     workspaceRoot,
     teamConfigRuntime,
     studioDevDelegate,

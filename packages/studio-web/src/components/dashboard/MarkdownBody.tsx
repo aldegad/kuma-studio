@@ -267,12 +267,12 @@ function parseBlocks(content: string): Block[] {
 
 function HeadingBlock({ level, text }: { level: number; text: string }) {
   const sizes: Record<number, string> = {
-    1: "text-[17px] font-extrabold mt-5 mb-2",
-    2: "text-[15px] font-bold mt-4 mb-1.5",
-    3: "text-[13px] font-bold mt-3 mb-1",
-    4: "text-[12px] font-semibold mt-2 mb-1",
-    5: "text-[11px] font-semibold mt-2 mb-0.5",
-    6: "text-[11px] font-medium mt-1 mb-0.5",
+    1: "text-[18px] font-extrabold mt-5 mb-2",
+    2: "text-[16px] font-bold mt-4 mb-1.5",
+    3: "text-[14px] font-bold mt-3 mb-1",
+    4: "text-[13px] font-semibold mt-2 mb-1",
+    5: "text-[12px] font-semibold mt-2 mb-0.5",
+    6: "text-[12px] font-medium mt-1 mb-0.5",
   };
   return (
     <div
@@ -290,7 +290,7 @@ function TableBlock({ lines }: { lines: string[] }) {
 
   return (
     <div className="my-2 overflow-x-auto rounded-lg border" style={{ borderColor: "var(--card-border)" }}>
-      <table className="w-full text-[12px]" style={{ borderCollapse: "collapse" }}>
+      <table className="w-full text-[13px]" style={{ borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ background: "var(--input-bg)" }}>
             {table.headers.map((h, i) => (
@@ -316,7 +316,7 @@ function TableBlock({ lines }: { lines: string[] }) {
               {row.map((cell, ci) => (
                 <td
                   key={ci}
-                  className="px-3 py-1.5"
+                  className="px-3 py-2"
                   style={{ color: "var(--t-secondary)" }}
                 >
                   {renderInline(cell)}
@@ -342,7 +342,7 @@ function CodeBlock({ lang, lines }: { lang?: string; lines: string[] }) {
         </div>
       )}
       <pre
-        className="overflow-x-auto p-3 font-mono text-[11px] leading-relaxed"
+        className="overflow-x-auto p-3 font-mono text-[12px] leading-relaxed"
         style={{ background: "var(--input-bg)", color: "var(--t-secondary)", margin: 0 }}
       >
         {lines.join("\n")}
@@ -354,7 +354,7 @@ function CodeBlock({ lang, lines }: { lang?: string; lines: string[] }) {
 function BlockquoteBlock({ lines }: { lines: string[] }) {
   return (
     <blockquote
-      className="my-2 rounded-r-lg border-l-[3px] px-3 py-2 text-[12px] leading-relaxed"
+      className="my-2 rounded-r-lg border-l-[3px] px-3 py-2 text-[13px] leading-relaxed"
       style={{
         borderColor: "var(--t-faint)",
         background: "var(--input-bg)",
@@ -375,7 +375,7 @@ function ListBlock({ lines, ordered }: { lines: string[]; ordered: boolean }) {
   const Tag = ordered ? "ol" : "ul";
   return (
     <Tag
-      className={`my-1.5 space-y-0.5 pl-5 text-[12px] leading-relaxed ${ordered ? "list-decimal" : "list-disc"}`}
+      className={`my-1.5 space-y-0.5 pl-5 text-[13px] leading-relaxed ${ordered ? "list-decimal" : "list-disc"}`}
       style={{ color: "var(--t-secondary)" }}
     >
       {lines.map((line, i) => (
@@ -388,7 +388,7 @@ function ListBlock({ lines, ordered }: { lines: string[]; ordered: boolean }) {
 function ParagraphBlock({ lines }: { lines: string[] }) {
   return (
     <p
-      className="my-1.5 text-[12px] leading-relaxed"
+      className="my-1.5 text-[13px] leading-relaxed"
       style={{ color: "var(--t-secondary)" }}
     >
       {lines.map((line, i) => (
@@ -415,7 +415,7 @@ function ImageBlock({ line }: { line: string }) {
         loading="lazy"
       />
       {alt && (
-        <p className="mt-1 text-[10px] italic" style={{ color: "var(--t-faint)" }}>{alt}</p>
+        <p className="mt-1 text-[11px] italic" style={{ color: "var(--t-faint)" }}>{alt}</p>
       )}
     </div>
   );
@@ -423,7 +423,7 @@ function ImageBlock({ line }: { line: string }) {
 
 function ChecklistBlock({ lines }: { lines: string[] }) {
   return (
-    <ul className="my-1.5 space-y-1 text-[12px] leading-relaxed">
+    <ul className="my-1.5 space-y-1 text-[13px] leading-relaxed">
       {lines.map((line, i) => {
         const checked = /^\s*[-*]\s+\[[xX]\]/.test(line);
         const text = line.replace(/^\s*[-*]\s+\[[ xX]\]\s*/, "");

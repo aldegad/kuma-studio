@@ -44,7 +44,7 @@ export function PdfViewer({ content, mimeType, filePath, onClose, inline }: PdfV
       className={
         inline
           ? "flex h-full min-h-0 w-full flex-col overflow-hidden"
-          : "relative mx-4 flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)]"
+          : "relative mx-4 flex max-h-[85vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)]"
       }
       onClick={inline ? undefined : (event) => event.stopPropagation()}
       style={{

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { fetchExplorerRoots, fetchOfficeLayout } from "../lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fetchExplorerRoots, fetchOfficeLayout, fetchStudioUiState, patchStudioUiState } from "../lib/api";
 import { useWebSocket } from "../hooks/use-websocket";
 import { useDashboardStore } from "../stores/use-dashboard-store";
 import { useOfficeStore } from "../stores/use-office-store";
@@ -87,11 +87,10 @@ export function StudioPage() {
   const [explorerOpen, setExplorerOpen] = useState(false);
   const [nightShiftEnabled, setNightShiftEnabled] = useState(false);
   const [configuredProjectIds, setConfiguredProjectIds] = useState<string[]>([]);
+  const [configuredProjectsLoaded, setConfiguredProjectsLoaded] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
-  const [hudPinnedProjectId, setHudPinnedProjectId] = useState<string | null>(() => {
-    const stored = localStorage.getItem(HUD_PINNED_PROJECT_STORAGE_KEY)?.trim();
-    return stored ? stored : null;
-  });
+  const [hudPinnedProjectId, setHudPinnedProjectId] = useState<string | null>(null);
+  const [studioUiStateLoaded, setStudioUiStateLoaded] = useState(false);
   const [themeMode, setThemeMode] = useState<"auto" | "light" | "dark">(() => {
     const stored = localStorage.getItem("kuma-studio-theme-mode");
     return stored === "light" || stored === "dark" ? stored : "auto";
@@ -154,6 +153,7 @@ export function StudioPage() {
         const roots = await fetchExplorerRoots();
         if (!cancelled) {
           setConfiguredProjectIds(Object.keys(roots.projectRoots));
+          setConfiguredProjectsLoaded(true);
         }
       } catch {
         // Keep the last known registry-backed snapshot until the live roots endpoint recovers.
@@ -169,6 +169,46 @@ export function StudioPage() {
     return () => {
       cancelled = true;
       window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const state = await fetchStudioUiState();
+        if (cancelled) {
+          return;
+        }
+
+        const legacyPinnedProjectId = localStorage.getItem(HUD_PINNED_PROJECT_STORAGE_KEY)?.trim() || null;
+        const serverPinnedProjectId = state.hud.pinnedProjectId;
+        if (!serverPinnedProjectId && legacyPinnedProjectId) {
+          await patchStudioUiState({ hud: { pinnedProjectId: legacyPinnedProjectId } });
+          if (cancelled) {
+            return;
+          }
+          setHudPinnedProjectId(legacyPinnedProjectId);
+          localStorage.removeItem(HUD_PINNED_PROJECT_STORAGE_KEY);
+        } else {
+          setHudPinnedProjectId(serverPinnedProjectId);
+          if (legacyPinnedProjectId) {
+            localStorage.removeItem(HUD_PINNED_PROJECT_STORAGE_KEY);
+          }
+        }
+        setExplorerOpen(state.explorer.open);
+        setStudioUiStateLoaded(true);
+      } catch {
+        if (!cancelled) {
+          setStudioUiStateLoaded(true);
+          pushToast("프로젝트 고정 상태를 서버에서 복원하지 못했습니다.", "error");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -274,19 +314,39 @@ export function StudioPage() {
     : null;
   const projectMenuLabel = activeOverflowProject?.projectName ?? (overflowProjects.length > 0 ? `프로젝트 ${overflowProjects.length}` : "프로젝트");
 
-  useEffect(() => {
-    if (resolvedHudPinnedProjectId !== hudPinnedProjectId) {
-      setHudPinnedProjectId(resolvedHudPinnedProjectId);
-    }
-  }, [hudPinnedProjectId, resolvedHudPinnedProjectId]);
+  const persistHudPinnedProjectId = useCallback((nextProjectId: string | null) => {
+    const previousProjectId = hudPinnedProjectId;
+    setHudPinnedProjectId(nextProjectId);
+    void patchStudioUiState({ hud: { pinnedProjectId: nextProjectId } }).catch(() => {
+      setHudPinnedProjectId(previousProjectId);
+      pushToast("프로젝트 고정 상태 저장에 실패했습니다.", "error");
+    });
+  }, [hudPinnedProjectId]);
+
+  const persistExplorerOpen = useCallback((nextOpen: boolean) => {
+    const previousOpen = explorerOpen;
+    setExplorerOpen(nextOpen);
+    void patchStudioUiState({ explorer: { open: nextOpen } }).catch(() => {
+      setExplorerOpen(previousOpen);
+      pushToast("탐색기 열림 상태 저장에 실패했습니다.", "error");
+    });
+  }, [explorerOpen]);
 
   useEffect(() => {
-    if (hudPinnedProjectId) {
-      localStorage.setItem(HUD_PINNED_PROJECT_STORAGE_KEY, hudPinnedProjectId);
+    if (!configuredProjectsLoaded || !studioUiStateLoaded) {
       return;
     }
-    localStorage.removeItem(HUD_PINNED_PROJECT_STORAGE_KEY);
-  }, [hudPinnedProjectId]);
+
+    if (resolvedHudPinnedProjectId !== hudPinnedProjectId) {
+      persistHudPinnedProjectId(resolvedHudPinnedProjectId);
+    }
+  }, [
+    configuredProjectsLoaded,
+    hudPinnedProjectId,
+    persistHudPinnedProjectId,
+    resolvedHudPinnedProjectId,
+    studioUiStateLoaded,
+  ]);
 
   useEffect(() => {
     if (!projectMenuOpen) {
@@ -323,8 +383,8 @@ export function StudioPage() {
   const dashboardPanels: DashboardPanelItem[] = [
     { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel /> },
     { id: "git-log", title: "커밋 로그", className: "w-72", content: <GitLogPanel /> },
-    { id: "memo", title: "메모", className: "w-80", content: <MemoPanel /> },
-    { id: "content", title: "스레드 콘텐츠", className: "w-[min(56rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
+    { id: "memo", title: "메모", className: "w-[min(46rem,calc(100vw-2rem))]", content: <MemoPanel /> },
+    { id: "content", title: "스레드 콘텐츠", className: "w-[min(46rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
     { id: "cmux", title: "TEAM", className: "w-64", content: <CmuxPanel /> },
     { id: "activity-feed", title: "활동 로그", className: "w-72", content: <ActivityFeed />, hidden: activityCount === 0 },
@@ -530,7 +590,7 @@ export function StudioPage() {
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  setHudPinnedProjectId(isPinned ? null : project.projectId);
+                                  persistHudPinnedProjectId(isPinned ? null : project.projectId);
                                 }}
                                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border text-sm transition-colors ${
                                   isPinned
@@ -578,7 +638,7 @@ export function StudioPage() {
             })}
           </div>
           <button type="button" onClick={() => setShowHelp(true)} className={`rounded w-5 h-5 flex items-center justify-center text-[10px] font-bold border transition-colors ${isNight ? "bg-white/10 text-amber-100/85 border-amber-200/15 hover:bg-white/16 hover:text-amber-50" : "bg-white/8 text-amber-200/70 border-white/10 hover:bg-white/15 hover:text-amber-100"}`} title="단축키 도움말 (?)" aria-label="단축키 도움말 열기">?</button>
-          <button type="button" onClick={() => setExplorerOpen((v) => !v)} className={`rounded h-5 flex items-center justify-center text-[10px] font-bold px-2 border transition-colors ${
+          <button type="button" onClick={() => persistExplorerOpen(!explorerOpen)} className={`rounded h-5 flex items-center justify-center text-[10px] font-bold px-2 border transition-colors ${
             explorerOpen
               ? isNight
                 ? "bg-amber-400/28 text-amber-50 border-amber-300/40"
@@ -599,9 +659,9 @@ export function StudioPage() {
 
       {/* File Explorer */}
       {explorerOpen && (
-        <div className="absolute left-0 top-10 bottom-0 z-[50]" style={{ maxWidth: "min(1600px, 94vw)" }}>
+        <div className="absolute left-0 top-10 bottom-0 z-[50]" style={{ maxWidth: "min(1720px, 94vw)" }}>
           <FileExplorer
-            onCollapse={() => setExplorerOpen(false)}
+            onCollapse={() => persistExplorerOpen(false)}
             activeProjectId={activeProjectId}
             activeProjectName={activeProjectName}
           />

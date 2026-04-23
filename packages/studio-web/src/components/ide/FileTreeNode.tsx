@@ -22,6 +22,8 @@ interface FileTreeNodeProps {
   gitStatus?: GitStatusMap;
   gitRoot?: string;
   refreshToken?: number;
+  expandedPaths: ReadonlySet<string>;
+  onDirectoryToggle: (path: string, expanded: boolean) => void;
 }
 
 // --- SVG-style icon colors by extension ---
@@ -60,6 +62,8 @@ const EXT_META: Record<string, { label: string; color: string; kind: FileKind }>
   webp: { label: "Im", color: "text-teal-500",    kind: "image" },
   ico:  { label: "Ic", color: "text-teal-500",    kind: "image" },
   pdf:  { label: "PF", color: "text-rose-500",    kind: "doc" },
+  hwp:  { label: "HW", color: "text-amber-600",   kind: "doc" },
+  hwpx: { label: "HX", color: "text-amber-500",   kind: "doc" },
 };
 
 function getFileMeta(name: string): { label: string; color: string; kind: FileKind } {
@@ -235,14 +239,26 @@ function hasDirGitChanges(
   return Object.keys(gitStatus).some((key) => key.startsWith(dirPrefix));
 }
 
-export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadChildren, onDelete, gitStatus, gitRoot, refreshToken = 0 }: FileTreeNodeProps) {
-  const [expanded, setExpanded] = useState(false);
+export function FileTreeNode({
+  node,
+  depth,
+  selectedPath,
+  onFileSelect,
+  onLoadChildren,
+  onDelete,
+  gitStatus,
+  gitRoot,
+  refreshToken = 0,
+  expandedPaths,
+  onDirectoryToggle,
+}: FileTreeNodeProps) {
   const [children, setChildren] = useState<FsNode[] | null>(node.children ?? null);
   const [loading, setLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const isDir = node.type === "dir";
+  const expanded = isDir && expandedPaths.has(node.path);
   const isSkipped = isDir && node.expandable === false;
   const isSelected = !isDir && selectedPath === node.path;
   const fileMeta = !isDir ? getFileMeta(node.name) : null;
@@ -313,8 +329,8 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
       setLoading(false);
     }
 
-    setExpanded((v) => !v);
-  }, [isDir, isSkipped, expanded, children, node.path, onLoadChildren]);
+    onDirectoryToggle(node.path, !expanded);
+  }, [isDir, isSkipped, expanded, children, node.path, onDirectoryToggle, onLoadChildren]);
 
   const handleFileClick = useCallback(() => {
     if (!isDir) {
@@ -471,6 +487,8 @@ export function FileTreeNode({ node, depth, selectedPath, onFileSelect, onLoadCh
               gitStatus={gitStatus}
               gitRoot={gitRoot}
               refreshToken={refreshToken}
+              expandedPaths={expandedPaths}
+              onDirectoryToggle={onDirectoryToggle}
             />
           ))}
           {children.length === 0 && (

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +9,7 @@ import { afterEach, assert, describe, it } from "vitest";
 import { createStudioRouteHandler } from "./studio-routes.mjs";
 import { createStudioExplorerRouteHandler, watchStudioExplorerRoots } from "./studio-explorer-routes.mjs";
 import { readProjectsRegistry } from "./project-defaults.mjs";
+import { StudioUiStateStore } from "./studio-ui-state-store.mjs";
 
 function createRequest(method, url, body) {
   const payload = body == null ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -133,6 +134,43 @@ describe("studio-routes explorer endpoints", () => {
     assert.deepStrictEqual(deleteRes.json, { success: true });
   });
 
+  it("serves studio UI state GET/PATCH through the composed handler", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    await mkdir(staticDir, { recursive: true });
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      workspaceRoot: repoRoot,
+      studioUiStateStore: new StudioUiStateStore({ storagePath: join(root, "studio", "ui-state.json") }),
+    });
+
+    const getRes = createResponse();
+    await handler(createRequest("GET", "/studio/ui-state"), getRes);
+    assert.strictEqual(getRes.statusCode, 200);
+    assert.strictEqual(getRes.json.version, 1);
+    assert.strictEqual(getRes.json.hud.pinnedProjectId, null);
+
+    const patchRes = createResponse();
+    await handler(
+      createRequest("PATCH", "/studio/ui-state", {
+        hud: { pinnedProjectId: "pqc-unified" },
+        explorer: { projects: { "pqc-unified": { selectedPath: join(repoRoot, "README.md") } } },
+      }),
+      patchRes,
+    );
+    assert.strictEqual(patchRes.statusCode, 200);
+    assert.strictEqual(patchRes.json.hud.pinnedProjectId, "pqc-unified");
+    assert.strictEqual(patchRes.json.explorer.projects["pqc-unified"].selectedPath, join(repoRoot, "README.md"));
+  });
+
   it("deletes directories recursively through /studio/fs/delete", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
     tempDirs.push(root);
@@ -206,6 +244,49 @@ describe("studio-routes explorer endpoints", () => {
     assert.strictEqual(broadcasts.length, 2);
     assert.strictEqual(broadcasts[1].changes[0].eventType, "delete");
     assert.strictEqual(broadcasts[1].changes[0].path, target);
+  });
+
+  it("reads HWP/HWPX files as previewable binary and writes binary payloads explicitly", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kuma-studio-explorer-"));
+    tempDirs.push(root);
+
+    const staticDir = join(root, "static");
+    const repoRoot = join(root, "workspace");
+    await mkdir(staticDir, { recursive: true });
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+
+    const broadcasts = [];
+    const handler = createStudioRouteHandler({
+      staticDir,
+      statsStore: { getStats: () => ({}), getDailyReport: () => ({}) },
+      sceneStore: {},
+      workspaceRoot: repoRoot,
+      studioWsEvents: {
+        broadcastFilesystemChange(payload) {
+          broadcasts.push(payload);
+        },
+      },
+    });
+
+    const target = join(repoRoot, "sample.hwp");
+    const binaryPayload = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]).toString("base64");
+    const writeRes = createResponse();
+    await handler(createRequest("PUT", "/studio/fs/write-binary", { path: target, content: binaryPayload }), writeRes);
+    assert.strictEqual(writeRes.statusCode, 200);
+    assert.deepStrictEqual(await readFile(target), Buffer.from([0xd0, 0xcf, 0x11, 0xe0]));
+    assert.strictEqual(broadcasts.length, 1);
+    assert.strictEqual(broadcasts[0].changes[0].eventType, "change");
+
+    const readRes = createResponse();
+    await handler(createRequest("GET", `/studio/fs/read?path=${encodeURIComponent(target)}`), readRes);
+    assert.strictEqual(readRes.statusCode, 200);
+    assert.strictEqual(readRes.json.mimeType, "application/x-hwp");
+    assert.strictEqual(readRes.json.content, binaryPayload);
+
+    const invalidRes = createResponse();
+    await handler(createRequest("PUT", "/studio/fs/write-binary", { path: target, content: "not-base64" }), invalidRes);
+    assert.strictEqual(invalidRes.statusCode, 400);
   });
 
   it("watches explorer roots and emits filesystem-change events for external edits", async () => {
