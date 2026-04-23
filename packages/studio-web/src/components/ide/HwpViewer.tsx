@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import rhwpWasmUrl from "@rhwp/core/rhwp_bg.wasm?url";
+import { writeStudioBinaryFile } from "../../lib/api";
 
 interface HwpViewerProps {
   content: string;
@@ -22,6 +23,17 @@ type HwpRenderState =
       validationWarningCount: number;
     }
   | { status: "error"; message: string };
+
+type HwpEditorStatus =
+  | { status: "checking" | "loading" | "ready" | "saving" | "saved"; message: string }
+  | { status: "error"; message: string };
+
+interface HwpEditorFrameProps {
+  content: string;
+  filePath: string;
+  fileName: string;
+  onBackToPreview: () => void;
+}
 
 interface HwpPageTextLayout {
   runs?: HwpTextLayoutRun[];
@@ -107,6 +119,19 @@ function decodeBase64(content: string): Uint8Array {
     bytes[i] = raw.charCodeAt(i);
   }
   return bytes;
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return window.btoa(binary);
+}
+
+function isByteArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.every((item) => Number.isInteger(item) && item >= 0 && item <= 255);
 }
 
 async function fetchRuntimeHwpFontManifest(): Promise<{ files: Set<string>; error: string | null }> {
@@ -326,11 +351,12 @@ function replaceSvgTextWithLayout(documentNode: XMLDocument, textLayout: HwpPage
   const runs = Array.isArray(textLayout.runs)
     ? textLayout.runs.filter((run) => typeof run.text === "string" && run.text.length > 0 && isFiniteNumber(run.x) && isFiniteNumber(run.y))
     : [];
+
+  root.querySelectorAll("text").forEach((element) => element.remove());
+
   const tableCells = collectTableCells(controlLayout);
   const tableGroups = groupTableTextRuns(runs, tableCells);
   const groupedRuns = new Set<HwpTextLayoutRun>();
-
-  root.querySelectorAll("text").forEach((element) => element.remove());
 
   for (const group of tableGroups) {
     group.runs.forEach((run) => groupedRuns.add(run));
@@ -640,8 +666,200 @@ function parsePageControlLayout(layout: string): HwpPageControlLayout {
   return { controls: Array.isArray(parsed.controls) ? parsed.controls : [] };
 }
 
+function HwpEditorFrame({ content, filePath, fileName, onBackToPreview }: HwpEditorFrameProps) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const requestIdRef = useRef(0);
+  const pendingRef = useRef(new Map<number, {
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }>());
+  const [editorStatus, setEditorStatus] = useState<HwpEditorStatus>({
+    status: "checking",
+    message: "HWP 편집기 자산 확인 중...",
+  });
+  const [installed, setInstalled] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      for (const pending of pendingRef.current.values()) {
+        clearTimeout(pending.timeout);
+        pending.reject(new Error("HWP 편집기가 닫혔습니다."));
+      }
+      pendingRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEditorStatus({ status: "checking", message: "HWP 편집기 자산 확인 중..." });
+    void fetch("/studio/hwp-editor-status")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return await response.json() as { installed?: unknown; editorDir?: unknown };
+      })
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        if (payload.installed !== true) {
+          setEditorStatus({
+            status: "error",
+            message: `HWP 편집기 자산이 설치되어 있지 않습니다: ${String(payload.editorDir ?? "")}`,
+          });
+          return;
+        }
+        setInstalled(true);
+        setEditorStatus({ status: "loading", message: "HWP 편집기 로딩 중..." });
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setEditorStatus({
+            status: "error",
+            message: error instanceof Error ? error.message : "HWP 편집기 상태를 확인하지 못했습니다.",
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
+      const data = event.data as { type?: unknown; id?: unknown; result?: unknown; error?: unknown };
+      if (data?.type !== "rhwp-response" || typeof data.id !== "number") {
+        return;
+      }
+      const pending = pendingRef.current.get(data.id);
+      if (!pending) {
+        return;
+      }
+      pendingRef.current.delete(data.id);
+      clearTimeout(pending.timeout);
+      if (data.error) {
+        pending.reject(new Error(String(data.error)));
+      } else {
+        pending.resolve(data.result);
+      }
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
+  const sendEditorRequest = useCallback((method: string, params: Record<string, unknown> = {}) => {
+    return new Promise<unknown>((resolve, reject) => {
+      const target = iframeRef.current?.contentWindow;
+      if (!target) {
+        reject(new Error("HWP 편집기 iframe이 준비되지 않았습니다."));
+        return;
+      }
+      const id = requestIdRef.current + 1;
+      requestIdRef.current = id;
+      const timeout = setTimeout(() => {
+        pendingRef.current.delete(id);
+        reject(new Error(`HWP 편집기 요청 시간 초과: ${method}`));
+      }, 15000);
+      pendingRef.current.set(id, { resolve, reject, timeout });
+      target.postMessage({ type: "rhwp-request", id, method, params }, window.location.origin);
+    });
+  }, []);
+
+  const loadEditorFile = useCallback(async () => {
+    try {
+      setEditorStatus({ status: "loading", message: "HWP 문서 로딩 중..." });
+      await sendEditorRequest("ready");
+      await sendEditorRequest("loadFile", {
+        data: Array.from(decodeBase64(content)),
+        fileName,
+        autoFixValidation: true,
+      });
+      setEditorStatus({
+        status: "ready",
+        message: "편집 가능. 저장 버튼을 누르면 원본 HWP 파일에 다시 씁니다.",
+      });
+    } catch (error) {
+      setEditorStatus({
+        status: "error",
+        message: error instanceof Error ? error.message : "HWP 문서를 편집기에 로드하지 못했습니다.",
+      });
+    }
+  }, [content, fileName, sendEditorRequest]);
+
+  const saveToOriginal = useCallback(async () => {
+    try {
+      setEditorStatus({ status: "saving", message: "편집본을 원본 HWP 파일에 저장 중..." });
+      const result = await sendEditorRequest("exportHwp") as { data?: unknown };
+      if (!isByteArray(result?.data)) {
+        throw new Error("HWP 편집기에서 저장 가능한 bytes를 받지 못했습니다.");
+      }
+      await writeStudioBinaryFile(filePath, encodeBase64(new Uint8Array(result.data)));
+      setEditorStatus({
+        status: "saved",
+        message: "저장 완료. 원본 HWP 파일이 갱신되었습니다.",
+      });
+    } catch (error) {
+      setEditorStatus({
+        status: "error",
+        message: error instanceof Error ? error.message : "HWP 편집본 저장에 실패했습니다.",
+      });
+    }
+  }, [filePath, sendEditorRequest]);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-slate-100">
+      <div className="flex items-center gap-2 border-b bg-white px-4 py-2" style={{ borderColor: "var(--border-subtle)" }}>
+        <button
+          type="button"
+          onClick={onBackToPreview}
+          className="rounded border px-2 py-1 text-[11px] font-medium"
+          style={{ borderColor: "var(--border-subtle)", color: "var(--t-muted)" }}
+        >
+          미리보기
+        </button>
+        <button
+          type="button"
+          onClick={saveToOriginal}
+          disabled={editorStatus.status !== "ready" && editorStatus.status !== "saved"}
+          className="rounded bg-amber-500 px-3 py-1 text-[11px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          원본 저장
+        </button>
+        <span className="truncate text-[11px]" style={{ color: editorStatus.status === "error" ? "#ef4444" : "var(--t-muted)" }}>
+          {editorStatus.message}
+        </span>
+      </div>
+      {!installed && (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="max-w-lg rounded-xl border bg-white p-5 text-center text-[12px] shadow-sm" style={{ borderColor: "var(--border-subtle)", color: "var(--t-muted)" }}>
+            {editorStatus.message}
+          </div>
+        </div>
+      )}
+      {installed && (
+        <iframe
+          ref={iframeRef}
+          title="HWP editor"
+          src="/studio/hwp-editor/"
+          className="min-h-0 flex-1 bg-white"
+          style={{ border: 0 }}
+          onLoad={loadEditorFile}
+          allow="clipboard-read; clipboard-write"
+        />
+      )}
+    </div>
+  );
+}
+
 export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpViewerProps) {
   const [renderState, setRenderState] = useState<HwpRenderState>({ status: "loading" });
+  const [viewMode, setViewMode] = useState<"preview" | "editor">("preview");
   const fileName = filePath.split("/").pop() || filePath;
   const badge = mimeType === "application/x-hwpx" || fileName.toLowerCase().endsWith(".hwpx") ? "HWPX" : "HWP";
   const byteSize = useMemo(() => Math.floor((content.length * 3) / 4), [content]);
@@ -736,16 +954,15 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
         </div>
         <div className="flex-1" />
         <span className="mr-2 rounded px-2 py-0.5 text-[10px] font-medium" style={{ color: "var(--t-faint)", background: "var(--badge-bg)" }}>
-          읽기 전용
+          {viewMode === "editor" ? "편집 모드" : "미리보기"}
         </span>
         <button
           type="button"
-          disabled
-          className="mr-1 shrink-0 rounded px-2 py-0.5 text-[10px] font-medium opacity-50"
-          style={{ color: "var(--t-faint)" }}
-          title="@rhwp/editor 저장/export API 검증 전까지 편집 저장을 열지 않습니다."
+          onClick={() => setViewMode((current) => current === "editor" ? "preview" : "editor")}
+          className="mr-1 shrink-0 rounded border px-2 py-0.5 text-[10px] font-medium"
+          style={{ color: "var(--t-muted)", borderColor: "var(--border-subtle)", background: "var(--ide-bg-alt)" }}
         >
-          편집 저장 미지원
+          {viewMode === "editor" ? "미리보기" : "편집"}
         </button>
         <button
           type="button"
@@ -760,7 +977,21 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-6 py-5" style={{ background: "#f8fafc" }}>
+      <div
+        className={viewMode === "editor" ? "min-h-0 flex-1 overflow-hidden" : "min-h-0 flex-1 overflow-auto px-6 py-5"}
+        style={{ background: "#f8fafc" }}
+      >
+        {viewMode === "editor" && (
+          <HwpEditorFrame
+            content={content}
+            filePath={filePath}
+            fileName={fileName}
+            onBackToPreview={() => setViewMode("preview")}
+          />
+        )}
+
+        {viewMode === "preview" && (
+          <>
         {renderState.status === "loading" && (
           <div className="flex h-full items-center justify-center">
             <div className="flex items-center gap-2 rounded-lg border px-4 py-2 shadow-sm" style={{ background: "white", borderColor: "var(--border-subtle)" }}>
@@ -829,6 +1060,8 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
               </div>
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
 
