@@ -401,12 +401,20 @@ function collectTableCells(controlLayout: HwpPageControlLayout): HwpResolvedTabl
 function groupTableTextRuns(runs: HwpTextLayoutRun[], cells: HwpResolvedTableCell[]) {
   const groups = new Map<string, { cell: HwpResolvedTableCell; y: number; x: number; runs: HwpTextLayoutRun[] }>();
   const cellByKey = new Map(cells.map((cell) => [getTableCellKey(cell.paraIdx, cell.controlIdx, cell.cellIdx), cell]));
+  const cellsByControl = new Map<string, HwpResolvedTableCell[]>();
+  for (const cell of cells) {
+    const key = getTableControlKey(cell.paraIdx, cell.controlIdx);
+    const controlCells = cellsByControl.get(key) ?? [];
+    controlCells.push(cell);
+    cellsByControl.set(key, controlCells);
+  }
 
   for (const run of runs) {
     if (!isFiniteNumber(run.parentParaIdx) || !isFiniteNumber(run.controlIdx) || !isFiniteNumber(run.cellIdx) || !isFiniteNumber(run.y) || !isFiniteNumber(run.x)) {
       continue;
     }
-    const cell = cellByKey.get(getTableCellKey(run.parentParaIdx, run.controlIdx, run.cellIdx));
+    const cell = cellByKey.get(getTableCellKey(run.parentParaIdx, run.controlIdx, run.cellIdx))
+      ?? findContainingTableCell(cellsByControl.get(getTableControlKey(run.parentParaIdx, run.controlIdx)) ?? [], run);
     if (!cell) {
       continue;
     }
@@ -575,6 +583,31 @@ function appendLayoutText(root: Element, run: HwpTextLayoutRun, text: string, x:
 
 function getTableCellKey(parentParaIdx: number, controlIdx: number, cellIdx: number): string {
   return `${parentParaIdx}|${controlIdx}|${cellIdx}`;
+}
+
+function getTableControlKey(parentParaIdx: number, controlIdx: number): string {
+  return `${parentParaIdx}|${controlIdx}`;
+}
+
+function findContainingTableCell(cells: HwpResolvedTableCell[], run: HwpTextLayoutRun): HwpResolvedTableCell | null {
+  if (!isFiniteNumber(run.x) || !isFiniteNumber(run.y)) {
+    return null;
+  }
+
+  const runX = run.x;
+  const runY = run.y;
+  const tolerance = Math.max(2, getRunFontSize(run) * 0.2);
+  const candidates = cells.filter((cell) => (
+    runX >= cell.x - tolerance &&
+    runX <= cell.x + cell.w + tolerance &&
+    runY >= cell.y - tolerance &&
+    runY <= cell.y + cell.h + tolerance
+  ));
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  return candidates.sort((left, right) => (left.w * left.h) - (right.w * right.h))[0] ?? null;
 }
 
 function getRunFontSize(run: HwpTextLayoutRun): number {
