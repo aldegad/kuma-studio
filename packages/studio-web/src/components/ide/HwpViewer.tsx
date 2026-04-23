@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import rhwpWasmUrl from "@rhwp/core/rhwp_bg.wasm?url";
-import { fetchHwpExternalLink, saveHwpExternalLink } from "../../lib/api";
 
 interface HwpViewerProps {
   content: string;
@@ -643,9 +642,6 @@ function parsePageControlLayout(layout: string): HwpPageControlLayout {
 
 export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpViewerProps) {
   const [renderState, setRenderState] = useState<HwpRenderState>({ status: "loading" });
-  const [externalLink, setExternalLink] = useState<string | null>(null);
-  const [externalLinkBusy, setExternalLinkBusy] = useState(false);
-  const [externalLinkError, setExternalLinkError] = useState<string | null>(null);
   const fileName = filePath.split("/").pop() || filePath;
   const badge = mimeType === "application/x-hwpx" || fileName.toLowerCase().endsWith(".hwpx") ? "HWPX" : "HWP";
   const byteSize = useMemo(() => Math.floor((content.length * 3) / 4), [content]);
@@ -714,48 +710,6 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
     };
   }, [content]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setExternalLinkError(null);
-    void fetchHwpExternalLink(filePath)
-      .then((url) => {
-        if (!cancelled) {
-          setExternalLink(url);
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setExternalLink(null);
-          setExternalLinkError(error instanceof Error ? error.message : "WebHWP 연결 정보를 읽지 못했습니다.");
-        }
-      });
-    return () => { cancelled = true; };
-  }, [filePath]);
-
-  const handleOpenExternalLink = () => {
-    if (!externalLink) {
-      return;
-    }
-    window.open(externalLink, "_blank", "noopener,noreferrer");
-  };
-
-  const handleAttachExternalLink = async () => {
-    const input = window.prompt("이 HWP 파일을 열 WebHWP URL을 붙여넣어 주세요.", externalLink ?? "");
-    if (input === null) {
-      return;
-    }
-    setExternalLinkBusy(true);
-    setExternalLinkError(null);
-    try {
-      const savedUrl = await saveHwpExternalLink(filePath, input.trim() || null);
-      setExternalLink(savedUrl);
-    } catch (error) {
-      setExternalLinkError(error instanceof Error ? error.message : "WebHWP 연결 정보를 저장하지 못했습니다.");
-    } finally {
-      setExternalLinkBusy(false);
-    }
-  };
-
   const viewer = (
     <div
       className={
@@ -785,27 +739,6 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
         <span className="mr-2 rounded px-2 py-0.5 text-[10px] font-medium" style={{ color: "var(--t-faint)", background: "var(--badge-bg)" }}>
           읽기 전용
         </span>
-        {externalLink ? (
-          <button
-            type="button"
-            onClick={handleOpenExternalLink}
-            className="mr-1 shrink-0 rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white transition-colors hover:bg-emerald-600"
-            title="공식 Hancom WebHWP에서 동일한 문서를 엽니다."
-          >
-            WebHWP 열기
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void handleAttachExternalLink()}
-            disabled={externalLinkBusy}
-            className="mr-1 shrink-0 rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50"
-            style={{ color: externalLinkError ? "#dc2626" : "var(--t-faint)", background: "var(--badge-bg)" }}
-            title={externalLinkError || "공식 WebHWP 편집 URL을 이 파일에 연결합니다."}
-          >
-            {externalLinkBusy ? "연결 중" : "WebHWP 연결"}
-          </button>
-        )}
         <button
           type="button"
           disabled

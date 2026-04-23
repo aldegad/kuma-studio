@@ -24,7 +24,6 @@ import { getDefaultProjectIdForTeam } from "./project-defaults.mjs";
 import { readStudioPlugins, readStudioSkills } from "./studio-skill-catalog.mjs";
 import { createStudioStaticRouteHandler } from "./studio-static-routes.mjs";
 import { createStudioHwpFontRouteHandler } from "./studio-hwp-font-routes.mjs";
-import { createStudioHwpExternalLinkRouteHandler } from "./studio-hwp-external-link-routes.mjs";
 import { createStudioMarkdownPdfRouteHandler } from "./studio-markdown-pdf-routes.mjs";
 import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
 
@@ -106,11 +105,6 @@ export function createStudioRouteHandler({
     studioWsEvents,
   });
   const handleHwpFontRoute = createStudioHwpFontRouteHandler();
-  const handleHwpExternalLinkRoute = createStudioHwpExternalLinkRouteHandler({
-    workspaceRoot,
-    globalRoots: explorerGlobalRoots,
-    systemRoot: process.cwd(),
-  });
   const handleMarkdownPdfRoute = createStudioMarkdownPdfRouteHandler({
     workspaceRoot,
     globalRoots: explorerGlobalRoots,
@@ -141,10 +135,6 @@ export function createStudioRouteHandler({
     }
 
     if (await handleHwpFontRoute(req, res, url)) {
-      return true;
-    }
-
-    if (await handleHwpExternalLinkRoute(req, res, url)) {
       return true;
     }
 
