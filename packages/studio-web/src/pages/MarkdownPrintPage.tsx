@@ -100,12 +100,6 @@ export function MarkdownPrintPage() {
       } as CSSProperties}
     >
       <article className="mx-auto min-h-screen w-full max-w-[920px] bg-white px-12 py-10 text-stone-900">
-        <header className="mb-6 border-b border-stone-200 pb-4">
-          <h1 className="text-xl font-extrabold tracking-tight text-stone-950">
-            {displayNameFromPath(state.filePath).replace(/\.(md|mdx)$/iu, "")}
-          </h1>
-          <p className="mt-1 break-all text-xs text-stone-400">{state.filePath}</p>
-        </header>
         <MarkdownBody content={state.content} />
       </article>
       <style>{`
@@ -129,10 +123,6 @@ export function MarkdownPrintPage() {
             max-width: none !important;
             min-height: auto !important;
             padding: 0 !important;
-          }
-
-          header {
-            break-after: avoid;
           }
 
           table, pre, blockquote {
