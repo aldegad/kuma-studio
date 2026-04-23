@@ -666,10 +666,9 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
         try {
           const fontsUsed = parseFontsUsed(doc.getDocumentInfo?.() ?? "{}");
           const validationWarningCount = countValidationWarnings(doc.getValidationWarnings?.() ?? "{}");
-          // Keep authored LineSegs by default. This file already opens correctly
-          // in Hancom/WebHWP; automatic reflow can recompute table-cell lines
-          // against the wrong width and compress the original layout.
-          const reflowedLinesegs = 0;
+          const reflowedLinesegs = validationWarningCount > 0
+            ? doc.reflowLinesegs?.() ?? 0
+            : 0;
           const missingFonts = detectMissingFonts(fontsUsed);
           const pageCount = doc.pageCount();
           const pages = Array.from(
