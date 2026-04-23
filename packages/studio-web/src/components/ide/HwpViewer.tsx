@@ -98,7 +98,7 @@ const GENERIC_FONT_FAMILIES = new Set(["serif", "sans-serif", "monospace", "curs
 const HWP_TEXT_BASELINE_FACTOR = 0.85;
 const HWP_TEXT_LINE_HEIGHT_FACTOR = 1.2;
 const HWP_TABLE_RIGHT_PADDING = 7;
-const HWP_TABLE_WRAP_TOLERANCE = 1.12;
+const HWP_TABLE_WRAP_TOLERANCE = 0.98;
 
 function decodeBase64(content: string): Uint8Array {
   const raw = window.atob(content);
@@ -424,7 +424,7 @@ function appendWrappedTableCellText(
     const run = group.runs[0]!;
     const text = group.runs.map((layoutRun) => layoutRun.text ?? "").join("");
     const fontSize = getRunFontSize(run);
-    const lineHeight = fontSize * HWP_TEXT_LINE_HEIGHT_FACTOR;
+    const lineHeight = Math.max(getRunHeight(run), fontSize * HWP_TEXT_LINE_HEIGHT_FACTOR);
     const rightEdge = group.cell.x + group.cell.w - HWP_TABLE_RIGHT_PADDING;
     const availableWidth = Math.max(fontSize, (rightEdge - group.x) * HWP_TABLE_WRAP_TOLERANCE);
     const lines = wrapLayoutText(run, text, availableWidth);
@@ -433,7 +433,7 @@ function appendWrappedTableCellText(
       run,
       lines,
       lineHeight,
-      height: getRunHeight(run) + lineHeight * (lines.length - 1),
+      height: lineHeight * lines.length,
       gap: fontSize * 0.15,
     };
   });
@@ -456,7 +456,7 @@ function wrapLayoutText(run: HwpTextLayoutRun, text: string, maxWidth: number): 
     return [text];
   }
 
-  const tokens = text.replace(/(?=\()/gu, " ").match(/\S+\s*/gu) ?? [text];
+  const tokens = tokenizeWrapText(text);
   const lines: string[] = [];
   let current = "";
   for (const token of tokens) {
@@ -477,6 +477,38 @@ function wrapLayoutText(run: HwpTextLayoutRun, text: string, maxWidth: number): 
     lines.push(current.trimEnd());
   }
   return lines.length > 0 ? lines.map((line) => line.replace(/\s+\(/gu, "(")) : [text];
+}
+
+function tokenizeWrapText(text: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  for (const char of Array.from(text)) {
+    if (/\s/u.test(char)) {
+      current += char;
+      tokens.push(current);
+      current = "";
+      continue;
+    }
+
+    if (/[\uac00-\ud7af\u3130-\u318f\u4e00-\u9fff]/u.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      tokens.push(char);
+      continue;
+    }
+
+    current += char;
+    if (/[(){}\[\],.;:·/\\-]/u.test(char)) {
+      tokens.push(current);
+      current = "";
+    }
+  }
+  if (current) {
+    tokens.push(current);
+  }
+  return tokens.length > 0 ? tokens : [text];
 }
 
 function breakLongToken(run: HwpTextLayoutRun, text: string, maxWidth: number): string[] {
