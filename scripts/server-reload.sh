@@ -54,6 +54,17 @@ resolve_process_env_value() {
   '
 }
 
+resolve_default_workspace_binding() {
+  local resolver="${ROOT_DIR}/scripts/resolve-default-workspace.mjs"
+  if [[ -f "${resolver}" ]]; then
+    node "${resolver}"
+    return
+  fi
+
+  printf 'ERROR: unable to resolve workspace binding; set KUMA_STUDIO_WORKSPACE or register project roots in ~/.kuma/projects.json\n' >&2
+  return 2
+}
+
 WORKSPACE_BINDING=""
 if [[ -n "${KUMA_STUDIO_WORKSPACE:-}" ]]; then
   WORKSPACE_BINDING="$(resolve_path "${KUMA_STUDIO_WORKSPACE}" || printf '%s' "${KUMA_STUDIO_WORKSPACE}")"
@@ -72,6 +83,10 @@ if [[ -z "${WORKSPACE_BINDING}" && -n "${existing_listener_pid}" ]]; then
   if [[ -n "${existing_workspace}" ]]; then
     WORKSPACE_BINDING="$(resolve_path "${existing_workspace}" || printf '%s' "${existing_workspace}")"
   fi
+fi
+
+if [[ -z "${WORKSPACE_BINDING}" ]]; then
+  WORKSPACE_BINDING="$(resolve_default_workspace_binding)"
 fi
 
 EXPLORER_GLOBAL_ROOTS_BINDING=""

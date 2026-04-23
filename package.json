@@ -29,8 +29,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "server:start": "node ./packages/server/src/cli.mjs serve --root .",
-    "server:reload": "bash ./scripts/server-reload.sh",
+    "server:start": "KUMA_STUDIO_WORKSPACE=\"${KUMA_STUDIO_WORKSPACE:-$(node ./scripts/resolve-default-workspace.mjs)}\" node ./packages/server/src/cli.mjs serve --root .",
+    "server:reload": "KUMA_STUDIO_WORKSPACE=\"${KUMA_STUDIO_WORKSPACE:-$(node ./scripts/resolve-default-workspace.mjs)}\" bash ./scripts/server-reload.sh",
     "kuma-server:reload": "bash ./scripts/bin/kuma-server-reload",
     "kuma-studio": "node ./packages/server/src/cli.mjs",
     "kuma-studio:get-selection": "node ./packages/server/src/cli.mjs get-selection",

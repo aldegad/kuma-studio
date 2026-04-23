@@ -62,13 +62,15 @@ printf '\\n' >> "${nodeLog}"
     expect(log).toContain("--root");
   });
 
-  it("does not silently bind the repo root as the workspace by default", async () => {
+  it("binds the resolver workspace when no external binding exists", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-server-reload-"));
     tempRoots.push(root);
 
     const binDir = join(root, "bin");
     const nodeLog = join(root, "node.log");
+    const workspaceRoot = join(root, "workspace");
     await mkdir(binDir, { recursive: true });
+    await mkdir(workspaceRoot, { recursive: true });
 
     await writeExecutable(
       join(binDir, "lsof"),
@@ -78,6 +80,10 @@ printf '\\n' >> "${nodeLog}"
       join(binDir, "node"),
       `#!/bin/bash
 set -euo pipefail
+if [[ "\${1:-}" == *"/scripts/resolve-default-workspace.mjs" ]]; then
+  printf '%s\\n' "${workspaceRoot}"
+  exit 0
+fi
 printf 'workspace=%s\\n' "\${KUMA_STUDIO_WORKSPACE:-<unset>}" > "${nodeLog}"
 printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> "${nodeLog}"
 `,
@@ -93,7 +99,7 @@ printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> 
     });
 
     const log = await readFile(nodeLog, "utf8");
-    expect(log).toContain("workspace=<unset>");
+    expect(log).toContain(`workspace=${workspaceRoot}`);
     expect(log).toContain("explorerRoots=vault,claude,codex");
   });
 
