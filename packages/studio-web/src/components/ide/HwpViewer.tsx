@@ -11,7 +11,6 @@ interface HwpViewerProps {
 }
 
 type HwpRenderState =
-  | { status: "idle" }
   | { status: "loading" }
   | {
       status: "ready";
@@ -644,24 +643,15 @@ function parsePageControlLayout(layout: string): HwpPageControlLayout {
 
 export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpViewerProps) {
   const [renderState, setRenderState] = useState<HwpRenderState>({ status: "loading" });
-  const [viewerMode, setViewerMode] = useState<"official" | "local">("local");
   const [externalLink, setExternalLink] = useState<string | null>(null);
-  const [externalLinkReady, setExternalLinkReady] = useState(false);
   const [externalLinkBusy, setExternalLinkBusy] = useState(false);
   const [externalLinkError, setExternalLinkError] = useState<string | null>(null);
   const fileName = filePath.split("/").pop() || filePath;
   const badge = mimeType === "application/x-hwpx" || fileName.toLowerCase().endsWith(".hwpx") ? "HWPX" : "HWP";
   const byteSize = useMemo(() => Math.floor((content.length * 3) / 4), [content]);
-  const shouldRenderLocal = externalLinkReady && (!externalLink || viewerMode === "local");
 
   useEffect(() => {
     let cancelled = false;
-    if (!shouldRenderLocal) {
-      setRenderState({ status: "idle" });
-      return () => {
-        cancelled = true;
-      };
-    }
     setRenderState({ status: "loading" });
 
     void (async () => {
@@ -722,28 +712,21 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
     return () => {
       cancelled = true;
     };
-  }, [content, shouldRenderLocal]);
+  }, [content]);
 
   useEffect(() => {
     let cancelled = false;
-    setExternalLinkReady(false);
     setExternalLinkError(null);
-    setExternalLink(null);
-    setViewerMode("local");
     void fetchHwpExternalLink(filePath)
       .then((url) => {
         if (!cancelled) {
           setExternalLink(url);
-          setViewerMode(url ? "official" : "local");
-          setExternalLinkReady(true);
         }
       })
       .catch((error) => {
         if (!cancelled) {
           setExternalLink(null);
           setExternalLinkError(error instanceof Error ? error.message : "WebHWP 연결 정보를 읽지 못했습니다.");
-          setViewerMode("local");
-          setExternalLinkReady(true);
         }
       });
     return () => { cancelled = true; };
@@ -766,7 +749,6 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
     try {
       const savedUrl = await saveHwpExternalLink(filePath, input.trim() || null);
       setExternalLink(savedUrl);
-      setViewerMode(savedUrl ? "official" : "local");
     } catch (error) {
       setExternalLinkError(error instanceof Error ? error.message : "WebHWP 연결 정보를 저장하지 못했습니다.");
     } finally {
@@ -804,25 +786,14 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
           읽기 전용
         </span>
         {externalLink ? (
-          <>
-            <button
-              type="button"
-              onClick={handleOpenExternalLink}
-              className="mr-1 shrink-0 rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white transition-colors hover:bg-emerald-600"
-              title="공식 Hancom WebHWP에서 동일한 문서를 엽니다."
-            >
-              WebHWP 열기
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewerMode(viewerMode === "official" ? "local" : "official")}
-              className="mr-1 shrink-0 rounded px-2 py-0.5 text-[10px] font-medium transition-colors"
-              style={{ color: "var(--t-faint)", background: "var(--badge-bg)" }}
-              title="공식 WebHWP 보기와 Studio 호환 미리보기를 전환합니다."
-            >
-              {viewerMode === "official" ? "로컬 미리보기" : "공식 보기"}
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={handleOpenExternalLink}
+            className="mr-1 shrink-0 rounded bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white transition-colors hover:bg-emerald-600"
+            title="공식 Hancom WebHWP에서 동일한 문서를 엽니다."
+          >
+            WebHWP 열기
+          </button>
         ) : (
           <button
             type="button"
@@ -858,57 +829,7 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-6 py-5" style={{ background: "#f8fafc" }}>
-        {!externalLinkReady && (
-          <div className="flex h-full items-center justify-center">
-            <div className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2 shadow-sm" style={{ borderColor: "var(--border-subtle)" }}>
-              <svg width="14" height="14" viewBox="0 0 12 12" className="animate-spin text-amber-500">
-                <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="14 14" strokeLinecap="round" />
-              </svg>
-              <span className="text-[11px]" style={{ color: "var(--t-muted)" }}>WebHWP 연결 확인 중...</span>
-            </div>
-          </div>
-        )}
-
-        {externalLinkReady && externalLink && viewerMode === "official" && (
-          <div className="mx-auto mt-10 max-w-xl rounded-xl border bg-white p-6 text-center shadow-sm" style={{ borderColor: "var(--border-subtle)" }}>
-            <p className="text-[13px] font-bold text-emerald-700">WebHWP 공식 보기/편집 모드</p>
-            <p className="mt-2 text-[11px] leading-5" style={{ color: "var(--t-muted)" }}>
-              이 파일은 공식 Hancom WebHWP URL과 연결되어 있습니다. 동일한 배치, 폰트, 줄바꿈, 페이지 분할이 필요한 경우 Studio 로컬 재계산을 사용하지 않고 WebHWP 원본 편집 화면을 엽니다.
-            </p>
-            {externalLinkError && (
-              <p className="mt-3 rounded bg-red-50 px-3 py-2 text-[10px] text-red-600">{externalLinkError}</p>
-            )}
-            <div className="mt-5 flex items-center justify-center gap-2">
-              <button
-                type="button"
-                onClick={handleOpenExternalLink}
-                className="rounded bg-emerald-500 px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-emerald-600"
-              >
-                WebHWP에서 열기
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewerMode("local")}
-                className="rounded px-3 py-1.5 text-[11px] font-medium transition-colors"
-                style={{ color: "var(--t-muted)", background: "var(--badge-bg)" }}
-              >
-                Studio 호환 미리보기
-              </button>
-            </div>
-            <p className="mt-4 break-all text-[10px]" style={{ color: "var(--t-faint)" }}>{externalLink}</p>
-          </div>
-        )}
-
-        {shouldRenderLocal && externalLink && viewerMode === "local" && (
-          <div className="mx-auto mb-4 max-w-2xl rounded-lg border bg-amber-50 px-4 py-3 text-[11px] text-amber-800" style={{ borderColor: "rgba(245, 158, 11, 0.28)" }}>
-            <p className="font-bold">Studio 호환 미리보기</p>
-            <p className="mt-1">
-              이 화면은 브라우저에서 HWP를 재해석한 미리보기입니다. 최종 검토와 편집은 연결된 WebHWP 화면을 기준으로 확인하세요.
-            </p>
-          </div>
-        )}
-
-        {shouldRenderLocal && renderState.status === "loading" && (
+        {renderState.status === "loading" && (
           <div className="flex h-full items-center justify-center">
             <div className="flex items-center gap-2 rounded-lg border px-4 py-2 shadow-sm" style={{ background: "white", borderColor: "var(--border-subtle)" }}>
               <svg width="14" height="14" viewBox="0 0 12 12" className="animate-spin text-amber-500">
@@ -919,7 +840,7 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
           </div>
         )}
 
-        {shouldRenderLocal && renderState.status === "error" && (
+        {renderState.status === "error" && (
           <div className="mx-auto mt-10 max-w-md rounded-xl border bg-white p-5 text-center shadow-sm" style={{ borderColor: "var(--border-subtle)" }}>
             <p className="text-[13px] font-bold text-red-500">HWP 렌더링 실패</p>
             <p className="mt-2 text-[11px]" style={{ color: "var(--t-muted)" }}>{renderState.message}</p>
@@ -929,7 +850,7 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
           </div>
         )}
 
-        {shouldRenderLocal && renderState.status === "ready" && (
+        {renderState.status === "ready" && (
           <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
             {(renderState.fontAssetError || renderState.runtimeFontFiles.length === 0) && (
               <div className="rounded-lg border bg-slate-50 px-4 py-3 text-[11px] text-slate-700" style={{ borderColor: "rgba(100, 116, 139, 0.22)" }}>
