@@ -607,6 +607,38 @@ export async function writeStudioBinaryFile(path: string, content: string): Prom
   }
 }
 
+export async function fetchHwpExternalLink(path: string): Promise<string | null> {
+  const res = await fetch(`${BASE_URL}/studio/hwp-external-link?path=${encodeURIComponent(path)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch WebHWP link: ${res.statusText}`);
+  const payload: unknown = await res.json();
+  if (!isRecord(payload) || !(payload.url === null || typeof payload.url === "string")) {
+    throw new Error("Failed to fetch WebHWP link: invalid response payload");
+  }
+  return payload.url;
+}
+
+export async function saveHwpExternalLink(path: string, url: string | null): Promise<string | null> {
+  const res = await fetch(`${BASE_URL}/studio/hwp-external-link`, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ path, url }),
+  });
+  const payload: unknown = await res.json();
+  if (!res.ok) {
+    const details = isRecord(payload) && typeof payload.details === "string" ? payload.details : res.statusText;
+    throw new Error(details);
+  }
+  if (!isRecord(payload) || !(payload.url === null || typeof payload.url === "string")) {
+    throw new Error("Failed to save WebHWP link: invalid response payload");
+  }
+  return payload.url;
+}
+
 export async function fetchStudioUiState(): Promise<StudioUiState> {
   const res = await fetch(`${BASE_URL}/studio/ui-state`, {
     headers: { Accept: "application/json" },
