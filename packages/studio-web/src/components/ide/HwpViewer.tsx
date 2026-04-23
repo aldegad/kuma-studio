@@ -752,7 +752,7 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
         )}
 
         {renderState.status === "ready" && (
-          <div className="mx-auto flex max-w-5xl flex-col gap-5">
+          <div className="mx-auto flex w-full max-w-5xl flex-col items-center gap-5">
             {(renderState.fontAssetError || renderState.runtimeFontFiles.length === 0) && (
               <div className="rounded-lg border bg-slate-50 px-4 py-3 text-[11px] text-slate-700" style={{ borderColor: "rgba(100, 116, 139, 0.22)" }}>
                 <p className="font-bold">HWP 전용 런타임 폰트</p>
@@ -789,7 +789,7 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
               </div>
             )}
             {renderState.pages.map((svg, index) => (
-              <div key={index} className="rounded-lg bg-white p-4 shadow-[0_8px_30px_-18px_rgba(15,23,42,0.45)]">
+              <div key={index} className="w-fit max-w-full rounded-lg bg-white p-4 shadow-[0_8px_30px_-18px_rgba(15,23,42,0.45)]">
                 <div className="mb-2 text-[10px] font-semibold text-slate-400">Page {index + 1}</div>
                 <div
                   className="hwp-page overflow-hidden"
@@ -809,7 +809,7 @@ export function HwpViewer({ content, mimeType, filePath, onClose, inline }: HwpV
       </div>
 
       <style>{`
-        .hwp-page svg { display: block; width: 100%; height: auto; }
+        .hwp-page svg { display: block; width: auto; max-width: 100%; height: auto; }
       `}</style>
     </div>
   );
