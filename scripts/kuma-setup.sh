@@ -17,6 +17,7 @@ skill_specs=(
   "kuma-recovery:kuma-recovery"
   "kuma-overnight:kuma-overnight"
   "kuma-panel:kuma-panel"
+  "kuma-plan:kuma-plan"
   "kuma-server:kuma-server"
   "kuma-snapshot:kuma-snapshot"
   "kuma-vault:kuma-vault"

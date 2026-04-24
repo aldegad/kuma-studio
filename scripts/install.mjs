@@ -47,6 +47,7 @@ const SKILLS = [
   { id: "kuma-recovery", source: "kuma-recovery" },
   { id: "kuma-overnight", source: "kuma-overnight" },
   { id: "kuma-panel", source: "kuma-panel" },
+  { id: "kuma-plan", source: "kuma-plan" },
   { id: "kuma-server", source: "kuma-server" },
   { id: "kuma-snapshot", source: "kuma-snapshot" },
   { id: "kuma-vault", source: "kuma-vault" },

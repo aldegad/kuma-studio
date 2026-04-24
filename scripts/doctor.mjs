@@ -72,6 +72,7 @@ async function main() {
     { id: "kuma-cmux-ops", candidates: ["kuma-cmux-ops"] },
     { id: "kuma-overnight", candidates: ["kuma-overnight"] },
     { id: "kuma-panel", candidates: ["kuma-panel"] },
+    { id: "kuma-plan", candidates: ["kuma-plan"] },
     { id: "kuma-picker", candidates: ["kuma-picker"] },
     { id: "kuma-recovery", candidates: ["kuma-recovery"] },
     { id: "kuma-server", candidates: ["kuma-server"] },
