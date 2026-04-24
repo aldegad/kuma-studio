@@ -46,6 +46,7 @@ interface StudioEvent {
 const GIT_ACTIVITY_REFRESH_MS = 5 * 60 * 1000;
 const HUD_LEGACY_PINNED_PROJECT_STORAGE_KEY = "kuma-studio-hud-pinned-project";
 const PROJECT_SEARCH_PARAM = "project";
+const PROJECT_MENU_EXIT_MS = 160;
 
 interface ProjectMenuPosition {
   left: number;
@@ -129,6 +130,8 @@ export function StudioPage() {
   const [configuredProjectIds, setConfiguredProjectIds] = useState<string[]>([]);
   const [configuredProjectsLoaded, setConfiguredProjectsLoaded] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [projectMenuRendered, setProjectMenuRendered] = useState(false);
+  const [projectMenuVisible, setProjectMenuVisible] = useState(false);
   const [projectMenuPosition, setProjectMenuPosition] = useState<ProjectMenuPosition | null>(null);
   const [hudPinnedProjectIds, setHudPinnedProjectIds] = useState<string[]>([]);
   const [studioUiStateLoaded, setStudioUiStateLoaded] = useState(false);
@@ -359,6 +362,12 @@ export function StudioPage() {
     ? overflowProjects.find((project) => project.projectId === activeProjectId) ?? null
     : null;
   const projectMenuLabel = activeOverflowProject?.projectName ?? (overflowProjects.length > 0 ? `프로젝트 ${overflowProjects.length}` : "프로젝트");
+  const projectMenuAnchorSignature = [
+    projectMenuLabel,
+    hudProjects.map((project) => project.projectId).join("|"),
+    resolvedHudPinnedProjectIds.join("|"),
+    projectMenuProjects.length,
+  ].join("::");
 
   const updateProjectMenuPosition = useCallback(() => {
     if (typeof window === "undefined") {
@@ -371,11 +380,13 @@ export function StudioPage() {
     }
 
     const menuWidth = 320;
+    const menuEstimatedHeight = 352;
     const viewportMargin = 8;
     const rect = button.getBoundingClientRect();
     const maxLeft = Math.max(viewportMargin, window.innerWidth - menuWidth - viewportMargin);
-    const left = Math.min(Math.max(viewportMargin, rect.right - menuWidth), maxLeft);
-    const top = Math.max(viewportMargin, rect.bottom + 7);
+    const maxTop = Math.max(viewportMargin, window.innerHeight - menuEstimatedHeight - viewportMargin);
+    const left = Math.min(Math.max(viewportMargin, rect.left), maxLeft);
+    const top = Math.min(Math.max(viewportMargin, rect.bottom + 10), maxTop);
     setProjectMenuPosition((previous) => (
       previous?.left === left && previous.top === top ? previous : { left, top }
     ));
@@ -454,7 +465,6 @@ export function StudioPage() {
 
   useEffect(() => {
     if (!projectMenuOpen) {
-      setProjectMenuPosition(null);
       return;
     }
 
@@ -466,6 +476,31 @@ export function StudioPage() {
       window.removeEventListener("scroll", updateProjectMenuPosition, true);
     };
   }, [projectMenuOpen, updateProjectMenuPosition]);
+
+  useEffect(() => {
+    if (projectMenuOpen) {
+      setProjectMenuRendered(true);
+      updateProjectMenuPosition();
+      const frame = window.requestAnimationFrame(() => setProjectMenuVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+
+    setProjectMenuVisible(false);
+    const timer = window.setTimeout(() => {
+      setProjectMenuRendered(false);
+      setProjectMenuPosition(null);
+    }, PROJECT_MENU_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [projectMenuOpen, updateProjectMenuPosition]);
+
+  useEffect(() => {
+    if (!projectMenuOpen) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(updateProjectMenuPosition);
+    return () => window.cancelAnimationFrame(frame);
+  }, [projectMenuAnchorSignature, projectMenuOpen, updateProjectMenuPosition]);
 
   useEffect(() => {
     if (!projectMenuOpen) {
@@ -518,7 +553,7 @@ export function StudioPage() {
   ];
 
   const projectMenuPopover =
-    projectMenuOpen && projectMenuPosition && typeof document !== "undefined"
+    projectMenuRendered && projectMenuPosition && typeof document !== "undefined"
       ? createPortal(
           <div
             ref={projectMenuPortalRef}
@@ -528,6 +563,12 @@ export function StudioPage() {
               top: projectMenuPosition.top,
               background: isNight ? "rgba(33, 22, 12, 0.92)" : "rgba(79, 54, 28, 0.92)",
               borderColor: "rgba(251, 191, 36, 0.18)",
+              filter: projectMenuVisible ? "blur(0)" : "blur(1px)",
+              opacity: projectMenuVisible ? 1 : 0,
+              pointerEvents: projectMenuVisible ? "auto" : "none",
+              transform: projectMenuVisible ? "translate3d(0, 0, 0) scale(1)" : "translate3d(0, -6px, 0) scale(0.985)",
+              transformOrigin: "top left",
+              transition: `opacity ${PROJECT_MENU_EXIT_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), transform ${PROJECT_MENU_EXIT_MS}ms cubic-bezier(0.2, 0.8, 0.2, 1), filter ${PROJECT_MENU_EXIT_MS}ms ease`,
             }}
             role="menu"
           >

@@ -187,6 +187,49 @@ body {
   animation: fade-in 0.2s ease-out;
 }
 
+@keyframes kuma-panel-restore {
+  0% {
+    opacity: 0;
+    filter: blur(1.8px);
+    transform: translate3d(var(--kuma-panel-motion-x, 0), var(--kuma-panel-motion-y, 0), 0) scaleX(0.14) scaleY(0.08);
+  }
+  58% {
+    opacity: 1;
+    filter: blur(0.35px);
+    transform: translate3d(var(--kuma-panel-motion-settle-x, 0), var(--kuma-panel-motion-settle-y, 0), 0) scaleX(1.045) scaleY(0.92);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes kuma-dock-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.78);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-kuma-dock-pop {
+  animation: kuma-dock-pop 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-kuma-dock-pop {
+    animation: none;
+  }
+}
+
 /* Idle floating for character cards — each character uses a slightly different duration */
 @keyframes float-idle {
   0%, 100% { transform: translate(-50%, -50%) translateY(0); }

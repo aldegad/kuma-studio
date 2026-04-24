@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { PanelIcon } from "./PanelIcon";
-import { FloatingPanel } from "./SortablePanel";
+import { FloatingPanel, type PanelMotionState, type PanelMotionVector } from "./SortablePanel";
 
 const DASHBOARD_POSITIONS_KEY = "kuma-studio-panel-positions";
 const DASHBOARD_MINIMIZED_KEY = "kuma-studio-panel-minimized";
@@ -10,6 +10,19 @@ const DEFAULT_PANEL_Y = 56;
 const DEFAULT_PANEL_VERTICAL_STEP = 148;
 const DRAG_THRESHOLD_PX = 5;
 const VIEWPORT_EDGE_MARGIN = 8;
+const PANEL_MOTION_MS = 300;
+const DOCK_RIGHT_OFFSET_PX = 16 + 12.25 * 16;
+const DOCK_BOTTOM_OFFSET_PX = 16;
+const DOCK_BORDER_PX = 2;
+const DOCK_PADDING_X_PX = 8;
+const DOCK_PADDING_Y_PX = 6;
+const DOCK_BUTTON_SIZE_PX = 32;
+const DOCK_GAP_PX = 6;
+
+interface PanelSize {
+  width: number;
+  height: number;
+}
 
 export interface PanelPosition {
   x: number;
@@ -244,6 +257,9 @@ export function DraggableDashboard({
   const visibleIdSet = useMemo(() => new Set(visibleIds), [visibleSignature]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
+  const minimizeTimersRef = useRef<Record<string, number>>({});
+  const restoreTimersRef = useRef<Record<string, number>>({});
+  const panelSizesRef = useRef<Record<string, PanelSize>>({});
   const suppressedClickPanelIdRef = useRef<string | null>(null);
   const bodyUserSelectRef = useRef("");
   const nextZIndexRef = useRef(visiblePanels.length + 1);
@@ -256,6 +272,9 @@ export function DraggableDashboard({
   const [minimizedIds, setMinimizedIds] = useState<string[]>(() =>
     readStoredStringArray(minimizedStorageKey).filter((id) => visibleIds.includes(id)),
   );
+  const [minimizingIds, setMinimizingIds] = useState<string[]>([]);
+  const [restoringIds, setRestoringIds] = useState<string[]>([]);
+  const [motionVectors, setMotionVectors] = useState<Record<string, PanelMotionVector>>({});
   const [zIndices, setZIndices] = useState<Record<string, number>>(() =>
     visiblePanels.reduce<Record<string, number>>((acc, panel, index) => {
       acc[panel.id] = index + 1;
@@ -263,6 +282,8 @@ export function DraggableDashboard({
     }, {}),
   );
   const minimizedIdSet = useMemo(() => new Set(minimizedIds), [minimizedIds]);
+  const minimizingIdSet = useMemo(() => new Set(minimizingIds), [minimizingIds]);
+  const restoringIdSet = useMemo(() => new Set(restoringIds), [restoringIds]);
   const floatingPanels = useMemo(
     () => visiblePanels.filter((panel) => !minimizedIdSet.has(panel.id)),
     [visiblePanels, minimizedIdSet],
@@ -276,6 +297,88 @@ export function DraggableDashboard({
     [floatingPanels],
   );
   const floatingSignature = floatingIds.join("|");
+
+  const readPanelCenter = useCallback((id: string) => {
+    const container = containerRef.current;
+    if (!container) {
+      return null;
+    }
+
+    const panelElement = container.querySelector<HTMLElement>(`[data-panel-id="${id}"]`);
+    if (panelElement) {
+      const rect = panelElement.getBoundingClientRect();
+      panelSizesRef.current[id] = {
+        width: rect.width,
+        height: rect.height,
+      };
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    }
+
+    const position = positionsRef.current[id];
+    if (!position) {
+      return null;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const size = panelSizesRef.current[id] ?? { width: 288, height: 168 };
+    return {
+      x: containerRect.left + position.x + size.width / 2,
+      y: containerRect.top + position.y + size.height / 2,
+    };
+  }, []);
+
+  const getProjectedDockCenter = useCallback(
+    (id: string) => {
+      const projectedIds = visiblePanels
+        .filter((panel) => minimizedIdSet.has(panel.id) || panel.id === id)
+        .map((panel) => panel.id);
+      const targetIndex = Math.max(0, projectedIds.indexOf(id));
+      const dockedCount = Math.max(1, projectedIds.length);
+      const dockWidth =
+        DOCK_BORDER_PX * 2 +
+        DOCK_PADDING_X_PX * 2 +
+        DOCK_BUTTON_SIZE_PX * dockedCount +
+        DOCK_GAP_PX * Math.max(0, dockedCount - 1);
+      const dockHeight = DOCK_BORDER_PX * 2 + DOCK_PADDING_Y_PX * 2 + DOCK_BUTTON_SIZE_PX;
+      const dockLeft = window.innerWidth - DOCK_RIGHT_OFFSET_PX - dockWidth;
+      const dockTop = window.innerHeight - DOCK_BOTTOM_OFFSET_PX - dockHeight;
+
+      return {
+        x: dockLeft + DOCK_BORDER_PX + DOCK_PADDING_X_PX + targetIndex * (DOCK_BUTTON_SIZE_PX + DOCK_GAP_PX) + DOCK_BUTTON_SIZE_PX / 2,
+        y: dockTop + DOCK_BORDER_PX + DOCK_PADDING_Y_PX + DOCK_BUTTON_SIZE_PX / 2,
+      };
+    },
+    [minimizedIdSet, visiblePanels],
+  );
+
+  const setMotionVectorFromPoints = useCallback((id: string, from: { x: number; y: number } | null, to: { x: number; y: number } | null) => {
+    if (!from || !to) {
+      setMotionVectors((currentVectors) => ({
+        ...currentVectors,
+        [id]: { x: 0, y: 0 },
+      }));
+      return;
+    }
+
+    setMotionVectors((currentVectors) => ({
+      ...currentVectors,
+      [id]: {
+        x: to.x - from.x,
+        y: to.y - from.y,
+      },
+    }));
+  }, []);
+
+  useEffect(
+    () => () => {
+      Object.values(minimizeTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+      Object.values(restoreTimersRef.current).forEach((timer) => window.clearTimeout(timer));
+    },
+    [],
+  );
 
   useEffect(() => {
     positionsRef.current = positions;
@@ -532,21 +635,67 @@ export function DraggableDashboard({
 
   const minimizePanel = useCallback(
     (id: string) => {
-      setMinimizedIds((currentIds) => {
+      if (minimizeTimersRef.current[id]) {
+        return;
+      }
+
+      if (restoreTimersRef.current[id]) {
+        window.clearTimeout(restoreTimersRef.current[id]);
+        delete restoreTimersRef.current[id];
+        setRestoringIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+      }
+
+      const panelCenter = readPanelCenter(id);
+      const dockCenter = getProjectedDockCenter(id);
+      setMotionVectorFromPoints(id, panelCenter, dockCenter);
+
+      setMinimizingIds((currentIds) => {
         if (currentIds.includes(id)) {
           return currentIds;
         }
 
-        const nextIds = [...currentIds, id];
-        writeStoredStringArray(minimizedStorageKey, nextIds);
-        return nextIds;
+        return [...currentIds, id];
       });
+
+      minimizeTimersRef.current[id] = window.setTimeout(() => {
+        setMinimizedIds((currentIds) => {
+          if (currentIds.includes(id)) {
+            return currentIds;
+          }
+
+          const nextIds = [...currentIds, id];
+          writeStoredStringArray(minimizedStorageKey, nextIds);
+          return nextIds;
+        });
+        setMinimizingIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        setMotionVectors((currentVectors) => {
+          const { [id]: _removed, ...nextVectors } = currentVectors;
+          return nextVectors;
+        });
+        delete minimizeTimersRef.current[id];
+      }, PANEL_MOTION_MS);
     },
-    [minimizedStorageKey],
+    [getProjectedDockCenter, minimizedStorageKey, readPanelCenter, setMotionVectorFromPoints],
   );
 
   const restorePanel = useCallback(
-    (id: string) => {
+    (id: string, event?: ReactMouseEvent<HTMLButtonElement>) => {
+      if (minimizeTimersRef.current[id]) {
+        window.clearTimeout(minimizeTimersRef.current[id]);
+        delete minimizeTimersRef.current[id];
+        setMinimizingIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+      }
+
+      const dockRect = event?.currentTarget.getBoundingClientRect();
+      const dockCenter = dockRect
+        ? {
+            x: dockRect.left + dockRect.width / 2,
+            y: dockRect.top + dockRect.height / 2,
+          }
+        : getProjectedDockCenter(id);
+      const panelCenter = readPanelCenter(id);
+      setMotionVectorFromPoints(id, panelCenter, dockCenter);
+
       setMinimizedIds((currentIds) => {
         if (!currentIds.includes(id)) {
           return currentIds;
@@ -556,12 +705,41 @@ export function DraggableDashboard({
         writeStoredStringArray(minimizedStorageKey, nextIds);
         return nextIds;
       });
+      setRestoringIds((currentIds) => (
+        currentIds.includes(id) ? currentIds : [...currentIds, id]
+      ));
+      if (restoreTimersRef.current[id]) {
+        window.clearTimeout(restoreTimersRef.current[id]);
+      }
+      restoreTimersRef.current[id] = window.setTimeout(() => {
+        setRestoringIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        setMotionVectors((currentVectors) => {
+          const { [id]: _removed, ...nextVectors } = currentVectors;
+          return nextVectors;
+        });
+        delete restoreTimersRef.current[id];
+      }, PANEL_MOTION_MS);
       setZIndices((current) => ({
         ...current,
         [id]: nextZIndexRef.current++,
       }));
     },
-    [minimizedStorageKey],
+    [getProjectedDockCenter, minimizedStorageKey, readPanelCenter, setMotionVectorFromPoints],
+  );
+
+  const getPanelMotionState = useCallback(
+    (id: string): PanelMotionState => {
+      if (minimizingIdSet.has(id)) {
+        return "minimizing";
+      }
+
+      if (restoringIdSet.has(id)) {
+        return "restoring";
+      }
+
+      return "idle";
+    },
+    [minimizingIdSet, restoringIdSet],
   );
 
   if (visiblePanels.length === 0) {
@@ -588,6 +766,8 @@ export function DraggableDashboard({
             onMouseDown={(event) => handlePanelMouseDown(panel.id, event)}
             onClickCapture={(event) => handlePanelClickCapture(panel.id, event)}
             onMinimize={() => minimizePanel(panel.id)}
+            motionState={getPanelMotionState(panel.id)}
+            motionVector={motionVectors[panel.id]}
           >
             {panel.content}
           </FloatingPanel>
@@ -605,8 +785,8 @@ export function DraggableDashboard({
             <button
               key={panel.id}
               type="button"
-              onClick={() => restorePanel(panel.id)}
-              className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-200/20 bg-amber-100/10 text-amber-200/75 transition-all hover:-translate-y-0.5 hover:border-amber-200/45 hover:bg-amber-100/18 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200/50"
+              onClick={(event) => restorePanel(panel.id, event)}
+              className="animate-kuma-dock-pop group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-200/20 bg-amber-100/10 text-amber-200/75 transition-all hover:-translate-y-0.5 hover:border-amber-200/45 hover:bg-amber-100/18 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200/50"
               title={`${panel.title} 열기`}
               aria-label={`${panel.title} 패널 열기`}
             >

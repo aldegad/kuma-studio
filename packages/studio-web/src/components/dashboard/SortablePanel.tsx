@@ -1,7 +1,14 @@
-import type { MouseEventHandler, ReactNode } from "react";
+import type { CSSProperties, MouseEventHandler, ReactNode } from "react";
 import { PanelIcon } from "./PanelIcon";
 
 interface PanelPosition {
+  x: number;
+  y: number;
+}
+
+export type PanelMotionState = "idle" | "minimizing" | "restoring";
+
+export interface PanelMotionVector {
   x: number;
   y: number;
 }
@@ -17,6 +24,8 @@ interface FloatingPanelProps {
   onMouseDown: MouseEventHandler<HTMLDivElement>;
   onClickCapture?: MouseEventHandler<HTMLDivElement>;
   onMinimize?: () => void;
+  motionState?: PanelMotionState;
+  motionVector?: PanelMotionVector;
 }
 
 export function FloatingPanel({
@@ -30,7 +39,31 @@ export function FloatingPanel({
   onMouseDown,
   onClickCapture,
   onMinimize,
+  motionState = "idle",
+  motionVector,
 }: FloatingPanelProps) {
+  const isMinimizing = motionState === "minimizing";
+  const isRestoring = motionState === "restoring";
+  const motionX = motionVector?.x ?? 0;
+  const motionY = motionVector?.y ?? 0;
+  const dockTransform = `translate3d(${motionX}px, ${motionY}px, 0) scaleX(0.14) scaleY(0.08)`;
+  const frameStyle = {
+    "--kuma-panel-motion-x": `${motionX}px`,
+    "--kuma-panel-motion-y": `${motionY}px`,
+    "--kuma-panel-motion-settle-x": `${motionX * 0.12}px`,
+    "--kuma-panel-motion-settle-y": `${motionY * 0.12}px`,
+    animation: isRestoring
+      ? "kuma-panel-restore 300ms cubic-bezier(0.16, 1, 0.3, 1)"
+      : undefined,
+    filter: isMinimizing ? "blur(1.5px)" : "blur(0)",
+    opacity: isMinimizing ? 0 : 1,
+    transform: isMinimizing ? dockTransform : "translate3d(0, 0, 0) scale(1)",
+    transformOrigin: "center center",
+    transition: isDragging
+      ? "none"
+      : "opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.28, 0.72, 0, 1), filter 300ms ease",
+  } as CSSProperties;
+
   const handleMinimize: MouseEventHandler<HTMLButtonElement> = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -49,6 +82,7 @@ export function FloatingPanel({
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
         zIndex,
         opacity: isDragging ? 0.84 : 1,
+        pointerEvents: isMinimizing ? "none" : undefined,
         transition: isDragging
           ? "none"
           : "transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease",
@@ -57,7 +91,10 @@ export function FloatingPanel({
           : undefined,
       }}
     >
-      <div className="game-panel-frame flex flex-col overflow-hidden rounded-xl max-h-[calc(100vh-120px)]">
+      <div
+        className="game-panel-frame flex flex-col overflow-hidden rounded-xl max-h-[calc(100vh-120px)]"
+        style={frameStyle}
+      >
         {/* Game window title bar */}
         <div className="game-panel-titlebar shrink-0 flex items-center gap-1.5 px-3 py-1.5 cursor-grab active:cursor-grabbing">
           <PanelIcon panelId={panelId} className="h-3.5 w-3.5 shrink-0 text-amber-300/75" />
