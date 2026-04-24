@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { PanelIcon } from "./PanelIcon";
 import { FloatingPanel, type PanelMotionState, type PanelMotionVector } from "./SortablePanel";
@@ -10,14 +10,7 @@ const DEFAULT_PANEL_Y = 56;
 const DEFAULT_PANEL_VERTICAL_STEP = 148;
 const DRAG_THRESHOLD_PX = 5;
 const VIEWPORT_EDGE_MARGIN = 8;
-const PANEL_MOTION_MS = 300;
-const DOCK_RIGHT_OFFSET_PX = 16 + 12.25 * 16;
-const DOCK_BOTTOM_OFFSET_PX = 16;
-const DOCK_BORDER_PX = 2;
-const DOCK_PADDING_X_PX = 8;
-const DOCK_PADDING_Y_PX = 6;
-const DOCK_BUTTON_SIZE_PX = 32;
-const DOCK_GAP_PX = 6;
+const PANEL_MOTION_SETTLE_MS = 340;
 
 interface PanelSize {
   width: number;
@@ -259,6 +252,8 @@ export function DraggableDashboard({
   const dragSessionRef = useRef<DragSession | null>(null);
   const minimizeTimersRef = useRef<Record<string, number>>({});
   const restoreTimersRef = useRef<Record<string, number>>({});
+  const minimizeOriginsRef = useRef<Record<string, PanelMotionVector>>({});
+  const restoreOriginsRef = useRef<Record<string, PanelMotionVector>>({});
   const panelSizesRef = useRef<Record<string, PanelSize>>({});
   const suppressedClickPanelIdRef = useRef<string | null>(null);
   const bodyUserSelectRef = useRef("");
@@ -272,6 +267,8 @@ export function DraggableDashboard({
   const [minimizedIds, setMinimizedIds] = useState<string[]>(() =>
     readStoredStringArray(minimizedStorageKey).filter((id) => visibleIds.includes(id)),
   );
+  const [pendingMinimizeIds, setPendingMinimizeIds] = useState<string[]>([]);
+  const [pendingRestoreIds, setPendingRestoreIds] = useState<string[]>([]);
   const [minimizingIds, setMinimizingIds] = useState<string[]>([]);
   const [restoringIds, setRestoringIds] = useState<string[]>([]);
   const [motionVectors, setMotionVectors] = useState<Record<string, PanelMotionVector>>({});
@@ -282,15 +279,21 @@ export function DraggableDashboard({
     }, {}),
   );
   const minimizedIdSet = useMemo(() => new Set(minimizedIds), [minimizedIds]);
+  const pendingMinimizeIdSet = useMemo(() => new Set(pendingMinimizeIds), [pendingMinimizeIds]);
+  const pendingRestoreIdSet = useMemo(() => new Set(pendingRestoreIds), [pendingRestoreIds]);
   const minimizingIdSet = useMemo(() => new Set(minimizingIds), [minimizingIds]);
   const restoringIdSet = useMemo(() => new Set(restoringIds), [restoringIds]);
+  const dockedIdSet = useMemo(
+    () => new Set([...minimizedIds, ...pendingMinimizeIds, ...minimizingIds]),
+    [minimizedIds, pendingMinimizeIds, minimizingIds],
+  );
   const floatingPanels = useMemo(
     () => visiblePanels.filter((panel) => !minimizedIdSet.has(panel.id)),
     [visiblePanels, minimizedIdSet],
   );
   const dockedPanels = useMemo(
-    () => visiblePanels.filter((panel) => minimizedIdSet.has(panel.id)),
-    [visiblePanels, minimizedIdSet],
+    () => visiblePanels.filter((panel) => dockedIdSet.has(panel.id)),
+    [dockedIdSet, visiblePanels],
   );
   const floatingIds = useMemo(
     () => floatingPanels.map((panel) => panel.id),
@@ -330,47 +333,148 @@ export function DraggableDashboard({
     };
   }, []);
 
-  const getProjectedDockCenter = useCallback(
-    (id: string) => {
-      const projectedIds = visiblePanels
-        .filter((panel) => minimizedIdSet.has(panel.id) || panel.id === id)
-        .map((panel) => panel.id);
-      const targetIndex = Math.max(0, projectedIds.indexOf(id));
-      const dockedCount = Math.max(1, projectedIds.length);
-      const dockWidth =
-        DOCK_BORDER_PX * 2 +
-        DOCK_PADDING_X_PX * 2 +
-        DOCK_BUTTON_SIZE_PX * dockedCount +
-        DOCK_GAP_PX * Math.max(0, dockedCount - 1);
-      const dockHeight = DOCK_BORDER_PX * 2 + DOCK_PADDING_Y_PX * 2 + DOCK_BUTTON_SIZE_PX;
-      const dockLeft = window.innerWidth - DOCK_RIGHT_OFFSET_PX - dockWidth;
-      const dockTop = window.innerHeight - DOCK_BOTTOM_OFFSET_PX - dockHeight;
+  const readDockButtonCenter = useCallback((id: string) => {
+    const container = containerRef.current;
+    if (!container) {
+      return null;
+    }
 
-      return {
-        x: dockLeft + DOCK_BORDER_PX + DOCK_PADDING_X_PX + targetIndex * (DOCK_BUTTON_SIZE_PX + DOCK_GAP_PX) + DOCK_BUTTON_SIZE_PX / 2,
-        y: dockTop + DOCK_BORDER_PX + DOCK_PADDING_Y_PX + DOCK_BUTTON_SIZE_PX / 2,
-      };
-    },
-    [minimizedIdSet, visiblePanels],
-  );
+    const dockButton = container.querySelector<HTMLElement>(`[data-dock-panel-id="${id}"]`);
+    if (!dockButton) {
+      return null;
+    }
+
+    const rect = dockButton.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+  }, []);
 
   const setMotionVectorFromPoints = useCallback((id: string, from: { x: number; y: number } | null, to: { x: number; y: number } | null) => {
     if (!from || !to) {
-      setMotionVectors((currentVectors) => ({
-        ...currentVectors,
-        [id]: { x: 0, y: 0 },
-      }));
+      setMotionVectors((currentVectors) => {
+        const currentVector = currentVectors[id];
+        if (currentVector?.x === 0 && currentVector.y === 0) {
+          return currentVectors;
+        }
+
+        return {
+          ...currentVectors,
+          [id]: { x: 0, y: 0 },
+        };
+      });
       return;
     }
 
-    setMotionVectors((currentVectors) => ({
-      ...currentVectors,
-      [id]: {
+    setMotionVectors((currentVectors) => {
+      const nextVector = {
         x: to.x - from.x,
         y: to.y - from.y,
-      },
-    }));
+      };
+      const currentVector = currentVectors[id];
+      if (currentVector?.x === nextVector.x && currentVector.y === nextVector.y) {
+        return currentVectors;
+      }
+
+      return {
+        ...currentVectors,
+        [id]: nextVector,
+      };
+    });
   }, []);
+
+  const clearMotionVector = useCallback((id: string) => {
+    setMotionVectors((currentVectors) => {
+      const { [id]: _removed, ...nextVectors } = currentVectors;
+      return nextVectors;
+    });
+  }, []);
+
+  const finishMinimize = useCallback(
+    (id: string) => {
+      setMinimizedIds((currentIds) => {
+        if (currentIds.includes(id)) {
+          return currentIds;
+        }
+
+        const nextIds = [...currentIds, id];
+        writeStoredStringArray(minimizedStorageKey, nextIds);
+        return nextIds;
+      });
+      setMinimizingIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+      delete minimizeOriginsRef.current[id];
+      clearMotionVector(id);
+      delete minimizeTimersRef.current[id];
+    },
+    [clearMotionVector, minimizedStorageKey],
+  );
+
+  const finishRestore = useCallback(
+    (id: string) => {
+      setRestoringIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+      delete restoreOriginsRef.current[id];
+      clearMotionVector(id);
+      delete restoreTimersRef.current[id];
+    },
+    [clearMotionVector],
+  );
+
+  useLayoutEffect(() => {
+    const animationFrames: number[] = [];
+
+    for (const id of pendingMinimizeIds) {
+      const panelCenter = minimizeOriginsRef.current[id];
+      const dockCenter = readDockButtonCenter(id);
+      if (!panelCenter || !dockCenter) {
+        delete minimizeOriginsRef.current[id];
+        setPendingMinimizeIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        continue;
+      }
+
+      setMotionVectorFromPoints(id, panelCenter, dockCenter);
+      const frame = window.requestAnimationFrame(() => {
+        setPendingMinimizeIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        setMinimizingIds((currentIds) => (currentIds.includes(id) ? currentIds : [...currentIds, id]));
+        minimizeTimersRef.current[id] = window.setTimeout(() => {
+          finishMinimize(id);
+        }, PANEL_MOTION_SETTLE_MS);
+      });
+      animationFrames.push(frame);
+    }
+
+    for (const id of pendingRestoreIds) {
+      const dockCenter = restoreOriginsRef.current[id];
+      const panelCenter = readPanelCenter(id);
+      if (!dockCenter || !panelCenter) {
+        delete restoreOriginsRef.current[id];
+        setPendingRestoreIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        continue;
+      }
+
+      setMotionVectorFromPoints(id, panelCenter, dockCenter);
+      const frame = window.requestAnimationFrame(() => {
+        setPendingRestoreIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        setRestoringIds((currentIds) => (currentIds.includes(id) ? currentIds : [...currentIds, id]));
+        restoreTimersRef.current[id] = window.setTimeout(() => {
+          finishRestore(id);
+        }, PANEL_MOTION_SETTLE_MS);
+      });
+      animationFrames.push(frame);
+    }
+
+    return () => {
+      animationFrames.forEach((frame) => window.cancelAnimationFrame(frame));
+    };
+  }, [
+    finishMinimize,
+    finishRestore,
+    pendingMinimizeIds,
+    pendingRestoreIds,
+    readDockButtonCenter,
+    readPanelCenter,
+    setMotionVectorFromPoints,
+  ]);
 
   useEffect(
     () => () => {
@@ -635,7 +739,7 @@ export function DraggableDashboard({
 
   const minimizePanel = useCallback(
     (id: string) => {
-      if (minimizeTimersRef.current[id]) {
+      if (minimizeTimersRef.current[id] || pendingMinimizeIdSet.has(id) || minimizingIdSet.has(id)) {
         return;
       }
 
@@ -643,39 +747,21 @@ export function DraggableDashboard({
         window.clearTimeout(restoreTimersRef.current[id]);
         delete restoreTimersRef.current[id];
         setRestoringIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        delete restoreOriginsRef.current[id];
+        clearMotionVector(id);
       }
 
       const panelCenter = readPanelCenter(id);
-      const dockCenter = getProjectedDockCenter(id);
-      setMotionVectorFromPoints(id, panelCenter, dockCenter);
+      if (!panelCenter) {
+        return;
+      }
 
-      setMinimizingIds((currentIds) => {
-        if (currentIds.includes(id)) {
-          return currentIds;
-        }
-
-        return [...currentIds, id];
-      });
-
-      minimizeTimersRef.current[id] = window.setTimeout(() => {
-        setMinimizedIds((currentIds) => {
-          if (currentIds.includes(id)) {
-            return currentIds;
-          }
-
-          const nextIds = [...currentIds, id];
-          writeStoredStringArray(minimizedStorageKey, nextIds);
-          return nextIds;
-        });
-        setMinimizingIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
-        setMotionVectors((currentVectors) => {
-          const { [id]: _removed, ...nextVectors } = currentVectors;
-          return nextVectors;
-        });
-        delete minimizeTimersRef.current[id];
-      }, PANEL_MOTION_MS);
+      minimizeOriginsRef.current[id] = panelCenter;
+      setPendingMinimizeIds((currentIds) => (
+        currentIds.includes(id) ? currentIds : [...currentIds, id]
+      ));
     },
-    [getProjectedDockCenter, minimizedStorageKey, readPanelCenter, setMotionVectorFromPoints],
+    [clearMotionVector, minimizingIdSet, pendingMinimizeIdSet, readPanelCenter],
   );
 
   const restorePanel = useCallback(
@@ -684,6 +770,12 @@ export function DraggableDashboard({
         window.clearTimeout(minimizeTimersRef.current[id]);
         delete minimizeTimersRef.current[id];
         setMinimizingIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
+        delete minimizeOriginsRef.current[id];
+        clearMotionVector(id);
+      }
+
+      if (restoreTimersRef.current[id] || pendingRestoreIdSet.has(id) || restoringIdSet.has(id)) {
+        return;
       }
 
       const dockRect = event?.currentTarget.getBoundingClientRect();
@@ -692,9 +784,12 @@ export function DraggableDashboard({
             x: dockRect.left + dockRect.width / 2,
             y: dockRect.top + dockRect.height / 2,
           }
-        : getProjectedDockCenter(id);
-      const panelCenter = readPanelCenter(id);
-      setMotionVectorFromPoints(id, panelCenter, dockCenter);
+        : readDockButtonCenter(id);
+      if (!dockCenter) {
+        return;
+      }
+
+      restoreOriginsRef.current[id] = dockCenter;
 
       setMinimizedIds((currentIds) => {
         if (!currentIds.includes(id)) {
@@ -705,30 +800,23 @@ export function DraggableDashboard({
         writeStoredStringArray(minimizedStorageKey, nextIds);
         return nextIds;
       });
-      setRestoringIds((currentIds) => (
+      setPendingRestoreIds((currentIds) => (
         currentIds.includes(id) ? currentIds : [...currentIds, id]
       ));
-      if (restoreTimersRef.current[id]) {
-        window.clearTimeout(restoreTimersRef.current[id]);
-      }
-      restoreTimersRef.current[id] = window.setTimeout(() => {
-        setRestoringIds((currentIds) => currentIds.filter((currentId) => currentId !== id));
-        setMotionVectors((currentVectors) => {
-          const { [id]: _removed, ...nextVectors } = currentVectors;
-          return nextVectors;
-        });
-        delete restoreTimersRef.current[id];
-      }, PANEL_MOTION_MS);
       setZIndices((current) => ({
         ...current,
         [id]: nextZIndexRef.current++,
       }));
     },
-    [getProjectedDockCenter, minimizedStorageKey, readPanelCenter, setMotionVectorFromPoints],
+    [clearMotionVector, minimizedStorageKey, pendingRestoreIdSet, readDockButtonCenter, restoringIdSet],
   );
 
   const getPanelMotionState = useCallback(
     (id: string): PanelMotionState => {
+      if (pendingRestoreIdSet.has(id)) {
+        return "measuring";
+      }
+
       if (minimizingIdSet.has(id)) {
         return "minimizing";
       }
@@ -739,7 +827,7 @@ export function DraggableDashboard({
 
       return "idle";
     },
-    [minimizingIdSet, restoringIdSet],
+    [minimizingIdSet, pendingRestoreIdSet, restoringIdSet],
   );
 
   if (visiblePanels.length === 0) {
@@ -781,19 +869,27 @@ export function DraggableDashboard({
           }}
           aria-label="최소화된 패널"
         >
-          {dockedPanels.map((panel) => (
-            <button
-              key={panel.id}
-              type="button"
-              onClick={(event) => restorePanel(panel.id, event)}
-              className="animate-kuma-dock-pop group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-200/20 bg-amber-100/10 text-amber-200/75 transition-all hover:-translate-y-0.5 hover:border-amber-200/45 hover:bg-amber-100/18 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200/50"
-              title={`${panel.title} 열기`}
-              aria-label={`${panel.title} 패널 열기`}
-            >
-              <PanelIcon panelId={panel.id} className="h-4 w-4" />
-              <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-amber-300/70 shadow-[0_0_6px_rgba(252,211,77,0.65)]" />
-            </button>
-          ))}
+          {dockedPanels.map((panel) => {
+            const isDockButtonLive = minimizedIdSet.has(panel.id);
+            return (
+              <button
+                key={panel.id}
+                type="button"
+                data-dock-panel-id={panel.id}
+                onClick={(event) => restorePanel(panel.id, event)}
+                className={`group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-200/20 bg-amber-100/10 text-amber-200/75 transition-all hover:-translate-y-0.5 hover:border-amber-200/45 hover:bg-amber-100/18 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200/50 ${
+                  isDockButtonLive
+                    ? "animate-kuma-dock-pop"
+                    : "pointer-events-none opacity-0 scale-75"
+                }`}
+                title={`${panel.title} 열기`}
+                aria-label={`${panel.title} 패널 열기`}
+              >
+                <PanelIcon panelId={panel.id} className="h-4 w-4" />
+                <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-amber-300/70 shadow-[0_0_6px_rgba(252,211,77,0.65)]" />
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

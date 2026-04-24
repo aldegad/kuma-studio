@@ -6,7 +6,7 @@ interface PanelPosition {
   y: number;
 }
 
-export type PanelMotionState = "idle" | "minimizing" | "restoring";
+export type PanelMotionState = "idle" | "measuring" | "minimizing" | "restoring";
 
 export interface PanelMotionVector {
   x: number;
@@ -42,6 +42,7 @@ export function FloatingPanel({
   motionState = "idle",
   motionVector,
 }: FloatingPanelProps) {
+  const isMeasuring = motionState === "measuring";
   const isMinimizing = motionState === "minimizing";
   const isRestoring = motionState === "restoring";
   const motionX = motionVector?.x ?? 0;
@@ -56,10 +57,10 @@ export function FloatingPanel({
       ? "kuma-panel-restore 300ms cubic-bezier(0.16, 1, 0.3, 1)"
       : undefined,
     filter: isMinimizing ? "blur(1.5px)" : "blur(0)",
-    opacity: isMinimizing ? 0 : 1,
+    opacity: isMeasuring || isMinimizing ? 0 : 1,
     transform: isMinimizing ? dockTransform : "translate3d(0, 0, 0) scale(1)",
     transformOrigin: "center center",
-    transition: isDragging
+    transition: isDragging || isMeasuring
       ? "none"
       : "opacity 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 300ms cubic-bezier(0.28, 0.72, 0, 1), filter 300ms ease",
   } as CSSProperties;
@@ -82,7 +83,7 @@ export function FloatingPanel({
         transform: `translate3d(${position.x}px, ${position.y}px, 0)`,
         zIndex,
         opacity: isDragging ? 0.84 : 1,
-        pointerEvents: isMinimizing ? "none" : undefined,
+        pointerEvents: isMeasuring || isMinimizing ? "none" : undefined,
         transition: isDragging
           ? "none"
           : "transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease",
