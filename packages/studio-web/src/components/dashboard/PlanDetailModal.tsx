@@ -118,28 +118,40 @@ export function PlanDetailModal({
         {/* Header */}
         <div className="px-6 py-5" style={{ borderBottom: "1px solid var(--border-subtle)", background: "var(--card-bg)" }}>
           <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0 space-y-4">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <h2
-                  id={`plan-detail-title-${plan.id}`}
-                  className="text-lg font-bold tracking-tight"
-                  style={{ color: "var(--t-primary)" }}
-                >
-                  {plan.title}
-                </h2>
-                <span
-                  className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] shadow-sm ${statusClassName}`}
-                >
-                  {statusLabel}
-                </span>
-              </div>
-              <div className="flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px]" style={{ color: "var(--t-muted)" }}>
-                <span className="min-w-0 truncate" title={plan.id}>
-                  ID: {plan.id}
-                </span>
-                <span className="min-w-0 truncate" title={planFilePath}>
-                  MD: {planFilePath}
-                </span>
+            <div className="min-w-0 space-y-3">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h2
+                    id={`plan-detail-title-${plan.id}`}
+                    className="text-lg font-bold tracking-tight"
+                    style={{ color: "var(--t-primary)" }}
+                  >
+                    {plan.title}
+                  </h2>
+                  <span
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] shadow-sm ${statusClassName}`}
+                  >
+                    {statusLabel}
+                  </span>
+                </div>
+                <div className="flex max-w-full items-center gap-1.5 font-mono text-[10px]" style={{ color: "var(--t-faint)" }}>
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 16 16"
+                    className="h-3 w-3 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M4 1.75h5.25L12 4.5v9.75H4z" />
+                    <path d="M9.25 1.75V4.5H12" />
+                  </svg>
+                  <span className="min-w-0 truncate" title={planFilePath}>
+                    {planFilePath}
+                  </span>
+                </div>
               </div>
 
               <div className="space-y-2">
