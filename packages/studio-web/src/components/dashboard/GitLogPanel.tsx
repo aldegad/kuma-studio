@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import type { GitActivityBranchStatus, GitActivityCommit, GitActivityRepo } from "../../types/stats";
@@ -26,7 +26,7 @@ const BRANCH_STATE_COLORS: Record<GitActivityBranchStatus["state"], string> = {
   "no-upstream": "var(--t-faint)",
 };
 
-const GRAPH_MAX_LANES = 10;
+const GRAPH_MAX_LANES = 16;
 const GRAPH_ROW_HEIGHT = 24;
 const GRAPH_LANE_LEFT = 8;
 const GRAPH_LANE_GAP = 10;
@@ -51,7 +51,10 @@ interface CommitGraphRow {
   laneCount: number;
   activeBefore: boolean[];
   activeAfter: boolean[];
+  ghostBefore: boolean[];
+  ghostAfter: boolean[];
   connectors: Array<{ from: number; to: number }>;
+  mergeIns: Array<{ from: number; to: number }>;
 }
 
 interface HoveredCommit {
@@ -148,9 +151,13 @@ function visibleLaneIndex(index: number) {
   return Math.min(Math.max(index, 0), GRAPH_MAX_LANES - 1);
 }
 
-function firstOpenLane(lanes: string[]) {
-  const index = lanes.findIndex((lane) => lane === "");
-  return index >= 0 ? index : lanes.length;
+function firstOpenLane(lanes: string[], excludes?: Set<number>) {
+  for (let i = 0; i < lanes.length; i += 1) {
+    if (lanes[i] === "" && !excludes?.has(i)) {
+      return i;
+    }
+  }
+  return lanes.length;
 }
 
 function trimTrailingOpenLanes(lanes: string[]) {
@@ -160,6 +167,7 @@ function trimTrailingOpenLanes(lanes: string[]) {
 }
 
 function buildCommitGraphRows(commits: GitActivityCommit[]): CommitGraphRow[] {
+  const visibleHashes = new Set(commits.map((commit) => commit.hash));
   const lanes: string[] = [];
   const rows: CommitGraphRow[] = [];
 
@@ -176,22 +184,39 @@ function buildCommitGraphRows(commits: GitActivityCommit[]): CommitGraphRow[] {
     activeBefore[laneIndex] = hasIncomingLane;
 
     const nextLanes = [...lanes];
-    if (parents.length === 0) {
-      nextLanes[laneIndex] = "";
-    } else {
-      nextLanes[laneIndex] = parents[0];
-      for (const parent of parents.slice(1)) {
-        if (nextLanes.includes(parent)) {
-          continue;
+    nextLanes[laneIndex] = "";
+
+    const parentLaneIndices: number[] = [];
+    const mergeIns: Array<{ from: number; to: number }> = [];
+    const mergeInSourceSet = new Set<number>();
+    for (let i = 0; i < parents.length; i += 1) {
+      const parent = parents[i];
+      const existingLane = nextLanes.indexOf(parent);
+      let parentLane: number;
+      if (i === 0) {
+        if (existingLane >= 0 && existingLane < laneIndex) {
+          parentLane = existingLane;
+        } else {
+          if (existingLane >= 0) {
+            nextLanes[existingLane] = "";
+            mergeIns.push({ from: existingLane, to: laneIndex });
+            mergeInSourceSet.add(existingLane);
+          }
+          parentLane = laneIndex;
+          nextLanes[parentLane] = parent;
         }
-        nextLanes[firstOpenLane(nextLanes)] = parent;
+      } else if (existingLane >= 0) {
+        parentLane = existingLane;
+      } else {
+        parentLane = firstOpenLane(nextLanes, mergeInSourceSet);
+        nextLanes[parentLane] = parent;
       }
+      parentLaneIndices.push(parentLane);
     }
 
     const activeAfter = nextLanes.map(Boolean);
-    const parentLaneIndices = parents
-      .map((parent) => nextLanes.indexOf(parent))
-      .filter((index) => index >= 0);
+    const ghostBefore = lanes.map((hash) => hash !== "" && !visibleHashes.has(hash));
+    const ghostAfter = nextLanes.map((hash) => hash !== "" && !visibleHashes.has(hash));
     const connectors = parentLaneIndices
       .filter((index) => index !== laneIndex)
       .map((index) => ({ from: laneIndex, to: index }));
@@ -206,7 +231,10 @@ function buildCommitGraphRows(commits: GitActivityCommit[]): CommitGraphRow[] {
       laneCount,
       activeBefore,
       activeAfter,
+      ghostBefore,
+      ghostAfter,
       connectors,
+      mergeIns,
     });
 
     lanes.splice(0, lanes.length, ...nextLanes);
@@ -225,6 +253,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
   const currentBefore = row.activeBefore[visibleCurrentLane];
   const currentAfter = row.activeAfter[visibleCurrentLane];
   const connectorTargets = new Set(row.connectors.map((connector) => visibleLaneIndex(connector.to)));
+  const mergeInSources = new Set(row.mergeIns.map((mergeIn) => visibleLaneIndex(mergeIn.from)));
 
   return (
     <svg
@@ -235,26 +264,46 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
       overflow="hidden"
       aria-hidden="true"
     >
-      {(currentBefore || currentAfter) && (
+      {currentBefore && (
         <line
           x1={currentX}
-          y1={currentBefore ? 0 : GRAPH_DOT_Y}
+          y1={0}
           x2={currentX}
-          y2={currentAfter ? GRAPH_ROW_HEIGHT : GRAPH_DOT_Y}
+          y2={GRAPH_DOT_Y}
           stroke={currentColor}
           strokeWidth="1.6"
-          strokeLinecap="round"
-          opacity="0.9"
+          strokeLinecap="butt"
+          opacity={row.ghostBefore[visibleCurrentLane] ? 0.28 : 0.9}
+        />
+      )}
+      {currentAfter && (
+        <line
+          x1={currentX}
+          y1={GRAPH_DOT_Y}
+          x2={currentX}
+          y2={GRAPH_ROW_HEIGHT}
+          stroke={currentColor}
+          strokeWidth="1.6"
+          strokeLinecap="butt"
+          opacity={row.ghostAfter[visibleCurrentLane] ? 0.28 : 0.9}
         />
       )}
       {laneIndices.map((lane) => {
-        const x = getLaneX(lane);
-        const color = GRAPH_COLORS[lane % GRAPH_COLORS.length];
-        const before = row.activeBefore[lane];
-        const after = row.activeAfter[lane] && !connectorTargets.has(lane);
         if (lane === visibleCurrentLane) {
           return null;
         }
+        const x = getLaneX(lane);
+        const color = GRAPH_COLORS[lane % GRAPH_COLORS.length];
+        const rawBefore = Boolean(row.activeBefore[lane]);
+        const rawAfter = Boolean(row.activeAfter[lane]);
+        const before = rawBefore && !mergeInSources.has(lane);
+        const isFreshOpen = !rawBefore && rawAfter && connectorTargets.has(lane);
+        const after = rawAfter && !isFreshOpen;
+        if (!before && !after) {
+          return null;
+        }
+        const beforeOpacity = row.ghostBefore[lane] ? 0.28 : 0.78;
+        const afterOpacity = row.ghostAfter[lane] ? 0.28 : 0.78;
         return (
           <g key={`lane:${lane}`}>
             {before && (
@@ -262,23 +311,23 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
                 x1={x}
                 y1={0}
                 x2={x}
-                y2={GRAPH_DOT_Y - lineGapRadius}
+                y2={GRAPH_DOT_Y}
                 stroke={color}
                 strokeWidth="1.6"
-                strokeLinecap="round"
-                opacity="0.86"
+                strokeLinecap="butt"
+                opacity={beforeOpacity}
               />
             )}
             {after && (
               <line
                 x1={x}
-                y1={GRAPH_DOT_Y + lineGapRadius}
+                y1={GRAPH_DOT_Y}
                 x2={x}
                 y2={GRAPH_ROW_HEIGHT}
                 stroke={color}
                 strokeWidth="1.6"
-                strokeLinecap="round"
-                opacity="0.86"
+                strokeLinecap="butt"
+                opacity={afterOpacity}
               />
             )}
           </g>
@@ -293,10 +342,33 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
         const direction = Math.sign(toX - fromX) || 1;
         const startY = GRAPH_DOT_Y + lineGapRadius - 0.5;
         const endY = GRAPH_ROW_HEIGHT - 1;
+        const targetGhost = Boolean(row.ghostAfter[connector.to]);
         return (
           <path
             key={`edge:${connector.from}:${connector.to}`}
             d={`M ${fromX} ${startY} C ${fromX} ${startY + 4}, ${toX - (direction * 5)} ${endY}, ${toX} ${endY}`}
+            fill="none"
+            stroke={color}
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity={targetGhost ? 0.45 : 0.9}
+          />
+        );
+      })}
+      {row.mergeIns.map((mergeIn) => {
+        const from = visibleLaneIndex(mergeIn.from);
+        const to = visibleLaneIndex(mergeIn.to);
+        const fromX = getLaneX(from);
+        const toX = getLaneX(to);
+        const color = GRAPH_COLORS[from % GRAPH_COLORS.length];
+        const direction = Math.sign(toX - fromX) || -1;
+        const topY = 0;
+        const dotY = GRAPH_DOT_Y;
+        return (
+          <path
+            key={`mergein:${mergeIn.from}:${mergeIn.to}`}
+            d={`M ${fromX} ${topY} C ${fromX} ${dotY - 4}, ${toX - (direction * 5)} ${dotY}, ${toX} ${dotY}`}
             fill="none"
             stroke={color}
             strokeWidth="1.6"
@@ -326,6 +398,71 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
         </text>
       )}
     </svg>
+  );
+}
+
+interface RepoCommitGraphProps {
+  repo: GitActivityRepo;
+  showProjectName: boolean;
+  activeRowKey: string | null;
+  onHoverEnter: (repo: GitActivityRepo, commit: GitActivityCommit, element: HTMLElement) => void;
+  onHoverLeave: () => void;
+}
+
+function RepoCommitGraph({ repo, showProjectName, activeRowKey, onHoverEnter, onHoverLeave }: RepoCommitGraphProps) {
+  const graphRows = useMemo(() => buildCommitGraphRows(repo.commits), [repo.commits]);
+
+  return (
+    <div className="space-y-0">
+      {graphRows.map((row) => {
+        const rowKey = getCommitKey(repo, row.commit);
+        const isActive = activeRowKey === rowKey;
+        return (
+          <div
+            key={rowKey}
+            data-git-commit-row={row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+            className="rounded px-1 transition-colors"
+            style={{
+              background: isActive ? "rgba(59,130,246,0.13)" : "transparent",
+              boxShadow: isActive ? "inset 2px 0 0 rgba(59,130,246,0.75)" : "none",
+            }}
+            onMouseEnter={(event) => {
+              onHoverEnter(repo, row.commit, event.currentTarget);
+            }}
+            onMouseLeave={onHoverLeave}
+          >
+            <div className="flex h-6 items-center gap-1.5">
+              <CommitGraphGlyph row={row} />
+              <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                <span className="truncate text-[10px] font-medium leading-none" style={{ color: "var(--t-secondary)" }}>
+                  {row.commit.message}
+                </span>
+                <span className="shrink-0 font-mono text-[8px]" style={{ color: "var(--t-muted)" }}>
+                  {row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+                </span>
+                <span className="shrink-0 text-[8px] font-semibold" style={{ color: "var(--t-muted)" }}>
+                  {getRepoDisplayName(repo, showProjectName)}
+                </span>
+                {row.commit.isMerge && (
+                  <span className="shrink-0 text-[8px] font-semibold" style={{ color: "#d97706" }}>merge</span>
+                )}
+                {getParentLabel(row.commit) && (
+                  <span className="shrink-0 text-[8px]" style={{ color: "var(--t-faint)" }}>{getParentLabel(row.commit)}</span>
+                )}
+                {(row.commit.refs ?? []).slice(0, 2).map((ref) => (
+                  <span key={ref} className="shrink-0 rounded-full px-1 text-[8px]" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
+                    {formatRefLabel(ref)}
+                  </span>
+                ))}
+              </div>
+              <span className="shrink-0 text-[9px]" style={{ color: "var(--t-muted)" }}>
+                {formatCommitTimestamp(row.commit.timestamp)}
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -521,61 +658,16 @@ export function GitLogPanel({
             </div>
           )}
           <div className="space-y-0">
-            {reposWithCommits.length > 0 ? reposWithCommits.map((repo) => {
-              const graphRows = buildCommitGraphRows(repo.commits);
-              return (
-                <div key={repo.path} className="space-y-0">
-                  {graphRows.map((row) => {
-                    const rowKey = getCommitKey(repo, row.commit);
-                    const isActive = activeRowKey === rowKey;
-                    return (
-                      <div
-                        key={rowKey}
-                        data-git-commit-row={row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
-                        className="rounded px-1 transition-colors"
-                        style={{
-                          background: isActive ? "rgba(59,130,246,0.13)" : "transparent",
-                          boxShadow: isActive ? "inset 2px 0 0 rgba(59,130,246,0.75)" : "none",
-                        }}
-                        onMouseEnter={(event) => {
-                          scheduleCommitHover(repo, row.commit, event.currentTarget);
-                        }}
-                        onMouseLeave={clearCommitHover}
-                      >
-                        <div className="flex h-6 items-center gap-1.5">
-                          <CommitGraphGlyph row={row} />
-                          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                            <span className="truncate text-[10px] font-medium leading-none" style={{ color: "var(--t-secondary)" }}>
-                              {row.commit.message}
-                            </span>
-                            <span className="shrink-0 font-mono text-[8px]" style={{ color: "var(--t-muted)" }}>
-                              {row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
-                            </span>
-                            <span className="shrink-0 text-[8px] font-semibold" style={{ color: "var(--t-muted)" }}>
-                              {getRepoDisplayName(repo, showProjectName)}
-                            </span>
-                            {row.commit.isMerge && (
-                              <span className="shrink-0 text-[8px] font-semibold" style={{ color: "#d97706" }}>merge</span>
-                            )}
-                            {getParentLabel(row.commit) && (
-                              <span className="shrink-0 text-[8px]" style={{ color: "var(--t-faint)" }}>{getParentLabel(row.commit)}</span>
-                            )}
-                            {(row.commit.refs ?? []).slice(0, 2).map((ref) => (
-                              <span key={ref} className="shrink-0 rounded-full px-1 text-[8px]" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
-                                {formatRefLabel(ref)}
-                              </span>
-                            ))}
-                          </div>
-                          <span className="shrink-0 text-[9px]" style={{ color: "var(--t-muted)" }}>
-                            {formatCommitTimestamp(row.commit.timestamp)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            }) : (
+            {reposWithCommits.length > 0 ? reposWithCommits.map((repo) => (
+              <RepoCommitGraph
+                key={repo.path}
+                repo={repo}
+                showProjectName={showProjectName}
+                activeRowKey={activeRowKey}
+                onHoverEnter={scheduleCommitHover}
+                onHoverLeave={clearCommitHover}
+              />
+            )) : (
               <p className="text-[10px]" style={{ color: "var(--t-muted)" }}>
                 표시할 커밋이 없습니다.
               </p>

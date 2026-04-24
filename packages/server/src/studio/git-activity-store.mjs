@@ -133,7 +133,7 @@ function readRevisionCount(repoPath, args = [], revision = "HEAD") {
 
 function readCommits(repoPath, { maxCount = GIT_ACTIVITY_COMMIT_LIMIT } = {}) {
   try {
-    const args = ["log", "--all", "--topo-order", "--date=iso-strict", `--format=${GIT_LOG_FORMAT}`];
+    const args = ["log", "--topo-order", "--date=iso-strict", `--format=${GIT_LOG_FORMAT}`];
     if (Number.isFinite(maxCount) && maxCount > 0) {
       args.push(`--max-count=${Math.floor(maxCount)}`);
     }
