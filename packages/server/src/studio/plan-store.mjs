@@ -276,6 +276,7 @@ async function loadPlansFromDisk(source) {
 
       plans.push({
         id: planId,
+        filePath: file,
         project,
         title: frontmatter.title || planId,
         status,
@@ -295,6 +296,7 @@ async function loadPlansFromDisk(source) {
       const message = error instanceof Error ? error.message : "Unknown read error";
       plans.push({
         id: planId,
+        filePath: file,
         project,
         title: planId,
         status: "failed",

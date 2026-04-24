@@ -4,6 +4,7 @@ import type { Plan, PlanStatus } from "../../types/plan";
 function planWithStatus(id: string, status: PlanStatus): Plan {
   return {
     id,
+    filePath: `${id}.md`,
     project: null,
     title: id,
     status,

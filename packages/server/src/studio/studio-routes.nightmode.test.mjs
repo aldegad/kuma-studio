@@ -151,6 +151,7 @@ status: blocked
     });
     assert.deepStrictEqual(res.json.plans[0], {
       id: "kuma-studio/approval-flow",
+      filePath: "kuma-studio/approval-flow/index.md",
       project: "kuma-studio",
       title: "Approval Flow",
       status: "blocked",

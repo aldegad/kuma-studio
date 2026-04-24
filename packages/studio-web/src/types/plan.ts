@@ -42,6 +42,7 @@ export interface PlanSection {
 
 export interface Plan {
   id: string;
+  filePath: string;
   project: string | null;
   title: string;
   status: PlanStatus;

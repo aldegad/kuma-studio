@@ -96,6 +96,7 @@ export function PlanDetailModal({
     "border-stone-300/60 bg-stone-100/80 text-stone-600";
   const statusLabel =
     STATUS_LABELS[plan.status] ?? plan.status.replace(/_/g, " ");
+  const planFilePath = plan.filePath || `${plan.id}.md`;
 
   return (
     <div
@@ -130,6 +131,14 @@ export function PlanDetailModal({
                   className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.15em] shadow-sm ${statusClassName}`}
                 >
                   {statusLabel}
+                </span>
+              </div>
+              <div className="flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px]" style={{ color: "var(--t-muted)" }}>
+                <span className="min-w-0 truncate" title={plan.id}>
+                  ID: {plan.id}
+                </span>
+                <span className="min-w-0 truncate" title={planFilePath}>
+                  MD: {planFilePath}
                 </span>
               </div>
 

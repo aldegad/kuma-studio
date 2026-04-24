@@ -229,6 +229,7 @@ function isPlan(value: unknown): value is Plan {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
+    typeof value.filePath === "string" &&
     typeof value.title === "string" &&
     typeof value.status === "string" &&
     typeof value.statusColor === "string" &&
