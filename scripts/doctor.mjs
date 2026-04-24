@@ -69,16 +69,15 @@ async function main() {
   // Check skills
   const skills = [
     { id: "kuma-brief", candidates: ["kuma-brief"] },
+    { id: "kuma-cmux-ops", candidates: ["kuma-cmux-ops"] },
     { id: "kuma-picker", candidates: ["kuma-picker"] },
     { id: "kuma-recovery", candidates: ["kuma-recovery"] },
+    { id: "kuma-server", candidates: ["kuma-server"] },
     { id: "kuma-snapshot", candidates: ["kuma-snapshot"] },
     { id: "kuma-vault", candidates: ["kuma-vault"] },
     { id: "noeuri", candidates: ["noeuri"] },
     { id: "overnight-on", candidates: ["overnight-on"] },
     { id: "overnight-off", candidates: ["overnight-off"] },
-    { id: "dev-team", candidates: ["dev-team"] },
-    { id: "strategy-analytics-team", candidates: ["strategy-analytics-team", "analytics-team", "strategy-team"] },
-    { id: "tmux-ops", candidates: ["tmux-ops"] },
   ];
   for (const skillRoot of SKILL_ROOTS) {
     for (const skill of skills) {

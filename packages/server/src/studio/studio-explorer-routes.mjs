@@ -238,6 +238,20 @@ function parseGitStatus(output) {
   return files;
 }
 
+function readGitBranch(root) {
+  try {
+    const output = execGitSync("git branch --show-current", {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 5000,
+      maxBuffer: 1024 * 64,
+    }).trim();
+    return output && output !== "HEAD" ? output : null;
+  } catch {
+    return null;
+  }
+}
+
 function decodeBase64Payload(value) {
   if (typeof value !== "string" || value.length === 0 || value.length % 4 !== 0) {
     return null;
@@ -529,9 +543,13 @@ export function createStudioExplorerRouteHandler({
           maxBuffer: 1024 * 1024,
         });
 
-        sendJson(res, 200, { root: resolvedRoot, files: parseGitStatus(output) });
+        sendJson(res, 200, {
+          root: resolvedRoot,
+          branch: readGitBranch(resolvedRoot),
+          files: parseGitStatus(output),
+        });
       } catch {
-        sendJson(res, 200, { root: resolvedRoot, files: {} });
+        sendJson(res, 200, { root: resolvedRoot, branch: null, files: {} });
       }
       return true;
     }

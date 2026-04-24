@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -95,6 +96,7 @@ describe("studio-routes explorer endpoints", () => {
     await mkdir(staticDir, { recursive: true });
     await mkdir(repoRoot, { recursive: true });
     await writeFile(join(staticDir, "index.html"), "<html></html>", "utf8");
+    execFileSync("git", ["init", "-b", "main"], { cwd: repoRoot, stdio: "ignore" });
     await writeFile(join(repoRoot, "tracked.ts"), "export const value = 1;\n", "utf8");
 
     const handler = createStudioRouteHandler({
@@ -108,6 +110,7 @@ describe("studio-routes explorer endpoints", () => {
     await handler(createRequest("GET", `/studio/git/status?root=${encodeURIComponent(repoRoot)}`), gitRes);
     assert.strictEqual(gitRes.statusCode, 200);
     assert.strictEqual(gitRes.json.root, repoRoot);
+    assert.strictEqual(gitRes.json.branch, "main");
     assert.ok(typeof gitRes.json.files === "object");
 
     const writeTarget = join(repoRoot, "scratch.md");

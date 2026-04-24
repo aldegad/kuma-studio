@@ -12,6 +12,7 @@ skill_roots=(
 )
 skill_specs=(
   "kuma-brief:kuma-brief"
+  "kuma-cmux-ops:kuma-cmux-ops"
   "kuma-picker:kuma-picker"
   "kuma-recovery:kuma-recovery"
   "kuma-server:kuma-server"
@@ -20,20 +21,38 @@ skill_specs=(
   "noeuri:noeuri"
   "overnight-on:overnight-on"
   "overnight-off:overnight-off"
-  "dev-team:dev-team"
-  "strategy-analytics-team:analytics-team"
-  "analytics-team:analytics-team"
-  "strategy-team:strategy-team"
-  "tmux-ops:tmux-ops"
+)
+retired_skill_ids=(
+  "analytics-team"
+  "dev-team"
+  "strategy-analytics-team"
+  "strategy-team"
+  "tmux-ops"
 )
 for root_spec in "${skill_roots[@]}"; do
   skill_root="${root_spec%%:*}"
   agent_label="${root_spec#*:}"
   mkdir -p "$skill_root"
+  for skill in "${retired_skill_ids[@]}"; do
+    link="$skill_root/$skill"
+    if [ -L "$link" ]; then
+      target="$(readlink "$link" 2>/dev/null || true)"
+      case "$target" in
+        "$KUMA_STUDIO"/skills/*)
+          rm -f "$link"
+          echo "  ✓ $agent_label skill cleanup: $skill"
+          ;;
+      esac
+    fi
+  done
   for spec in "${skill_specs[@]}"; do
     skill="${spec%%:*}"
     source_skill="${spec#*:}"
     target="$KUMA_STUDIO/skills/$source_skill"
+    if [ ! -f "$target/SKILL.md" ]; then
+      echo "  ⚠ $agent_label skill source missing: $source_skill"
+      continue
+    fi
     link="$skill_root/$skill"
     [ -L "$link" ] && rm "$link"
     ln -snf "$target" "$link"

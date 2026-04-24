@@ -34,17 +34,22 @@ matches_skill_dir() {
 # 스킬 심링크 확인
 required_skill_specs=(
   "kuma-brief:kuma-brief"
+  "kuma-cmux-ops:kuma-cmux-ops"
   "kuma-picker:kuma-picker"
   "kuma-recovery:kuma-recovery"
+  "kuma-server:kuma-server"
   "kuma-snapshot:kuma-snapshot"
   "kuma-vault:kuma-vault"
   "noeuri:noeuri"
   "overnight-on:overnight-on"
   "overnight-off:overnight-off"
-  "dev-team:dev-team"
-  "analytics-team:analytics-team"
-  "strategy-team:strategy-team"
-  "tmux-ops:tmux-ops"
+)
+retired_skill_ids=(
+  "analytics-team"
+  "dev-team"
+  "strategy-analytics-team"
+  "strategy-team"
+  "tmux-ops"
 )
 for root_spec in "${skill_roots[@]}"; do
   skill_root="${root_spec%%:*}"
@@ -60,16 +65,13 @@ for root_spec in "${skill_roots[@]}"; do
     fi
   done
 
-  strategy_analytics_link="$skill_root/strategy-analytics-team"
-  strategy_analytics_target="$KUMA_STUDIO/skills/analytics-team"
-  if [ -L "$strategy_analytics_link" ] || [ -d "$strategy_analytics_link" ]; then
-    if ! matches_skill_dir "$strategy_analytics_target" "$strategy_analytics_link"; then
-      echo "❌ $agent_label skill/strategy-analytics-team: 심링크 불일치"
+  for skill in "${retired_skill_ids[@]}"; do
+    link="$skill_root/$skill"
+    if [ -e "$link" ] || [ -L "$link" ]; then
+      echo "❌ $agent_label skill/$skill: retired skill link remains"
       errors=$((errors + 1))
     fi
-  else
-    echo "⚠️ $agent_label skill/strategy-analytics-team: 미설치 (legacy analytics-team / strategy-team alias 허용)"
-  fi
+  done
 done
 
 # 훅 심링크 확인

@@ -209,6 +209,12 @@ interface FileExplorerProps {
 
 const VAULT_DEPTH_INDENT_PX = 12;
 
+interface GitStatusResponse {
+  root: string;
+  branch: string | null;
+  files: GitStatusMap;
+}
+
 function VaultFixedLink({
   icon, label, hint, path, active, onSelect,
 }: {
@@ -462,6 +468,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   // Git status state
   const [gitStatus, setGitStatus] = useState<GitStatusMap>({});
   const [gitRoot, setGitRoot] = useState<string>("");
+  const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -491,6 +498,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     setVaultSectionExpanded({});
     setViewerScrollByPath({});
     setSidebarTab("files");
+    setGitBranch(null);
   }, [projectStateKey]);
 
   const scheduleExplorerStatePatch = useCallback((patch: Partial<StudioExplorerProjectState>) => {
@@ -568,12 +576,14 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     if (!root) {
       setGitStatus({});
       setGitRoot("");
+      setGitBranch(null);
       return;
     }
     const response = await fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`);
-    const data: { root: string; files: GitStatusMap } = await response.json();
+    const data: GitStatusResponse = await response.json();
     setGitStatus(data.files);
     setGitRoot(data.root);
+    setGitBranch(data.branch ?? null);
   }, []);
 
   const fetchTreeForRoot = useCallback(async (rootPath: string, depth = 2) => {
@@ -602,6 +612,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       setTree(null);
       setGitStatus({});
       setGitRoot("");
+      setGitBranch(null);
       setError(formatMissingExplorerRootMessage(activeProjectId));
       setRefreshToken((current) => current + 1);
       return { roots, tree: null };
@@ -617,6 +628,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       setTree(null);
       setGitStatus({});
       setGitRoot("");
+      setGitBranch(null);
       setError(error instanceof Error ? error.message : "Failed to load directory tree.");
       setRefreshToken((current) => current + 1);
       return { roots, tree: null };
@@ -1094,6 +1106,17 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
                 {projectName}
               </h3>
               <p className="truncate text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>{workspaceRootLabel}</p>
+              {gitBranch && (
+                <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>
+                  <svg width="9" height="9" viewBox="0 0 16 16" className="shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="4" cy="3.5" r="1.75" />
+                    <circle cx="4" cy="12.5" r="1.75" />
+                    <circle cx="12" cy="7.5" r="1.75" />
+                    <path d="M4 5.25v5.5M5.45 4.5h2.2A4.35 4.35 0 0112 7.5" />
+                  </svg>
+                  <span className="truncate font-medium" title={`branch: ${gitBranch}`}>{gitBranch}</span>
+                </div>
+              )}
             </div>
           </div>
           {onCollapse && (

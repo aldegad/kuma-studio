@@ -16,7 +16,7 @@
  */
 
 import { access } from "node:fs/promises";
-import { chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, readFile, readdir, readlink, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -41,6 +41,7 @@ const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.jso
 
 const SKILLS = [
   { id: "kuma-brief", source: "kuma-brief" },
+  { id: "kuma-cmux-ops", source: "kuma-cmux-ops" },
   { id: "kuma-picker", source: "kuma-picker" },
   { id: "kuma-recovery", source: "kuma-recovery" },
   { id: "kuma-server", source: "kuma-server" },
@@ -49,11 +50,13 @@ const SKILLS = [
   { id: "noeuri", source: "noeuri" },
   { id: "overnight-on", source: "overnight-on" },
   { id: "overnight-off", source: "overnight-off" },
-  { id: "dev-team", source: "dev-team" },
-  { id: "strategy-analytics-team", source: "analytics-team" },
-  { id: "analytics-team", source: "analytics-team" },
-  { id: "strategy-team", source: "strategy-team" },
-  { id: "tmux-ops", source: "tmux-ops" },
+];
+const RETIRED_SKILL_IDS = [
+  "analytics-team",
+  "dev-team",
+  "strategy-analytics-team",
+  "strategy-team",
+  "tmux-ops",
 ];
 const SKILL_INSTALL_TARGETS = [
   { id: "claude", label: "Claude", dir: CLAUDE_SKILLS_DIR },
@@ -88,6 +91,15 @@ function parseFlags(argv) {
 async function pathExists(target) {
   try {
     await access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function pathEntryExists(target) {
+  try {
+    await lstat(target);
     return true;
   } catch {
     return false;
@@ -130,7 +142,7 @@ async function copyFileIfChanged(src, dest) {
 }
 
 async function ensureSymlink(target, dest) {
-  const destExists = await pathExists(dest);
+  const destExists = await pathEntryExists(dest);
 
   if (destExists) {
     const stats = await lstat(dest);
@@ -155,6 +167,44 @@ async function ensureSymlink(target, dest) {
   return destExists ? "updated" : "created";
 }
 
+async function cleanupRetiredSkillLinks(installTarget) {
+  const repoSkillsRoot = resolve(ROOT, "skills");
+  for (const skillId of RETIRED_SKILL_IDS) {
+    const destDir = resolve(installTarget.dir, skillId);
+    let stats;
+    try {
+      stats = await lstat(destDir);
+    } catch {
+      continue;
+    }
+
+    if (!stats.isSymbolicLink()) {
+      warn(`${installTarget.label}: retired skill ${skillId} exists but is not a symlink — leaving untouched`);
+      addSummary("skipped", `Skipped non-symlink retired skill ${summarizePath(destDir)}`);
+      continue;
+    }
+
+    const rawTarget = await readlink(destDir);
+    const absoluteTarget = resolve(dirname(destDir), rawTarget);
+    const resolvedTarget = await realpath(destDir).catch(() => null);
+    const pointsAtRepoSkills =
+      absoluteTarget === repoSkillsRoot ||
+      absoluteTarget.startsWith(`${repoSkillsRoot}/`) ||
+      resolvedTarget === repoSkillsRoot ||
+      Boolean(resolvedTarget?.startsWith(`${repoSkillsRoot}/`));
+
+    if (!pointsAtRepoSkills) {
+      warn(`${installTarget.label}: retired skill ${skillId} points outside repo skills — leaving untouched`);
+      addSummary("skipped", `Skipped external retired skill ${summarizePath(destDir)} → ${rawTarget}`);
+      continue;
+    }
+
+    await unlink(destDir);
+    log(`${installTarget.label}: removed retired skill ${skillId}`);
+    addSummary("removed", `${installTarget.label} removed retired skill ${summarizePath(destDir)}`);
+  }
+}
+
 function resolveSkillInstallTargets(flags) {
   const claudeOnly = flags.has("claude-only");
   const codexOnly = flags.has("codex-only");
@@ -175,6 +225,7 @@ async function installSkills(flags) {
     const agentRoot = dirname(installTarget.dir);
     await ensureDirWithSummary(agentRoot);
     await ensureDirWithSummary(installTarget.dir);
+    await cleanupRetiredSkillLinks(installTarget);
 
     for (const skill of SKILLS) {
       const srcDir = resolve(ROOT, "skills", skill.source);
@@ -449,8 +500,16 @@ async function registerSettings() {
   if (!settings.enabledPlugins) settings.enabledPlugins = {};
 
   let changed = false;
+  for (const skillId of RETIRED_SKILL_IDS) {
+    const key = `${skillId}@user-skills`;
+    if (settings.enabledPlugins[key] != null) {
+      delete settings.enabledPlugins[key];
+      changed = true;
+    }
+  }
+
   for (const skill of SKILLS) {
-    const key = `${skill}@user-skills`;
+    const key = `${skill.id}@user-skills`;
     if (!settings.enabledPlugins[key]) {
       settings.enabledPlugins[key] = true;
       changed = true;
