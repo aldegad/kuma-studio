@@ -61,6 +61,9 @@ export interface GitActivityRepo {
   isMainWorktree?: boolean | null;
   branch: string | null;
   branchStatus?: GitActivityBranchStatus;
+  commitCount?: number;
+  mergeCommitCount?: number;
+  commitsToday?: number;
   mergeCommitsToday?: number;
   commits: GitActivityCommit[];
 }

@@ -6,6 +6,7 @@ import { readProjectsRegistry } from "./project-defaults.mjs";
 import { buildProjectWorktreeIndex, isWithinRoot, resolveMaybeRealPath } from "./git-worktrees.mjs";
 
 const POLLING_INTERVAL_MS = 5 * 60 * 1000;
+const GIT_ACTIVITY_COMMIT_LIMIT = 50;
 const GIT_LOG_FORMAT = "%H%x1f%h%x1f%s%x1f%an%x1f%cI%x1f%P%x1f%D%x1e";
 
 let pollingInterval = null;
@@ -124,11 +125,22 @@ function readBranchStatus(repoPath) {
   };
 }
 
-function readCommits(repoPath) {
+function readRevisionCount(repoPath, args = []) {
+  const output = execGit(repoPath, ["rev-list", "--count", ...args, "HEAD"], 10_000);
+  const count = Number.parseInt(output ?? "0", 10);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function readCommits(repoPath, { maxCount = GIT_ACTIVITY_COMMIT_LIMIT } = {}) {
   try {
+    const args = ["log", "--date=iso-strict", `--format=${GIT_LOG_FORMAT}`];
+    if (Number.isFinite(maxCount) && maxCount > 0) {
+      args.push(`--max-count=${Math.floor(maxCount)}`);
+    }
+
     const raw = execFileSync(
       "git",
-      ["log", "--since=midnight", "--date=iso-strict", `--format=${GIT_LOG_FORMAT}`],
+      args,
       {
         cwd: repoPath,
         encoding: "utf-8",
@@ -213,6 +225,10 @@ function resolveProjectForRepo(repoPath, projectRoots, worktreeIndex) {
 
 function buildRepoActivity(repoPath, projectRoots, worktreeIndex) {
   const commits = readCommits(repoPath);
+  const commitCount = readRevisionCount(repoPath);
+  const mergeCommitCount = readRevisionCount(repoPath, ["--merges"]);
+  const commitsToday = readRevisionCount(repoPath, ["--since=midnight"]);
+  const mergeCommitsToday = readRevisionCount(repoPath, ["--since=midnight", "--merges"]);
   const project = resolveProjectForRepo(repoPath, projectRoots, worktreeIndex);
   const worktree = project?.worktree ?? resolveWorktreeForRepo(repoPath, worktreeIndex);
 
@@ -229,7 +245,10 @@ function buildRepoActivity(repoPath, projectRoots, worktreeIndex) {
     isMainWorktree: worktree?.isMain ?? null,
     branch: readBranch(repoPath),
     branchStatus: readBranchStatus(repoPath),
-    mergeCommitsToday: commits.filter((commit) => commit.isMerge).length,
+    commitCount,
+    mergeCommitCount,
+    commitsToday,
+    mergeCommitsToday,
     commits,
   };
 }
@@ -249,7 +268,7 @@ function refreshGitActivity() {
     workspace,
     repos,
     projectWorktrees: worktreeIndex.byProjectId,
-    totalCommitsToday: repos.reduce((total, repo) => total + repo.commits.length, 0),
+    totalCommitsToday: repos.reduce((total, repo) => total + (repo.commitsToday ?? 0), 0),
     totalMergeCommitsToday: repos.reduce((total, repo) => total + repo.mergeCommitsToday, 0),
   };
 

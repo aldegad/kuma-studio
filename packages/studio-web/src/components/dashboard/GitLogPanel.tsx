@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
-import type { GitActivityBranchStatus, GitActivityRepo } from "../../types/stats";
+import type { GitActivityBranchStatus, GitActivityCommit, GitActivityRepo } from "../../types/stats";
 
 interface GitLogPanelProps {
   activeProjectId: string | null;
@@ -25,16 +25,27 @@ const BRANCH_STATE_COLORS: Record<GitActivityBranchStatus["state"], string> = {
   "no-upstream": "var(--t-faint)",
 };
 
-function formatCommitTime(timestamp: string) {
+function isSameLocalDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear()
+    && left.getMonth() === right.getMonth()
+    && left.getDate() === right.getDate();
+}
+
+function formatCommitTimestamp(timestamp: string) {
   const value = new Date(timestamp);
   if (Number.isNaN(value.getTime())) {
-    return "--:--";
+    return "--";
   }
 
-  return value.toLocaleTimeString("ko-KR", {
+  const time = value.toLocaleTimeString("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
   });
+  if (isSameLocalDay(value, new Date())) {
+    return time;
+  }
+
+  return `${value.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })} ${time}`;
 }
 
 function formatBranchStatus(status: GitActivityBranchStatus | undefined) {
@@ -58,6 +69,21 @@ function getRepoDisplayName(repo: GitActivityRepo, showProjectName: boolean) {
   return repo.name;
 }
 
+function formatRefLabel(ref: string) {
+  return ref.replace(/^HEAD -> /u, "").replace(/^tag: /u, "#");
+}
+
+function getParentLabel(commit: GitActivityCommit) {
+  const parentCount = commit.parentCount ?? commit.parents?.length ?? 0;
+  if (parentCount === 0) {
+    return "root";
+  }
+  if (parentCount > 1) {
+    return `${parentCount} parents`;
+  }
+  return null;
+}
+
 export function GitLogPanel({
   activeProjectId,
   activeProjectName,
@@ -72,8 +98,10 @@ export function GitLogPanel({
       )
     : gitActivity.repos;
   const reposWithCommits = scopedRepos.filter((repo) => repo.commits.length > 0);
-  const scopedCommitCount = scopedRepos.reduce((total, repo) => total + repo.commits.length, 0);
-  const scopedMergeCount = scopedRepos.reduce((total, repo) => total + (repo.mergeCommitsToday ?? 0), 0);
+  const scopedCommitCount = scopedRepos.reduce((total, repo) => total + (repo.commitCount ?? repo.commits.length), 0);
+  const visibleCommitCount = scopedRepos.reduce((total, repo) => total + repo.commits.length, 0);
+  const scopedTodayCount = scopedRepos.reduce((total, repo) => total + (repo.commitsToday ?? 0), 0);
+  const scopedMergeCount = scopedRepos.reduce((total, repo) => total + (repo.mergeCommitCount ?? repo.mergeCommitsToday ?? 0), 0);
   const branchRepos = scopedRepos.filter((repo) => repo.branch || repo.branchStatus);
   const scopeLabel = activeWorktreeName
     ? `${activeProjectName ?? activeProjectId ?? "프로젝트"} · ${activeWorktreeName}`
@@ -97,6 +125,8 @@ export function GitLogPanel({
           </span>
           <span className="block truncate text-[9px]" style={{ color: "var(--t-faint)" }}>
             {scopeLabel}
+            {visibleCommitCount > 0 ? ` · 최근 ${visibleCommitCount}개` : ""}
+            {scopedTodayCount > 0 ? ` · 오늘 ${scopedTodayCount}개` : ""}
             {scopedMergeCount > 0 ? ` · merge ${scopedMergeCount}` : ""}
           </span>
         </span>
@@ -134,6 +164,12 @@ export function GitLogPanel({
                       {formatBranchStatus(repo.branchStatus)}
                     </span>
                   </div>
+                  <div className="mt-1 flex items-center gap-2 text-[8px] font-mono" style={{ color: "var(--t-faint)" }}>
+                    <span>{repo.commitCount ?? repo.commits.length} commits</span>
+                    {((repo.mergeCommitCount ?? repo.mergeCommitsToday) ?? 0) > 0 && (
+                      <span>{repo.mergeCommitCount ?? repo.mergeCommitsToday} merges</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -142,30 +178,47 @@ export function GitLogPanel({
             {reposWithCommits.length > 0 ? reposWithCommits.map((repo) => (
               <div key={repo.path} className="space-y-1">
                 {repo.commits.map((commit) => (
-                  <div key={`${repo.path}:${commit.hash}`} className="flex items-start gap-2">
-                    <p className="min-w-0 text-[10px] leading-tight" style={{ color: "var(--t-secondary)" }}>
-                      <span className="font-semibold" style={{ color: "var(--t-primary)" }}>
-                        {getRepoDisplayName(repo, showProjectName)}
+                  <div
+                    key={`${repo.path}:${commit.hash}`}
+                    className="rounded-md px-2 py-1.5"
+                    style={{ background: "rgba(255,255,255,0.035)" }}
+                    title={commit.hash}
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="mt-[1px] w-12 shrink-0 font-mono text-[9px]" style={{ color: "var(--t-muted)" }}>
+                        {commit.shortHash ?? commit.hash.slice(0, 7)}
                       </span>
-                      {commit.isMerge && (
-                        <>
-                          <span style={{ color: "var(--t-faint)" }}> | </span>
-                          <span className="font-semibold" style={{ color: "#d97706" }}>merge</span>
-                        </>
-                      )}
-                      <span style={{ color: "var(--t-faint)" }}> | </span>
-                      <span>{commit.message}</span>
-                      <span style={{ color: "var(--t-faint)" }}> | </span>
-                      <span style={{ color: "var(--t-muted)" }}>
-                        {formatCommitTime(commit.timestamp)}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[10px] font-medium leading-tight" style={{ color: "var(--t-secondary)" }}>
+                          {commit.message}
+                        </p>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px]" style={{ color: "var(--t-faint)" }}>
+                          <span className="font-semibold" style={{ color: "var(--t-muted)" }}>
+                            {getRepoDisplayName(repo, showProjectName)}
+                          </span>
+                          {commit.isMerge && (
+                            <span className="font-semibold" style={{ color: "#d97706" }}>merge</span>
+                          )}
+                          {getParentLabel(commit) && (
+                            <span>{getParentLabel(commit)}</span>
+                          )}
+                          {(commit.refs ?? []).slice(0, 3).map((ref) => (
+                            <span key={ref} className="rounded-full px-1" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
+                              {formatRefLabel(ref)}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-[9px]" style={{ color: "var(--t-muted)" }}>
+                        {formatCommitTimestamp(commit.timestamp)}
                       </span>
-                    </p>
+                    </div>
                   </div>
                 ))}
               </div>
             )) : (
               <p className="text-[10px]" style={{ color: "var(--t-muted)" }}>
-                오늘 기록된 커밋이 없습니다.
+                표시할 커밋이 없습니다.
               </p>
             )}
           </div>

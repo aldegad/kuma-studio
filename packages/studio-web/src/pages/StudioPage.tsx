@@ -993,7 +993,12 @@ export function StudioPage() {
                 >
                   <span className="truncate">{formatWorktreeButtonLabel(worktree)}</span>
                   {!worktree.isMain && (
-                    <span className="rounded-full bg-amber-100/10 px-1 text-[8px] text-amber-100/55">linked</span>
+                    <span
+                      className="rounded-full bg-amber-100/10 px-1 text-[8px] text-amber-100/55"
+                      title="프로젝트 루트와 별도 경로의 git worktree"
+                    >
+                      별도
+                    </span>
                   )}
                 </button>
               );

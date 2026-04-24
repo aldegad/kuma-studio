@@ -348,6 +348,7 @@ const EXPLORER_LAYOUT_STORAGE_KEY = "kuma-studio-file-explorer-layout:v1";
 const EXPLORER_STATE_DEBOUNCE_MS = 350;
 
 type ExplorerRoots = ExplorerRootsResponse;
+type ExplorerWorktreeRoot = NonNullable<ExplorerRootsResponse["worktreeRoots"]>[string][number];
 
 type SidebarTab = "files" | "vault";
 
@@ -416,6 +417,18 @@ function writeExplorerLayout(projectKey: string, treeWidth: number) {
   }
 }
 
+function formatWorktreeBranchLabel(worktree: ExplorerWorktreeRoot, fallbackBranch?: string | null): string {
+  return fallbackBranch ?? worktree.branch ?? worktree.name ?? "detached";
+}
+
+function decorateWorktreeRootNode(tree: FsNode, worktree: ExplorerWorktreeRoot): FsNode {
+  return {
+    ...tree,
+    name: worktree.name || tree.name,
+    deletable: false,
+  };
+}
+
 function emptyProjectState(): StudioExplorerProjectState {
   return {
     selectedPath: null,
@@ -481,8 +494,16 @@ export function FileExplorer({
   const [gitStatus, setGitStatus] = useState<GitStatusMap>({});
   const [gitRoot, setGitRoot] = useState<string>("");
   const [gitBranch, setGitBranch] = useState<string | null>(null);
+  const [gitStatusByRoot, setGitStatusByRoot] = useState<Record<string, GitStatusMap>>({});
+  const [gitBranchesByRoot, setGitBranchesByRoot] = useState<Record<string, string | null>>({});
   const [refreshToken, setRefreshToken] = useState(0);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activeProjectWorktrees = useMemo(
+    () => activeProjectId ? explorerRoots?.worktreeRoots?.[activeProjectId] ?? [] : [],
+    [activeProjectId, explorerRoots?.worktreeRoots],
+  );
+  const showingProjectWorktreeBundle = Boolean(activeProjectId && !activeWorktreePath && activeProjectWorktrees.length > 1);
 
   useEffect(() => {
     treeWidthRef.current = treeWidth;
@@ -511,6 +532,8 @@ export function FileExplorer({
     setViewerScrollByPath({});
     setSidebarTab("files");
     setGitBranch(null);
+    setGitStatusByRoot({});
+    setGitBranchesByRoot({});
   }, [projectStateKey]);
 
   const scheduleExplorerStatePatch = useCallback((patch: Partial<StudioExplorerProjectState>) => {
@@ -589,6 +612,8 @@ export function FileExplorer({
       setGitStatus({});
       setGitRoot("");
       setGitBranch(null);
+      setGitStatusByRoot({});
+      setGitBranchesByRoot({});
       return;
     }
     const response = await fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`);
@@ -596,7 +621,44 @@ export function FileExplorer({
     setGitStatus(data.files);
     setGitRoot(data.root);
     setGitBranch(data.branch ?? null);
+    setGitStatusByRoot({});
+    setGitBranchesByRoot({});
   }, []);
+
+  const loadGitStatuses = useCallback(async (roots: string[]) => {
+    const uniqueRoots = Array.from(new Set(roots.filter(Boolean)));
+    if (uniqueRoots.length === 0) {
+      setGitStatus({});
+      setGitRoot("");
+      setGitBranch(null);
+      setGitStatusByRoot({});
+      setGitBranchesByRoot({});
+      return;
+    }
+
+    if (uniqueRoots.length === 1) {
+      await loadGitStatus(uniqueRoots[0]);
+      return;
+    }
+
+    const responses = await Promise.all(uniqueRoots.map(async (root) => {
+      const response = await fetch(`${BASE_URL}/studio/git/status?root=${encodeURIComponent(root)}`);
+      const data: GitStatusResponse = await response.json();
+      return { requestedRoot: root, data };
+    }));
+    const nextStatusByRoot: Record<string, GitStatusMap> = {};
+    const nextBranchesByRoot: Record<string, string | null> = {};
+    for (const { requestedRoot, data } of responses) {
+      const root = data.root || requestedRoot;
+      nextStatusByRoot[root] = data.files;
+      nextBranchesByRoot[root] = data.branch ?? null;
+    }
+    setGitStatus({});
+    setGitRoot("");
+    setGitBranch(null);
+    setGitStatusByRoot(nextStatusByRoot);
+    setGitBranchesByRoot(nextBranchesByRoot);
+  }, [loadGitStatus]);
 
   const fetchTreeForRoot = useCallback(async (rootPath: string, depth = 2) => {
     const target = rootPath?.trim();
@@ -637,12 +699,36 @@ export function FileExplorer({
       setGitStatus({});
       setGitRoot("");
       setGitBranch(null);
+      setGitStatusByRoot({});
+      setGitBranchesByRoot({});
       setError(formatMissingExplorerRootMessage(activeProjectId));
       setRefreshToken((current) => current + 1);
       return { roots, tree: null };
     }
 
     try {
+      const projectWorktrees = activeProjectId && !activeWorktreePath
+        ? roots.worktreeRoots?.[activeProjectId] ?? []
+        : [];
+      if (projectWorktrees.length > 1) {
+        const worktreeTrees = await Promise.all(projectWorktrees.map(async (worktree) => ({
+          worktree,
+          tree: await fetchTreeForRoot(worktree.path, 2),
+        })));
+        const bundleTree: FsNode = {
+          name: activeProjectName ?? activeProjectId ?? "project",
+          path: activeRoot.path,
+          type: "dir",
+          children: worktreeTrees
+            .map(({ worktree, tree }) => tree ? decorateWorktreeRootNode(tree, worktree) : null)
+            .filter((node): node is FsNode => node !== null),
+        };
+        setTree(bundleTree);
+        setError(null);
+        setRefreshToken((current) => current + 1);
+        return { roots, tree: bundleTree };
+      }
+
       const data = await fetchTreeForRoot(activeRoot.path, 2);
       setTree(data);
       setError(null);
@@ -653,11 +739,13 @@ export function FileExplorer({
       setGitStatus({});
       setGitRoot("");
       setGitBranch(null);
+      setGitStatusByRoot({});
+      setGitBranchesByRoot({});
       setError(error instanceof Error ? error.message : "Failed to load directory tree.");
       setRefreshToken((current) => current + 1);
       return { roots, tree: null };
     }
-  }, [activeProjectId, fetchTreeForRoot, resolveExplorerRootForState]);
+  }, [activeProjectId, activeProjectName, activeWorktreePath, fetchTreeForRoot, resolveExplorerRootForState]);
 
   const reloadVaultIndex = useCallback(async () => {
     const vaultRoot = explorerRoots?.globalRoots.vault;
@@ -685,18 +773,26 @@ export function FileExplorer({
     setVaultIndexLoaded(true);
   }, [explorerRoots?.globalRoots.vault]);
 
+  const gitStatusRoots = useMemo(() => {
+    if (showingProjectWorktreeBundle) {
+      return activeProjectWorktrees.map((worktree) => worktree.path);
+    }
+
+    return tree?.path ? [tree.path] : [];
+  }, [activeProjectWorktrees, showingProjectWorktreeBundle, tree?.path]);
+  const gitStatusRootSignature = gitStatusRoots.join("\0");
+
   // Fetch git status
   useEffect(() => {
-    const root = tree?.path || "";
-    if (!root) return;
-    void loadGitStatus(root).catch(() => {});
+    if (gitStatusRoots.length === 0) return;
+    void loadGitStatuses(gitStatusRoots).catch(() => {});
 
     // Refresh every 30s
     const interval = setInterval(() => {
-      void loadGitStatus(root).catch(() => {});
+      void loadGitStatuses(gitStatusRoots).catch(() => {});
     }, 30_000);
     return () => clearInterval(interval);
-  }, [loadGitStatus, tree?.path]);
+  }, [gitStatusRootSignature, loadGitStatuses]);
 
   // Filter tree by search query
   const filteredTree = useMemo(() => {
@@ -720,7 +816,9 @@ export function FileExplorer({
   }, [tree, searchQuery]);
 
   // Git status summary
-  const gitChangedCount = Object.keys(gitStatus).length;
+  const gitChangedCount =
+    Object.keys(gitStatus).length
+    + Object.values(gitStatusByRoot).reduce((total, files) => total + Object.keys(files).length, 0);
   const globalSections = useMemo(
     () => GLOBAL_SECTION_DEFS
       .map((section) => ({
@@ -735,6 +833,17 @@ export function FileExplorer({
     () => resolveExplorerRootForState(explorerRoots),
     [explorerRoots, resolveExplorerRootForState],
   );
+  const branchRows = useMemo(() => {
+    if (showingProjectWorktreeBundle) {
+      return activeProjectWorktrees.map((worktree) => ({
+        id: worktree.path,
+        label: formatWorktreeBranchLabel(worktree, gitBranchesByRoot[worktree.path]),
+        path: worktree.path,
+      }));
+    }
+
+    return gitBranch ? [{ id: gitRoot || gitBranch, label: gitBranch, path: gitRoot }] : [];
+  }, [activeProjectWorktrees, gitBranch, gitBranchesByRoot, gitRoot, showingProjectWorktreeBundle]);
 
   // Fetch root tree
   useEffect(() => {
@@ -1095,7 +1204,9 @@ export function FileExplorer({
       : activeProjectName ?? activeProjectId
     : "workspace";
   const workspaceRootLabel =
-    tree?.path
+    showingProjectWorktreeBundle
+    ? `${activeProjectWorktrees.length} worktrees`
+    : tree?.path
     || activeExplorerRoot?.path
     || (activeProjectId ? formatMissingExplorerRootMessage(activeProjectId) : explorerRoots?.workspaceRoot)
     || "workspace";
@@ -1132,15 +1243,19 @@ export function FileExplorer({
                 {projectName}
               </h3>
               <p className="truncate text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>{workspaceRootLabel}</p>
-              {gitBranch && (
-                <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>
-                  <svg width="9" height="9" viewBox="0 0 16 16" className="shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <circle cx="4" cy="3.5" r="1.75" />
-                    <circle cx="4" cy="12.5" r="1.75" />
-                    <circle cx="12" cy="7.5" r="1.75" />
-                    <path d="M4 5.25v5.5M5.45 4.5h2.2A4.35 4.35 0 0112 7.5" />
-                  </svg>
-                  <span className="truncate font-medium" title={`branch: ${gitBranch}`}>{gitBranch}</span>
+              {branchRows.length > 0 && (
+                <div className="mt-0.5 space-y-0.5">
+                  {branchRows.map((row) => (
+                    <div key={row.id} className="flex min-w-0 items-center gap-1 text-[9px] leading-tight" style={{ color: "var(--t-faint)" }}>
+                      <svg width="9" height="9" viewBox="0 0 16 16" className="shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <circle cx="4" cy="3.5" r="1.75" />
+                        <circle cx="4" cy="12.5" r="1.75" />
+                        <circle cx="12" cy="7.5" r="1.75" />
+                        <path d="M4 5.25v5.5M5.45 4.5h2.2A4.35 4.35 0 0112 7.5" />
+                      </svg>
+                      <span className="truncate font-medium" title={`${row.label} · ${row.path}`}>{row.label}</span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1274,6 +1389,7 @@ export function FileExplorer({
                 onDelete={handleFileDelete}
                 gitStatus={gitStatus}
                 gitRoot={gitRoot}
+                gitStatusByRoot={gitStatusByRoot}
                 refreshToken={refreshToken}
                 expandedPaths={expandedPaths}
                 onDirectoryToggle={handleDirectoryToggle}

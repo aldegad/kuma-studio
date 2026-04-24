@@ -8,6 +8,7 @@ export interface FsNode {
   expandable?: boolean;
   children?: FsNode[];
   size?: number;
+  deletable?: boolean;
 }
 
 export type GitStatusMap = Record<string, "modified" | "added" | "deleted" | "renamed">;
@@ -21,6 +22,7 @@ interface FileTreeNodeProps {
   onDelete?: (path: string, name: string) => Promise<void>;
   gitStatus?: GitStatusMap;
   gitRoot?: string;
+  gitStatusByRoot?: Record<string, GitStatusMap>;
   refreshToken?: number;
   expandedPaths: ReadonlySet<string>;
   onDirectoryToggle: (path: string, expanded: boolean) => void;
@@ -213,30 +215,74 @@ const GIT_STATUS_STYLE: Record<string, { label: string; color: string }> = {
   renamed:  { label: "R", color: "text-sky-500" },
 };
 
+interface GitStatusContext {
+  root: string;
+  files: GitStatusMap;
+}
+
+function normalizeRootPath(root: string): string {
+  return root.replace(/\/+$/u, "");
+}
+
+function findGitStatusContext(
+  nodePath: string,
+  gitStatus: GitStatusMap | undefined,
+  gitRoot: string | undefined,
+  gitStatusByRoot: Record<string, GitStatusMap> | undefined,
+): GitStatusContext | null {
+  const contexts: GitStatusContext[] = [];
+  if (gitStatus && gitRoot) {
+    contexts.push({ root: normalizeRootPath(gitRoot), files: gitStatus });
+  }
+  for (const [root, files] of Object.entries(gitStatusByRoot ?? {})) {
+    contexts.push({ root: normalizeRootPath(root), files });
+  }
+
+  contexts.sort((left, right) => right.root.length - left.root.length);
+  for (const context of contexts) {
+    if (nodePath === context.root || nodePath.startsWith(`${context.root}/`)) {
+      return context;
+    }
+  }
+
+  return null;
+}
+
+function relativePathFromGitRoot(nodePath: string, gitRoot: string): string | null {
+  const root = normalizeRootPath(gitRoot);
+  if (nodePath === root) {
+    return "";
+  }
+  const prefix = `${root}/`;
+  return nodePath.startsWith(prefix) ? nodePath.slice(prefix.length) : null;
+}
+
 function getGitStatusForPath(
   nodePath: string,
   gitStatus: GitStatusMap | undefined,
   gitRoot: string | undefined,
+  gitStatusByRoot: Record<string, GitStatusMap> | undefined,
 ): string | null {
-  if (!gitStatus || !gitRoot) return null;
-  // Convert absolute path to relative path from git root
-  const prefix = gitRoot.endsWith("/") ? gitRoot : gitRoot + "/";
-  const rel = nodePath.startsWith(prefix) ? nodePath.slice(prefix.length) : null;
-  if (!rel) return null;
-  return gitStatus[rel] ?? null;
+  const context = findGitStatusContext(nodePath, gitStatus, gitRoot, gitStatusByRoot);
+  if (!context) return null;
+  const rel = relativePathFromGitRoot(nodePath, context.root);
+  if (rel == null || rel === "") return null;
+  return context.files[rel] ?? null;
 }
 
 function hasDirGitChanges(
   nodePath: string,
   gitStatus: GitStatusMap | undefined,
   gitRoot: string | undefined,
+  gitStatusByRoot: Record<string, GitStatusMap> | undefined,
 ): boolean {
-  if (!gitStatus || !gitRoot) return false;
-  const prefix = gitRoot.endsWith("/") ? gitRoot : gitRoot + "/";
-  const dirRel = nodePath.startsWith(prefix) ? nodePath.slice(prefix.length) : null;
-  if (!dirRel) return false;
+  const context = findGitStatusContext(nodePath, gitStatus, gitRoot, gitStatusByRoot);
+  if (!context) return false;
+  const dirRel = relativePathFromGitRoot(nodePath, context.root);
+  if (dirRel == null) return false;
+  if (dirRel === "") return Object.keys(context.files).length > 0;
   const dirPrefix = dirRel.endsWith("/") ? dirRel : dirRel + "/";
-  return Object.keys(gitStatus).some((key) => key.startsWith(dirPrefix));
+  return Object.keys(context.files).some((key) => key.startsWith(dirPrefix));
 }
 
 export function FileTreeNode({
@@ -248,6 +294,7 @@ export function FileTreeNode({
   onDelete,
   gitStatus,
   gitRoot,
+  gitStatusByRoot,
   refreshToken = 0,
   expandedPaths,
   onDirectoryToggle,
@@ -262,9 +309,10 @@ export function FileTreeNode({
   const isSkipped = isDir && node.expandable === false;
   const isSelected = !isDir && selectedPath === node.path;
   const fileMeta = !isDir ? getFileMeta(node.name) : null;
-  const fileGitStatus = !isDir ? getGitStatusForPath(node.path, gitStatus, gitRoot) : null;
-  const dirHasChanges = isDir ? hasDirGitChanges(node.path, gitStatus, gitRoot) : false;
+  const fileGitStatus = !isDir ? getGitStatusForPath(node.path, gitStatus, gitRoot, gitStatusByRoot) : null;
+  const dirHasChanges = isDir ? hasDirGitChanges(node.path, gitStatus, gitRoot, gitStatusByRoot) : false;
   const gitStyle = fileGitStatus ? GIT_STATUS_STYLE[fileGitStatus] : null;
+  const canDelete = Boolean(onDelete && node.deletable !== false);
 
   useEffect(() => {
     const nextChildren = node.children ?? null;
@@ -421,7 +469,7 @@ export function FileTreeNode({
         </button>
 
         {/* Delete button — hover only */}
-        {onDelete && !confirmDelete && !loading && (
+        {canDelete && !confirmDelete && !loading && (
           <button
             type="button"
             onClick={handleDeleteClick}
