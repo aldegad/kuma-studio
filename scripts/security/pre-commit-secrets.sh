@@ -24,23 +24,92 @@ if [ "${#STAGED_FILES[@]}" -eq 0 ]; then
   exit 0
 fi
 
-protected_identifier_alternation() {
-  local identifier_block_dash="bl"'ock-s'
-  local identifier_block_underscore="bl"'ock_s'
-  local identifier_private_c="g"'sil'
-  printf '%s|%s|%s' "$identifier_block_dash" "$identifier_block_underscore" "$identifier_private_c"
+protected_identifier_regex() {
+  REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const staticIds = ["bl" + "ock-s", "bl" + "ock_s", "g" + "sil"];
+const projectsPath = process.env.KUMA_PROJECTS_PATH
+  || path.join(process.env.HOME || "", ".kuma", "projects.json");
+const repoRoot = fs.realpathSync.native(process.env.REPO_ROOT);
+const repoLeaf = path.basename(repoRoot).toLowerCase();
+const publicIds = new Set([repoLeaf, "kuma-studio", "kuma-studio-private"]);
+const identifiers = new Set(staticIds);
+
+function addIdentifier(value) {
+  if (typeof value !== "string") return;
+  const normalized = value.trim();
+  if (normalized.length < 4) return;
+  if (publicIds.has(normalized.toLowerCase())) return;
+  identifiers.add(normalized);
 }
 
+function addRootSegments(value) {
+  if (typeof value !== "string" || !value.trim()) return;
+  const normalizedRoot = path.resolve(value);
+  if (normalizedRoot === repoRoot || normalizedRoot.startsWith(`${repoRoot}${path.sep}`)) {
+    return;
+  }
+  addIdentifier(path.basename(normalizedRoot));
+}
+
+function visitProjectEntry(key, value) {
+  addIdentifier(key);
+  if (typeof value === "string") {
+    addRootSegments(value);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  addIdentifier(value.projectId);
+  addIdentifier(value.id);
+  addIdentifier(value.slug);
+  addRootSegments(value.root);
+  addRootSegments(value.path);
+  addRootSegments(value.workspace);
+}
+
+if (fs.existsSync(projectsPath)) {
+  const parsed = JSON.parse(fs.readFileSync(projectsPath, "utf8"));
+  if (Array.isArray(parsed)) {
+    parsed.forEach((value, index) => visitProjectEntry(String(index), value));
+  } else if (parsed && typeof parsed === "object") {
+    const projects = parsed.projects;
+    if (Array.isArray(projects)) {
+      projects.forEach((value, index) => visitProjectEntry(String(index), value));
+    } else if (projects && typeof projects === "object") {
+      Object.entries(projects).forEach(([key, value]) => visitProjectEntry(key, value));
+    }
+    Object.entries(parsed).forEach(([key, value]) => {
+      if (key === "projects") return;
+      if (value && typeof value === "object") {
+        visitProjectEntry(key, value);
+      } else if (typeof value === "string" && value.includes(path.sep)) {
+        visitProjectEntry(key, value);
+      }
+    });
+  }
+}
+
+function escapeRegex(value) {
+  return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+}
+
+process.stdout.write(Array.from(identifiers).map(escapeRegex).join("|"));
+NODE
+}
+
+if ! PROTECTED_IDENTIFIER_REGEX="$(protected_identifier_regex)"; then
+  printf 'Blocked commit: could not resolve private-project identifier policy from local project registry.\n' >&2
+  exit 1
+fi
+
 protected_identifier_path_regex() {
-  local identifiers
-  identifiers="$(protected_identifier_alternation)"
-  printf '(^|[^[:alnum:]])(%s)([^[:alnum:]]|$)' "$identifiers"
+  printf '(^|[^[:alnum:]])(%s)([^[:alnum:]]|$)' "$PROTECTED_IDENTIFIER_REGEX"
 }
 
 protected_identifier_content_regex() {
-  local identifiers
-  identifiers="$(protected_identifier_alternation)"
-  printf '(^|[^[:alnum:]_])(%s)([^[:alnum:]_]|$)' "$identifiers"
+  printf '(^|[^[:alnum:]_])(%s)([^[:alnum:]_]|$)' "$PROTECTED_IDENTIFIER_REGEX"
 }
 
 is_blocked_path() {

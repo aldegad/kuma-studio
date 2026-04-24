@@ -29,7 +29,7 @@ updated: 2026-04-20T09:30:00.000Z
 images: []
 ---
 
-pqc-unified와 kuma-studio를 자주 같이 본다.
+alpha-suite와 kuma-studio를 자주 같이 본다.
 `,
     "utf8",
   );
@@ -181,7 +181,7 @@ describe("vault search", () => {
 
     const result = await searchVault({
       vaultDir,
-      query: "pqc-unified",
+      query: "alpha-suite",
     });
 
     expect(result.hits).toEqual([

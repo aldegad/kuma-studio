@@ -9,8 +9,6 @@ export const CORE_PROJECT_TAB_ID = "kuma-studio";
 const RESERVED_PROJECT_IDS = new Set(["system", "workspace"]);
 const PROJECT_TAB_PRIORITY = [
   CORE_PROJECT_TAB_ID,
-  "my-agent-girlfriend",
-  "pqc-unified",
 ];
 
 function isSelectableProjectId(projectId: string | null | undefined): projectId is string {

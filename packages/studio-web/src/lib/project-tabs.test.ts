@@ -21,26 +21,26 @@ describe("buildStudioProjectTabs", () => {
     const projectTabs = buildStudioProjectTabs(
       [
         makeProject("workspace"),
-        makeProject("my-agent-girlfriend"),
+        makeProject("alpha-project"),
         makeProject("system"),
       ],
-      ["pqc-unified", "life-ai"],
+      ["beta-project", "gamma-project"],
     );
 
     expect(projectTabs.map((project) => project.projectId)).toEqual([
       CORE_PROJECT_TAB_ID,
-      "my-agent-girlfriend",
-      "pqc-unified",
-      "life-ai",
+      "beta-project",
+      "gamma-project",
+      "alpha-project",
     ]);
   });
 
   it("does not invent priority projects that are missing from live and configured data", () => {
-    const projectTabs = buildStudioProjectTabs([], ["life-ai"]);
+    const projectTabs = buildStudioProjectTabs([], ["gamma-project"]);
 
     expect(projectTabs.map((project) => project.projectId)).toEqual([
       CORE_PROJECT_TAB_ID,
-      "life-ai",
+      "gamma-project",
     ]);
   });
 });
@@ -67,7 +67,7 @@ describe("resolvePinnedHudProjectIds", () => {
 
 describe("splitHudProjectTabs", () => {
   const projectTabs = buildStudioProjectTabs([], [
-    "my-agent-girlfriend",
+    "delta-project",
     "alpha-project",
     "beta-project",
   ]);
@@ -85,7 +85,7 @@ describe("splitHudProjectTabs", () => {
       "beta-project",
     ]);
     expect(overflowProjects.map((project) => project.projectId)).toEqual([
-      "my-agent-girlfriend",
+      "delta-project",
     ]);
   });
 
@@ -97,7 +97,7 @@ describe("splitHudProjectTabs", () => {
       CORE_PROJECT_TAB_ID,
     ]);
     expect(overflowProjects.map((project) => project.projectId)).toEqual([
-      "my-agent-girlfriend",
+      "delta-project",
       "alpha-project",
       "beta-project",
     ]);

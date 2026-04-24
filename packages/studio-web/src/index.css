@@ -359,6 +359,20 @@ body {
   backdrop-filter: blur(8px);
 }
 
+.game-panel-dock {
+  background: rgba(74, 53, 32, 0.84);
+  border: 2px solid rgba(139, 105, 20, 0.34);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px rgba(60, 40, 10, 0.18);
+}
+
+[data-theme="night"] .game-panel-dock,
+[data-theme="night"] .game-zoom-bar {
+  background: rgba(30, 25, 60, 0.88);
+  border-color: rgba(146, 128, 232, 0.34);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28), 0 0 18px rgba(110, 92, 210, 0.08);
+}
+
 [data-theme="night"] .game-zoom-bar {
   background: rgba(30, 25, 60, 0.85);
   border-color: rgba(146, 128, 232, 0.34);

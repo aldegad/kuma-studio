@@ -25,8 +25,8 @@ cmux tree 2>/dev/null
 kuma-dispatch status 2>/dev/null
 
 # 3. 최근 커밋 + 워크트리 변경
-git -C /Users/soohongkim/Documents/workspace/personal/kuma-studio log --oneline -1
-git -C /Users/soohongkim/Documents/workspace/personal/kuma-studio status --short
+git log --oneline -1
+git status --short
 ```
 
 infra 발견 기준:

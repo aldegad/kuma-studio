@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { PanelIcon } from "./PanelIcon";
 import { FloatingPanel } from "./SortablePanel";
 
 const DASHBOARD_POSITIONS_KEY = "kuma-studio-panel-positions";
+const DASHBOARD_MINIMIZED_KEY = "kuma-studio-panel-minimized";
 const DEFAULT_PANEL_X = 16;
 const DEFAULT_PANEL_Y = 56;
 const DEFAULT_PANEL_VERTICAL_STEP = 148;
@@ -86,6 +88,36 @@ function writeStoredPositions(storageKey: string, positions: Record<string, Pane
   }
 
   window.localStorage.setItem(storageKey, JSON.stringify(positions));
+}
+
+function readStoredStringArray(storageKey: string): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return [];
+    }
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((item): item is string => typeof item === "string");
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredStringArray(storageKey: string, values: string[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(storageKey, JSON.stringify(values));
 }
 
 function getDefaultPosition(index: number): PanelPosition {
@@ -192,11 +224,13 @@ function shouldIgnoreDragStart(target: HTMLElement | null) {
 interface DraggableDashboardProps {
   panels: DashboardPanelItem[];
   storageKey?: string;
+  minimizedStorageKey?: string;
 }
 
 export function DraggableDashboard({
   panels,
   storageKey = DASHBOARD_POSITIONS_KEY,
+  minimizedStorageKey = DASHBOARD_MINIMIZED_KEY,
 }: DraggableDashboardProps) {
   const visiblePanels = useMemo(
     () => panels.filter((panel) => !panel.hidden),
@@ -207,6 +241,7 @@ export function DraggableDashboard({
     [visiblePanels],
   );
   const visibleSignature = visibleIds.join("|");
+  const visibleIdSet = useMemo(() => new Set(visibleIds), [visibleSignature]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const dragSessionRef = useRef<DragSession | null>(null);
   const suppressedClickPanelIdRef = useRef<string | null>(null);
@@ -218,16 +253,44 @@ export function DraggableDashboard({
   );
   const positionsRef = useRef(positions);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [minimizedIds, setMinimizedIds] = useState<string[]>(() =>
+    readStoredStringArray(minimizedStorageKey).filter((id) => visibleIds.includes(id)),
+  );
   const [zIndices, setZIndices] = useState<Record<string, number>>(() =>
     visiblePanels.reduce<Record<string, number>>((acc, panel, index) => {
       acc[panel.id] = index + 1;
       return acc;
     }, {}),
   );
+  const minimizedIdSet = useMemo(() => new Set(minimizedIds), [minimizedIds]);
+  const floatingPanels = useMemo(
+    () => visiblePanels.filter((panel) => !minimizedIdSet.has(panel.id)),
+    [visiblePanels, minimizedIdSet],
+  );
+  const dockedPanels = useMemo(
+    () => visiblePanels.filter((panel) => minimizedIdSet.has(panel.id)),
+    [visiblePanels, minimizedIdSet],
+  );
+  const floatingIds = useMemo(
+    () => floatingPanels.map((panel) => panel.id),
+    [floatingPanels],
+  );
+  const floatingSignature = floatingIds.join("|");
 
   useEffect(() => {
     positionsRef.current = positions;
   }, [positions]);
+
+  useEffect(() => {
+    setMinimizedIds((currentIds) => {
+      const nextIds = currentIds.filter((id) => visibleIdSet.has(id));
+      if (nextIds.length === currentIds.length) {
+        return currentIds;
+      }
+      writeStoredStringArray(minimizedStorageKey, nextIds);
+      return nextIds;
+    });
+  }, [minimizedStorageKey, visibleIdSet]);
 
   // Reconcile positions when the set of visible panels changes.
   // IMPORTANT: depend on visibleSignature (a stable string), NOT on
@@ -288,7 +351,7 @@ export function DraggableDashboard({
         let changed = false;
         const next = { ...current };
 
-        for (const id of visibleIds) {
+        for (const id of floatingIds) {
           const intendedPos = stored[id];
           if (!intendedPos) continue;
           const el = container.querySelector<HTMLElement>(`[data-panel-id="${id}"]`);
@@ -314,7 +377,7 @@ export function DraggableDashboard({
     window.addEventListener("resize", clampAllPanels);
     return () => window.removeEventListener("resize", clampAllPanels);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey, visibleSignature]);
+  }, [storageKey, visibleSignature, floatingSignature]);
 
   const stopDragging = useCallback(
     (persist: boolean) => {
@@ -467,6 +530,40 @@ export function DraggableDashboard({
     [],
   );
 
+  const minimizePanel = useCallback(
+    (id: string) => {
+      setMinimizedIds((currentIds) => {
+        if (currentIds.includes(id)) {
+          return currentIds;
+        }
+
+        const nextIds = [...currentIds, id];
+        writeStoredStringArray(minimizedStorageKey, nextIds);
+        return nextIds;
+      });
+    },
+    [minimizedStorageKey],
+  );
+
+  const restorePanel = useCallback(
+    (id: string) => {
+      setMinimizedIds((currentIds) => {
+        if (!currentIds.includes(id)) {
+          return currentIds;
+        }
+
+        const nextIds = currentIds.filter((currentId) => currentId !== id);
+        writeStoredStringArray(minimizedStorageKey, nextIds);
+        return nextIds;
+      });
+      setZIndices((current) => ({
+        ...current,
+        [id]: nextZIndexRef.current++,
+      }));
+    },
+    [minimizedStorageKey],
+  );
+
   if (visiblePanels.length === 0) {
     return null;
   }
@@ -476,7 +573,7 @@ export function DraggableDashboard({
       ref={containerRef}
       className="pointer-events-none absolute inset-0 z-40 overflow-hidden max-[768px]:kuma-mobile-panels"
     >
-      {visiblePanels.map((panel, index) => {
+      {floatingPanels.map((panel, index) => {
         const position = positions[panel.id] ?? resolveDefaultPosition(panel, index);
 
         return (
@@ -490,11 +587,35 @@ export function DraggableDashboard({
             isDragging={draggingId === panel.id}
             onMouseDown={(event) => handlePanelMouseDown(panel.id, event)}
             onClickCapture={(event) => handlePanelClickCapture(panel.id, event)}
+            onMinimize={() => minimizePanel(panel.id)}
           >
             {panel.content}
           </FloatingPanel>
         );
       })}
+      {dockedPanels.length > 0 && (
+        <div
+          className="game-panel-dock pointer-events-auto absolute bottom-4 z-[65] flex max-w-[min(42vw,28rem)] items-center gap-1.5 overflow-x-auto rounded-lg px-2 py-1.5"
+          style={{
+            right: "calc(1rem + 12.25rem)",
+          }}
+          aria-label="최소화된 패널"
+        >
+          {dockedPanels.map((panel) => (
+            <button
+              key={panel.id}
+              type="button"
+              onClick={() => restorePanel(panel.id)}
+              className="group relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-amber-200/20 bg-amber-100/10 text-amber-200/75 transition-all hover:-translate-y-0.5 hover:border-amber-200/45 hover:bg-amber-100/18 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200/50"
+              title={`${panel.title} 열기`}
+              aria-label={`${panel.title} 패널 열기`}
+            >
+              <PanelIcon panelId={panel.id} className="h-4 w-4" />
+              <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-amber-300/70 shadow-[0_0_6px_rgba(252,211,77,0.65)]" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

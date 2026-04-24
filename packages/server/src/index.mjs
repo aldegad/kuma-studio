@@ -1166,7 +1166,7 @@ export async function main(argv = process.argv.slice(2)) {
       await commandBrowserType(options);
       return;
     case "run":
-      await commandRun(options, fileArg);
+      await commandRun(options, options._[0] ?? null);
       return;
     case "set-job-status":
       await commandSetJobStatus(options);

@@ -1,4 +1,5 @@
 import type { MouseEventHandler, ReactNode } from "react";
+import { PanelIcon } from "./PanelIcon";
 
 interface PanelPosition {
   x: number;
@@ -15,6 +16,7 @@ interface FloatingPanelProps {
   isDragging?: boolean;
   onMouseDown: MouseEventHandler<HTMLDivElement>;
   onClickCapture?: MouseEventHandler<HTMLDivElement>;
+  onMinimize?: () => void;
 }
 
 export function FloatingPanel({
@@ -27,7 +29,14 @@ export function FloatingPanel({
   isDragging = false,
   onMouseDown,
   onClickCapture,
+  onMinimize,
 }: FloatingPanelProps) {
+  const handleMinimize: MouseEventHandler<HTMLButtonElement> = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onMinimize?.();
+  };
+
   return (
     <div
       role="group"
@@ -51,12 +60,20 @@ export function FloatingPanel({
       <div className="game-panel-frame flex flex-col overflow-hidden rounded-xl max-h-[calc(100vh-120px)]">
         {/* Game window title bar */}
         <div className="game-panel-titlebar shrink-0 flex items-center gap-1.5 px-3 py-1.5 cursor-grab active:cursor-grabbing">
-          <span className="w-1.5 h-1.5 rounded-sm bg-amber-400/50 shrink-0" />
+          <PanelIcon panelId={panelId} className="h-3.5 w-3.5 shrink-0 text-amber-300/75" />
           <span className="game-panel-title text-[9px] font-black uppercase tracking-[0.15em] truncate">{title}</span>
-          <span className="ml-auto flex gap-0.5">
-            <span className="w-1 h-1 rounded-full bg-current opacity-20" />
-            <span className="w-1 h-1 rounded-full bg-current opacity-20" />
-          </span>
+          <button
+            type="button"
+            data-panel-no-drag="true"
+            onClick={handleMinimize}
+            className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-amber-100/45 transition-colors hover:bg-white/10 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200/50"
+            title="최소화"
+            aria-label={`${title} 패널 최소화`}
+          >
+            <svg viewBox="0 0 16 16" className="h-3 w-3" aria-hidden="true">
+              <path d="M4 8h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto [&>*]:!static [&>*]:!inset-auto [&>*]:!left-auto [&>*]:!right-auto [&>*]:!top-auto [&>*]:!bottom-auto [&>*]:!z-auto [&>*]:!w-full [&>*]:!max-w-full [&>*]:!rounded-none [&>*]:!border-0 [&>*]:!shadow-none">
           {children}
