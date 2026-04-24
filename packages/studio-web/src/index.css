@@ -191,12 +191,12 @@ body {
   0% {
     opacity: 0;
     filter: blur(1.8px);
-    transform: translate3d(var(--kuma-panel-motion-x, 0), var(--kuma-panel-motion-y, 0), 0) scaleX(0.14) scaleY(0.08);
+    transform: translate3d(var(--kuma-panel-motion-x, 0), var(--kuma-panel-motion-y, 0), 0) scale(0.1);
   }
-  58% {
+  72% {
     opacity: 1;
-    filter: blur(0.35px);
-    transform: translate3d(var(--kuma-panel-motion-settle-x, 0), var(--kuma-panel-motion-settle-y, 0), 0) scaleX(1.045) scaleY(0.92);
+    filter: blur(0.15px);
+    transform: translate3d(var(--kuma-panel-motion-settle-x, 0), var(--kuma-panel-motion-settle-y, 0), 0) scale(0.985);
   }
   100% {
     opacity: 1;

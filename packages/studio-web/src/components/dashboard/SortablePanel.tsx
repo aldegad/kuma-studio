@@ -47,12 +47,12 @@ export function FloatingPanel({
   const isRestoring = motionState === "restoring";
   const motionX = motionVector?.x ?? 0;
   const motionY = motionVector?.y ?? 0;
-  const dockTransform = `translate3d(${motionX}px, ${motionY}px, 0) scaleX(0.14) scaleY(0.08)`;
+  const dockTransform = `translate3d(${motionX}px, ${motionY}px, 0) scale(0.1)`;
   const frameStyle = {
     "--kuma-panel-motion-x": `${motionX}px`,
     "--kuma-panel-motion-y": `${motionY}px`,
-    "--kuma-panel-motion-settle-x": `${motionX * 0.12}px`,
-    "--kuma-panel-motion-settle-y": `${motionY * 0.12}px`,
+    "--kuma-panel-motion-settle-x": `${motionX * 0.06}px`,
+    "--kuma-panel-motion-settle-y": `${motionY * 0.06}px`,
     animation: isRestoring
       ? "kuma-panel-restore 300ms cubic-bezier(0.16, 1, 0.3, 1)"
       : undefined,
