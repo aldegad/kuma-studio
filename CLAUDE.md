@@ -55,6 +55,11 @@
 - AGENTS.md 와 CLAUDE.md 는 병렬 SSoT (Codex 는 AGENTS.md, Claude Code 는 CLAUDE.md 를 읽는다). 공유 규칙을 바꿀 때는 **같은 커밋에서 두 파일을 함께** 갱신한다.
 - 규칙을 바꿀 때는 SSoT 를 먼저 갱신하고, 그와 중복되는 에이전트 전용 메모리를 정리한다.
 
+## 지식 검색 순서
+
+- 내부 맥락·기존 결정·철학·설계 의도를 확인해야 하는 작업은 먼저 Kuma Vault 를 검색한다.
+- Vault 검색으로 충분하지 않거나 최신 외부 정보가 필요한 경우에만 그 다음 웹서치를 한다.
+
 ## 알렉스 핵심 불변 6종
 
 - `SSoT (Single Source of Truth)` — 상태·데이터·지식·설정·식별자는 한 곳에서만 canonical 하게 소유한다. 같은 truth 를 두 군데 두지 않는다. cache/index miss 가 나면 live truth 기준으로 canonical state 를 복구하는 self-heal 을 선호한다.

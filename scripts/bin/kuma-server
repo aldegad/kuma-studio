@@ -1,0 +1,170 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/kuma-cli-common.sh"
+
+PORT="${KUMA_STUDIO_PORT:-4312}"
+SERVER_TITLE="kuma-server"
+BOOTSTRAP_SH="$KUMA_REPO_ROOT/scripts/cmux/kuma-cmux-bootstrap.sh"
+RELOAD_BIN="$SCRIPT_DIR/kuma-server-reload"
+
+usage() {
+  cat <<'EOF'
+Usage: kuma-server [action]
+
+Managed kuma-server lifecycle entrypoint (infra-only, team 무관).
+
+Actions:
+  (none)   auto — 상태 감지 후 조치 (cold→boot, zombie→reload, up→보고)
+  status   현재 상태만 출력
+  reload   기존 kuma-server surface 에서 데몬 재시작
+  boot     surface 없으면 생성 후 데몬 기동 (infra-only 부트스트랩)
+
+Notes:
+- managed surface title "kuma-server" 를 SSoT 로 삼는다.
+- port 4312 healthy 인데 surface 가 없으면 unmanaged 로 판단하고 실패 보고 (No Silent Fallback).
+EOF
+}
+
+# cmux tree 에서 title 이 정확히 "kuma-server" 인 surface id 를 반환. 없으면 빈 문자열.
+resolve_server_surface() {
+  cmux tree 2>/dev/null | awk '
+    /"kuma-server"/ {
+      for (i = 1; i <= NF; i += 1) {
+        if ($i ~ /^surface:[0-9]+$/) {
+          print $i
+          exit
+        }
+      }
+    }
+  '
+}
+
+port_healthy() {
+  curl -sf "http://localhost:${PORT}/health" > /dev/null 2>&1
+}
+
+# echoes one of: up:<surface>  zombie:<surface>  cold:  unmanaged:
+detect_state() {
+  local surface listening
+  surface="$(resolve_server_surface || true)"
+  if port_healthy; then listening=1; else listening=0; fi
+
+  if [ "$listening" = "1" ]; then
+    if [ -n "$surface" ]; then
+      printf 'up:%s\n' "$surface"
+    else
+      printf 'unmanaged:\n'
+    fi
+  else
+    if [ -n "$surface" ]; then
+      printf 'zombie:%s\n' "$surface"
+    else
+      printf 'cold:\n'
+    fi
+  fi
+}
+
+report_state() {
+  local state="$1"
+  local kind="${state%%:*}"
+  local surface="${state#*:}"
+  case "$kind" in
+    up)
+      echo "✓ kuma-server UP — $surface, port ${PORT} healthy"
+      ;;
+    zombie)
+      echo "⚠ kuma-server surface 살아있음 ($surface), port ${PORT} 응답 없음"
+      ;;
+    cold)
+      echo "✗ kuma-server surface 없음 (cold)"
+      ;;
+    unmanaged)
+      echo "✗ port ${PORT} 응답하지만 managed kuma-server surface 없음 — unmanaged daemon 추정"
+      echo "  → 'lsof -iTCP:${PORT} -sTCP:LISTEN' 으로 PID 확인 후 정리하고 다시 실행"
+      ;;
+  esac
+}
+
+cmd_status() {
+  report_state "$(detect_state)"
+}
+
+cmd_reload() {
+  local state kind
+  state="$(detect_state)"
+  kind="${state%%:*}"
+  case "$kind" in
+    up|zombie)
+      exec "$RELOAD_BIN"
+      ;;
+    cold)
+      die "managed kuma-server surface 없음 — 먼저 'kuma-server boot'"
+      ;;
+    unmanaged)
+      report_state "$state"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_boot() {
+  local state kind
+  state="$(detect_state)"
+  kind="${state%%:*}"
+  case "$kind" in
+    up)
+      report_state "$state"
+      echo "  할 일 없음"
+      ;;
+    zombie)
+      echo "→ surface 살아있음, 데몬만 재시작"
+      exec "$RELOAD_BIN"
+      ;;
+    cold)
+      echo "→ cold boot — infra-only 부트스트랩 기동"
+      exec env KUMA_BOOTSTRAP_INFRA_ONLY=1 bash "$BOOTSTRAP_SH"
+      ;;
+    unmanaged)
+      report_state "$state"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_auto() {
+  local state kind
+  state="$(detect_state)"
+  kind="${state%%:*}"
+  case "$kind" in
+    up)
+      report_state "$state"
+      ;;
+    zombie)
+      report_state "$state"
+      echo "→ 자동 reload"
+      exec "$RELOAD_BIN"
+      ;;
+    cold)
+      report_state "$state"
+      echo "→ 자동 cold boot"
+      exec env KUMA_BOOTSTRAP_INFRA_ONLY=1 bash "$BOOTSTRAP_SH"
+      ;;
+    unmanaged)
+      report_state "$state"
+      exit 1
+      ;;
+  esac
+}
+
+ACTION="${1:-auto}"
+case "$ACTION" in
+  -h|--help) usage ;;
+  status)    cmd_status ;;
+  reload)    cmd_reload ;;
+  boot|up)   cmd_boot ;;
+  auto)      cmd_auto ;;
+  *)         usage >&2; exit 1 ;;
+esac

@@ -3,7 +3,11 @@
 # 쿠마 CTO 모드 전체 부트스트랩
 # 순서: 팀 스폰(오른쪽) → 인프라(아래, 작게) → CTO 세션
 # 팀을 먼저 오른쪽에 띄워야 인프라 down-split이 왼쪽 컬럼에만 적용됨
+#
+# KUMA_BOOTSTRAP_INFRA_ONLY=1 — system 탭 / 팀 스폰 / 워크스페이스·탭 rename 스킵. kuma-server surface 생성·재사용·데몬 기동만.
 set -uo pipefail
+
+INFRA_ONLY="${KUMA_BOOTSTRAP_INFRA_ONLY:-0}"
 
 SCRIPT_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
@@ -214,7 +218,11 @@ ensure_system_member_surface() {
   echo "✓ $title 상주 탭 준비 완료 ($surface)"
 }
 
-echo "🐻 쿠마 스튜디오 부트스트랩"
+if [ "$INFRA_ONLY" = "1" ]; then
+  echo "🐻 쿠마 스튜디오 infra-only 부트스트랩"
+else
+  echo "🐻 쿠마 스튜디오 부트스트랩"
+fi
 echo "=========================="
 echo ""
 
@@ -222,34 +230,54 @@ echo ""
 ensure_registry_file
 
 # 1. System 상주 탭 (CTO와 같은 pane)
-CURRENT_WS="$(cmux tree 2>&1 | grep -oE 'workspace:[0-9]+' | head -1 || true)"
+CURRENT_WS="$(
+  cmux tree 2>&1 | awk '
+    match($0, /workspace:[0-9]+/) {
+      workspace = substr($0, RSTART, RLENGTH)
+      if (first == "") {
+        first = workspace
+      }
+      if (index($0, "[selected]") > 0) {
+        print workspace
+        found = 1
+      }
+    }
+    END {
+      if (!found && first != "") {
+        print first
+      }
+    }
+  ' || true
+)"
 if [ -z "$CURRENT_WS" ]; then
   echo "✗ 현재 워크스페이스 조회 실패"
   exit 1
 fi
 
-echo "→ system 상주 탭 준비 중..."
-KUMA_S="$(team_config_get_member_field "쿠마" defaultSurface)"
-[ -n "$KUMA_S" ] || KUMA_S="surface:1"
-KUMA_P=$(get_pane "$KUMA_S")
-if [ -z "$KUMA_P" ]; then
-  # Fresh session: fall back to the first surface inside the current workspace only.
-  KUMA_S="$(first_workspace_surface "$CURRENT_WS" 2>/dev/null || true)"
-  KUMA_P="$(get_pane "$KUMA_S")"
+if [ "$INFRA_ONLY" != "1" ]; then
+  echo "→ system 상주 탭 준비 중..."
+  KUMA_S="$(team_config_get_member_field "쿠마" defaultSurface)"
+  [ -n "$KUMA_S" ] || KUMA_S="surface:1"
+  KUMA_P=$(get_pane "$KUMA_S")
   if [ -z "$KUMA_P" ]; then
-    echo "✗ 쿠마 pane 조회 실패"
-    exit 1
+    # Fresh session: fall back to the first surface inside the current workspace only.
+    KUMA_S="$(first_workspace_surface "$CURRENT_WS" 2>/dev/null || true)"
+    KUMA_P="$(get_pane "$KUMA_S")"
+    if [ -z "$KUMA_P" ]; then
+      echo "✗ 쿠마 pane 조회 실패"
+      exit 1
+    fi
+    echo "  ↳ 기존 surface 없음, 현재 pane 사용 ($KUMA_P / $KUMA_S)"
   fi
-  echo "  ↳ 기존 surface 없음, 현재 pane 사용 ($KUMA_P / $KUMA_S)"
-fi
-while IFS= read -r SYSTEM_MEMBER; do
-  [ -n "$SYSTEM_MEMBER" ] || continue
-  ensure_system_member_surface "$SYSTEM_MEMBER"
-done < <(list_bootstrap_system_members)
+  while IFS= read -r SYSTEM_MEMBER; do
+    [ -n "$SYSTEM_MEMBER" ] || continue
+    ensure_system_member_surface "$SYSTEM_MEMBER"
+  done < <(list_bootstrap_system_members)
 
-# 2. 팀 스폰 (셸 스크립트, 토큰 0) — CTO 우측에 배치
-echo "→ 팀 스폰 중..."
-"$SCRIPT_DIR/kuma-cmux-project-init.sh" "kuma-studio" "$KUMA_STUDIO_DIR" --workspace "$CURRENT_WS"
+  # 2. 팀 스폰 (셸 스크립트, 토큰 0) — CTO 우측에 배치
+  echo "→ 팀 스폰 중..."
+  "$SCRIPT_DIR/kuma-cmux-project-init.sh" "kuma-studio" "$KUMA_STUDIO_DIR" --workspace "$CURRENT_WS"
+fi
 
 # 3. 인프라 pane (서버, 아래에 작게)
 SERVER_ALIVE=false
@@ -312,9 +340,11 @@ else
   [ -n "$INFRA_P" ] && cmux resize-pane --pane "$INFRA_P" -U --amount 15 > /dev/null 2>&1 || true
 fi
 
-# 4. 워크스페이스 + CTO 탭 이름 설정
-cmux workspace-action --action rename --title "🐻 kuma studio" > /dev/null 2>&1 || true
-cmux tab-action --action rename --surface "$KUMA_S" --title "🐻 쿠마" > /dev/null 2>&1 || true
+# 4. 워크스페이스 + CTO 탭 이름 설정 (infra-only 에선 스킵, 브라우저 오픈은 유지)
+if [ "$INFRA_ONLY" != "1" ]; then
+  cmux workspace-action --action rename --title "🐻 kuma studio" > /dev/null 2>&1 || true
+  cmux tab-action --action rename --surface "$KUMA_S" --title "🐻 쿠마" > /dev/null 2>&1 || true
+fi
 /usr/bin/open -a 'Google Chrome' http://localhost:4312/studio/
 
 echo ""
@@ -324,6 +354,10 @@ echo ""
 echo "스튜디오: http://localhost:4312/studio/"
 echo "서버 API: http://localhost:4312"
 echo ""
+if [ "$INFRA_ONLY" = "1" ]; then
+  exit 0
+fi
+
 echo "→ 쿠마 CTO 세션 시작..."
 KUMA_LAUNCH_RECORD="$(resolve_member_launch_record "쿠마")"
 KUMA_COMMAND="$(build_member_command_from_record "$WORKSPACE_DIR" "$KUMA_LAUNCH_RECORD")"

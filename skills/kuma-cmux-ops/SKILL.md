@@ -1,10 +1,10 @@
 ---
-name: tmux-ops
+name: kuma-cmux-ops
 description: Reference the Kuma cmux operations protocol for surfaces, sends, registration, and dispatch reporting.
 user-invocable: true
 ---
 
-# /kuma:tmux-ops — cmux 운영 프로토콜
+# /kuma-cmux-ops — cmux 운영 프로토콜
 
 쿠마 스튜디오의 surface 기반 운영 작업을 수행할 때 참고하는 스킬이다.
 

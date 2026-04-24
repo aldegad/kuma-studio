@@ -14,6 +14,7 @@ skill_specs=(
   "kuma-brief:kuma-brief"
   "kuma-picker:kuma-picker"
   "kuma-recovery:kuma-recovery"
+  "kuma-server:kuma-server"
   "kuma-snapshot:kuma-snapshot"
   "kuma-vault:kuma-vault"
   "noeuri:noeuri"

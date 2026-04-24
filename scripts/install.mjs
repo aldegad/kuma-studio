@@ -43,6 +43,7 @@ const SKILLS = [
   { id: "kuma-brief", source: "kuma-brief" },
   { id: "kuma-picker", source: "kuma-picker" },
   { id: "kuma-recovery", source: "kuma-recovery" },
+  { id: "kuma-server", source: "kuma-server" },
   { id: "kuma-snapshot", source: "kuma-snapshot" },
   { id: "kuma-vault", source: "kuma-vault" },
   { id: "noeuri", source: "noeuri" },
