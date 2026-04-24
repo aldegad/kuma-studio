@@ -863,7 +863,7 @@ export function DraggableDashboard({
       })}
       {dockedPanels.length > 0 && (
         <div
-          className="game-panel-dock pointer-events-auto absolute bottom-4 z-[65] flex max-w-[min(42vw,28rem)] items-center gap-1.5 overflow-x-auto rounded-lg px-2 py-1.5"
+          className="game-panel-dock pointer-events-auto absolute bottom-4 z-[65] flex max-w-[min(42vw,28rem)] items-center gap-1.5 overflow-visible rounded-lg px-2 py-1.5"
           style={{
             right: "calc(1rem + 12.25rem)",
           }}
@@ -885,8 +885,11 @@ export function DraggableDashboard({
                 title={`${panel.title} 열기`}
                 aria-label={`${panel.title} 패널 열기`}
               >
+                <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-50 px-3 py-1 text-[10px] font-semibold text-stone-800 opacity-0 shadow-[0_8px_20px_rgba(0,0,0,0.18)] transition-all duration-150 group-hover:-translate-y-0.5 group-hover:opacity-100">
+                  {panel.title}
+                  <span className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-amber-50" />
+                </span>
                 <PanelIcon panelId={panel.id} className="h-4 w-4" />
-                <span className="absolute -bottom-1 h-1 w-1 rounded-full bg-amber-300/70 shadow-[0_0_6px_rgba(252,211,77,0.65)]" />
               </button>
             );
           })}

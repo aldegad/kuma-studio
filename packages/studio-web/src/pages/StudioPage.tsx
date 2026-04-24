@@ -35,6 +35,7 @@ import {
   CORE_PROJECT_TAB_ID,
   splitHudProjectTabs,
 } from "../lib/project-tabs";
+import type { GitActivityWorktree } from "../types/stats";
 
 interface StudioEvent {
   type: "kuma-studio:event";
@@ -46,7 +47,10 @@ interface StudioEvent {
 const GIT_ACTIVITY_REFRESH_MS = 5 * 60 * 1000;
 const HUD_LEGACY_PINNED_PROJECT_STORAGE_KEY = "kuma-studio-hud-pinned-project";
 const PROJECT_SEARCH_PARAM = "project";
+const WORKTREE_SEARCH_PARAM = "worktree";
 const PROJECT_MENU_EXIT_MS = 160;
+const HUD_TOP_BAR_HEIGHT_PX = 48;
+const HUD_WORKTREE_STRIP_HEIGHT_PX = 34;
 
 interface ProjectMenuPosition {
   left: number;
@@ -61,7 +65,15 @@ function readProjectSearchParam() {
   return value && value.length > 0 ? value : null;
 }
 
-function replaceProjectSearchParam(projectId: string | null) {
+function readWorktreeSearchParam() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const value = new URLSearchParams(window.location.search).get(WORKTREE_SEARCH_PARAM)?.trim();
+  return value && value.length > 0 ? value : null;
+}
+
+function replaceProjectSearchParam(projectId: string | null, worktreePath: string | null = null) {
   if (typeof window === "undefined") {
     return;
   }
@@ -71,6 +83,11 @@ function replaceProjectSearchParam(projectId: string | null) {
     url.searchParams.set(PROJECT_SEARCH_PARAM, projectId);
   } else {
     url.searchParams.delete(PROJECT_SEARCH_PARAM);
+  }
+  if (projectId && worktreePath) {
+    url.searchParams.set(WORKTREE_SEARCH_PARAM, worktreePath);
+  } else {
+    url.searchParams.delete(WORKTREE_SEARCH_PARAM);
   }
 
   const nextUrl = `${url.pathname}${url.search}${url.hash}`;
@@ -84,12 +101,21 @@ function sameStringArray(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
+function formatWorktreeButtonLabel(worktree: GitActivityWorktree) {
+  if (worktree.isMain) {
+    return worktree.branch ?? "main";
+  }
+
+  return worktree.branch ?? worktree.name;
+}
+
 export function StudioPage() {
   const { status } = useWebSocket();
   const ws = useWsStore((s) => s.ws);
 
   // Dashboard store
   const fetchGitActivity = useDashboardStore((s) => s.fetchGitActivity);
+  const gitActivity = useDashboardStore((s) => s.gitActivity);
 
   // Office store
   const scene = useOfficeStore((s) => s.scene);
@@ -134,6 +160,7 @@ export function StudioPage() {
   const [projectMenuVisible, setProjectMenuVisible] = useState(false);
   const [projectMenuPosition, setProjectMenuPosition] = useState<ProjectMenuPosition | null>(null);
   const [hudPinnedProjectIds, setHudPinnedProjectIds] = useState<string[]>([]);
+  const [activeWorktreePath, setActiveWorktreePath] = useState<string | null>(null);
   const [studioUiStateLoaded, setStudioUiStateLoaded] = useState(false);
   const invalidProjectParamRef = useRef<string | null>(null);
   const [themeMode, setThemeMode] = useState<"auto" | "light" | "dark">(() => {
@@ -358,12 +385,36 @@ export function StudioPage() {
   const activeProjectName = activeProjectId
     ? projectTabs.find((p) => p.projectId === activeProjectId)?.projectName ?? activeProjectId
     : null;
+  const projectWorktreesByProjectId = useMemo(
+    () => new Map(Object.entries(gitActivity.projectWorktrees ?? {})),
+    [gitActivity.projectWorktrees],
+  );
+  const projectWorktreeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const [projectId, worktrees] of projectWorktreesByProjectId.entries()) {
+      counts.set(projectId, worktrees.length);
+    }
+    return counts;
+  }, [projectWorktreesByProjectId]);
+  const activeProjectWorktrees = activeProjectId
+    ? projectWorktreesByProjectId.get(activeProjectId) ?? []
+    : [];
+  const activeWorktree = activeWorktreePath
+    ? activeProjectWorktrees.find((worktree) => worktree.path === activeWorktreePath) ?? null
+    : null;
+  const activeWorktreeName = activeWorktree ? formatWorktreeButtonLabel(activeWorktree) : null;
+  const showWorktreeStrip = Boolean(activeProjectId && activeProjectWorktrees.length > 1);
+  const explorerTopOffset = HUD_TOP_BAR_HEIGHT_PX + (showWorktreeStrip ? HUD_WORKTREE_STRIP_HEIGHT_PX : 0);
   const activeOverflowProject = activeProjectId
     ? overflowProjects.find((project) => project.projectId === activeProjectId) ?? null
     : null;
+  const activeOverflowWorktreeCount = activeOverflowProject
+    ? projectWorktreeCounts.get(activeOverflowProject.projectId) ?? 0
+    : 0;
   const projectMenuLabel = activeOverflowProject?.projectName ?? (overflowProjects.length > 0 ? `프로젝트 ${overflowProjects.length}` : "프로젝트");
   const projectMenuAnchorSignature = [
     projectMenuLabel,
+    String(activeOverflowWorktreeCount),
     hudProjects.map((project) => project.projectId).join("|"),
     resolvedHudPinnedProjectIds.join("|"),
     projectMenuProjects.length,
@@ -411,9 +462,15 @@ export function StudioPage() {
   }, [explorerOpen]);
 
   const selectProject = useCallback((nextProjectId: string | null) => {
+    setActiveWorktreePath(null);
     setActiveProject(nextProjectId);
     replaceProjectSearchParam(nextProjectId);
   }, [setActiveProject]);
+
+  const selectWorktree = useCallback((nextWorktreePath: string | null) => {
+    setActiveWorktreePath(nextWorktreePath);
+    replaceProjectSearchParam(activeProjectId, nextWorktreePath);
+  }, [activeProjectId]);
 
   useEffect(() => {
     if (!configuredProjectsLoaded) {
@@ -425,12 +482,33 @@ export function StudioPage() {
       if (!requestedProjectId) {
         invalidProjectParamRef.current = null;
         setActiveProject(null);
+        setActiveWorktreePath(null);
         return;
       }
 
       if (projectTabs.some((project) => project.projectId === requestedProjectId)) {
         invalidProjectParamRef.current = null;
         setActiveProject(requestedProjectId);
+        const requestedWorktreePath = readWorktreeSearchParam();
+        if (!requestedWorktreePath) {
+          setActiveWorktreePath(null);
+          return;
+        }
+
+        if (!gitActivity.lastUpdated) {
+          setActiveWorktreePath(requestedWorktreePath);
+          return;
+        }
+
+        const projectWorktrees = projectWorktreesByProjectId.get(requestedProjectId) ?? [];
+        if (projectWorktrees.some((worktree) => worktree.path === requestedWorktreePath)) {
+          setActiveWorktreePath(requestedWorktreePath);
+          return;
+        }
+
+        pushToast(`등록되지 않은 워크트리 URL 파라미터를 제거했습니다: ${requestedProjectId}`, "error");
+        replaceProjectSearchParam(requestedProjectId);
+        setActiveWorktreePath(null);
         return;
       }
 
@@ -440,12 +518,13 @@ export function StudioPage() {
       }
       replaceProjectSearchParam(null);
       setActiveProject(null);
+      setActiveWorktreePath(null);
     };
 
     applyProjectFromUrl();
     window.addEventListener("popstate", applyProjectFromUrl);
     return () => window.removeEventListener("popstate", applyProjectFromUrl);
-  }, [configuredProjectsLoaded, projectTabs, setActiveProject]);
+  }, [configuredProjectsLoaded, gitActivity.lastUpdated, projectTabs, projectWorktreesByProjectId, setActiveProject]);
 
   useEffect(() => {
     if (!configuredProjectsLoaded || !studioUiStateLoaded) {
@@ -533,12 +612,27 @@ export function StudioPage() {
     if (activeProjectId && !projectTabs.some((project) => project.projectId === activeProjectId)) {
       replaceProjectSearchParam(null);
       setActiveProject(null);
+      setActiveWorktreePath(null);
     }
   }, [activeProjectId, projectTabs, setActiveProject]);
 
+  useEffect(() => {
+    if (!activeProjectId || !activeWorktreePath || !gitActivity.lastUpdated) {
+      return;
+    }
+
+    const belongsToProject = activeProjectWorktrees.some((worktree) => worktree.path === activeWorktreePath);
+    if (belongsToProject) {
+      return;
+    }
+
+    replaceProjectSearchParam(activeProjectId);
+    setActiveWorktreePath(null);
+  }, [activeProjectId, activeProjectWorktrees, activeWorktreePath, gitActivity.lastUpdated]);
+
   const dashboardPanels: DashboardPanelItem[] = [
     { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} /> },
-    { id: "git-log", title: "커밋 로그", className: "w-72", content: <GitLogPanel /> },
+    { id: "git-log", title: "커밋 로그", className: "w-80", content: <GitLogPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} activeWorktreePath={activeWorktreePath} activeWorktreeName={activeWorktreeName} /> },
     { id: "memo", title: "메모", className: "w-[min(46rem,calc(100vw-2rem))]", content: <MemoPanel /> },
     { id: "content", title: "스레드 콘텐츠", className: "w-[min(46rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
@@ -586,6 +680,7 @@ export function StudioPage() {
                 const isActive = activeProjectId === project.projectId;
                 const isPinned = resolvedHudPinnedProjectIds.includes(project.projectId);
                 const isVisibleOnHud = hudProjects.some((entry) => entry.projectId === project.projectId);
+                const worktreeCount = projectWorktreeCounts.get(project.projectId) ?? 0;
                 return (
                   <div key={project.projectId} className="flex items-center gap-1.5 py-0.5">
                     <button
@@ -607,6 +702,7 @@ export function StudioPage() {
                         <span className="block text-[9px] text-amber-100/55">
                           {project.members.length}명
                           {isVisibleOnHud ? " • 상단 노출" : ""}
+                          {worktreeCount > 1 ? ` • worktree ${worktreeCount}` : ""}
                         </span>
                       </span>
                     </button>
@@ -739,20 +835,28 @@ export function StudioPage() {
                   }`}>
                   전체
                 </button>
-                {hudProjects.map((p) => (
-                  <button key={p.projectId} type="button" onClick={() => selectProject(p.projectId)}
-                    className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
-                      activeProjectId === p.projectId
-                        ? isNight
-                          ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
-                          : "bg-amber-500/30 text-amber-100 border-amber-400/40"
-                        : isNight
-                          ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
-                          : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
-                    }`}>
-                    {p.projectName}
-                  </button>
-                ))}
+                {hudProjects.map((p) => {
+                  const worktreeCount = projectWorktreeCounts.get(p.projectId) ?? 0;
+                  return (
+                    <button key={p.projectId} type="button" onClick={() => selectProject(p.projectId)}
+                      className={`flex items-center gap-1 rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
+                        activeProjectId === p.projectId
+                          ? isNight
+                            ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
+                            : "bg-amber-500/30 text-amber-100 border-amber-400/40"
+                          : isNight
+                            ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
+                            : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
+                      }`}>
+                      <span className="truncate max-w-[9rem]">{p.projectName}</span>
+                      {worktreeCount > 1 && (
+                        <span className="rounded-full border border-amber-200/20 px-1 text-[8px] leading-3 text-amber-100/65">
+                          wt {worktreeCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
               {projectMenuProjects.length > 0 && (
                 <>
@@ -780,6 +884,11 @@ export function StudioPage() {
                     aria-expanded={projectMenuOpen}
                   >
                     <span className="truncate max-w-[9rem]">{projectMenuLabel}</span>
+                    {activeOverflowWorktreeCount > 1 && (
+                      <span className="rounded-full border border-amber-200/20 px-1 text-[8px] leading-3 text-amber-100/65">
+                        wt {activeOverflowWorktreeCount}
+                      </span>
+                    )}
                     <svg
                       width="10"
                       height="10"
@@ -843,13 +952,65 @@ export function StudioPage() {
         </div>
       </div>
 
+      {showWorktreeStrip && (
+        <div
+          className="absolute left-0 right-0 z-[29] flex items-center gap-2 overflow-hidden border-t border-amber-200/10 px-4 py-1"
+          style={{
+            top: HUD_TOP_BAR_HEIGHT_PX,
+            height: HUD_WORKTREE_STRIP_HEIGHT_PX,
+            background: isNight ? "rgba(38, 25, 14, 0.78)" : "rgba(92, 60, 30, 0.72)",
+            boxShadow: "0 8px 18px rgba(0,0,0,0.12)",
+          }}
+        >
+          <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.18em] text-amber-100/55">
+            worktree
+          </span>
+          <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => selectWorktree(null)}
+              className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                activeWorktreePath === null
+                  ? "border-amber-300/45 bg-amber-300/20 text-amber-50"
+                  : "border-amber-200/12 bg-white/5 text-amber-100/60 hover:border-amber-200/24 hover:text-amber-50"
+              }`}
+            >
+              프로젝트 전체
+            </button>
+            {activeProjectWorktrees.map((worktree) => {
+              const isSelected = activeWorktreePath === worktree.path;
+              return (
+                <button
+                  key={worktree.path}
+                  type="button"
+                  onClick={() => selectWorktree(worktree.path)}
+                  title={worktree.path}
+                  className={`flex max-w-[13rem] items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                    isSelected
+                      ? "border-amber-300/45 bg-amber-300/20 text-amber-50"
+                      : "border-amber-200/12 bg-white/5 text-amber-100/60 hover:border-amber-200/24 hover:text-amber-50"
+                  }`}
+                >
+                  <span className="truncate">{formatWorktreeButtonLabel(worktree)}</span>
+                  {!worktree.isMain && (
+                    <span className="rounded-full bg-amber-100/10 px-1 text-[8px] text-amber-100/55">linked</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* File Explorer */}
       {explorerOpen && (
-        <div className="absolute left-0 top-10 bottom-0 z-[50]" style={{ maxWidth: "min(1720px, 94vw)" }}>
+        <div className="absolute left-0 bottom-0 z-[50]" style={{ top: explorerTopOffset, maxWidth: "min(1720px, 94vw)" }}>
           <FileExplorer
             onCollapse={() => persistExplorerOpen(false)}
             activeProjectId={activeProjectId}
             activeProjectName={activeProjectName}
+            activeWorktreePath={activeWorktreePath}
+            activeWorktreeName={activeWorktreeName}
           />
         </div>
       )}

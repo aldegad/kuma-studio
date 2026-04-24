@@ -205,6 +205,8 @@ interface FileExplorerProps {
   onCollapse?: () => void;
   activeProjectId?: string | null;
   activeProjectName?: string | null;
+  activeWorktreePath?: string | null;
+  activeWorktreeName?: string | null;
 }
 
 const VAULT_DEPTH_INDENT_PX = 12;
@@ -426,9 +428,19 @@ function emptyProjectState(): StudioExplorerProjectState {
   };
 }
 
-export function FileExplorer({ onCollapse, activeProjectId = null, activeProjectName = null }: FileExplorerProps) {
+export function FileExplorer({
+  onCollapse,
+  activeProjectId = null,
+  activeProjectName = null,
+  activeWorktreePath = null,
+  activeWorktreeName = null,
+}: FileExplorerProps) {
   const ws = useWsStore((state) => state.ws);
-  const projectStateKey = activeProjectId ?? "workspace";
+  const projectStateKey = activeProjectId
+    ? activeWorktreePath
+      ? `${activeProjectId}:${activeWorktreePath}`
+      : activeProjectId
+    : "workspace";
   const [tree, setTree] = useState<FsNode | null>(null);
   const [explorerRoots, setExplorerRoots] = useState<ExplorerRoots | null>(null);
   const [globalTrees, setGlobalTrees] = useState<Record<string, FsNode | null>>({});
@@ -603,9 +615,21 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
     return data as FsNode;
   }, []);
 
+  const resolveExplorerRootForState = useCallback((roots: ExplorerRoots | null) => {
+    if (activeProjectId && activeWorktreePath) {
+      return {
+        id: `worktree:${activeProjectId}`,
+        kind: "worktree" as const,
+        path: activeWorktreePath,
+      };
+    }
+
+    return resolveActiveExplorerRoot(roots, activeProjectId);
+  }, [activeProjectId, activeWorktreePath]);
+
   const reloadRootTree = useCallback(async () => {
     const roots = await fetchExplorerRoots();
-    const activeRoot = resolveActiveExplorerRoot(roots, activeProjectId);
+    const activeRoot = resolveExplorerRootForState(roots);
     setExplorerRoots(roots);
 
     if (!activeRoot) {
@@ -633,7 +657,7 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
       setRefreshToken((current) => current + 1);
       return { roots, tree: null };
     }
-  }, [activeProjectId, fetchTreeForRoot]);
+  }, [activeProjectId, fetchTreeForRoot, resolveExplorerRootForState]);
 
   const reloadVaultIndex = useCallback(async () => {
     const vaultRoot = explorerRoots?.globalRoots.vault;
@@ -708,8 +732,8 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   );
   const hasVaultRoot = Boolean(explorerRoots?.globalRoots.vault);
   const activeExplorerRoot = useMemo(
-    () => resolveActiveExplorerRoot(explorerRoots, activeProjectId),
-    [activeProjectId, explorerRoots],
+    () => resolveExplorerRootForState(explorerRoots),
+    [explorerRoots, resolveExplorerRootForState],
   );
 
   // Fetch root tree
@@ -1066,7 +1090,9 @@ export function FileExplorer({ onCollapse, activeProjectId = null, activeProject
   }, [closeViewer, viewerFile]);
 
   const projectName = activeProjectId
-    ? activeProjectName ?? activeProjectId
+    ? activeWorktreeName
+      ? `${activeProjectName ?? activeProjectId} · ${activeWorktreeName}`
+      : activeProjectName ?? activeProjectId
     : "workspace";
   const workspaceRootLabel =
     tree?.path

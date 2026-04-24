@@ -23,6 +23,7 @@ export interface ExplorerRootsResponse {
   workspaceRoot: string;
   systemRoot: string;
   projectRoots: Record<string, string>;
+  worktreeRoots?: Record<string, { path: string; name: string; branch: string | null; isMain: boolean }[]>;
   globalRoots: Partial<Record<"vault" | "claude" | "codex", string>>;
 }
 

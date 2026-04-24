@@ -2,7 +2,7 @@ import type { ExplorerRootsResponse } from "./api";
 
 export interface ActiveExplorerRoot {
   id: string;
-  kind: "workspace" | "system" | "project";
+  kind: "workspace" | "system" | "project" | "worktree";
   path: string;
 }
 

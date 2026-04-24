@@ -5,6 +5,7 @@ import { basename, extname, join, relative, resolve, sep } from "node:path";
 
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { execGitSync } from "./git-command.mjs";
+import { buildProjectWorktreeIndex } from "./git-worktrees.mjs";
 import { readProjectsRegistry } from "./project-defaults.mjs";
 
 const SKIP_DIRS = new Set([
@@ -103,6 +104,7 @@ export function resolveExplorerRootsConfig({
   globalRoots,
   systemRoot,
   includeProjectRoots = true,
+  includeWorktreeRoots = true,
   readProjectRoots = readProjectsRegistry,
 } = {}) {
   const defaultRoot = workspaceRoot ? resolve(workspaceRoot) : resolveConfiguredWorkspaceRoot();
@@ -115,12 +117,28 @@ export function resolveExplorerRootsConfig({
       Object.entries(readProjectRoots()).map(([id, root]) => [id, resolve(root)]),
     )
     : {};
+  const configuredWorktreeRoots = includeProjectRoots && includeWorktreeRoots
+    ? buildProjectWorktreeIndex(configuredProjectRoots).byProjectId
+    : {};
+  const projectRootPathSet = new Set([
+    defaultRoot,
+    resolvedSystemRoot,
+    ...Object.values(configuredProjectRoots),
+  ].map((root) => resolve(root)));
   const rootEntries = [
     { id: "workspace", path: defaultRoot },
     { id: "system", path: resolvedSystemRoot },
     ...Object.entries(configuredProjectRoots)
       .filter(([, root]) => resolve(root) !== defaultRoot && resolve(root) !== resolvedSystemRoot)
       .map(([id, root]) => ({ id, path: root })),
+    ...Object.entries(configuredWorktreeRoots)
+      .flatMap(([projectId, worktrees]) =>
+        worktrees.map((worktree, index) => ({
+          id: `worktree:${projectId}:${index}`,
+          path: resolve(worktree.path),
+        })),
+      )
+      .filter((entry) => !projectRootPathSet.has(resolve(entry.path))),
     ...Object.entries(configuredGlobalRoots)
       .filter(([, root]) => resolve(root) !== defaultRoot && resolve(root) !== resolvedSystemRoot)
       .map(([id, root]) => ({ id, path: root })),
@@ -131,6 +149,7 @@ export function resolveExplorerRootsConfig({
     systemRoot: resolvedSystemRoot,
     configuredGlobalRoots,
     configuredProjectRoots,
+    configuredWorktreeRoots,
     rootEntries,
     allowedRoots: [...new Set(rootEntries.map((entry) => entry.path))],
   };
@@ -321,12 +340,14 @@ export function watchStudioExplorerRoots({
   };
 
   const createRootWatcher = (rootEntry) => {
-    const createPollingWatcher = () => {
-      let previousEntries = new Set();
-      try {
-        previousEntries = new Set(fs.readdirSync(rootEntry.path));
-      } catch {
-        previousEntries = new Set();
+    const createPollingWatcher = (initialEntries = null) => {
+      let previousEntries = initialEntries;
+      if (!previousEntries) {
+        try {
+          previousEntries = new Set(fs.readdirSync(rootEntry.path));
+        } catch {
+          previousEntries = new Set();
+        }
       }
 
       const scanForChanges = () => {
@@ -398,7 +419,7 @@ export function watchStudioExplorerRoots({
             } catch {
               // ignore close failures before fallback
             }
-            fallbackWatcher = createPollingWatcher();
+            fallbackWatcher = createPollingWatcher(new Set());
           }
           reportWatchError(error);
         });
@@ -429,6 +450,7 @@ export function watchStudioExplorerRoots({
       globalRoots,
       systemRoot,
       includeProjectRoots: true,
+      includeWorktreeRoots: false,
       readProjectRoots,
     });
     const liveRootEntries = rootEntries.filter((entry) => existsSync(entry.path));
@@ -495,6 +517,7 @@ export function createStudioExplorerRouteHandler({
       systemRoot: resolvedSystemRoot,
       configuredGlobalRoots,
       configuredProjectRoots,
+      configuredWorktreeRoots,
       rootEntries,
       allowedRoots,
     } = resolveExplorerRootsConfig({
@@ -522,6 +545,7 @@ export function createStudioExplorerRouteHandler({
         workspaceRoot: defaultRoot,
         systemRoot: resolvedSystemRoot,
         projectRoots: configuredProjectRoots,
+        worktreeRoots: configuredWorktreeRoots,
         globalRoots: configuredGlobalRoots,
       });
       return true;

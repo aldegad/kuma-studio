@@ -2,8 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
+import { readProjectsRegistry } from "./project-defaults.mjs";
+import { buildProjectWorktreeIndex, isWithinRoot, resolveMaybeRealPath } from "./git-worktrees.mjs";
+
 const POLLING_INTERVAL_MS = 5 * 60 * 1000;
-const GIT_LOG_FORMAT = "%H%x1f%s%x1f%an%x1f%cI%x1e";
+const GIT_LOG_FORMAT = "%H%x1f%h%x1f%s%x1f%an%x1f%cI%x1f%P%x1f%D%x1e";
 
 let pollingInterval = null;
 let gitActivityCache = createEmptySnapshot(resolveWorkspace());
@@ -24,10 +27,11 @@ function createEmptySnapshot(workspace) {
     workspace,
     repos: [],
     totalCommitsToday: 0,
+    totalMergeCommitsToday: 0,
   };
 }
 
-function findGitRepos(workspace) {
+function findGitRepos(scanRoots) {
   const repos = new Set();
 
   function walk(currentPath, depth) {
@@ -61,21 +65,63 @@ function findGitRepos(workspace) {
     }
   }
 
-  walk(workspace, 0);
+  for (const root of scanRoots) {
+    walk(root, 0);
+  }
+
   return Array.from(repos).sort((left, right) => left.localeCompare(right));
 }
 
-function readBranch(repoPath) {
+function execGit(repoPath, args, timeout = 5000) {
   try {
-    return execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+    return execFileSync("git", args, {
       cwd: repoPath,
       encoding: "utf-8",
-      timeout: 5000,
+      timeout,
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
   } catch {
     return null;
   }
+}
+
+function readBranch(repoPath) {
+  const branch = execGit(repoPath, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return branch || null;
+}
+
+function readBranchStatus(repoPath) {
+  const upstream = execGit(repoPath, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]);
+  if (!upstream) {
+    return {
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      state: "no-upstream",
+    };
+  }
+
+  const counts = execGit(repoPath, ["rev-list", "--left-right", "--count", `HEAD...${upstream}`]);
+  const [aheadRaw = "0", behindRaw = "0"] = counts?.split(/\s+/u) ?? [];
+  const ahead = Number.parseInt(aheadRaw, 10);
+  const behind = Number.parseInt(behindRaw, 10);
+  const normalizedAhead = Number.isFinite(ahead) ? ahead : 0;
+  const normalizedBehind = Number.isFinite(behind) ? behind : 0;
+  const state =
+    normalizedAhead > 0 && normalizedBehind > 0
+      ? "diverged"
+      : normalizedAhead > 0
+        ? "ahead"
+        : normalizedBehind > 0
+          ? "behind"
+          : "clean";
+
+  return {
+    upstream,
+    ahead: normalizedAhead,
+    behind: normalizedBehind,
+    state,
+  };
 }
 
 function readCommits(repoPath) {
@@ -96,31 +142,115 @@ function readCommits(repoPath) {
       .map((record) => record.trim())
       .filter(Boolean)
       .map((record) => {
-        const [hash = "", message = "", author = "", timestamp = ""] = record.split("\x1f");
-        return { hash, message, author, timestamp };
+        const [
+          hash = "",
+          shortHash = "",
+          message = "",
+          author = "",
+          timestamp = "",
+          parentsRaw = "",
+          refsRaw = "",
+        ] = record.split("\x1f");
+        const parents = parentsRaw.split(/\s+/u).map((parent) => parent.trim()).filter(Boolean);
+        const refs = refsRaw.split(",").map((ref) => ref.trim()).filter(Boolean);
+
+        return {
+          hash,
+          shortHash,
+          message,
+          author,
+          timestamp,
+          parents,
+          parentCount: parents.length,
+          isMerge: parents.length > 1,
+          refs,
+        };
       });
   } catch {
     return [];
   }
 }
 
-function buildRepoActivity(repoPath) {
+function resolveWorktreeForRepo(repoPath, worktreeIndex) {
+  const resolvedRepoPath = resolveMaybeRealPath(repoPath);
+  let bestMatch = null;
+
+  for (const worktree of worktreeIndex.byPath.values()) {
+    if (!isWithinRoot(worktree.path, resolvedRepoPath)) {
+      continue;
+    }
+
+    if (!bestMatch || worktree.path.length > bestMatch.path.length) {
+      bestMatch = worktree;
+    }
+  }
+
+  return bestMatch;
+}
+
+function resolveProjectForRepo(repoPath, projectRoots, worktreeIndex) {
+  const resolvedRepoPath = resolveMaybeRealPath(repoPath);
+  const worktree = resolveWorktreeForRepo(repoPath, worktreeIndex);
+  if (worktree) {
+    return { id: worktree.projectId, path: worktree.path, worktree };
+  }
+
+  let bestMatch = null;
+
+  for (const [projectId, projectRoot] of Object.entries(projectRoots)) {
+    const resolvedProjectRoot = resolveMaybeRealPath(projectRoot);
+    if (!isWithinRoot(resolvedProjectRoot, resolvedRepoPath)) {
+      continue;
+    }
+
+    if (!bestMatch || resolvedProjectRoot.length > bestMatch.path.length) {
+      bestMatch = { id: projectId, path: resolvedProjectRoot };
+    }
+  }
+
+  return bestMatch;
+}
+
+function buildRepoActivity(repoPath, projectRoots, worktreeIndex) {
+  const commits = readCommits(repoPath);
+  const project = resolveProjectForRepo(repoPath, projectRoots, worktreeIndex);
+  const worktree = project?.worktree ?? resolveWorktreeForRepo(repoPath, worktreeIndex);
+
   return {
     name: path.basename(repoPath),
     path: repoPath,
+    projectId: project?.id ?? null,
+    projectName: project?.id ?? null,
+    worktreePath: worktree?.path ?? null,
+    worktreeName: worktree?.name ?? null,
+    worktreeBranch: worktree?.branch ?? null,
+    worktreeHead: worktree?.head ?? null,
+    isWorktree: Boolean(worktree && !worktree.isMain),
+    isMainWorktree: worktree?.isMain ?? null,
     branch: readBranch(repoPath),
-    commits: readCommits(repoPath),
+    branchStatus: readBranchStatus(repoPath),
+    mergeCommitsToday: commits.filter((commit) => commit.isMerge).length,
+    commits,
   };
 }
 
 function refreshGitActivity() {
   const workspace = resolveWorkspace();
-  const repos = findGitRepos(workspace).map((repoPath) => buildRepoActivity(repoPath));
+  const projectRoots = readProjectsRegistry();
+  const worktreeIndex = buildProjectWorktreeIndex(projectRoots);
+  const scanRoots = [...new Set([
+    workspace,
+    ...Object.values(projectRoots),
+    ...worktreeIndex.worktreeRoots,
+  ].map(resolveMaybeRealPath))];
+  const repos = findGitRepos(scanRoots).map((repoPath) => buildRepoActivity(repoPath, projectRoots, worktreeIndex));
   const activity = {
     lastUpdated: new Date().toISOString(),
     workspace,
     repos,
+    projectWorktrees: worktreeIndex.byProjectId,
     totalCommitsToday: repos.reduce((total, repo) => total + repo.commits.length, 0),
+    totalMergeCommitsToday: repos.reduce((total, repo) => total + repo.mergeCommitsToday, 0),
   };
 
   gitActivityCache = activity;
