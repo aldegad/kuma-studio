@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import type { GitActivityBranchStatus, GitActivityCommit, GitActivityRepo } from "../../types/stats";
@@ -26,11 +26,14 @@ const BRANCH_STATE_COLORS: Record<GitActivityBranchStatus["state"], string> = {
   "no-upstream": "var(--t-faint)",
 };
 
-const GRAPH_MAX_LANES = 8;
-const GRAPH_CELL_WIDTH = 76;
+const GRAPH_MAX_LANES = 10;
 const GRAPH_ROW_HEIGHT = 24;
+const GRAPH_LANE_LEFT = 8;
 const GRAPH_LANE_GAP = 10;
 const GRAPH_DOT_Y = 12;
+const GRAPH_DOT_RADIUS = 4.4;
+const GRAPH_CELL_WIDTH = GRAPH_LANE_LEFT + ((GRAPH_MAX_LANES - 1) * GRAPH_LANE_GAP) + (GRAPH_DOT_RADIUS * 2) + 8;
+const HOVER_CARD_DELAY_MS = 420;
 const GRAPH_COLORS = [
   "#3b82f6",
   "#ec4899",
@@ -52,6 +55,7 @@ interface CommitGraphRow {
 }
 
 interface HoveredCommit {
+  key: string;
   repo: GitActivityRepo;
   commit: GitActivityCommit;
   x: number;
@@ -132,8 +136,12 @@ function getParentLabel(commit: GitActivityCommit) {
   return null;
 }
 
+function getCommitKey(repo: GitActivityRepo, commit: GitActivityCommit) {
+  return `${repo.path}:${commit.hash}`;
+}
+
 function getLaneX(index: number) {
-  return 8 + index * GRAPH_LANE_GAP;
+  return GRAPH_LANE_LEFT + index * GRAPH_LANE_GAP;
 }
 
 function visibleLaneIndex(index: number) {
@@ -158,13 +166,14 @@ function buildCommitGraphRows(commits: GitActivityCommit[]): CommitGraphRow[] {
   for (const commit of commits) {
     const parents = commit.parents ?? [];
     let laneIndex = lanes.indexOf(commit.hash);
-    if (laneIndex === -1) {
+    const hasIncomingLane = laneIndex >= 0;
+    if (!hasIncomingLane) {
       laneIndex = firstOpenLane(lanes);
       lanes[laneIndex] = commit.hash;
     }
 
     const activeBefore = lanes.map(Boolean);
-    activeBefore[laneIndex] = true;
+    activeBefore[laneIndex] = hasIncomingLane;
 
     const nextLanes = [...lanes];
     if (parents.length === 0) {
@@ -211,7 +220,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
   const visibleCurrentLane = visibleLaneIndex(row.laneIndex);
   const currentX = getLaneX(visibleCurrentLane);
   const laneIndices = Array.from({ length: row.laneCount }, (_, index) => index);
-  const dotRadius = 3.8;
+  const lineGapRadius = GRAPH_DOT_RADIUS - 0.6;
 
   return (
     <svg
@@ -225,7 +234,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
       {laneIndices.map((lane) => {
         const x = getLaneX(lane);
         const color = GRAPH_COLORS[lane % GRAPH_COLORS.length];
-        const before = row.activeBefore[lane] || lane === visibleCurrentLane;
+        const before = row.activeBefore[lane];
         const after = row.activeAfter[lane];
         return (
           <g key={`lane:${lane}`}>
@@ -234,7 +243,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
                 x1={x}
                 y1={0}
                 x2={x}
-                y2={GRAPH_DOT_Y - dotRadius}
+                y2={GRAPH_DOT_Y - lineGapRadius}
                 stroke={color}
                 strokeWidth="1.6"
                 strokeLinecap="round"
@@ -244,7 +253,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
             {after && (
               <line
                 x1={x}
-                y1={GRAPH_DOT_Y + dotRadius}
+                y1={GRAPH_DOT_Y + lineGapRadius}
                 x2={x}
                 y2={GRAPH_ROW_HEIGHT}
                 stroke={color}
@@ -262,7 +271,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
         const fromX = getLaneX(from);
         const toX = getLaneX(to);
         const color = GRAPH_COLORS[to % GRAPH_COLORS.length];
-        const startY = GRAPH_DOT_Y + dotRadius - 0.5;
+        const startY = GRAPH_DOT_Y + lineGapRadius - 0.5;
         const endY = GRAPH_ROW_HEIGHT - 1;
         return (
           <path
@@ -280,7 +289,7 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
       <circle
         cx={currentX}
         cy={GRAPH_DOT_Y}
-        r="4.4"
+        r={GRAPH_DOT_RADIUS}
         fill="var(--panel-bg)"
         stroke={GRAPH_COLORS[visibleCurrentLane % GRAPH_COLORS.length]}
         strokeWidth="2.2"
@@ -313,6 +322,7 @@ function CommitHoverCard({ hoveredCommit, showProjectName }: { hoveredCommit: Ho
 
   return (
     <div
+      data-git-commit-hover-card={commit.shortHash ?? commit.hash.slice(0, 7)}
       className="pointer-events-none fixed z-[9999] w-[min(22.5rem,calc(100vw-1.5rem))] rounded-lg border px-3 py-2.5 shadow-2xl"
       style={{
         left: Math.max(12, left),
@@ -371,6 +381,8 @@ export function GitLogPanel({
   const gitActivity = useDashboardStore((state) => state.gitActivity);
   const [collapsed, setCollapsed] = useState(true);
   const [hoveredCommit, setHoveredCommit] = useState<HoveredCommit | null>(null);
+  const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
+  const hoverTimerRef = useRef<number | null>(null);
   const scopedRepos = activeProjectId
     ? gitActivity.repos.filter((repo) =>
         repo.projectId === activeProjectId && (!activeWorktreePath || repo.worktreePath === activeWorktreePath),
@@ -386,6 +398,41 @@ export function GitLogPanel({
     ? `${activeProjectName ?? activeProjectId ?? "프로젝트"} · ${activeWorktreeName}`
     : activeProjectName ?? "전체";
   const showProjectName = activeProjectId == null;
+
+  useEffect(() => () => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+  }, []);
+
+  const clearCommitHover = () => {
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredCommit(null);
+    setActiveRowKey(null);
+  };
+
+  const scheduleCommitHover = (repo: GitActivityRepo, commit: GitActivityCommit, element: HTMLElement) => {
+    const key = getCommitKey(repo, commit);
+    const rect = element.getBoundingClientRect();
+    setActiveRowKey(key);
+    setHoveredCommit(null);
+    if (hoverTimerRef.current !== null) {
+      window.clearTimeout(hoverTimerRef.current);
+    }
+    hoverTimerRef.current = window.setTimeout(() => {
+      hoverTimerRef.current = null;
+      setHoveredCommit({
+        key,
+        repo,
+        commit,
+        x: rect.right + 10,
+        y: rect.top - 8,
+      });
+    }, HOVER_CARD_DELAY_MS);
+  };
 
   return (
     <div
@@ -458,49 +505,54 @@ export function GitLogPanel({
               const graphRows = buildCommitGraphRows(repo.commits);
               return (
                 <div key={repo.path} className="space-y-0">
-                  {graphRows.map((row) => (
-                    <div
-                      key={`${repo.path}:${row.commit.hash}`}
-                      data-git-commit-row={row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
-                      className="rounded px-1 transition-colors hover:bg-white/10"
-                      onMouseEnter={(event) => {
-                        setHoveredCommit({ repo, commit: row.commit, x: event.clientX, y: event.clientY });
-                      }}
-                      onMouseMove={(event) => {
-                        setHoveredCommit({ repo, commit: row.commit, x: event.clientX, y: event.clientY });
-                      }}
-                      onMouseLeave={() => setHoveredCommit(null)}
-                    >
-                      <div className="flex h-6 items-center gap-1.5">
-                        <CommitGraphGlyph row={row} />
-                        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                          <span className="truncate text-[10px] font-medium leading-none" style={{ color: "var(--t-secondary)" }}>
-                            {row.commit.message}
-                          </span>
-                          <span className="shrink-0 font-mono text-[8px]" style={{ color: "var(--t-muted)" }}>
-                            {row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
-                          </span>
-                          <span className="shrink-0 text-[8px] font-semibold" style={{ color: "var(--t-muted)" }}>
-                            {getRepoDisplayName(repo, showProjectName)}
-                          </span>
-                          {row.commit.isMerge && (
-                            <span className="shrink-0 text-[8px] font-semibold" style={{ color: "#d97706" }}>merge</span>
-                          )}
-                          {getParentLabel(row.commit) && (
-                            <span className="shrink-0 text-[8px]" style={{ color: "var(--t-faint)" }}>{getParentLabel(row.commit)}</span>
-                          )}
-                          {(row.commit.refs ?? []).slice(0, 2).map((ref) => (
-                            <span key={ref} className="shrink-0 rounded-full px-1 text-[8px]" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
-                              {formatRefLabel(ref)}
+                  {graphRows.map((row) => {
+                    const rowKey = getCommitKey(repo, row.commit);
+                    const isActive = activeRowKey === rowKey;
+                    return (
+                      <div
+                        key={rowKey}
+                        data-git-commit-row={row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+                        className="rounded px-1 transition-colors"
+                        style={{
+                          background: isActive ? "rgba(59,130,246,0.13)" : "transparent",
+                          boxShadow: isActive ? "inset 2px 0 0 rgba(59,130,246,0.75)" : "none",
+                        }}
+                        onMouseEnter={(event) => {
+                          scheduleCommitHover(repo, row.commit, event.currentTarget);
+                        }}
+                        onMouseLeave={clearCommitHover}
+                      >
+                        <div className="flex h-6 items-center gap-1.5">
+                          <CommitGraphGlyph row={row} />
+                          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                            <span className="truncate text-[10px] font-medium leading-none" style={{ color: "var(--t-secondary)" }}>
+                              {row.commit.message}
                             </span>
-                          ))}
+                            <span className="shrink-0 font-mono text-[8px]" style={{ color: "var(--t-muted)" }}>
+                              {row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+                            </span>
+                            <span className="shrink-0 text-[8px] font-semibold" style={{ color: "var(--t-muted)" }}>
+                              {getRepoDisplayName(repo, showProjectName)}
+                            </span>
+                            {row.commit.isMerge && (
+                              <span className="shrink-0 text-[8px] font-semibold" style={{ color: "#d97706" }}>merge</span>
+                            )}
+                            {getParentLabel(row.commit) && (
+                              <span className="shrink-0 text-[8px]" style={{ color: "var(--t-faint)" }}>{getParentLabel(row.commit)}</span>
+                            )}
+                            {(row.commit.refs ?? []).slice(0, 2).map((ref) => (
+                              <span key={ref} className="shrink-0 rounded-full px-1 text-[8px]" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
+                                {formatRefLabel(ref)}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="shrink-0 text-[9px]" style={{ color: "var(--t-muted)" }}>
+                            {formatCommitTimestamp(row.commit.timestamp)}
+                          </span>
                         </div>
-                        <span className="shrink-0 text-[9px]" style={{ color: "var(--t-muted)" }}>
-                          {formatCommitTimestamp(row.commit.timestamp)}
-                        </span>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             }) : (
