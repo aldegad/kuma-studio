@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # /kuma 모드 부트스트랩 — clone 후 1회 실행
-KUMA_STUDIO="$(cd "$(dirname "$0")/.." && pwd)"
+KUMA_STUDIO="$(cd "$(dirname "$0")/.." && /bin/pwd -P)"
 echo "🐻 쿠마 스튜디오 설정: $KUMA_STUDIO"
 
 # 1. 스킬 심링크
@@ -15,16 +15,19 @@ skill_specs=(
   "kuma-cmux-ops:kuma-cmux-ops"
   "kuma-picker:kuma-picker"
   "kuma-recovery:kuma-recovery"
+  "kuma-overnight:kuma-overnight"
+  "kuma-panel:kuma-panel"
   "kuma-server:kuma-server"
   "kuma-snapshot:kuma-snapshot"
   "kuma-vault:kuma-vault"
   "noeuri:noeuri"
-  "overnight-on:overnight-on"
-  "overnight-off:overnight-off"
 )
 retired_skill_ids=(
   "analytics-team"
   "dev-team"
+  "overnight-mode"
+  "overnight-off"
+  "overnight-on"
   "strategy-analytics-team"
   "strategy-team"
   "tmux-ops"
@@ -38,7 +41,7 @@ for root_spec in "${skill_roots[@]}"; do
     if [ -L "$link" ]; then
       target="$(readlink "$link" 2>/dev/null || true)"
       case "$target" in
-        "$KUMA_STUDIO"/skills/*)
+        "$KUMA_STUDIO"/skills/*|"$KUMA_STUDIO"/.claude/skills/*)
           rm -f "$link"
           echo "  ✓ $agent_label skill cleanup: $skill"
           ;;

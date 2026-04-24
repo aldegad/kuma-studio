@@ -70,14 +70,14 @@ async function main() {
   const skills = [
     { id: "kuma-brief", candidates: ["kuma-brief"] },
     { id: "kuma-cmux-ops", candidates: ["kuma-cmux-ops"] },
+    { id: "kuma-overnight", candidates: ["kuma-overnight"] },
+    { id: "kuma-panel", candidates: ["kuma-panel"] },
     { id: "kuma-picker", candidates: ["kuma-picker"] },
     { id: "kuma-recovery", candidates: ["kuma-recovery"] },
     { id: "kuma-server", candidates: ["kuma-server"] },
     { id: "kuma-snapshot", candidates: ["kuma-snapshot"] },
     { id: "kuma-vault", candidates: ["kuma-vault"] },
     { id: "noeuri", candidates: ["noeuri"] },
-    { id: "overnight-on", candidates: ["overnight-on"] },
-    { id: "overnight-off", candidates: ["overnight-off"] },
   ];
   for (const skillRoot of SKILL_ROOTS) {
     for (const skill of skills) {

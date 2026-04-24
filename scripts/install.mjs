@@ -16,6 +16,7 @@
  */
 
 import { access } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, readlink, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { execSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
@@ -24,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_PORT } from "../packages/server/src/constants.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, "..");
+const ROOT = realpathSync(resolve(__dirname, ".."));
 const HOME = homedir();
 const CLAUDE_DIR = join(HOME, ".claude");
 const CLAUDE_HOOKS_DIR = join(CLAUDE_DIR, "hooks");
@@ -44,16 +45,19 @@ const SKILLS = [
   { id: "kuma-cmux-ops", source: "kuma-cmux-ops" },
   { id: "kuma-picker", source: "kuma-picker" },
   { id: "kuma-recovery", source: "kuma-recovery" },
+  { id: "kuma-overnight", source: "kuma-overnight" },
+  { id: "kuma-panel", source: "kuma-panel" },
   { id: "kuma-server", source: "kuma-server" },
   { id: "kuma-snapshot", source: "kuma-snapshot" },
   { id: "kuma-vault", source: "kuma-vault" },
   { id: "noeuri", source: "noeuri" },
-  { id: "overnight-on", source: "overnight-on" },
-  { id: "overnight-off", source: "overnight-off" },
 ];
 const RETIRED_SKILL_IDS = [
   "analytics-team",
   "dev-team",
+  "overnight-mode",
+  "overnight-off",
+  "overnight-on",
   "strategy-analytics-team",
   "strategy-team",
   "tmux-ops",
@@ -168,7 +172,10 @@ async function ensureSymlink(target, dest) {
 }
 
 async function cleanupRetiredSkillLinks(installTarget) {
-  const repoSkillsRoot = resolve(ROOT, "skills");
+  const repoSkillRoots = [
+    resolve(ROOT, "skills"),
+    resolve(ROOT, ".claude", "skills"),
+  ];
   for (const skillId of RETIRED_SKILL_IDS) {
     const destDir = resolve(installTarget.dir, skillId);
     let stats;
@@ -188,10 +195,12 @@ async function cleanupRetiredSkillLinks(installTarget) {
     const absoluteTarget = resolve(dirname(destDir), rawTarget);
     const resolvedTarget = await realpath(destDir).catch(() => null);
     const pointsAtRepoSkills =
-      absoluteTarget === repoSkillsRoot ||
-      absoluteTarget.startsWith(`${repoSkillsRoot}/`) ||
-      resolvedTarget === repoSkillsRoot ||
-      Boolean(resolvedTarget?.startsWith(`${repoSkillsRoot}/`));
+      repoSkillRoots.some((repoSkillsRoot) =>
+        absoluteTarget === repoSkillsRoot ||
+        absoluteTarget.startsWith(`${repoSkillsRoot}/`) ||
+        resolvedTarget === repoSkillsRoot ||
+        Boolean(resolvedTarget?.startsWith(`${repoSkillsRoot}/`))
+      );
 
     if (!pointsAtRepoSkills) {
       warn(`${installTarget.label}: retired skill ${skillId} points outside repo skills — leaving untouched`);
