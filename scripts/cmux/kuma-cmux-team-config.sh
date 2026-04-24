@@ -209,8 +209,8 @@ $(build_cleanup_policy_instructions)"
     instructions="${instructions}
 Team-node dispatch policy:
 - Do not implement directly except for trivial one-line fixes.
-- Delegate implementation work with kuma-task.
-- Do not use --trust-worker when dispatching worker tasks; worker tasks must go through QA.
+- Delegate implementation work with kuma-dispatch assign.
+- Pass --qa <member> only when an external QA reviewer is actually required.
 - Preferred flow: plan, dispatch, QA pass, aggregate, then report completion."
   fi
 

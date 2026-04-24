@@ -10,6 +10,8 @@ import {
 import type {
   ExtensionsCatalogCategory,
   ExtensionsCatalogEcosystem,
+  ExtensionEcosystemId,
+  StudioPluginEntry,
   StudioSkillEntry,
 } from "../../types/extensions";
 import { ExtensionDetailModal, type ExtensionDetailKind } from "./ExtensionDetailModal";
@@ -21,7 +23,7 @@ type DetailTarget =
       ecosystem: ExtensionsCatalogEcosystem;
       category: ExtensionsCatalogCategory;
     }
-  | { kind: "plugin"; name: string };
+  | { kind: "plugin"; plugin: StudioPluginEntry };
 
 const SECTION_COLORS: Record<string, { dot: string; glow: string }> = {
   skills:   { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)" },
@@ -41,9 +43,24 @@ function summarizeCatalog(ecosystems: ExtensionsCatalogEcosystem[]) {
   };
 }
 
+const ECOSYSTEM_LABELS: Record<ExtensionEcosystemId, string> = {
+  claude: "Claude",
+  codex: "Codex",
+};
+
+const ECOSYSTEM_ORDER: ExtensionEcosystemId[] = ["claude", "codex"];
+
+function groupByEcosystem<T extends { ecosystem: ExtensionEcosystemId }>(items: T[]) {
+  return ECOSYSTEM_ORDER.map((ecosystem) => ({
+    ecosystem,
+    label: ECOSYSTEM_LABELS[ecosystem],
+    items: items.filter((item) => item.ecosystem === ecosystem),
+  }));
+}
+
 export function SkillsPanel() {
   const [skills, setSkills] = useState<StudioSkillEntry[]>([]);
-  const [plugins, setPlugins] = useState<string[]>([]);
+  const [plugins, setPlugins] = useState<StudioPluginEntry[]>([]);
   const [ecosystems, setEcosystems] = useState<ExtensionsCatalogEcosystem[]>([]);
   const [collapsed, setCollapsed] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -51,7 +68,7 @@ export function SkillsPanel() {
 
   // Section expand/collapse (match PlanPanel project-group pattern)
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    () => new Set(["skills"]),
+    () => new Set(["skills:claude", "skills:codex"]),
   );
 
   // Detail modal state (single modal for any kind)
@@ -116,7 +133,10 @@ export function SkillsPanel() {
   // Keep detail target in sync if the underlying skill list changes.
   useEffect(() => {
     if (!detailTarget || detailTarget.kind !== "skill") return;
-    const next = skills.find((entry) => entry.name === detailTarget.skill.name);
+    const next = skills.find((entry) =>
+      entry.name === detailTarget.skill.name &&
+      entry.ecosystem === detailTarget.skill.ecosystem,
+    );
     if (!next) {
       setDetailTarget(null);
       setEditing(false);
@@ -168,7 +188,7 @@ export function SkillsPanel() {
       const updatedSkill = { ...target, content: editContent };
       setSkills((current) =>
         current.map((skill) =>
-          skill.name === target.name ? updatedSkill : skill,
+          skill.name === target.name && skill.ecosystem === target.ecosystem ? updatedSkill : skill,
         ),
       );
       setDetailTarget({ kind: "skill", skill: updatedSkill });
@@ -190,8 +210,10 @@ export function SkillsPanel() {
 
     setDeleting(true);
     try {
-      await deleteStudioSkill(target.name);
-      setSkills((current) => current.filter((entry) => entry.name !== target.name));
+      await deleteStudioSkill(target.name, target.ecosystem);
+      setSkills((current) => current.filter((entry) =>
+        entry.name !== target.name || entry.ecosystem !== target.ecosystem,
+      ));
       closeDetail();
     } catch (deleteError) {
       setError(
@@ -207,6 +229,8 @@ export function SkillsPanel() {
     () => ecosystems.filter((ecosystem) => ecosystem.available),
     [ecosystems],
   );
+  const skillGroups = useMemo(() => groupByEcosystem(skills), [skills]);
+  const pluginGroups = useMemo(() => groupByEcosystem(plugins), [plugins]);
 
   // Build detail modal props from the current target.
   const modalProps = (() => {
@@ -215,7 +239,7 @@ export function SkillsPanel() {
       return {
         kind: "skill" as ExtensionDetailKind,
         title: detailTarget.skill.name,
-        subtitle: detailTarget.skill.path,
+        subtitle: `${detailTarget.skill.ecosystemLabel} · ${detailTarget.skill.path}`,
         body: detailTarget.skill.content,
         editable: true,
       };
@@ -231,9 +255,14 @@ export function SkillsPanel() {
     }
     return {
       kind: "plugin" as ExtensionDetailKind,
-      title: detailTarget.name,
-      subtitle: "Claude plugin",
-      body: `\`${detailTarget.name}\` 플러그인이 활성화되어 있습니다.`,
+      title: detailTarget.plugin.displayName || detailTarget.plugin.name,
+      subtitle: [
+        `${detailTarget.plugin.ecosystemLabel} plugin`,
+        detailTarget.plugin.sourcePath,
+      ].filter(Boolean).join(" · "),
+      body: detailTarget.plugin.description
+        ? `${detailTarget.plugin.description}\n\n\`${detailTarget.plugin.name}\``
+        : `\`${detailTarget.plugin.name}\` 플러그인이 활성화되어 있습니다.`,
       editable: false,
     };
   })();
@@ -310,59 +339,71 @@ export function SkillsPanel() {
               className="mt-1.5 space-y-0.5 border-t pt-1.5"
               style={{ borderColor: "var(--border-subtle)" }}
             >
-              {/* Skills section */}
-              <SectionHeader
-                sectionKey="skills"
-                label="Live Skills"
-                count={skills.length}
-                color={SECTION_COLORS.skills}
-                expanded={expandedSections.has("skills")}
-                onToggle={() => toggleSection("skills")}
-              />
-              {expandedSections.has("skills") && (
-                <SectionBody>
-                  {skills.length === 0 ? (
-                    <EmptyRow label="연결된 스킬이 없습니다." />
-                  ) : (
-                    skills.map((skill) => (
-                      <ExtensionRow
-                        key={skill.name}
-                        color={SECTION_COLORS.skills}
-                        title={skill.name}
-                        meta={skill.description || skill.file}
-                        onOpen={() => openDetail({ kind: "skill", skill })}
-                      />
-                    ))
-                  )}
-                </SectionBody>
-              )}
+              {skillGroups.map((group) => {
+                const sectionKey = `skills:${group.ecosystem}`;
+                return (
+                  <div key={sectionKey}>
+                    <SectionHeader
+                      sectionKey={sectionKey}
+                      label={`${group.label} Skills`}
+                      count={group.items.length}
+                      color={SECTION_COLORS.skills}
+                      expanded={expandedSections.has(sectionKey)}
+                      onToggle={() => toggleSection(sectionKey)}
+                    />
+                    {expandedSections.has(sectionKey) && (
+                      <SectionBody>
+                        {group.items.length === 0 ? (
+                          <EmptyRow label={`${group.label} 스킬이 없습니다.`} />
+                        ) : (
+                          group.items.map((skill) => (
+                            <ExtensionRow
+                              key={`${skill.ecosystem}:${skill.name}`}
+                              color={SECTION_COLORS.skills}
+                              title={skill.name}
+                              meta={skill.description || skill.file}
+                              onOpen={() => openDetail({ kind: "skill", skill })}
+                            />
+                          ))
+                        )}
+                      </SectionBody>
+                    )}
+                  </div>
+                );
+              })}
 
-              {/* Plugins section */}
-              <SectionHeader
-                sectionKey="plugins"
-                label="Claude Plugins"
-                count={plugins.length}
-                color={SECTION_COLORS.plugins}
-                expanded={expandedSections.has("plugins")}
-                onToggle={() => toggleSection("plugins")}
-              />
-              {expandedSections.has("plugins") && (
-                <SectionBody>
-                  {plugins.length === 0 ? (
-                    <EmptyRow label="활성 플러그인이 없습니다." />
-                  ) : (
-                    plugins.map((plugin) => (
-                      <ExtensionRow
-                        key={plugin}
-                        color={SECTION_COLORS.plugins}
-                        title={plugin}
-                        meta="plugin"
-                        onOpen={() => openDetail({ kind: "plugin", name: plugin })}
-                      />
-                    ))
-                  )}
-                </SectionBody>
-              )}
+              {pluginGroups.map((group) => {
+                const sectionKey = `plugins:${group.ecosystem}`;
+                return (
+                  <div key={sectionKey}>
+                    <SectionHeader
+                      sectionKey={sectionKey}
+                      label={`${group.label} Plugins`}
+                      count={group.items.length}
+                      color={SECTION_COLORS.plugins}
+                      expanded={expandedSections.has(sectionKey)}
+                      onToggle={() => toggleSection(sectionKey)}
+                    />
+                    {expandedSections.has(sectionKey) && (
+                      <SectionBody>
+                        {group.items.length === 0 ? (
+                          <EmptyRow label={`${group.label} 플러그인이 없습니다.`} />
+                        ) : (
+                          group.items.map((plugin) => (
+                            <ExtensionRow
+                              key={`${plugin.ecosystem}:${plugin.name}`}
+                              color={SECTION_COLORS.plugins}
+                              title={plugin.displayName || plugin.name}
+                              meta={plugin.name}
+                              onOpen={() => openDetail({ kind: "plugin", plugin })}
+                            />
+                          ))
+                        )}
+                      </SectionBody>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Catalog sections: one per ecosystem */}
               {availableEcosystems.length === 0 && ecosystems.length === 0 && !loading && (

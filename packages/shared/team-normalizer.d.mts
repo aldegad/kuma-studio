@@ -61,7 +61,6 @@ export interface NormalizedTeamMember {
   parallel: boolean;
   image: string;
   defaultSurface: string | null;
-  defaultQa: string | null;
   vaultDomains: string[];
 }
 

@@ -12,7 +12,7 @@ const SEND_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-send.sh"
 const SPAWN_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-spawn.sh");
 const PROJECT_INIT_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-project-init.sh");
 const BOOTSTRAP_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-bootstrap.sh");
-const KUMA_TASK_PATH = resolve(process.cwd(), "scripts/bin/kuma-task");
+const KUMA_DISPATCH_PATH = resolve(process.cwd(), "scripts/bin/kuma-dispatch");
 const KUMA_SERVER_RELOAD_PATH = resolve(process.cwd(), "scripts/bin/kuma-server-reload");
 
 async function writeExecutable(path, content) {
@@ -672,8 +672,8 @@ esac
     expect(sendLogContents).not.toContain("\tdelivered\t");
   });
 
-  it("routes helper scripts and kuma-task through the send wrapper instead of raw cmux send", async () => {
-    for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_TASK_PATH, KUMA_SERVER_RELOAD_PATH]) {
+  it("routes helper scripts and kuma-dispatch through the send wrapper instead of raw cmux send", async () => {
+    for (const filePath of [SPAWN_SCRIPT_PATH, PROJECT_INIT_SCRIPT_PATH, BOOTSTRAP_SCRIPT_PATH, KUMA_DISPATCH_PATH, KUMA_SERVER_RELOAD_PATH]) {
       const source = await readFile(filePath, "utf8");
       expect(source).toContain("kuma-cmux-send.sh");
       expect(source).not.toMatch(/^\s*cmux send\b/mu);

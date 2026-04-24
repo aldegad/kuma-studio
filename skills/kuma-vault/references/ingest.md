@@ -128,7 +128,7 @@ source_grade: {foundation|supporting|exploratory|historical}   # 선택 — raw/
 - [{관련 페이지}]({경로}) — {연결 이유}
 ```
 
-**Special Files 주의:** `dispatch-log.md` / `decisions.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer. 각 writer 고정: dispatch-log 는 `kuma-task lifecycle hook`, decisions 는 `user-direct` 전용. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
+**Special Files 주의:** `dispatch-log.md` / `decisions.md` 는 일반 ingest 대상 **아님**. `type: special/*` frontmatter 를 가진 runtime memory layer. 각 writer 고정: dispatch-log 는 `kuma-dispatch lifecycle hook`, decisions 는 `user-direct` 전용. ingest 로 덮어쓰지 말 것. 자세한 규칙은 `~/.kuma/vault/schema.md` 참조.
 
 **project summary 추가 규칙:**
 - `projects/<slug>.md` 는 `## Summary / ## Details / ## Related` 구조를 유지한다.

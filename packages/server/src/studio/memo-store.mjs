@@ -59,7 +59,7 @@ description: Vault 페이지 작성 규칙과 운영 원칙
 
 ### 1) \`dispatch-log.md\`
 
-- **Primary writer:** \`kuma-task lifecycle hook\`
+- **Primary writer:** \`kuma-dispatch lifecycle hook\`
 - **Frontmatter type 표준:** \`type: special/dispatch-log\`
 
 ### 2) \`decisions.md\`

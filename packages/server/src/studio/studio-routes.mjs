@@ -740,7 +740,15 @@ export function createStudioRouteHandler({
     if (url.pathname.startsWith("/studio/skills/") && req.method === "DELETE") {
       const skillName = decodeURIComponent(url.pathname.split("/studio/skills/")[1]);
       if (!skillName) { sendJson(res, 400, { error: "Missing skill name." }); return true; }
-      const skillDir = join(homedir(), ".claude", "skills", skillName);
+      if (skillName.includes("/") || skillName.includes("\\")) {
+        sendJson(res, 400, { error: "Invalid skill name." });
+        return true;
+      }
+      const ecosystem = url.searchParams.get("ecosystem") === "codex" ? "codex" : "claude";
+      const skillRoot = ecosystem === "codex"
+        ? join(homedir(), ".codex", "skills")
+        : join(homedir(), ".claude", "skills");
+      const skillDir = join(skillRoot, skillName);
       try {
         const s = await stat(skillDir);
         if (!s.isDirectory()) { sendJson(res, 400, { error: "Not a skill directory." }); return true; }

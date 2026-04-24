@@ -8,7 +8,8 @@ source "$SCRIPT_DIR/kuma-cli-common.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  kuma-dispatch send <멤버이름> "<지시>" [kuma-task options...]
+  kuma-dispatch assign <멤버이름> "<지시>" [--project <프로젝트>] [--attach <path>] [--qa <멤버|self|none>] [--require-result]
+  kuma-dispatch send <멤버이름> "<지시>" [assign options...]
   kuma-dispatch ask --task-file <path> --message <text> [--to initiator|worker|qa|surface:7]
   kuma-dispatch reply --task-file <path> --message <text> [--to initiator|worker|qa|surface:7]
   kuma-dispatch message --task-file <path> --kind <question|answer|status|note|blocker> --message <text> [--to initiator|worker|qa|surface:7]
@@ -52,6 +53,232 @@ json_field() {
       process.stdout.write(`${value}\n`);
     }
   ' "$field"
+}
+
+member_status_from_snapshot() {
+  local snapshot_json="${1:?snapshot json required}"
+  local member_id="${2:?member id required}"
+
+  printf '%s' "$snapshot_json" | node -e '
+    const fs = require("node:fs");
+    const memberId = process.argv[1];
+    const snapshot = JSON.parse(fs.readFileSync(0, "utf8"));
+    const projects = Array.isArray(snapshot?.projects) ? snapshot.projects : [];
+    for (const project of projects) {
+      const members = Array.isArray(project?.members) ? project.members : [];
+      const member = members.find((entry) => entry?.id === memberId);
+      if (member) {
+        process.stdout.write(`${JSON.stringify(member)}\n`);
+        process.exit(0);
+      }
+    }
+    process.stdout.write("{}\n");
+  ' "$member_id"
+}
+
+member_status_field() {
+  local member_status_json="${1:?member status json required}"
+  local field="${2:?field required}"
+
+  printf '%s' "$member_status_json" | node -e '
+    const fs = require("node:fs");
+    const data = JSON.parse(fs.readFileSync(0, "utf8"));
+    const field = process.argv[1];
+    let value = "";
+    if (field === "preview") {
+      value =
+        (typeof data?.task === "string" && data.task.trim()) ||
+        (Array.isArray(data?.lastOutputLines) && typeof data.lastOutputLines[0] === "string" ? data.lastOutputLines[0] : "") ||
+        "";
+    } else if (typeof data?.[field] === "string") {
+      value = data[field];
+    }
+    process.stdout.write(`${value}\n`);
+  ' "$field"
+}
+
+run_assign() {
+  [ $# -ge 2 ] || {
+    usage >&2
+    exit 1
+  }
+
+  local member_query="$1"
+  local instruction="$2"
+  shift 2
+
+  local project=""
+  local qa_query="none"
+  local require_result=0
+  local -a attachments=()
+
+  project="$(resolve_default_project || true)"
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --project)
+        project="${2:?project required}"
+        shift 2
+        ;;
+      --attach)
+        attachments+=("${2:?attachment path required}")
+        shift 2
+        ;;
+      --qa)
+        qa_query="${2:?qa target required}"
+        shift 2
+        ;;
+      --require-result)
+        require_result=1
+        shift
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        die "unknown assign argument: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$project" ] || die "project could not be resolved; pass --project"
+  ensure_runtime_requirements
+  require_file "$KUMA_CMUX_DIR/kuma-cmux-send.sh"
+  mkdir -p "$KUMA_TASK_DIR" "$KUMA_RESULT_DIR"
+
+  local member_json=""
+  local member_name=""
+  local member_id=""
+  local member_type=""
+  local surface_json=""
+  local worker_surface=""
+  local team_status_json=""
+  local worker_status_json=""
+  local worker_state=""
+  local worker_preview=""
+  local qa_frontmatter=""
+  local qa_member=""
+  local qa_surface=""
+  local task_token=""
+  local task_basename=""
+  local task_file=""
+  local result_file=""
+  local signal=""
+  local initiator_surface=""
+  local initiator_name=""
+  local attachment_lines=""
+  local prompt_attachments=""
+  local prompt_result=""
+  local prompt_footer=""
+
+  member_json="$(resolve_member_json "$member_query")" || die "unknown member: $member_query"
+  member_name="$(printf '%s' "$member_json" | json_field displayName)"
+  member_id="$(printf '%s' "$member_json" | json_field id)"
+  member_type="$(printf '%s' "$member_json" | json_field type)"
+  surface_json="$(resolve_surface_json "$project" "$member_json")" || die "surface not found for $member_name in project '$project'"
+  worker_surface="$(printf '%s' "$surface_json" | json_field surface)"
+
+  team_status_json="$(read_team_status_snapshot_json "$project" 2>/dev/null || printf '{}')"
+  worker_status_json="$(member_status_from_snapshot "$team_status_json" "$member_id")"
+  worker_state="$(member_status_field "$worker_status_json" state 2>/dev/null || echo "")"
+  worker_preview="$(member_status_field "$worker_status_json" preview 2>/dev/null || echo "")"
+  if [ "$worker_state" = "working" ]; then
+    die "worker surface busy: $worker_surface preview=${worker_preview:-working}; retry later"
+  fi
+
+  case "$qa_query" in
+    ""|none)
+      qa_frontmatter=""
+      ;;
+    self)
+      qa_frontmatter="worker-self-report"
+      ;;
+    *)
+      local qa_json=""
+      qa_json="$(resolve_member_json "$qa_query")" || die "qa member not found: $qa_query"
+      qa_member="$(printf '%s' "$qa_json" | json_field displayName)"
+      qa_surface="$(resolve_surface_json "$project" "$qa_json" 2>/dev/null | node -e 'const fs=require("node:fs"); const raw=fs.readFileSync(0,"utf8").trim(); if (raw) process.stdout.write(JSON.parse(raw).surface || "");' || true)"
+      qa_frontmatter="${qa_surface:-$qa_member}"
+      ;;
+  esac
+
+  task_token="$(default_task_token "$member_id")"
+  task_basename="${project}-${task_token}"
+  task_file="$KUMA_TASK_DIR/${task_basename}.task.md"
+  signal="${task_basename}-done"
+  if [ "$require_result" = "1" ]; then
+    result_file="$KUMA_RESULT_DIR/${task_basename}.result.md"
+    prompt_result="Result: ${result_file}"
+  fi
+  initiator_surface="$(resolve_initiator_surface)"
+  initiator_name="$(resolve_dispatch_party_display_name initiator "$initiator_surface" "$project")"
+
+  if [ "${#attachments[@]}" -gt 0 ]; then
+    attachment_lines="## Attachments"$'\n'
+    prompt_attachments="Attachments:"$'\n'
+    for attachment in "${attachments[@]}"; do
+      attachment_lines+="- ${attachment}"$'\n'
+      prompt_attachments+="- ${attachment}"$'\n'
+    done
+  fi
+
+  cat > "$task_file" <<EOF
+---
+id: ${task_token}
+project: ${project}
+initiator: ${initiator_surface}
+worker: ${worker_surface}
+qa: ${qa_frontmatter}
+signal: ${signal}
+result: ${result_file}
+---
+# ${task_basename}
+
+## Request
+${instruction}
+
+${attachment_lines}
+EOF
+
+  node "$KUMA_SERVER_CLI" dispatch-register \
+    --task-file "$task_file" \
+    --instruction "$instruction" \
+    --summary "$instruction" \
+    --initiator-label "$initiator_name" \
+    --worker-id "$member_id" \
+    --worker-name "$member_name" \
+    --worker-type "$member_type" \
+    --qa-member "$qa_member" \
+    --qa-surface "$qa_surface" \
+    --daemon-url "$KUMA_DAEMON_URL" > /dev/null
+
+  prompt_footer="$(cat <<EOF
+${prompt_attachments}${prompt_result}
+Tracked task file: ${task_file}
+Continue in-thread with:
+- ~/.kuma/bin/kuma-dispatch ask --task-file ${task_file} --message "..."
+- ~/.kuma/bin/kuma-dispatch reply --task-file ${task_file} --message "..."
+Finish with:
+- ~/.kuma/bin/kuma-dispatch done --task-file ${task_file} --summary "..."
+- ~/.kuma/bin/kuma-dispatch fail --task-file ${task_file} --blocker "..."
+EOF
+)"
+
+  send_dispatch_prompt \
+    "$worker_surface" \
+    "$task_token" \
+    "$(format_dispatch_party "$initiator_name" initiator "$initiator_surface")" \
+    "$(format_dispatch_party "$member_name" worker "$worker_surface")" \
+    "$(dispatch_message_kind_label instruction)" \
+    "$(dispatch_body_source_label forwarded-summary)" \
+    "$instruction" \
+    "$prompt_footer"
+
+  printf 'TASK_ID: %s\n' "$task_token"
+  printf 'TASK_FILE: %s\n' "$task_file"
+  [ -n "$result_file" ] && printf 'RESULT_FILE: %s\n' "$result_file"
+  printf 'WORKER: %s (%s, %s)\n' "$member_name" "$worker_surface" "$member_type"
 }
 
 dispatch_role_label() {
@@ -740,8 +967,11 @@ run_dispatch_event() {
 }
 
 case "$COMMAND" in
+  assign)
+    run_assign "$@"
+    ;;
   send)
-    exec "$SCRIPT_DIR/kuma-task" "$@"
+    run_assign "$@"
     ;;
   ask)
     send_thread_message question "$@"

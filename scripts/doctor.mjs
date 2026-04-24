@@ -69,7 +69,7 @@ async function main() {
   // Check skills
   const skills = [
     { id: "kuma-brief", candidates: ["kuma-brief"] },
-    { id: "kuma-cmux-ops", candidates: ["kuma-cmux-ops"] },
+    { id: "kuma-dispatch", candidates: ["kuma-dispatch"] },
     { id: "kuma-overnight", candidates: ["kuma-overnight"] },
     { id: "kuma-panel", candidates: ["kuma-panel"] },
     { id: "kuma-plan", candidates: ["kuma-plan"] },

@@ -34,7 +34,7 @@ matches_skill_dir() {
 # 스킬 심링크 확인
 required_skill_specs=(
   "kuma-brief:kuma-brief"
-  "kuma-cmux-ops:kuma-cmux-ops"
+  "kuma-dispatch:kuma-dispatch"
   "kuma-picker:kuma-picker"
   "kuma-recovery:kuma-recovery"
   "kuma-overnight:kuma-overnight"

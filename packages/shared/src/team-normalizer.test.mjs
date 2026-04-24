@@ -692,8 +692,8 @@ describe("shared team normalizer", () => {
     expect(command).toContain("developer_instructions=");
     expect(developerInstructions).toContain("너의 이름은 하울야.");
     expect(developerInstructions).toContain("Do not implement directly except for trivial one-line fixes.");
-    expect(developerInstructions).toContain("Delegate implementation work with kuma-task.");
-    expect(developerInstructions).toContain("Do not use --trust-worker when dispatching worker tasks");
+    expect(developerInstructions).toContain("Delegate implementation work with kuma-dispatch assign.");
+    expect(developerInstructions).toContain("Pass --qa <member> only when an external QA reviewer is actually required.");
   });
 
   it("builds a Codex startup command that stays shell-parseable when decisions contain single quotes", async () => {

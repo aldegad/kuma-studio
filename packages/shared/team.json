@@ -143,7 +143,6 @@
           "nodeType": "worker",
           "parentId": "kuma",
           "parallel": false,
-          "defaultQa": "jjooni",
           "image": "/characters/noeul.jpg",
           "animalKo": "사슴",
           "animalEn": "deer",
@@ -176,7 +175,6 @@
           "nodeType": "worker",
           "parentId": "kuma",
           "parallel": false,
-          "defaultQa": "kuma-direct",
           "image": "/characters/jjooni.jpg",
           "animalKo": "꿀벌",
           "animalEn": "bee",
@@ -225,7 +223,6 @@
           "nodeType": "team",
           "parentId": "kuma",
           "parallel": false,
-          "defaultQa": "self",
           "image": "/characters/howl.jpg",
           "animalKo": "늑대",
           "animalEn": "wolf"
@@ -257,7 +254,6 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "self",
           "image": "/characters/ttukddak.jpg",
           "animalKo": "비버",
           "animalEn": "beaver"
@@ -289,7 +285,6 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "self",
           "image": "/characters/darami.jpg",
           "animalKo": "다람쥐",
           "animalEn": "squirrel"
@@ -322,8 +317,6 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "self",
-          "qaFallback": "kuma-direct",
           "image": "/characters/saemi.jpg",
           "animalKo": "독수리",
           "animalEn": "eagle"
@@ -356,7 +349,6 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": true,
-          "defaultQa": "self",
           "image": "/characters/koon.jpg",
           "animalKo": "너구리",
           "animalEn": "raccoon"
@@ -388,7 +380,6 @@
           "nodeType": "worker",
           "parentId": "howl",
           "parallel": false,
-          "defaultQa": "self",
           "image": "/characters/bamdori.jpg",
           "animalKo": "고슴도치",
           "animalEn": "hedgehog"
@@ -476,7 +467,6 @@
           "nodeType": "team",
           "parentId": "kuma",
           "parallel": false,
-          "defaultQa": "self",
           "image": "/characters/buri.jpg",
           "animalKo": "부엉이",
           "animalEn": "owl"
@@ -508,7 +498,6 @@
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
-          "defaultQa": "self",
           "image": "/characters/lumi.jpg",
           "animalKo": "여우",
           "animalEn": "fox"
@@ -545,7 +534,6 @@
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
-          "defaultQa": "self",
           "image": "/characters/mungchi.jpg",
           "animalKo": "햄스터",
           "animalEn": "hamster"
@@ -582,7 +570,6 @@
           "nodeType": "worker",
           "parentId": "buri",
           "parallel": true,
-          "defaultQa": "self",
           "image": "/characters/shuksshuki.jpg",
           "imagePath": "packages/studio-web/public/characters/shuksshuki.jpg",
           "animalKo": "날다람쥐",

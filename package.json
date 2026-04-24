@@ -40,7 +40,6 @@
     "kuma-studio:run": "node ./packages/server/src/cli.mjs run",
     "kuma-studio:set-job-status": "node ./packages/server/src/cli.mjs set-job-status",
     "kuma-studio:vault-lint": "node ./packages/server/src/cli.mjs vault-lint",
-    "kuma-studio:noeuri-watchdog": "bash ./scripts/cmux/kuma-cmux-noeuri-watchdog.sh",
     "vault:ingest": "node ./packages/server/src/cli.mjs vault-ingest",
     "kuma-private:bootstrap": "node ./scripts/private-repo-bootstrap.mjs",
     "kuma-studio:dashboard": "open http://localhost:4312/studio",

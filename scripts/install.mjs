@@ -42,7 +42,7 @@ const BUNDLED_TEAM_METADATA_PATH = resolve(ROOT, "packages", "shared", "team.jso
 
 const SKILLS = [
   { id: "kuma-brief", source: "kuma-brief" },
-  { id: "kuma-cmux-ops", source: "kuma-cmux-ops" },
+  { id: "kuma-dispatch", source: "kuma-dispatch" },
   { id: "kuma-picker", source: "kuma-picker" },
   { id: "kuma-recovery", source: "kuma-recovery" },
   { id: "kuma-overnight", source: "kuma-overnight" },
@@ -56,12 +56,19 @@ const SKILLS = [
 const RETIRED_SKILL_IDS = [
   "analytics-team",
   "dev-team",
+  "kuma-cmux-ops",
   "overnight-mode",
   "overnight-off",
   "overnight-on",
   "strategy-analytics-team",
   "strategy-team",
   "tmux-ops",
+];
+const RETIRED_CMUX_SCRIPT_IDS = [
+  "kuma-cmux-noeuri-watchdog.sh",
+];
+const RETIRED_KUMA_BIN_IDS = [
+  "kuma-task",
 ];
 const SKILL_INSTALL_TARGETS = [
   { id: "claude", label: "Claude", dir: CLAUDE_SKILLS_DIR },
@@ -212,6 +219,49 @@ async function cleanupRetiredSkillLinks(installTarget) {
     await unlink(destDir);
     log(`${installTarget.label}: removed retired skill ${skillId}`);
     addSummary("removed", `${installTarget.label} removed retired skill ${summarizePath(destDir)}`);
+  }
+}
+
+async function cleanupRetiredRepoLinks({ label, dir, ids, repoRoots }) {
+  for (const id of ids) {
+    const dest = resolve(dir, id);
+    let stats;
+    try {
+      stats = await lstat(dest);
+    } catch {
+      continue;
+    }
+
+    if (!stats.isSymbolicLink()) {
+      warn(`${label}: retired ${id} exists but is not a symlink — leaving untouched`);
+      addSummary("skipped", `Skipped non-symlink retired ${summarizePath(dest)}`);
+      continue;
+    }
+
+    const rawTarget = await readlink(dest);
+    const absoluteTarget = resolve(dirname(dest), rawTarget);
+    const resolvedTarget = await realpath(dest).catch(() => null);
+    const normalizedAbsoluteTarget = absoluteTarget.toLowerCase();
+    const normalizedResolvedTarget = resolvedTarget?.toLowerCase() ?? "";
+    const pointsAtRepo = repoRoots.some((repoRoot) => {
+      const normalizedRepoRoot = resolve(repoRoot).toLowerCase();
+      return (
+        normalizedAbsoluteTarget === normalizedRepoRoot ||
+        normalizedAbsoluteTarget.startsWith(`${normalizedRepoRoot}/`) ||
+        normalizedResolvedTarget === normalizedRepoRoot ||
+        normalizedResolvedTarget.startsWith(`${normalizedRepoRoot}/`)
+      );
+    });
+
+    if (!pointsAtRepo) {
+      warn(`${label}: retired ${id} points outside repo — leaving untouched`);
+      addSummary("skipped", `Skipped external retired ${summarizePath(dest)} → ${rawTarget}`);
+      continue;
+    }
+
+    await unlink(dest);
+    log(`${label}: removed retired ${id}`);
+    addSummary("removed", `${label} removed retired ${summarizePath(dest)}`);
   }
 }
 
@@ -446,6 +496,12 @@ async function installCmux() {
   const srcDir = resolve(ROOT, "scripts", "cmux");
   await ensureDirWithSummary(KUMA_DIR);
   await ensureDirWithSummary(KUMA_CMUX_DIR);
+  await cleanupRetiredRepoLinks({
+    label: "cmux",
+    dir: KUMA_CMUX_DIR,
+    ids: RETIRED_CMUX_SCRIPT_IDS,
+    repoRoots: [srcDir],
+  });
 
   const entries = await readdir(srcDir);
   const scripts = entries.filter((f) => f.endsWith(".sh"));
@@ -470,6 +526,12 @@ async function installBinScripts() {
   const srcDir = resolve(ROOT, "scripts", "bin");
   await ensureDirWithSummary(KUMA_DIR);
   await ensureDirWithSummary(KUMA_BIN_DIR);
+  await cleanupRetiredRepoLinks({
+    label: "kuma bin",
+    dir: KUMA_BIN_DIR,
+    ids: RETIRED_KUMA_BIN_IDS,
+    repoRoots: [srcDir],
+  });
 
   if (!(await pathExists(srcDir))) {
     warn(`bin source not found: ${summarizePath(srcDir)} — skipping`);

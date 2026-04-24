@@ -65,7 +65,7 @@ describe("dispatch-broker", () => {
       to: "worker",
       fromLabel: "쿠마",
       toLabel: "뚝딱이",
-      source: "kuma-task",
+      source: "kuma-dispatch",
     });
     expect(hookCalls.map((entry) => entry.event)).toEqual(["dispatched"]);
 

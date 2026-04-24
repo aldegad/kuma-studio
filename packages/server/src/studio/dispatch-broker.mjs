@@ -285,7 +285,7 @@ export class DispatchBroker {
         toLabel: input?.workerName,
         fromSurface: input?.initiator,
         toSurface: input?.worker,
-        source: "kuma-task",
+        source: "kuma-dispatch",
       });
       if (initialMessage) {
         seedMessages.push(initialMessage);
@@ -332,7 +332,7 @@ export class DispatchBroker {
     const summary = summarizeInstruction(input?.summary) || current.summary;
     const blocker = normalizeString(input?.blocker);
     const note = normalizeString(input?.note);
-    const directCompletion = current.qa === "worker-self-report" || current.qa === "kuma-direct";
+    const directCompletion = !current.qa || current.qa === "worker-self-report";
 
     if (isTerminalStatus(current.status)) {
       return cloneEventResult({
@@ -371,14 +371,14 @@ export class DispatchBroker {
         }
         lifecycleEvents.push({
           event: "worker-done",
-          summary: current.qa === "worker-self-report"
-            ? "worker result detected, awaiting final broker completion"
+          summary: directCompletion
+            ? "worker result detected, completing without external QA"
             : "worker result detected, awaiting QA",
         });
         if (directCompletion) {
           lifecycleEvents.push({
             event: "qa-passed",
-            note: note || (current.qa === "worker-self-report" ? "worker-self-report broker completion" : "kuma-direct broker completion"),
+            note: note || (current.qa === "worker-self-report" ? "worker-self-report broker completion" : "direct broker completion"),
           });
         }
         break;

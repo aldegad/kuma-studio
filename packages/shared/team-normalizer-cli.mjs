@@ -44,8 +44,6 @@ function toShellMember(member) {
     roleLabelEn: member?.role?.en ?? "",
     team: member?.team ?? "",
     nodeType: member?.nodeType ?? "",
-    defaultQa: member?.defaultQa ?? "",
-    qaFallback: member?.qaFallback ?? "",
     vaultDomains: Array.isArray(member?.vaultDomains) ? member.vaultDomains : [],
     defaultSurface: member?.defaultSurface ?? "",
     modelCatalogId: member?.modelCatalogId ?? "",

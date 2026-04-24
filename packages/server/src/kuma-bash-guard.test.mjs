@@ -85,14 +85,6 @@ describe.sequential("kuma-bash-guard", () => {
     expect(result.stderr).toBe("");
   });
 
-  it("allows the kuma-task CLI wrapper command", async () => {
-    const result = await runGuard("~/.kuma/bin/kuma-task --help");
-
-    expect(result.code).toBe(0);
-    expect(result.stdout).toContain('"continue": true');
-    expect(result.stderr).toBe("");
-  });
-
   it("allows the kuma-dispatch CLI wrapper command", async () => {
     const result = await runGuard("~/.kuma/bin/kuma-dispatch status --task-file /tmp/demo.task.md");
 

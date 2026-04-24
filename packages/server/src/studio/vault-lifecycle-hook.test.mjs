@@ -15,7 +15,7 @@ title: Dispatch Log
 type: special/dispatch-log
 updated: 2026-04-09T09:00:23Z
 entry_format: append-only-ledger
-source_of_truth: kuma-task-lifecycle
+source_of_truth: kuma-dispatch-lifecycle
 boot_priority: 1
 ---
 

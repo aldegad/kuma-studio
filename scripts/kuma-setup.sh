@@ -12,7 +12,7 @@ skill_roots=(
 )
 skill_specs=(
   "kuma-brief:kuma-brief"
-  "kuma-cmux-ops:kuma-cmux-ops"
+  "kuma-dispatch:kuma-dispatch"
   "kuma-picker:kuma-picker"
   "kuma-recovery:kuma-recovery"
   "kuma-overnight:kuma-overnight"

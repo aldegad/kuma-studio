@@ -1,6 +1,10 @@
 import { assert, describe, it } from "vitest";
 
-import { extractStudioSkillDescription } from "./studio-skill-catalog.mjs";
+import {
+  extractStudioSkillDescription,
+  filterClaudePluginKeys,
+  parseCodexEnabledPluginKeys,
+} from "./studio-skill-catalog.mjs";
 
 describe("studio-skill-catalog", () => {
   it("prefers frontmatter description when present", () => {
@@ -33,6 +37,36 @@ More details.
     assert.strictEqual(
       extractStudioSkillDescription(content),
       "First sentence wins.",
+    );
+  });
+
+  it("keeps Claude user-skills out of the plugin list", () => {
+    assert.deepStrictEqual(
+      filterClaudePluginKeys([
+        "discord@claude-plugins-official",
+        "kuma-vault@user-skills",
+        "[object Object]@user-skills",
+        "kuma-picker",
+      ], new Set(["kuma-picker"])),
+      ["discord@claude-plugins-official"],
+    );
+  });
+
+  it("parses enabled Codex plugins from config.toml", () => {
+    const config = `
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."disabled@openai-curated"]
+enabled = false
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
+`;
+
+    assert.deepStrictEqual(
+      parseCodexEnabledPluginKeys(config),
+      ["github@openai-curated", "browser-use@openai-bundled"],
     );
   });
 });

@@ -1,7 +1,7 @@
 #!/bin/bash
 # kuma-bash-guard v3 — 역할 분리 + early-return 구조
 # 쿠마 모드에서 Bash 직접 호출을 원칙적으로 금지
-# 워커/메인 dispatch는 trusted kuma-task / kuma-dispatch wrapper를 통해 실행
+# 워커/메인 dispatch는 trusted kuma-dispatch wrapper를 통해 실행
 
 KUMA_MODE_LOCK_PATH="${KUMA_MODE_LOCK_PATH:-/tmp/kuma-mode.lock}"
 
@@ -40,7 +40,7 @@ fi
 # ============================================================
 
 # --- 항상 허용: 신뢰된 래퍼 ---
-if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-(task|dispatch)(\s|$)'; then
+if echo "$cmd" | grep -qE '(^|\s)(bash\s+)?(~/\.kuma/bin/)?kuma-dispatch(\s|$)'; then
   echo '{"continue": true}'; exit 0
 fi
 
@@ -77,5 +77,5 @@ if echo "$cmd" | grep -qE '^\s*cmux\s+(send|send-key)(\s|$)'; then
 fi
 
 # --- 전부 차단 ---
-echo "⚠️ 쿠마는 이 명령 직접 실행 금지. trusted wrapper(~/.kuma/bin/kuma-task 또는 ~/.kuma/bin/kuma-dispatch)를 사용할 것. 직접 Bash는 차단됨." >&2
+echo "⚠️ 쿠마는 이 명령 직접 실행 금지. trusted wrapper(~/.kuma/bin/kuma-dispatch)를 사용할 것. 직접 Bash는 차단됨." >&2
 exit 2

@@ -45,7 +45,7 @@ Vault에 저장된 도메인 지식을 로드하는 단일 인터페이스.
 
 | 파일 | type | 역할 | Primary writer | Boot pack 로드 |
 |------|------|------|----------------|----------------|
-| `dispatch-log.md` | `special/dispatch-log` | episodic ledger (task 사건열) | `kuma-task lifecycle hook` | tail 20 |
+| `dispatch-log.md` | `special/dispatch-log` | episodic ledger (task 사건열) | `kuma-dispatch lifecycle hook` | tail 20 |
 | `decisions.md` | `special/decisions` | global decision memory (유저 확정 결정 단일 레이어) | `user-direct` 전용 | 최신 entry 10 |
 | `projects/<slug>.project-decisions.md` | `special/project-decisions` | 프로젝트별 실행/설계 결정 | `user-direct` 전용 (프로젝트 scope) | 현재 프로젝트 한정 로드 |
 

@@ -23,7 +23,7 @@ user-invocable: true
 3. 특히 아래 운영 규칙 위반을 우선 점검한다.
    - `cmux wait-for -S` 를 sender 로 오해한 지시
    - raw `cmux send` 사용
-   - `kuma-task` 대신 임의 송신 경로 사용
+   - `kuma-dispatch` 대신 임의 송신 경로 사용
 4. 관련 플랜 체크리스트를 최신 상태로 갱신한다.
 
 ## Audit 시작 절차

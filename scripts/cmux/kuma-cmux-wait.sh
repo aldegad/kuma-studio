@@ -3,9 +3,9 @@
 #
 # Thin liveness helper: polls for a signal file and, when --surface is given,
 # classifies the surface at timeout boundaries to report worker-down vs
-# worker-idle. Does NOT record lifecycle events, run vault-ingest, or trigger
-# Noeuri — those are owned by the dispatch broker (server.mjs) and the JS
-# modules it imports (vault-lifecycle-hook.mjs, dispatch-auto-actions.mjs).
+# worker-idle. Does NOT record lifecycle events or run vault-ingest directly;
+# those concerns belong to the dispatch broker lifecycle hook and explicit
+# vault-ingest CLI.
 #
 # Exits:
 #   0 — signal file arrived

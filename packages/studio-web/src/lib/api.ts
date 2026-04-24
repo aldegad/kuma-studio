@@ -6,7 +6,7 @@ import type {
 } from "../types/content";
 import type { ExperimentItem, ExperimentListResponse, ExperimentSettings, ExperimentSource, ExperimentStatus } from "../types/experiment";
 import type { Memo, MemoListResponse } from "../types/memo";
-import type { ExtensionsCatalogResponse, StudioSkillEntry } from "../types/extensions";
+import type { ExtensionsCatalogResponse, StudioPluginEntry, StudioSkillEntry } from "../types/extensions";
 import type {
   DailyReport,
   DashboardStats,
@@ -317,11 +317,25 @@ function isThreadDocumentListResponse(value: unknown): value is ThreadDocumentLi
 function isStudioSkillEntry(value: unknown): value is StudioSkillEntry {
   return (
     isRecord(value) &&
+    (value.ecosystem === "claude" || value.ecosystem === "codex") &&
+    typeof value.ecosystemLabel === "string" &&
     typeof value.name === "string" &&
     typeof value.description === "string" &&
     typeof value.file === "string" &&
     typeof value.content === "string" &&
     typeof value.path === "string"
+  );
+}
+
+function isStudioPluginEntry(value: unknown): value is StudioPluginEntry {
+  return (
+    isRecord(value) &&
+    (value.ecosystem === "claude" || value.ecosystem === "codex") &&
+    typeof value.ecosystemLabel === "string" &&
+    typeof value.name === "string" &&
+    typeof value.displayName === "string" &&
+    typeof value.description === "string" &&
+    typeof value.sourcePath === "string"
   );
 }
 
@@ -542,13 +556,13 @@ export async function fetchStudioSkills(): Promise<StudioSkillEntry[]> {
   return payload.skills;
 }
 
-export async function fetchStudioPlugins(): Promise<string[]> {
+export async function fetchStudioPlugins(): Promise<StudioPluginEntry[]> {
   const res = await fetch(`${BASE_URL}/studio/plugins`, {
     headers: { Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`Failed to fetch plugins: ${res.statusText}`);
   const payload: unknown = await res.json();
-  if (!isRecord(payload) || !Array.isArray(payload.plugins) || !payload.plugins.every((plugin) => typeof plugin === "string")) {
+  if (!isRecord(payload) || !Array.isArray(payload.plugins) || !payload.plugins.every(isStudioPluginEntry)) {
     throw new Error("Failed to fetch plugins: invalid response payload");
   }
   return payload.plugins;
@@ -566,8 +580,8 @@ export async function fetchExtensionsCatalog(): Promise<ExtensionsCatalogRespons
   return payload;
 }
 
-export async function deleteStudioSkill(skillName: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/studio/skills/${encodeURIComponent(skillName)}`, {
+export async function deleteStudioSkill(skillName: string, ecosystem: "claude" | "codex" = "claude"): Promise<void> {
+  const res = await fetch(`${BASE_URL}/studio/skills/${encodeURIComponent(skillName)}?ecosystem=${encodeURIComponent(ecosystem)}`, {
     method: "DELETE",
     headers: { Accept: "application/json" },
   });

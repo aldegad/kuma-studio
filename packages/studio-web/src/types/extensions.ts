@@ -1,9 +1,22 @@
+export type ExtensionEcosystemId = "claude" | "codex";
+
 export interface StudioSkillEntry {
+  ecosystem: ExtensionEcosystemId;
+  ecosystemLabel: string;
   name: string;
   description: string;
   file: string;
   content: string;
   path: string;
+}
+
+export interface StudioPluginEntry {
+  ecosystem: ExtensionEcosystemId;
+  ecosystemLabel: string;
+  name: string;
+  displayName: string;
+  description: string;
+  sourcePath: string;
 }
 
 export interface ExtensionsCatalogCategory {

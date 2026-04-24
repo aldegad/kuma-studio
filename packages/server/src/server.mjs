@@ -1,9 +1,7 @@
 import fs from "node:fs";
 import http from "node:http";
-import { execFile as execFileCallback } from "node:child_process";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { WebSocketServer } from "ws";
 
 import { BrowserSessionStore } from "./browser-session-store.mjs";
@@ -43,24 +41,16 @@ import { AgentHistoryStore } from "./studio/agent-history-store.mjs";
 import { DispatchBroker } from "./studio/dispatch-broker.mjs";
 import { StudioUiStateStore } from "./studio/studio-ui-state-store.mjs";
 import { runVaultLifecycleHook } from "./studio/vault-lifecycle-hook.mjs";
-import { runDispatchAutoActions } from "./studio/dispatch-auto-actions.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
 import { watchStudioExplorerRoots } from "./studio/studio-explorer-routes.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 import {
-  DEFAULT_DISPATCH_RESULT_DIR,
-  DEFAULT_DISPATCH_SIGNAL_DIR,
-  DEFAULT_DISPATCH_TASK_DIR,
-  DEFAULT_KUMA_CMUX_DIR,
-  DEFAULT_SURFACE_REGISTRY_PATH,
   DEFAULT_TEAM_WATCHER_LOG_PATH,
-  DEFAULT_VAULT_INGEST_STAMP_DIR,
 } from "./kuma-paths.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STUDIO_DEV_HMR_CLIENT_PATH = "/__vite_ws";
 const STUDIO_DEV_HMR_UPGRADE_PATH = "/studio/__vite_ws";
-const execFile = promisify(execFileCallback);
 
 function appendTeamWatcherLog(message) {
   fs.mkdirSync(dirname(DEFAULT_TEAM_WATCHER_LOG_PATH), { recursive: true });
@@ -160,29 +150,12 @@ export async function createServer({ host, port, root }) {
     teamConfigStore,
     logPath: DEFAULT_TEAM_WATCHER_LOG_PATH,
   });
-  const sendScriptPath = resolve(process.env.KUMA_CMUX_SEND_SCRIPT ?? join(DEFAULT_KUMA_CMUX_DIR, "kuma-cmux-send.sh"));
   const dispatchBroker = new DispatchBroker({
     storagePath: resolve(root, ".kuma-studio", "dispatch-broker.json"),
     async runLifecycleHook({ event, taskFile, summary, blocker, note }) {
       const { warnings } = await runVaultLifecycleHook({ event, taskFile, summary, blocker, note });
       for (const warning of warnings) {
         process.stderr.write(`[vault-hook] ${warning.message}\n`);
-      }
-
-      if (event === "qa-passed") {
-        await runDispatchAutoActions({
-          event,
-          taskFile,
-          repoRoot: root,
-          taskDir: DEFAULT_DISPATCH_TASK_DIR,
-          stampDir: DEFAULT_VAULT_INGEST_STAMP_DIR,
-          signalDir: DEFAULT_DISPATCH_SIGNAL_DIR,
-          resultDir: DEFAULT_DISPATCH_RESULT_DIR,
-          teamJsonPath: resolve(process.env.KUMA_TEAM_JSON_PATH ?? join(DEFAULT_KUMA_CMUX_DIR, "..", "team.json")),
-          registryPath: DEFAULT_SURFACE_REGISTRY_PATH,
-          sendScriptPath,
-          execFile,
-        });
       }
     },
   });

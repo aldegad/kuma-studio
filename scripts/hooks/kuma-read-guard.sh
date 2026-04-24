@@ -55,5 +55,5 @@ if [ "$tool" = "Glob" ]; then
 fi
 
 # 그 외: 소스코드 읽기/검색 차단
-echo "⚠️ 쿠마는 코드를 직접 읽지 않는다. 대안: 하울 팀에게 '이 파일/패턴 분석해줘' 위임. kuma-task howl \"[분석 요청]\" --project [프로젝트] --trust-worker" >&2
+echo "⚠️ 쿠마는 코드를 직접 읽지 않는다. 대안: 하울 팀에게 '이 파일/패턴 분석해줘' 위임. kuma-dispatch assign howl \"[분석 요청]\" --project [프로젝트]" >&2
 exit 2

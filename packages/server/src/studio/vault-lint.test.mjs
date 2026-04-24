@@ -27,7 +27,7 @@ description: Wiki 페이지 작성 규칙과 운영 원칙
 
 ### 1) \`dispatch-log.md\`
 
-- **Primary writer:** \`kuma-task lifecycle hook\`
+- **Primary writer:** \`kuma-dispatch lifecycle hook\`
 - **Frontmatter type 표준:** \`type: special/dispatch-log\`
 
 ### 2) \`decisions.md\`
@@ -45,7 +45,7 @@ title: Dispatch Log
 type: special/dispatch-log
 updated: 2026-04-09T09:00:23Z
 entry_format: append-only-ledger
-source_of_truth: kuma-task-lifecycle
+source_of_truth: kuma-dispatch-lifecycle
 boot_priority: 1
 ---
 
@@ -528,7 +528,7 @@ description: Wiki 페이지 작성 규칙과 운영 원칙
 
 ### 1) \`dispatch-log.md\`
 
-- **Primary writer:** \`kuma-task lifecycle hook\`
+- **Primary writer:** \`kuma-dispatch lifecycle hook\`
 - **Frontmatter type 표준:** \`type: special/dispatch-log\`
 
 ### 2) \`legacy-skill-sync.md\`
@@ -571,7 +571,7 @@ contract summary
 ## Special Files
 
 ### 1) \`dispatch-log.md\`
-- Primary writer: \`kuma-task lifecycle hook\`
+- Primary writer: \`kuma-dispatch lifecycle hook\`
 
 ### 2) \`decisions.md\`
 - Primary writer: \`user-direct\`

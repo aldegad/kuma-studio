@@ -34,10 +34,13 @@
 
 ## 디스패치 엔트리포인트
 
-엔트리포인트 계층 (의도된 분리, drift 아님):
-- Kuma main thread (Claude) → `kuma-task <worker> ...` + `kuma-dispatch` broker lifecycle 직접.
+엔트리포인트 계층:
+- 작업 전달 → `kuma-dispatch assign <worker> "<지시>" [--project <프로젝트>] [--attach <path>] [--qa <member|self|none>] [--require-result]`.
+- 작업 중 대화 → `kuma-dispatch ask|reply`.
+- 완료/실패/QA → `kuma-dispatch done|complete|fail|qa-pass|qa-reject`.
 - Background polling/wait helpers 는 safety net 이며 completion authority 가 되면 안 된다.
-- Worker / QA / Codex sub-worker → `kuma-task` + `kuma-dispatch ask|reply|complete|fail|qa-pass|qa-reject` 직접. CLI 가 canonical 이고 slash-skill 등가물은 없다.
+
+`kuma-dispatch` CLI 가 canonical 이고 `kuma-task` 는 삭제된 구형 entrypoint 다. slash-skill 등가물은 없다. main-thread 와 worker 모두 같은 CLI 경로를 쓴다.
 
 ## 컨벤션
 
