@@ -556,23 +556,11 @@ export function StudioPage() {
 
           {/* Project tabs — zone selector */}
           {projectTabs.length > 0 && (
-            <div className="ml-2 flex min-w-0 max-w-[min(56vw,52rem)] items-center gap-1 overflow-x-auto">
-              <button type="button" onClick={() => selectProject(null)}
-                className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
-                  activeProjectId === null
-                    ? isNight
-                      ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
-                      : "bg-amber-500/30 text-amber-100 border-amber-400/40"
-                    : isNight
-                      ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
-                      : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
-                }`}>
-                전체
-              </button>
-              {hudProjects.map((p) => (
-                <button key={p.projectId} type="button" onClick={() => selectProject(p.projectId)}
+            <div ref={projectMenuRef} className="relative ml-2 flex min-w-0 max-w-[min(56vw,52rem)] items-center gap-1">
+              <div className="flex min-w-0 items-center gap-1 overflow-x-auto pr-1">
+                <button type="button" onClick={() => selectProject(null)}
                   className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
-                    activeProjectId === p.projectId
+                    activeProjectId === null
                       ? isNight
                         ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
                         : "bg-amber-500/30 text-amber-100 border-amber-400/40"
@@ -580,11 +568,25 @@ export function StudioPage() {
                         ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
                         : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
                   }`}>
-                  {p.projectName}
+                  전체
                 </button>
-              ))}
+                {hudProjects.map((p) => (
+                  <button key={p.projectId} type="button" onClick={() => selectProject(p.projectId)}
+                    className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
+                      activeProjectId === p.projectId
+                        ? isNight
+                          ? "bg-amber-400/28 text-amber-50 border-amber-300/45"
+                          : "bg-amber-500/30 text-amber-100 border-amber-400/40"
+                        : isNight
+                          ? "bg-white/8 text-amber-100/80 border-amber-300/18 hover:bg-white/14 hover:text-amber-50"
+                          : "bg-white/5 text-amber-300/60 border-transparent hover:bg-white/10 hover:text-amber-200"
+                    }`}>
+                    {p.projectName}
+                  </button>
+                ))}
+              </div>
               {projectMenuProjects.length > 0 && (
-                <div ref={projectMenuRef} className="relative">
+                <>
                   <button
                     type="button"
                     onClick={() => setProjectMenuOpen((open) => !open)}
@@ -618,7 +620,7 @@ export function StudioPage() {
                   </button>
                   {projectMenuOpen && (
                     <div
-                      className="absolute left-0 top-[calc(100%+0.45rem)] z-[70] w-80 overflow-hidden rounded-2xl border shadow-[0_22px_48px_-20px_rgba(15,23,42,0.5)] backdrop-blur-xl"
+                      className="absolute right-0 top-[calc(100%+0.45rem)] z-[90] w-80 overflow-hidden rounded-2xl border shadow-[0_22px_48px_-20px_rgba(15,23,42,0.5)] backdrop-blur-xl"
                       style={{
                         background: isNight ? "rgba(33, 22, 12, 0.92)" : "rgba(79, 54, 28, 0.92)",
                         borderColor: "rgba(251, 191, 36, 0.18)",
@@ -687,7 +689,7 @@ export function StudioPage() {
                       </div>
                     </div>
                   )}
-                </div>
+                </>
               )}
             </div>
           )}
