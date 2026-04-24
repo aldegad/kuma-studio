@@ -221,6 +221,10 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
   const currentX = getLaneX(visibleCurrentLane);
   const laneIndices = Array.from({ length: row.laneCount }, (_, index) => index);
   const lineGapRadius = GRAPH_DOT_RADIUS - 0.6;
+  const currentColor = GRAPH_COLORS[visibleCurrentLane % GRAPH_COLORS.length];
+  const currentBefore = row.activeBefore[visibleCurrentLane];
+  const currentAfter = row.activeAfter[visibleCurrentLane];
+  const connectorTargets = new Set(row.connectors.map((connector) => visibleLaneIndex(connector.to)));
 
   return (
     <svg
@@ -231,11 +235,26 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
       overflow="hidden"
       aria-hidden="true"
     >
+      {(currentBefore || currentAfter) && (
+        <line
+          x1={currentX}
+          y1={currentBefore ? 0 : GRAPH_DOT_Y}
+          x2={currentX}
+          y2={currentAfter ? GRAPH_ROW_HEIGHT : GRAPH_DOT_Y}
+          stroke={currentColor}
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          opacity="0.9"
+        />
+      )}
       {laneIndices.map((lane) => {
         const x = getLaneX(lane);
         const color = GRAPH_COLORS[lane % GRAPH_COLORS.length];
         const before = row.activeBefore[lane];
-        const after = row.activeAfter[lane];
+        const after = row.activeAfter[lane] && !connectorTargets.has(lane);
+        if (lane === visibleCurrentLane) {
+          return null;
+        }
         return (
           <g key={`lane:${lane}`}>
             {before && (
@@ -271,12 +290,13 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
         const fromX = getLaneX(from);
         const toX = getLaneX(to);
         const color = GRAPH_COLORS[to % GRAPH_COLORS.length];
+        const direction = Math.sign(toX - fromX) || 1;
         const startY = GRAPH_DOT_Y + lineGapRadius - 0.5;
         const endY = GRAPH_ROW_HEIGHT - 1;
         return (
           <path
             key={`edge:${connector.from}:${connector.to}`}
-            d={`M ${fromX} ${startY} C ${fromX} ${startY + 3}, ${toX} ${endY - 5}, ${toX} ${endY}`}
+            d={`M ${fromX} ${startY} C ${fromX} ${startY + 4}, ${toX - (direction * 5)} ${endY}, ${toX} ${endY}`}
             fill="none"
             stroke={color}
             strokeWidth="1.6"
@@ -290,8 +310,8 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
         cx={currentX}
         cy={GRAPH_DOT_Y}
         r={GRAPH_DOT_RADIUS}
-        fill="var(--panel-bg)"
-        stroke={GRAPH_COLORS[visibleCurrentLane % GRAPH_COLORS.length]}
+        fill="transparent"
+        stroke={currentColor}
         strokeWidth="2.2"
       />
       <circle
