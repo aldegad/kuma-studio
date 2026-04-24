@@ -30,6 +30,15 @@ function uniqueStringArray(value) {
   return [...new Set(value.filter((entry) => typeof entry === "string" && entry.length > 0))];
 }
 
+function normalizePinnedProjectIds(value, legacyValue) {
+  const ids = uniqueStringArray(value);
+  const legacyId = nullableString(legacyValue);
+  if (ids.length === 0 && legacyId) {
+    return [legacyId];
+  }
+  return ids;
+}
+
 function booleanRecord(value) {
   if (!isRecord(value)) {
     return {};
@@ -70,7 +79,7 @@ function defaultState() {
     version: CURRENT_VERSION,
     updatedAt: nowIso(),
     hud: {
-      pinnedProjectId: null,
+      pinnedProjectIds: [],
     },
     explorer: {
       open: false,
@@ -116,7 +125,7 @@ function normalizeState(value) {
     version: CURRENT_VERSION,
     updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : nowIso(),
     hud: {
-      pinnedProjectId: nullableString(hud.pinnedProjectId),
+      pinnedProjectIds: normalizePinnedProjectIds(hud.pinnedProjectIds, hud.pinnedProjectId),
     },
     explorer: {
       open: booleanValue(explorer.open, false),
@@ -165,8 +174,8 @@ function mergeState(current, patch) {
     return next;
   }
 
-  if (isRecord(patch.hud) && "pinnedProjectId" in patch.hud) {
-    next.hud.pinnedProjectId = nullableString(patch.hud.pinnedProjectId);
+  if (isRecord(patch.hud) && "pinnedProjectIds" in patch.hud) {
+    next.hud.pinnedProjectIds = uniqueStringArray(patch.hud.pinnedProjectIds);
   }
 
   if (isRecord(patch.explorer) && isRecord(patch.explorer.projects)) {

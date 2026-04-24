@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildStudioProjectTabs,
   CORE_PROJECT_TAB_ID,
-  resolvePinnedHudProjectId,
+  resolvePinnedHudProjectIds,
   splitHudProjectTabs,
   type StudioProjectTab,
 } from "./project-tabs";
@@ -45,51 +45,61 @@ describe("buildStudioProjectTabs", () => {
   });
 });
 
-describe("resolvePinnedHudProjectId", () => {
-  const projectTabs = buildStudioProjectTabs([], ["pqc-unified", "life-ai"]);
+describe("resolvePinnedHudProjectIds", () => {
+  const projectTabs = buildStudioProjectTabs([], ["alpha-project", "beta-project"]);
 
-  it("accepts a non-core project that exists in the selector", () => {
-    expect(resolvePinnedHudProjectId(projectTabs, "pqc-unified")).toBe("pqc-unified");
+  it("accepts non-core projects that exist in the selector", () => {
+    expect(resolvePinnedHudProjectIds(projectTabs, ["alpha-project", "beta-project"])).toEqual([
+      "alpha-project",
+      "beta-project",
+    ]);
   });
 
-  it("rejects the core project and unknown ids", () => {
-    expect(resolvePinnedHudProjectId(projectTabs, CORE_PROJECT_TAB_ID)).toBeNull();
-    expect(resolvePinnedHudProjectId(projectTabs, "unknown-project")).toBeNull();
+  it("rejects the core project, unknown ids, and duplicates", () => {
+    expect(resolvePinnedHudProjectIds(projectTabs, [
+      CORE_PROJECT_TAB_ID,
+      "unknown-project",
+      "alpha-project",
+      "alpha-project",
+    ])).toEqual(["alpha-project"]);
   });
 });
 
 describe("splitHudProjectTabs", () => {
   const projectTabs = buildStudioProjectTabs([], [
     "my-agent-girlfriend",
-    "pqc-unified",
-    "life-ai",
+    "alpha-project",
+    "beta-project",
   ]);
 
-  it("shows kuma-studio plus the pinned project in the HUD", () => {
-    const { visibleProjects, overflowProjects, pinnedProjectId } = splitHudProjectTabs(projectTabs, "pqc-unified");
+  it("shows kuma-studio plus every pinned project in the HUD", () => {
+    const { visibleProjects, overflowProjects, pinnedProjectIds } = splitHudProjectTabs(projectTabs, [
+      "alpha-project",
+      "beta-project",
+    ]);
 
-    expect(pinnedProjectId).toBe("pqc-unified");
+    expect(pinnedProjectIds).toEqual(["alpha-project", "beta-project"]);
     expect(visibleProjects.map((project) => project.projectId)).toEqual([
       CORE_PROJECT_TAB_ID,
-      "pqc-unified",
+      "alpha-project",
+      "beta-project",
     ]);
     expect(overflowProjects.map((project) => project.projectId)).toEqual([
       "my-agent-girlfriend",
-      "life-ai",
     ]);
   });
 
   it("shows only kuma-studio on the HUD when nothing is pinned", () => {
-    const { visibleProjects, overflowProjects, pinnedProjectId } = splitHudProjectTabs(projectTabs, null);
+    const { visibleProjects, overflowProjects, pinnedProjectIds } = splitHudProjectTabs(projectTabs, []);
 
-    expect(pinnedProjectId).toBeNull();
+    expect(pinnedProjectIds).toEqual([]);
     expect(visibleProjects.map((project) => project.projectId)).toEqual([
       CORE_PROJECT_TAB_ID,
     ]);
     expect(overflowProjects.map((project) => project.projectId)).toEqual([
       "my-agent-girlfriend",
-      "pqc-unified",
-      "life-ai",
+      "alpha-project",
+      "beta-project",
     ]);
   });
 });

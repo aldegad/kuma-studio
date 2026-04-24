@@ -82,7 +82,7 @@ resolve_process_env_value_from_surface_history() {
   local env_key="${2:?env key required}"
   local screen_output=""
 
-  screen_output="$(cmux read-screen --surface "$surface" --lines 120 2>/dev/null || true)"
+  screen_output="$(read_surface_screen "$surface" 120 2>/dev/null || true)"
   [ -n "$screen_output" ] || return 1
 
   printf '%s\n' "$screen_output" | awk -v key="$env_key" '
@@ -113,6 +113,15 @@ resolve_workspace_binding_from_surface_history() {
   resolve_path_if_possible "$proc_env" || printf '%s\n' "$proc_env"
 }
 
+normalize_explorer_global_roots_binding() {
+  local value="${1-}"
+
+  node - "$value" <<'NODE'
+const value = process.argv[2] ?? "";
+process.stdout.write(value.replace(/\\+,/g, ","));
+NODE
+}
+
 resolve_managed_workspace_anchor_binding() {
   local repo_root="${1:-$KUMA_REPO_ROOT}"
   local anchor_surface=""
@@ -131,7 +140,21 @@ resolve_managed_workspace_anchor_binding() {
 
 ensure_surface_alive() {
   local surface="${1:?surface required}"
-  cmux read-screen --surface "$surface" --lines 1 > /dev/null 2>&1
+  read_surface_screen "$surface" 1 > /dev/null 2>&1
+}
+
+read_surface_screen() {
+  local surface="${1:?surface required}"
+  local lines="${2:-1}"
+  local workspace=""
+  local args=()
+
+  workspace="$(resolve_workspace_for_surface "$surface" 2>/dev/null || true)"
+  if [ -n "$workspace" ]; then
+    args+=(--workspace "$workspace")
+  fi
+
+  cmux read-screen "${args[@]}" --surface "$surface" --lines "$lines"
 }
 
 resolve_surface_by_title() {
@@ -206,6 +229,10 @@ if [ -z "$WORKSPACE_BINDING" ]; then
   WORKSPACE_BINDING="$(resolve_reload_workspace_binding_candidate "$WORKSPACE_BINDING" "$KUMA_REPO_ROOT" 2>/dev/null || true)"
 fi
 if [ -z "$WORKSPACE_BINDING" ]; then
+  WORKSPACE_BINDING="$(node "$KUMA_REPO_ROOT/scripts/resolve-default-workspace.mjs" 2>/dev/null || true)"
+  WORKSPACE_BINDING="$(resolve_reload_workspace_binding_candidate "$WORKSPACE_BINDING" "$KUMA_REPO_ROOT" 2>/dev/null || true)"
+fi
+if [ -z "$WORKSPACE_BINDING" ]; then
   WORKSPACE_BINDING="$(resolve_managed_workspace_anchor_binding "$KUMA_REPO_ROOT" 2>/dev/null || true)"
 fi
 
@@ -227,20 +254,21 @@ fi
 if [ "$EXPLORER_GLOBAL_ROOTS_IS_SET" -eq 0 ]; then
   EXPLORER_GLOBAL_ROOTS_BINDING="$DEFAULT_EXPLORER_GLOBAL_ROOTS"
 fi
+EXPLORER_GLOBAL_ROOTS_BINDING="$(normalize_explorer_global_roots_binding "$EXPLORER_GLOBAL_ROOTS_BINDING")"
 
 [ -n "$WORKSPACE_BINDING" ] || die "unable to resolve workspace binding; run from the workspace root, set KUMA_STUDIO_WORKSPACE, keep the managed daemon running with KUMA_STUDIO_WORKSPACE, or keep the managed Kuma orchestrator surface anchored to the runtime workspace"
 
 WORKSPACE_BINDING="$(resolve_path_if_possible "$WORKSPACE_BINDING" || printf '%s' "$WORKSPACE_BINDING")"
-printf -v RELOAD_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_REPO_ROOT" "$WORKSPACE_BINDING" "$EXPLORER_GLOBAL_ROOTS_BINDING"
-
-cmux close-surface --workspace "$SERVER_WORKSPACE_ID" --surface "$SERVER_SURFACE" > /dev/null
-remove_surface_from_registry "$SERVER_SURFACE" "$PROJECT_ID"
-
 NEW_SERVER_SURFACE="$(create_surface_in_slot "$SERVER_WORKSPACE_ID" "$SERVER_PANE_ID")"
 cmux tab-action --action rename --workspace "$SERVER_WORKSPACE_ID" --surface "$NEW_SERVER_SURFACE" --title "$SERVER_TITLE" > /dev/null 2>&1 || true
 register_surface_label "$PROJECT_ID" "$SERVER_LABEL" "$NEW_SERVER_SURFACE"
 
+printf -v RELOAD_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_REPO_ROOT" "$WORKSPACE_BINDING" "$EXPLORER_GLOBAL_ROOTS_BINDING"
+
 "$KUMA_CMUX_DIR/kuma-cmux-send.sh" "$NEW_SERVER_SURFACE" "$RELOAD_COMMAND" --workspace "$SERVER_WORKSPACE_ID"
+
+cmux close-surface --workspace "$SERVER_WORKSPACE_ID" --surface "$SERVER_SURFACE" > /dev/null
+remove_surface_from_registry "$SERVER_SURFACE" "$PROJECT_ID"
 
 printf 'SURFACE: %s\n' "$NEW_SERVER_SURFACE"
 printf 'REPLACED_SURFACE: %s\n' "$SERVER_SURFACE"

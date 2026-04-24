@@ -20,6 +20,8 @@ const PLAN_STATUS_COLORS: Record<string, { dot: string; glow: string; label: str
 const DEFAULT_STATUS_COLOR = { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "" };
 
 const STATUS_FILTER_STORAGE_KEY = "kuma-studio.plan-panel.hidden-statuses.v1";
+const PANEL_COLLAPSED_STORAGE_KEY = "kuma-studio.plan-panel.collapsed.v1";
+const EXPANDED_PROJECTS_STORAGE_KEY = "kuma-studio.plan-panel.expanded-projects.v1";
 
 /** cancelled is treated as part of the completed filter family. */
 export function canonicalFilterStatus(status: PlanStatus): string {
@@ -69,6 +71,48 @@ function saveHiddenStatuses(hidden: ReadonlySet<string>) {
     );
   } catch {
     // storage unavailable; filter still works in-memory
+  }
+}
+
+function loadBoolean(storageKey: string, fallback: boolean) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw === null) return fallback;
+    return raw === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveBoolean(storageKey: string, value: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(storageKey, String(value));
+  } catch {
+    // storage unavailable; state still works in-memory
+  }
+}
+
+function loadStringSet(storageKey: string) {
+  if (typeof window === "undefined") return new Set<string>();
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return new Set<string>();
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set<string>();
+    return new Set(parsed.filter((value): value is string => typeof value === "string"));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function saveStringSet(storageKey: string, values: ReadonlySet<string>) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify([...values]));
+  } catch {
+    // storage unavailable; state still works in-memory
   }
 }
 
@@ -131,15 +175,20 @@ export function getPlanPanelEmptyState(source?: PlanSourceInfo | null): {
   };
 }
 
-export function PlanPanel() {
+interface PlanPanelProps {
+  activeProjectId?: string | null;
+  activeProjectName?: string | null;
+}
+
+export function PlanPanel({ activeProjectId = null, activeProjectName = null }: PlanPanelProps) {
   const plans = useDashboardStore((s) => s.plans);
   const plansLoading = useDashboardStore((s) => s.plansLoading);
   const plansError = useDashboardStore((s) => s.plansError);
   const fetchPlans = useDashboardStore((s) => s.fetchPlans);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(() => loadBoolean(PANEL_COLLAPSED_STORAGE_KEY, true));
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => loadStringSet(EXPANDED_PROJECTS_STORAGE_KEY));
   const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => loadHiddenStatuses());
 
   useEffect(() => {
@@ -150,18 +199,32 @@ export function PlanPanel() {
     return () => clearInterval(timer);
   }, [fetchPlans]);
 
-  const total = plans?.totalItems ?? 0;
-  const checked = plans?.checkedItems ?? 0;
-  const rate = Number.isFinite(plans?.overallCompletionRate)
-    ? Math.min(Math.max(plans?.overallCompletionRate ?? 0, 0), 100)
-    : 0;
   const panelHeadingId = "plan-panel-heading";
   const planSource = (plans as { source?: PlanSourceInfo } | null)?.source;
   const emptyState = getPlanPanelEmptyState(planSource);
+  const scopedPlans = useMemo(
+    () => {
+      const allPlans = plans?.plans ?? [];
+      return activeProjectId
+        ? allPlans.filter((plan) => plan.project === activeProjectId)
+        : allPlans;
+    },
+    [activeProjectId, plans?.plans],
+  );
+  const total = scopedPlans.reduce((sum, plan) => sum + plan.totalItems, 0);
+  const checked = scopedPlans.reduce((sum, plan) => sum + plan.checkedItems, 0);
+  const rate = total > 0 ? Math.min(Math.max((checked / total) * 100, 0), 100) : 0;
+  const headingScope = activeProjectName ?? activeProjectId;
+  const scopedEmptyState = activeProjectId
+    ? {
+        title: "이 프로젝트 계획 없음",
+        detail: headingScope ?? activeProjectId,
+      }
+    : emptyState;
 
   const sortedPlans = useMemo(
-    () => sortPlansDesc(plans?.plans ?? []),
-    [plans?.plans],
+    () => sortPlansDesc(scopedPlans),
+    [scopedPlans],
   );
 
   const visibleFilterStatuses = useMemo(
@@ -185,6 +248,14 @@ export function PlanPanel() {
       if (next.has(status)) next.delete(status);
       else next.add(status);
       saveHiddenStatuses(next);
+      return next;
+    });
+  }
+
+  function toggleCollapsed() {
+    setCollapsed((value) => {
+      const next = !value;
+      saveBoolean(PANEL_COLLAPSED_STORAGE_KEY, next);
       return next;
     });
   }
@@ -215,6 +286,7 @@ export function PlanPanel() {
       const next = new Set(prev);
       if (next.has(project)) next.delete(project);
       else next.add(project);
+      saveStringSet(EXPANDED_PROJECTS_STORAGE_KEY, next);
       return next;
     });
   }
@@ -228,17 +300,17 @@ export function PlanPanel() {
       >
         <button
           type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors"
+          onClick={toggleCollapsed}
+          className="flex w-full min-w-0 items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors"
           onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
         >
           <span
             id={panelHeadingId}
-            className="text-[10px] font-bold uppercase tracking-wider"
+            className="min-w-0 flex-1 truncate text-[10px] font-bold uppercase tracking-wider"
             style={{ color: "var(--t-muted)" }}
           >
-            계획 진행률 {total > 0 ? `(${checked}/${total})` : ""}
+            계획 진행률{headingScope ? ` · ${headingScope}` : ""} {total > 0 ? `(${checked}/${total})` : ""}
           </span>
           <span className="text-[10px]" style={{ color: "var(--t-faint)" }}>
             {collapsed ? "▼" : "▲"}
@@ -273,14 +345,14 @@ export function PlanPanel() {
               className="text-[10px]"
               style={{ color: "var(--t-faint)" }}
             >
-              {emptyState.title}
+              {scopedEmptyState.title}
             </p>
-            {emptyState.detail && (
+            {scopedEmptyState.detail && (
               <p
                 className="break-all text-[9px]"
                 style={{ color: "var(--t-faint)" }}
               >
-                {emptyState.detail}
+                {scopedEmptyState.detail}
               </p>
             )}
           </div>

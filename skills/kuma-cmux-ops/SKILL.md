@@ -19,6 +19,10 @@ user-invocable: true
 - surface 생성/종료/등록은 `~/.kuma/cmux/` 스크립트를 우선 사용
 - `kuma-server` 는 managed infra surface 이다. daemon 프로세스가 죽어도 surface slot 과 registry key 는 유지 대상이며, 살아 있는 infra surface 가 있으면 같은 위치에서 재기동한다.
 - managed reload/restart 는 registry miss 시에도 현재 workspace 의 `kuma-server` title surface 를 재발견·재등록한 뒤 same-slot 재사용을 우선한다.
+- surface 조회/화면 읽기는 workspace context 를 같이 넘긴다. `cmux read-screen --surface surface:N` 만으로는 "Surface is not a terminal" 이 날 수 있으므로 `cmux tree` 로 workspace 를 확인한 뒤 `cmux read-screen --workspace workspace:N --surface surface:M --lines ...` 형태를 우선한다.
+- managed surface 교체는 새 surface 생성·rename·registry 등록·명령 전송을 먼저 하고, 그 다음 기존 surface 를 close/remove 한다. 기존 surface 를 먼저 닫으면 pane 이 사라져 replacement 생성이 `Pane not found` 로 실패할 수 있다.
+- macOS path casing drift (`Documents`/`documents`) 때문에 repo-root 비교가 빗나갈 수 있다. 경로 정합이 중요한 스크립트는 native realpath/stat 기반으로 같은 디렉터리 여부를 판정하고, repo clone 루트를 runtime workspace 로 승격하지 않는다.
+- cmux scrollback/env 에서 가져온 comma-delimited 값은 재전송 전에 escaped comma 를 정규화한다. 이미 shell-escaped 된 값을 다시 `%q` 하면 backslash 가 누적되어 idempotency 가 깨진다.
 - 작업 전달은 반드시 `~/.kuma/cmux/kuma-cmux-send.sh` 사용 (raw `cmux send` / `send-key` 금지)
 - 진행 중 clarification/progress 는 `~/.kuma/bin/kuma-dispatch ask|reply --task-file <task-file> ...` 로 이어간다
 - 태스크 완료/실패/QA 결과는 `~/.kuma/bin/kuma-dispatch complete|fail|qa-pass|qa-reject` 로 보고
@@ -34,6 +38,7 @@ user-invocable: true
 ~/.kuma/cmux/kuma-cmux-spawn.sh <name> <type> <dir> <project>
 ~/.kuma/cmux/kuma-cmux-register.sh <project> <role> <surface>
 ~/.kuma/cmux/kuma-cmux-send.sh surface:N "메시지"
+cmux read-screen --workspace workspace:N --surface surface:M --lines 40
 ~/.kuma/bin/kuma-task <member> "<instruction>"
 ~/.kuma/bin/kuma-dispatch ask --task-file ~/.kuma/dispatch/tasks/<task>.task.md --message "..."
 ~/.kuma/bin/kuma-dispatch complete --task-file ~/.kuma/dispatch/tasks/<task>.task.md

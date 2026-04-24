@@ -94,6 +94,8 @@ Kuma Picker resolves its shared state directory in this priority order:
    - If you are already inside the managed `kuma-server` surface or intentionally using a one-off local shell, `npm run server:reload` remains the raw entrypoint.
    - Treat `kuma-server` as a managed infra slot: if the daemon died but the `kuma-server` surface still exists, restart in that same surface rather than starting a duplicate local daemon.
    - If registry lookup misses but a live `kuma-server` title surface exists in the current workspace, re-discover and re-register it before concluding the managed daemon is unavailable.
+   - When verifying that surface, pass both workspace and surface to `cmux read-screen`; some cmux builds reject surface-only reads even for terminal surfaces.
+   - If a managed reload must replace the surface, create/register/send to the replacement before closing the old surface so the pane/slot does not disappear mid-reload.
 3. Prefer targeted tab commands (`--tab-id`, `--url`, `--url-contains`).
 4. Use the narrowest command that answers the question. See [references/commands.md](references/commands.md).
 5. When the task matches a bundled smoke surface, prefer the reusable scripts under `scripts/run/` before inventing a one-off flow.

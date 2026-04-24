@@ -159,19 +159,19 @@ describe("studio-routes explorer endpoints", () => {
     await handler(createRequest("GET", "/studio/ui-state"), getRes);
     assert.strictEqual(getRes.statusCode, 200);
     assert.strictEqual(getRes.json.version, 1);
-    assert.strictEqual(getRes.json.hud.pinnedProjectId, null);
+    assert.deepStrictEqual(getRes.json.hud.pinnedProjectIds, []);
 
     const patchRes = createResponse();
     await handler(
       createRequest("PATCH", "/studio/ui-state", {
-        hud: { pinnedProjectId: "pqc-unified" },
-        explorer: { projects: { "pqc-unified": { selectedPath: join(repoRoot, "README.md") } } },
+        hud: { pinnedProjectIds: ["alpha-project", "beta-project"] },
+        explorer: { projects: { "alpha-project": { selectedPath: join(repoRoot, "README.md") } } },
       }),
       patchRes,
     );
     assert.strictEqual(patchRes.statusCode, 200);
-    assert.strictEqual(patchRes.json.hud.pinnedProjectId, "pqc-unified");
-    assert.strictEqual(patchRes.json.explorer.projects["pqc-unified"].selectedPath, join(repoRoot, "README.md"));
+    assert.deepStrictEqual(patchRes.json.hud.pinnedProjectIds, ["alpha-project", "beta-project"]);
+    assert.strictEqual(patchRes.json.explorer.projects["alpha-project"].selectedPath, join(repoRoot, "README.md"));
   });
 
   it("deletes directories recursively through /studio/fs/delete", async () => {

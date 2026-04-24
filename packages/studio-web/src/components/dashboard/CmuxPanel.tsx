@@ -423,7 +423,12 @@ function ProjectGroup({
   );
 }
 
-export function CmuxPanel() {
+interface CmuxPanelProps {
+  activeProjectId?: string | null;
+  activeProjectName?: string | null;
+}
+
+export function CmuxPanel({ activeProjectId = null, activeProjectName = null }: CmuxPanelProps) {
   const projects = useTeamStatusStore((state) => state.projects);
   const allMembers = useTeamConfigStore((state) => state.members);
   const [collapsed, setCollapsed] = useState(true);
@@ -439,15 +444,20 @@ export function CmuxPanel() {
   const copyResetTimerRef = useRef<number | null>(null);
 
   const agentMap = new Map(allMembers.map((agent) => [agent.id, agent] as const));
-  const totalSurfaces = projects.reduce((sum, project) => sum + project.members.length, 0);
-  const activeSurfaces = projects.reduce(
+  const displayedProjects = activeProjectId
+    ? projects.filter((project) => project.projectId === activeProjectId)
+    : projects;
+  const totalSurfaces = displayedProjects.reduce((sum, project) => sum + project.members.length, 0);
+  const activeSurfaces = displayedProjects.reduce(
     (sum, project) => sum + project.members.filter((member) => member.state === "working" || member.state === "thinking").length,
     0,
   );
+  const headingScope = activeProjectName ?? activeProjectId;
 
   const engineCounts = { claude: 0, codex: 0, shell: 0, unknown: 0 };
-  for (const member of teamData.members) {
-    const engine = member.engine === "claude" ? "claude" : member.engine === "codex" ? "codex" : "unknown";
+  for (const surface of displayedProjects.flatMap((project) => project.members)) {
+    const member = agentMap.get(surface.id) ?? teamData.members.find((agent) => agent.id === surface.id);
+    const engine = member?.engine === "claude" ? "claude" : member?.engine === "codex" ? "codex" : "unknown";
     engineCounts[engine] += 1;
   }
 
@@ -511,13 +521,13 @@ export function CmuxPanel() {
         <button
           type="button"
           onClick={() => setCollapsed((value) => !value)}
-          className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors"
+          className="flex w-full min-w-0 items-center justify-between gap-2 px-4 py-2.5 text-left transition-colors"
           onMouseEnter={(event) => { event.currentTarget.style.background = "var(--panel-hover)"; }}
           onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
         >
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--t-muted)" }}>
-              TEAM
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--t-muted)" }}>
+              TEAM{headingScope ? ` · ${headingScope}` : ""}
             </span>
             <span
               className="rounded px-1.5 py-px text-[8px] font-mono"
@@ -560,12 +570,16 @@ export function CmuxPanel() {
               </span>
             </div>
 
-            {projects.map((project, index) => (
+            {displayedProjects.length === 0 ? (
+              <p className="px-2 py-3 text-[10px]" style={{ color: "var(--t-faint)" }}>
+                이 프로젝트에 연결된 팀 surface가 없습니다.
+              </p>
+            ) : displayedProjects.map((project, index) => (
               <ProjectGroup
                 key={project.projectId}
                 project={project}
                 agentMap={agentMap}
-                defaultExpanded={index === 0 || projects.length <= 2}
+                defaultExpanded={Boolean(activeProjectId) || index === 0 || displayedProjects.length <= 2}
                 onOpenPrompt={handleOpenPrompt}
               />
             ))}

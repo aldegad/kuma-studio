@@ -43,7 +43,39 @@ interface StudioEvent {
 }
 
 const GIT_ACTIVITY_REFRESH_MS = 5 * 60 * 1000;
-const HUD_PINNED_PROJECT_STORAGE_KEY = "kuma-studio-hud-pinned-project";
+const HUD_LEGACY_PINNED_PROJECT_STORAGE_KEY = "kuma-studio-hud-pinned-project";
+const PROJECT_SEARCH_PARAM = "project";
+
+function readProjectSearchParam() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  const value = new URLSearchParams(window.location.search).get(PROJECT_SEARCH_PARAM)?.trim();
+  return value && value.length > 0 ? value : null;
+}
+
+function replaceProjectSearchParam(projectId: string | null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (projectId) {
+    url.searchParams.set(PROJECT_SEARCH_PARAM, projectId);
+  } else {
+    url.searchParams.delete(PROJECT_SEARCH_PARAM);
+  }
+
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextUrl !== currentUrl) {
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }
+}
+
+function sameStringArray(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
 
 export function StudioPage() {
   const { status } = useWebSocket();
@@ -89,8 +121,9 @@ export function StudioPage() {
   const [configuredProjectIds, setConfiguredProjectIds] = useState<string[]>([]);
   const [configuredProjectsLoaded, setConfiguredProjectsLoaded] = useState(false);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
-  const [hudPinnedProjectId, setHudPinnedProjectId] = useState<string | null>(null);
+  const [hudPinnedProjectIds, setHudPinnedProjectIds] = useState<string[]>([]);
   const [studioUiStateLoaded, setStudioUiStateLoaded] = useState(false);
+  const invalidProjectParamRef = useRef<string | null>(null);
   const [themeMode, setThemeMode] = useState<"auto" | "light" | "dark">(() => {
     const stored = localStorage.getItem("kuma-studio-theme-mode");
     return stored === "light" || stored === "dark" ? stored : "auto";
@@ -182,19 +215,23 @@ export function StudioPage() {
           return;
         }
 
-        const legacyPinnedProjectId = localStorage.getItem(HUD_PINNED_PROJECT_STORAGE_KEY)?.trim() || null;
-        const serverPinnedProjectId = state.hud.pinnedProjectId;
-        if (!serverPinnedProjectId && legacyPinnedProjectId) {
-          await patchStudioUiState({ hud: { pinnedProjectId: legacyPinnedProjectId } });
+        const legacyPinnedProjectId = localStorage.getItem(HUD_LEGACY_PINNED_PROJECT_STORAGE_KEY)?.trim() || null;
+        const serverPinnedProjectIds = state.hud.pinnedProjectIds;
+        const nextPinnedProjectIds =
+          legacyPinnedProjectId && !serverPinnedProjectIds.includes(legacyPinnedProjectId)
+            ? [...serverPinnedProjectIds, legacyPinnedProjectId]
+            : serverPinnedProjectIds;
+        if (!sameStringArray(nextPinnedProjectIds, serverPinnedProjectIds)) {
+          await patchStudioUiState({ hud: { pinnedProjectIds: nextPinnedProjectIds } });
           if (cancelled) {
             return;
           }
-          setHudPinnedProjectId(legacyPinnedProjectId);
-          localStorage.removeItem(HUD_PINNED_PROJECT_STORAGE_KEY);
+          setHudPinnedProjectIds(nextPinnedProjectIds);
+          localStorage.removeItem(HUD_LEGACY_PINNED_PROJECT_STORAGE_KEY);
         } else {
-          setHudPinnedProjectId(serverPinnedProjectId);
+          setHudPinnedProjectIds(serverPinnedProjectIds);
           if (legacyPinnedProjectId) {
-            localStorage.removeItem(HUD_PINNED_PROJECT_STORAGE_KEY);
+            localStorage.removeItem(HUD_LEGACY_PINNED_PROJECT_STORAGE_KEY);
           }
         }
         setExplorerOpen(state.explorer.open);
@@ -261,12 +298,12 @@ export function StudioPage() {
     [configuredProjectIds, projects],
   );
   const {
-    pinnedProjectId: resolvedHudPinnedProjectId,
+    pinnedProjectIds: resolvedHudPinnedProjectIds,
     visibleProjects: hudProjects,
     overflowProjects,
   } = useMemo(
-    () => splitHudProjectTabs(projectTabs, hudPinnedProjectId),
-    [hudPinnedProjectId, projectTabs],
+    () => splitHudProjectTabs(projectTabs, hudPinnedProjectIds),
+    [hudPinnedProjectIds, projectTabs],
   );
   const projectMenuProjects = useMemo(
     () => projectTabs.filter((project) => project.projectId !== CORE_PROJECT_TAB_ID),
@@ -314,14 +351,14 @@ export function StudioPage() {
     : null;
   const projectMenuLabel = activeOverflowProject?.projectName ?? (overflowProjects.length > 0 ? `프로젝트 ${overflowProjects.length}` : "프로젝트");
 
-  const persistHudPinnedProjectId = useCallback((nextProjectId: string | null) => {
-    const previousProjectId = hudPinnedProjectId;
-    setHudPinnedProjectId(nextProjectId);
-    void patchStudioUiState({ hud: { pinnedProjectId: nextProjectId } }).catch(() => {
-      setHudPinnedProjectId(previousProjectId);
+  const persistHudPinnedProjectIds = useCallback((nextProjectIds: string[]) => {
+    const previousProjectIds = hudPinnedProjectIds;
+    setHudPinnedProjectIds(nextProjectIds);
+    void patchStudioUiState({ hud: { pinnedProjectIds: nextProjectIds } }).catch(() => {
+      setHudPinnedProjectIds(previousProjectIds);
       pushToast("프로젝트 고정 상태 저장에 실패했습니다.", "error");
     });
-  }, [hudPinnedProjectId]);
+  }, [hudPinnedProjectIds]);
 
   const persistExplorerOpen = useCallback((nextOpen: boolean) => {
     const previousOpen = explorerOpen;
@@ -332,19 +369,56 @@ export function StudioPage() {
     });
   }, [explorerOpen]);
 
+  const selectProject = useCallback((nextProjectId: string | null) => {
+    setActiveProject(nextProjectId);
+    replaceProjectSearchParam(nextProjectId);
+  }, [setActiveProject]);
+
+  useEffect(() => {
+    if (!configuredProjectsLoaded) {
+      return;
+    }
+
+    const applyProjectFromUrl = () => {
+      const requestedProjectId = readProjectSearchParam();
+      if (!requestedProjectId) {
+        invalidProjectParamRef.current = null;
+        setActiveProject(null);
+        return;
+      }
+
+      if (projectTabs.some((project) => project.projectId === requestedProjectId)) {
+        invalidProjectParamRef.current = null;
+        setActiveProject(requestedProjectId);
+        return;
+      }
+
+      if (invalidProjectParamRef.current !== requestedProjectId) {
+        invalidProjectParamRef.current = requestedProjectId;
+        pushToast(`등록되지 않은 프로젝트 URL 파라미터를 제거했습니다: ${requestedProjectId}`, "error");
+      }
+      replaceProjectSearchParam(null);
+      setActiveProject(null);
+    };
+
+    applyProjectFromUrl();
+    window.addEventListener("popstate", applyProjectFromUrl);
+    return () => window.removeEventListener("popstate", applyProjectFromUrl);
+  }, [configuredProjectsLoaded, projectTabs, setActiveProject]);
+
   useEffect(() => {
     if (!configuredProjectsLoaded || !studioUiStateLoaded) {
       return;
     }
 
-    if (resolvedHudPinnedProjectId !== hudPinnedProjectId) {
-      persistHudPinnedProjectId(resolvedHudPinnedProjectId);
+    if (!sameStringArray(resolvedHudPinnedProjectIds, hudPinnedProjectIds)) {
+      persistHudPinnedProjectIds(resolvedHudPinnedProjectIds);
     }
   }, [
     configuredProjectsLoaded,
-    hudPinnedProjectId,
-    persistHudPinnedProjectId,
-    resolvedHudPinnedProjectId,
+    hudPinnedProjectIds,
+    persistHudPinnedProjectIds,
+    resolvedHudPinnedProjectIds,
     studioUiStateLoaded,
   ]);
 
@@ -376,17 +450,18 @@ export function StudioPage() {
 
   useEffect(() => {
     if (activeProjectId && !projectTabs.some((project) => project.projectId === activeProjectId)) {
+      replaceProjectSearchParam(null);
       setActiveProject(null);
     }
   }, [activeProjectId, projectTabs, setActiveProject]);
 
   const dashboardPanels: DashboardPanelItem[] = [
-    { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel /> },
+    { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} /> },
     { id: "git-log", title: "커밋 로그", className: "w-72", content: <GitLogPanel /> },
     { id: "memo", title: "메모", className: "w-[min(46rem,calc(100vw-2rem))]", content: <MemoPanel /> },
     { id: "content", title: "스레드 콘텐츠", className: "w-[min(46rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
-    { id: "cmux", title: "TEAM", className: "w-64", content: <CmuxPanel /> },
+    { id: "cmux", title: "TEAM", className: "w-64", content: <CmuxPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} /> },
     { id: "activity-feed", title: "활동 로그", className: "w-72", content: <ActivityFeed />, hidden: activityCount === 0 },
     { id: "skills", title: "확장", className: "w-80", content: <SkillsPanel /> },
     { id: "minimap", title: "미니맵", className: "w-[152px]",
@@ -475,14 +550,14 @@ export function StudioPage() {
 
       {/* Top bar — Game HUD */}
       <div className="game-hud-bar absolute top-0 left-0 right-0 z-[30] flex items-center justify-between px-4 py-2">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-black tracking-tight text-amber-200" style={{ textShadow: "0 0 12px rgba(255, 200, 100, 0.4), 0 1px 3px rgba(0,0,0,0.4)" }}>쿠마 스튜디오</span>
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 text-lg font-black tracking-tight text-amber-200" style={{ textShadow: "0 0 12px rgba(255, 200, 100, 0.4), 0 1px 3px rgba(0,0,0,0.4)" }}>쿠마 스튜디오</span>
           <span className="rounded-full bg-amber-400/20 text-amber-200 text-[10px] font-semibold px-2 py-0.5 border border-amber-400/25">{visibleCharacters.length}명</span>
 
           {/* Project tabs — zone selector */}
           {projectTabs.length > 0 && (
-            <div className="ml-2 flex items-center gap-1">
-              <button type="button" onClick={() => setActiveProject(null)}
+            <div className="ml-2 flex min-w-0 max-w-[min(56vw,52rem)] items-center gap-1 overflow-x-auto">
+              <button type="button" onClick={() => selectProject(null)}
                 className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
                   activeProjectId === null
                     ? isNight
@@ -495,7 +570,7 @@ export function StudioPage() {
                 전체
               </button>
               {hudProjects.map((p) => (
-                <button key={p.projectId} type="button" onClick={() => setActiveProject(p.projectId)}
+                <button key={p.projectId} type="button" onClick={() => selectProject(p.projectId)}
                   className={`rounded px-2.5 py-0.5 text-[10px] font-semibold transition-colors border ${
                     activeProjectId === p.projectId
                       ? isNight
@@ -561,14 +636,14 @@ export function StudioPage() {
                       <div className="max-h-72 overflow-y-auto px-2 py-2">
                         {projectMenuProjects.map((project) => {
                           const isActive = activeProjectId === project.projectId;
-                          const isPinned = resolvedHudPinnedProjectId === project.projectId;
+                          const isPinned = resolvedHudPinnedProjectIds.includes(project.projectId);
                           const isVisibleOnHud = hudProjects.some((entry) => entry.projectId === project.projectId);
                           return (
                             <div key={project.projectId} className="flex items-center gap-1.5 py-0.5">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setActiveProject(project.projectId);
+                                  selectProject(project.projectId);
                                   setProjectMenuOpen(false);
                                 }}
                                 className={`flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 text-left transition-colors ${
@@ -590,7 +665,11 @@ export function StudioPage() {
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  persistHudPinnedProjectId(isPinned ? null : project.projectId);
+                                  persistHudPinnedProjectIds(
+                                    isPinned
+                                      ? resolvedHudPinnedProjectIds.filter((projectId) => projectId !== project.projectId)
+                                      : [...resolvedHudPinnedProjectIds, project.projectId],
+                                  );
                                 }}
                                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border text-sm transition-colors ${
                                   isPinned

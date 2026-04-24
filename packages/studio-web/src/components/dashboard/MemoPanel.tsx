@@ -24,6 +24,52 @@ interface MemoLightboxImage {
   fileName: string;
 }
 
+const MEMO_PANEL_COLLAPSED_STORAGE_KEY = "kuma-studio.memo-panel.collapsed.v1";
+const MEMO_PANEL_SELECTED_ID_STORAGE_KEY = "kuma-studio.memo-panel.selected-id.v1";
+
+function loadBoolean(storageKey: string, fallback: boolean) {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (raw === null) return fallback;
+    return raw === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+function saveBoolean(storageKey: string, value: boolean) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(storageKey, String(value));
+  } catch {
+    // storage unavailable; state still works in-memory
+  }
+}
+
+function loadString(storageKey: string) {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.localStorage.getItem(storageKey)?.trim();
+    return value && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveString(storageKey: string, value: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (value) {
+      window.localStorage.setItem(storageKey, value);
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // storage unavailable; state still works in-memory
+  }
+}
+
 function isMemoChange(change: FilesystemChangeEvent["event"]["changes"][number]) {
   const candidates = [change.rootId, change.path, change.relativePath]
     .filter((value): value is string => typeof value === "string")
@@ -63,8 +109,8 @@ function memoMetaLabel(memo: Memo) {
 export function MemoPanel() {
   const { memos, loadMemos, addMemo, deleteMemo, initialized, loading } = useMemoStore();
   const ws = useWsStore((state) => state.ws);
-  const [collapsed, setCollapsed] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(() => loadBoolean(MEMO_PANEL_COLLAPSED_STORAGE_KEY, false));
+  const [selectedId, setSelectedId] = useState<string | null>(() => loadString(MEMO_PANEL_SELECTED_ID_STORAGE_KEY));
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -119,16 +165,29 @@ export function MemoPanel() {
 
   const selectedMemo = memos.find((memo) => memo.id === selectedId) ?? memos[0] ?? null;
 
+  const selectMemo = (memoId: string | null) => {
+    setSelectedId(memoId);
+    saveString(MEMO_PANEL_SELECTED_ID_STORAGE_KEY, memoId);
+  };
+
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value;
+      saveBoolean(MEMO_PANEL_COLLAPSED_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (memos.length === 0) {
       if (selectedId !== null) {
-        setSelectedId(null);
+        selectMemo(null);
       }
       return;
     }
 
     if (!selectedId || !memos.some((memo) => memo.id === selectedId)) {
-      setSelectedId(memos[0].id);
+      selectMemo(memos[0].id);
     }
   }, [memos, selectedId]);
 
@@ -209,7 +268,7 @@ export function MemoPanel() {
       >
         <button
           type="button"
-          onClick={() => setCollapsed((v) => !v)}
+          onClick={toggleCollapsed}
           className="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors"
           onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
@@ -311,7 +370,7 @@ export function MemoPanel() {
                             key={memo.id}
                             type="button"
                             data-panel-no-drag="true"
-                            onClick={() => setSelectedId(memo.id)}
+                            onClick={() => selectMemo(memo.id)}
                             className="block w-full border-b px-2.5 py-2.5 text-left transition-colors last:border-b-0"
                             style={{
                               borderColor: "var(--border-subtle)",

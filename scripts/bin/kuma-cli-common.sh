@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-KUMA_CLI_COMMON_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "${BASH_SOURCE[0]}")"
+KUMA_CLI_COMMON_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync.native(input)); } catch { process.stdout.write(input); }' "${BASH_SOURCE[0]}")"
 KUMA_CLI_COMMON_DIR="$(cd "$(dirname "$KUMA_CLI_COMMON_PATH")" && pwd)"
 
 find_kuma_repo_root() {
@@ -642,9 +642,22 @@ resolve_path_if_possible() {
     return 1
   fi
 
-  (
-    cd "$input" 2>/dev/null && pwd -P
-  )
+  node - "$input" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const input = process.argv[2];
+if (!input) {
+  process.exit(1);
+}
+
+const resolved = path.resolve(input);
+try {
+  process.stdout.write(`${fs.realpathSync.native(resolved)}\n`);
+} catch {
+  process.stdout.write(`${resolved}\n`);
+}
+NODE
 }
 
 resolve_requested_workspace_binding() {

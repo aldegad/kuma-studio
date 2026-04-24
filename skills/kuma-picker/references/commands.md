@@ -59,6 +59,8 @@ const href = await page.evaluate(() => window.location.href);
 - If missing or stale, start the daemon and repoint the extension popup.
 - If the managed `kuma-server` surface exists, use `npm run kuma-server:reload`.
 - `npm run server:reload` remains only the raw in-surface or local entrypoint.
+- For cmux verification, prefer `cmux read-screen --workspace workspace:N --surface surface:M --lines ...` after resolving the workspace from `cmux tree`. Surface-only `read-screen` can misreport a live terminal as invalid.
+- Managed `kuma-server` replacement is create/register/send-first, close-old-second. Do not close the old surface before replacement creation succeeds.
 - If `tabCount > 1`, inspect `tabs[]` and pick the right `tabId`.
 - After extension code changes, reloading the unpacked extension in `chrome://extensions` is supported and remains the simplest manual recovery path.
 - Daemon-driven extension self-reload is also supported:

@@ -188,6 +188,9 @@ describe("kuma-server-reload", () => {
     expect(cmuxLog).toContain("close-surface|--workspace workspace:7 --surface surface:42");
     expect(cmuxLog).toContain("new-surface|--pane pane:11 --workspace workspace:7");
     expect(cmuxLog).toContain("tab-action|--action rename --workspace workspace:7 --surface surface:99 --title kuma-server");
+    expect(cmuxLog.indexOf("new-surface|--pane pane:11 --workspace workspace:7")).toBeLessThan(
+      cmuxLog.indexOf("close-surface|--workspace workspace:7 --surface surface:42"),
+    );
     expect(sendLog).not.toContain("surface:42 cd");
   });
 
@@ -305,6 +308,42 @@ esac
     expect(sendLog).toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(sandbox.workspaceRoot)}`);
   });
 
+  it("falls back to the registry default workspace when caller, daemon, and scrollback point at the repo root", async () => {
+    const sandbox = await setupManagedReloadSandbox();
+    tempRoots.push(sandbox.root);
+
+    const firstProjectRoot = join(sandbox.workspaceRoot, "projects", "alpha-project");
+    const secondProjectRoot = join(sandbox.workspaceRoot, "projects", "beta-project");
+    await mkdir(firstProjectRoot, { recursive: true });
+    await mkdir(secondProjectRoot, { recursive: true });
+    await writeFile(
+      join(sandbox.home, ".kuma", "projects.json"),
+      `${JSON.stringify({
+        "alpha-project": firstProjectRoot,
+        "beta-project": secondProjectRoot,
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    const { stdout } = await execFile("bash", [MANAGED_RELOAD_SCRIPT_PATH], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: sandbox.home,
+        PATH: `${sandbox.binDir}:${process.env.PATH}`,
+        KUMA_SURFACES_PATH: sandbox.surfacesPath,
+        KUMA_TEAM_JSON_PATH: sandbox.teamPath,
+        KUMA_CMUX_DIR: join(sandbox.home, ".kuma", "cmux"),
+        INIT_CWD: process.cwd(),
+        KUMA_TEST_RUNNING_WORKSPACE: process.cwd(),
+      },
+    });
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    expect(stdout).toContain(`WORKSPACE: ${await realpath(sandbox.workspaceRoot)}`);
+    expect(sendLog).toContain(`KUMA_STUDIO_WORKSPACE=${await realpath(sandbox.workspaceRoot)}`);
+  });
+
   it("re-discovers and re-registers a live kuma-server title surface when the registry key is missing", async () => {
     const sandbox = await setupManagedReloadSandbox();
     tempRoots.push(sandbox.root);
@@ -400,6 +439,30 @@ esac
 
     const sendLog = await readFile(sandbox.sendLog, "utf8");
     expect(sendLog).toContain("KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=\\'\\'");
+  });
+
+  it("normalizes escaped explorer roots so repeated reloads do not accumulate backslashes", async () => {
+    const sandbox = await setupManagedReloadSandbox();
+    tempRoots.push(sandbox.root);
+
+    await execFile("bash", [MANAGED_RELOAD_SCRIPT_PATH], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HOME: sandbox.home,
+        PATH: `${sandbox.binDir}:${process.env.PATH}`,
+        KUMA_SURFACES_PATH: sandbox.surfacesPath,
+        KUMA_TEAM_JSON_PATH: sandbox.teamPath,
+        KUMA_CMUX_DIR: join(sandbox.home, ".kuma", "cmux"),
+        INIT_CWD: process.cwd(),
+        KUMA_TEST_RUNNING_WORKSPACE: sandbox.workspaceRoot,
+        KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS: "vault\\,claude\\,codex",
+      },
+    });
+
+    const sendLog = await readFile(sandbox.sendLog, "utf8");
+    expect(sendLog).toMatch(/KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=vault\\{3},claude\\{3},codex/);
+    expect(sendLog).not.toMatch(/KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=vault\\{5,},claude/);
   });
 
   it("fails clearly when the managed kuma-server surface is missing", async () => {

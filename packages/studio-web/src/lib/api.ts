@@ -45,7 +45,7 @@ export interface StudioUiState {
   version: 1;
   updatedAt: string;
   hud: {
-    pinnedProjectId: string | null;
+    pinnedProjectIds: string[];
   };
   explorer: {
     open: boolean;
@@ -55,7 +55,7 @@ export interface StudioUiState {
 
 export type StudioUiStatePatch = {
   hud?: {
-    pinnedProjectId?: string | null;
+    pinnedProjectIds?: string[];
   };
   explorer?: {
     open?: boolean;
@@ -107,7 +107,8 @@ function isStudioUiState(value: unknown): value is StudioUiState {
     value.version === 1 &&
     typeof value.updatedAt === "string" &&
     isRecord(value.hud) &&
-    (value.hud.pinnedProjectId === null || typeof value.hud.pinnedProjectId === "string") &&
+    Array.isArray(value.hud.pinnedProjectIds) &&
+    value.hud.pinnedProjectIds.every((entry) => typeof entry === "string") &&
     isRecord(value.explorer) &&
     typeof value.explorer.open === "boolean" &&
     isRecord(value.explorer.projects) &&

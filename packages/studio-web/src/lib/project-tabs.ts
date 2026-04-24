@@ -5,7 +5,6 @@ export interface StudioProjectTab<Member = unknown> {
 }
 
 export const CORE_PROJECT_TAB_ID = "kuma-studio";
-export const HUD_PROJECT_EXTRA_TAB_LIMIT = 1;
 
 const RESERVED_PROJECT_IDS = new Set(["system", "workspace"]);
 const PROJECT_TAB_PRIORITY = [
@@ -47,39 +46,42 @@ export function buildStudioProjectTabs<Member>(
   );
 }
 
-export function resolvePinnedHudProjectId<Member>(
+export function resolvePinnedHudProjectIds<Member>(
   projectTabs: StudioProjectTab<Member>[],
-  pinnedProjectId: string | null,
-): string | null {
-  if (!isSelectableProjectId(pinnedProjectId) || pinnedProjectId === CORE_PROJECT_TAB_ID) {
-    return null;
+  pinnedProjectIds: string[],
+): string[] {
+  const projectIds = new Set(projectTabs.map((project) => project.projectId));
+  const resolved: string[] = [];
+
+  for (const projectId of pinnedProjectIds) {
+    if (
+      !isSelectableProjectId(projectId) ||
+      projectId === CORE_PROJECT_TAB_ID ||
+      !projectIds.has(projectId) ||
+      resolved.includes(projectId)
+    ) {
+      continue;
+    }
+    resolved.push(projectId);
   }
 
-  return projectTabs.some((project) => project.projectId === pinnedProjectId)
-    ? pinnedProjectId
-    : null;
+  return resolved;
 }
 
 export function splitHudProjectTabs<Member>(
   projectTabs: StudioProjectTab<Member>[],
-  pinnedProjectId: string | null,
-  extraLimit = HUD_PROJECT_EXTRA_TAB_LIMIT,
+  pinnedProjectIds: string[],
 ) {
-  const resolvedPinnedProjectId = resolvePinnedHudProjectId(projectTabs, pinnedProjectId);
+  const resolvedPinnedProjectIds = resolvePinnedHudProjectIds(projectTabs, pinnedProjectIds);
   const coreProject = projectTabs.find((project) => project.projectId === CORE_PROJECT_TAB_ID) ?? null;
-  const extraProjectIds: string[] = [];
-
-  if (resolvedPinnedProjectId) {
-    extraProjectIds.push(resolvedPinnedProjectId);
-  }
 
   const visibleProjectIds = new Set([
     ...(coreProject ? [coreProject.projectId] : []),
-    ...extraProjectIds.slice(0, extraLimit),
+    ...resolvedPinnedProjectIds,
   ]);
 
   return {
-    pinnedProjectId: resolvedPinnedProjectId,
+    pinnedProjectIds: resolvedPinnedProjectIds,
     visibleProjects: projectTabs.filter((project) => visibleProjectIds.has(project.projectId)),
     overflowProjects: projectTabs.filter((project) => !visibleProjectIds.has(project.projectId)),
   };
