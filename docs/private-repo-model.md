@@ -1,8 +1,13 @@
 # Private Repo Model
 
-Kuma Studio works best with two Git repositories plus one local-only runtime layer.
+Kuma Studio is a portable operator bundle. It works best with two Git
+repositories plus one local-only runtime layer.
 
 ![kuma-studio public/private model](./images/private-repo-model.png)
+
+For the packaging terminology, see
+[`distribution-model.md`](./distribution-model.md). This document owns only the
+public/private/runtime split.
 
 ## Recommended split
 

@@ -1101,7 +1101,7 @@ export function FileExplorer({
     || "workspace";
   const hasViewer = viewerFile !== null;
   const effectiveTreeWidth = viewerFile?.type === "pdf" ? Math.min(treeWidth, 220) : treeWidth;
-  const shellWidth = hasViewer ? `min(${effectiveTreeWidth + VIEWER_WIDTH_MAX}px, 94vw)` : undefined;
+  const shellWidth = hasViewer ? `min(${effectiveTreeWidth + VIEWER_WIDTH_MAX}px, 94vw)` : effectiveTreeWidth;
 
   return (
     <div className="flex h-full" style={shellWidth ? { width: shellWidth } : undefined}>
@@ -1116,9 +1116,9 @@ export function FileExplorer({
         style={{
           background: "var(--ide-bg)",
           borderColor: "var(--card-border)",
-          ...(hasViewer
-            ? { width: effectiveTreeWidth, minWidth: TREE_WIDTH_MIN, maxWidth: TREE_WIDTH_MAX }
-            : { width: TREE_WIDTH_INITIAL, minWidth: TREE_WIDTH_INITIAL, maxWidth: TREE_WIDTH_INITIAL }),
+          width: effectiveTreeWidth,
+          minWidth: TREE_WIDTH_MIN,
+          maxWidth: TREE_WIDTH_MAX,
         }}
       >
         {/* Header */}
@@ -1477,13 +1477,12 @@ export function FileExplorer({
           </div>
         )}
 
-        {/* Divider resize handle — only when viewer is open */}
-        {hasViewer && (
-          <div
-            className="absolute right-0 top-0 bottom-0 w-[3px] cursor-col-resize transition-colors hover:bg-amber-400/50 active:bg-amber-500/60 z-10"
-            onMouseDown={handleResizeStart}
-          />
-        )}
+        <div
+          className="absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize transition-colors hover:bg-amber-400/50 active:bg-amber-500/60 z-10"
+          onMouseDown={handleResizeStart}
+          title="탐색기 폭 조절"
+          aria-hidden="true"
+        />
       </div>
 
       {/* ── Right: File viewer panel — only rendered when a file is selected ── */}

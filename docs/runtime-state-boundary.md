@@ -1,6 +1,7 @@
 # Runtime State Boundary
 
-Kuma Studio keeps a strict 3-way boundary:
+Kuma Studio is a portable operator bundle. Its state model keeps a strict
+3-way boundary:
 
 1. public repo `kuma-studio`
 2. private repo `kuma-studio-private`
@@ -61,5 +62,7 @@ boundary.
 
 ## Related
 
+- [`distribution-model.md`](./distribution-model.md) defines the bundle,
+  plugin, skill, and slash-command terminology.
 - [`private-repo-model.md`](./private-repo-model.md) describes the recommended public/private repo workflow.
 - [`dispatch-runtime-home.md`](./dispatch-runtime-home.md) documents the local-only runtime paths under `~/.kuma/dispatch`, `~/.kuma/cmux`, and `~/.kuma/runtime`.

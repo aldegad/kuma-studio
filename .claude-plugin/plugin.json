@@ -1,6 +1,6 @@
 {
   "name": "kuma",
-  "description": "Kuma Studio knowledge skills for Claude Code. Adds /kuma:<skill> slash commands for orchestration, vault audits, overnight mode, and cmux operations.",
+  "description": "Claude Code plugin wrapper for Kuma Studio. Adds /kuma:<skill> slash commands for orchestration, vault audits, overnight mode, and cmux operations.",
   "author": {
     "name": "Kuma Studio"
   },

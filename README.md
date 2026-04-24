@@ -3,10 +3,11 @@
 Kuma Studio is an AI agent virtual office and browser automation bridge with a
 visual dashboard and team characters.
 
-## Open Source Status
+## Distribution Model
 
 Kuma Studio is open source, but its supported distribution model is currently
-`git clone` plus the bundled installer.
+`git clone` plus the bundled installer. In product terms, Kuma Studio is a
+portable operator bundle rather than one single plugin.
 
 - Supported today: clone the repository, run `npm install`, then run
   `node scripts/install.mjs`
@@ -16,6 +17,10 @@ Kuma Studio is open source, but its supported distribution model is currently
   ignored directories
 - The installer syncs repo-managed Kuma skills into both `~/.claude/skills` and
   `~/.codex/skills` by default so Claude and Codex stay aligned
+
+See [`docs/distribution-model.md`](./docs/distribution-model.md) for the
+terminology split between the portable operator bundle, host-specific plugins,
+skills, slash commands, private brain state, and local runtime.
 
 ## Quick Start
 
@@ -85,6 +90,8 @@ screenshots, or machine-specific paths.
   the public/private/runtime boundary used for open-source distribution.
 - See [`docs/private-repo-model.md`](./docs/private-repo-model.md) for the
   recommended public/private repo workflow and remote setup.
+- See [`docs/distribution-model.md`](./docs/distribution-model.md) for the
+  packaging and naming model.
 - The Studio file explorer now exposes only the workspace root by default. To
   opt into home-level roots such as `vault`, `claude`, or `codex`, set
   `KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=vault,claude,codex`.
