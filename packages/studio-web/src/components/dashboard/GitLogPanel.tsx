@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import type { GitActivityBranchStatus, GitActivityCommit, GitActivityRepo } from "../../types/stats";
 
@@ -26,10 +27,10 @@ const BRANCH_STATE_COLORS: Record<GitActivityBranchStatus["state"], string> = {
 };
 
 const GRAPH_MAX_LANES = 8;
-const GRAPH_CELL_WIDTH = 86;
-const GRAPH_ROW_HEIGHT = 38;
+const GRAPH_CELL_WIDTH = 76;
+const GRAPH_ROW_HEIGHT = 24;
 const GRAPH_LANE_GAP = 10;
-const GRAPH_DOT_Y = 18;
+const GRAPH_DOT_Y = 12;
 const GRAPH_COLORS = [
   "#3b82f6",
   "#ec4899",
@@ -48,6 +49,13 @@ interface CommitGraphRow {
   activeBefore: boolean[];
   activeAfter: boolean[];
   connectors: Array<{ from: number; to: number }>;
+}
+
+interface HoveredCommit {
+  repo: GitActivityRepo;
+  commit: GitActivityCommit;
+  x: number;
+  y: number;
 }
 
 function isSameLocalDay(left: Date, right: Date) {
@@ -71,6 +79,21 @@ function formatCommitTimestamp(timestamp: string) {
   }
 
   return `${value.toLocaleDateString("ko-KR", { month: "short", day: "numeric" })} ${time}`;
+}
+
+function formatFullCommitTimestamp(timestamp: string) {
+  const value = new Date(timestamp);
+  if (Number.isNaN(value.getTime())) {
+    return "--";
+  }
+
+  return value.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function formatBranchStatus(status: GitActivityBranchStatus | undefined) {
@@ -188,13 +211,15 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
   const visibleCurrentLane = visibleLaneIndex(row.laneIndex);
   const currentX = getLaneX(visibleCurrentLane);
   const laneIndices = Array.from({ length: row.laneCount }, (_, index) => index);
+  const dotRadius = 3.8;
 
   return (
     <svg
       width={GRAPH_CELL_WIDTH}
       height={GRAPH_ROW_HEIGHT}
       viewBox={`0 0 ${GRAPH_CELL_WIDTH} ${GRAPH_ROW_HEIGHT}`}
-      className="shrink-0"
+      className="shrink-0 overflow-hidden"
+      overflow="hidden"
       aria-hidden="true"
     >
       {laneIndices.map((lane) => {
@@ -209,9 +234,9 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
                 x1={x}
                 y1={0}
                 x2={x}
-                y2={GRAPH_DOT_Y - 5}
+                y2={GRAPH_DOT_Y - dotRadius}
                 stroke={color}
-                strokeWidth="1.7"
+                strokeWidth="1.6"
                 strokeLinecap="round"
                 opacity="0.86"
               />
@@ -219,11 +244,11 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
             {after && (
               <line
                 x1={x}
-                y1={GRAPH_DOT_Y + 5}
+                y1={GRAPH_DOT_Y + dotRadius}
                 x2={x}
                 y2={GRAPH_ROW_HEIGHT}
                 stroke={color}
-                strokeWidth="1.7"
+                strokeWidth="1.6"
                 strokeLinecap="round"
                 opacity="0.86"
               />
@@ -237,14 +262,17 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
         const fromX = getLaneX(from);
         const toX = getLaneX(to);
         const color = GRAPH_COLORS[to % GRAPH_COLORS.length];
+        const startY = GRAPH_DOT_Y + dotRadius - 0.5;
+        const endY = GRAPH_ROW_HEIGHT - 1;
         return (
           <path
             key={`edge:${connector.from}:${connector.to}`}
-            d={`M ${fromX} ${GRAPH_DOT_Y} C ${fromX} ${GRAPH_DOT_Y + 7}, ${toX} ${GRAPH_ROW_HEIGHT - 9}, ${toX} ${GRAPH_ROW_HEIGHT}`}
+            d={`M ${fromX} ${startY} C ${fromX} ${startY + 3}, ${toX} ${endY - 5}, ${toX} ${endY}`}
             fill="none"
             stroke={color}
-            strokeWidth="1.7"
+            strokeWidth="1.6"
             strokeLinecap="round"
+            strokeLinejoin="round"
             opacity="0.9"
           />
         );
@@ -252,15 +280,15 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
       <circle
         cx={currentX}
         cy={GRAPH_DOT_Y}
-        r="4.7"
+        r="4.4"
         fill="var(--panel-bg)"
         stroke={GRAPH_COLORS[visibleCurrentLane % GRAPH_COLORS.length]}
-        strokeWidth="2.4"
+        strokeWidth="2.2"
       />
       <circle
         cx={currentX}
         cy={GRAPH_DOT_Y}
-        r="2.2"
+        r="1.9"
         fill={GRAPH_COLORS[visibleCurrentLane % GRAPH_COLORS.length]}
       />
       {row.laneIndex >= GRAPH_MAX_LANES && (
@@ -272,6 +300,68 @@ function CommitGraphGlyph({ row }: { row: CommitGraphRow }) {
   );
 }
 
+function CommitHoverCard({ hoveredCommit, showProjectName }: { hoveredCommit: HoveredCommit; showProjectName: boolean }) {
+  const { repo, commit, x, y } = hoveredCommit;
+  const cardWidth = 360;
+  const cardHeight = 172;
+  const viewportWidth = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const viewportHeight = typeof window === "undefined" ? 800 : window.innerHeight;
+  const left = Math.min(x + 16, viewportWidth - cardWidth - 12);
+  const top = Math.min(y + 14, viewportHeight - cardHeight - 12);
+  const parentCount = commit.parentCount ?? commit.parents?.length ?? 0;
+  const refs = commit.refs ?? [];
+
+  return (
+    <div
+      className="pointer-events-none fixed z-[9999] w-[min(22.5rem,calc(100vw-1.5rem))] rounded-lg border px-3 py-2.5 shadow-2xl"
+      style={{
+        left: Math.max(12, left),
+        top: Math.max(12, top),
+        background: "rgba(42, 30, 17, 0.96)",
+        borderColor: "rgba(213, 185, 129, 0.42)",
+        color: "#d6c7a8",
+        backdropFilter: "blur(12px)",
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 text-[10px]">
+        <span className="truncate font-semibold" style={{ color: "#fde68a" }}>
+          {commit.author || "unknown author"}
+        </span>
+        <span className="shrink-0" style={{ color: "#a89572" }}>
+          {formatFullCommitTimestamp(commit.timestamp)}
+        </span>
+      </div>
+      <p className="mt-2 text-[12px] font-semibold leading-snug" style={{ color: "#f8f1df" }}>
+        {commit.message}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]" style={{ color: "#cbb78f" }}>
+        <span className="font-mono" style={{ color: "#93c5fd" }}>
+          {commit.shortHash ?? commit.hash.slice(0, 7)}
+        </span>
+        <span className="font-semibold">{getRepoDisplayName(repo, showProjectName)}</span>
+        {commit.isMerge && <span style={{ color: "#f59e0b" }}>merge</span>}
+        <span>{parentCount === 1 ? "1 parent" : `${parentCount} parents`}</span>
+      </div>
+      {refs.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {refs.slice(0, 5).map((ref) => (
+            <span
+              key={ref}
+              className="rounded-full px-1.5 py-0.5 text-[9px]"
+              style={{ background: "rgba(245, 158, 11, 0.18)", color: "#fde68a" }}
+            >
+              {formatRefLabel(ref)}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="mt-2 truncate font-mono text-[9px]" style={{ color: "#9f8e70" }}>
+        {commit.hash}
+      </div>
+    </div>
+  );
+}
+
 export function GitLogPanel({
   activeProjectId,
   activeProjectName,
@@ -280,6 +370,7 @@ export function GitLogPanel({
 }: GitLogPanelProps) {
   const gitActivity = useDashboardStore((state) => state.gitActivity);
   const [collapsed, setCollapsed] = useState(true);
+  const [hoveredCommit, setHoveredCommit] = useState<HoveredCommit | null>(null);
   const scopedRepos = activeProjectId
     ? gitActivity.repos.filter((repo) =>
         repo.projectId === activeProjectId && (!activeWorktreePath || repo.worktreePath === activeWorktreePath),
@@ -324,7 +415,7 @@ export function GitLogPanel({
       </button>
 
       {!collapsed && (
-        <div className="px-3 pb-3 space-y-2 max-h-[30rem] overflow-y-auto">
+        <div className="px-3 pb-3 space-y-2 max-h-[34rem] overflow-y-auto">
           {branchRepos.length > 0 && (
             <div className="space-y-1">
               {branchRepos.map((repo) => (
@@ -362,43 +453,47 @@ export function GitLogPanel({
               ))}
             </div>
           )}
-          <div className="space-y-1.5">
+          <div className="space-y-0">
             {reposWithCommits.length > 0 ? reposWithCommits.map((repo) => {
               const graphRows = buildCommitGraphRows(repo.commits);
               return (
-                <div key={repo.path} className="space-y-1">
+                <div key={repo.path} className="space-y-0">
                   {graphRows.map((row) => (
                     <div
                       key={`${repo.path}:${row.commit.hash}`}
-                      className="rounded-md px-1.5 py-1 transition-colors hover:bg-white/10"
-                      style={{ background: "rgba(255,255,255,0.035)" }}
-                      title={row.commit.hash}
+                      data-git-commit-row={row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+                      className="rounded px-1 transition-colors hover:bg-white/10"
+                      onMouseEnter={(event) => {
+                        setHoveredCommit({ repo, commit: row.commit, x: event.clientX, y: event.clientY });
+                      }}
+                      onMouseMove={(event) => {
+                        setHoveredCommit({ repo, commit: row.commit, x: event.clientX, y: event.clientY });
+                      }}
+                      onMouseLeave={() => setHoveredCommit(null)}
                     >
-                      <div className="flex min-h-[38px] items-center gap-2">
+                      <div className="flex h-6 items-center gap-1.5">
                         <CommitGraphGlyph row={row} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[10px] font-medium leading-tight" style={{ color: "var(--t-secondary)" }}>
+                        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                          <span className="truncate text-[10px] font-medium leading-none" style={{ color: "var(--t-secondary)" }}>
                             {row.commit.message}
-                          </p>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[8px]" style={{ color: "var(--t-faint)" }}>
-                            <span className="font-mono" style={{ color: "var(--t-muted)" }}>
-                              {row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+                          </span>
+                          <span className="shrink-0 font-mono text-[8px]" style={{ color: "var(--t-muted)" }}>
+                            {row.commit.shortHash ?? row.commit.hash.slice(0, 7)}
+                          </span>
+                          <span className="shrink-0 text-[8px] font-semibold" style={{ color: "var(--t-muted)" }}>
+                            {getRepoDisplayName(repo, showProjectName)}
+                          </span>
+                          {row.commit.isMerge && (
+                            <span className="shrink-0 text-[8px] font-semibold" style={{ color: "#d97706" }}>merge</span>
+                          )}
+                          {getParentLabel(row.commit) && (
+                            <span className="shrink-0 text-[8px]" style={{ color: "var(--t-faint)" }}>{getParentLabel(row.commit)}</span>
+                          )}
+                          {(row.commit.refs ?? []).slice(0, 2).map((ref) => (
+                            <span key={ref} className="shrink-0 rounded-full px-1 text-[8px]" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
+                              {formatRefLabel(ref)}
                             </span>
-                            <span className="font-semibold" style={{ color: "var(--t-muted)" }}>
-                              {getRepoDisplayName(repo, showProjectName)}
-                            </span>
-                            {row.commit.isMerge && (
-                              <span className="font-semibold" style={{ color: "#d97706" }}>merge</span>
-                            )}
-                            {getParentLabel(row.commit) && (
-                              <span>{getParentLabel(row.commit)}</span>
-                            )}
-                            {(row.commit.refs ?? []).slice(0, 3).map((ref) => (
-                              <span key={ref} className="rounded-full px-1" style={{ background: "rgba(245,158,11,0.10)", color: "#b45309" }}>
-                                {formatRefLabel(ref)}
-                              </span>
-                            ))}
-                          </div>
+                          ))}
                         </div>
                         <span className="shrink-0 text-[9px]" style={{ color: "var(--t-muted)" }}>
                           {formatCommitTimestamp(row.commit.timestamp)}
@@ -415,6 +510,10 @@ export function GitLogPanel({
             )}
           </div>
         </div>
+      )}
+      {hoveredCommit && !collapsed && typeof document !== "undefined" && createPortal(
+        <CommitHoverCard hoveredCommit={hoveredCommit} showProjectName={showProjectName} />,
+        document.body,
       )}
     </div>
   );

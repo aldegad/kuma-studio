@@ -6,7 +6,7 @@ import { readProjectsRegistry } from "./project-defaults.mjs";
 import { buildProjectWorktreeIndex, isWithinRoot, resolveMaybeRealPath } from "./git-worktrees.mjs";
 
 const POLLING_INTERVAL_MS = 5 * 60 * 1000;
-const GIT_ACTIVITY_COMMIT_LIMIT = 50;
+const GIT_ACTIVITY_COMMIT_LIMIT = 200;
 const GIT_LOG_FORMAT = "%H%x1f%h%x1f%s%x1f%an%x1f%cI%x1f%P%x1f%D%x1e";
 
 let pollingInterval = null;
