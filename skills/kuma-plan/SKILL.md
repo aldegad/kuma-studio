@@ -21,6 +21,8 @@ Resolve the source through the Studio API first:
 curl -sS http://127.0.0.1:4312/studio/plans
 ```
 
+Treat `source.plansDir` from that response as the live SSoT. Common local paths such as `~/.kuma/plans` or `<workspace>/.kuma/plans` may be symlinks into a private store, so do not create a repo-local `.kuma/plans` directory unless the API source says that is the configured store.
+
 If the API is unavailable, start or reload the managed `kuma-server` surface before editing. Direct filesystem edits are allowed only after the exact configured plans directory is known.
 
 ## File Path
@@ -35,6 +37,8 @@ Rules:
 
 - Keep `project-id` as the canonical project id, for example `kuma-studio`.
 - Use lowercase kebab-case for the filename.
+- Prefer the API `filePath` value, for example `kuma-studio/skill-cleanup.md`, when asking the user to identify a plan. The `id` is derived from the markdown path and is secondary.
+- Keep the file path stable unless the user explicitly asks for a rename or move.
 - Do not use the title as a dumping ground for route names, issue notes, or mixed Korean/English fragments.
 - Technical ids may stay in backticks inside checklist items.
 
@@ -50,7 +54,7 @@ created: YYYY-MM-DD
 ---
 ```
 
-Allowed `status` values:
+Preferred `status` values for new plans:
 
 - `active` — 진행 중
 - `hold` — 보류
@@ -60,6 +64,8 @@ Allowed `status` values:
 - `failed` — 실패
 
 Use English status values because the Plan parser owns those enums. Put Korean in the title and checklist, not in `status`.
+
+When normalizing existing plans, preserve non-preferred legacy or queue statuses such as `draft`, `open`, `backlog`, `deferred`, `archived`, and `in_progress` unless the lifecycle state is intentionally being changed. The UI can display unknown statuses, but new files should use the preferred values above.
 
 ## Body Format
 
@@ -115,6 +121,9 @@ When normalizing an existing plan:
 
 1. Preserve factual task state.
 2. Convert title and section headings to the canonical Korean format.
-3. Keep the file id stable unless the user asks for a rename.
-4. Do not mark an item complete unless there is current evidence.
-5. If old English wording is unclear, rewrite it into plain Korean without changing task meaning.
+3. Preserve useful frontmatter fields such as `status`, `status_reason`, `created`, `updated`, `owner`, `project`, and `related`.
+4. Keep the file id stable unless the user asks for a rename.
+5. Use the relative markdown `filePath` as the user-facing identifier.
+6. Do not mark an item complete unless there is current evidence.
+7. If old English wording is unclear, rewrite it into plain Korean without changing task meaning.
+8. Archive paths may still be read by the current Plan panel because the store walks the plans directory recursively. Keep archived titles readable until the panel explicitly excludes archives.
