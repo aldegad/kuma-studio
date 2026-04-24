@@ -51,8 +51,6 @@ export function FloatingPanel({
   const frameStyle = {
     "--kuma-panel-motion-x": `${motionX}px`,
     "--kuma-panel-motion-y": `${motionY}px`,
-    "--kuma-panel-motion-settle-x": `${motionX * 0.06}px`,
-    "--kuma-panel-motion-settle-y": `${motionY * 0.06}px`,
     animation: isRestoring
       ? "kuma-panel-restore 300ms cubic-bezier(0.16, 1, 0.3, 1)"
       : undefined,
