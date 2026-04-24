@@ -125,15 +125,15 @@ function readBranchStatus(repoPath) {
   };
 }
 
-function readRevisionCount(repoPath, args = []) {
-  const output = execGit(repoPath, ["rev-list", "--count", ...args, "HEAD"], 10_000);
+function readRevisionCount(repoPath, args = [], revision = "HEAD") {
+  const output = execGit(repoPath, ["rev-list", "--count", ...args, revision], 10_000);
   const count = Number.parseInt(output ?? "0", 10);
   return Number.isFinite(count) ? count : 0;
 }
 
 function readCommits(repoPath, { maxCount = GIT_ACTIVITY_COMMIT_LIMIT } = {}) {
   try {
-    const args = ["log", "--date=iso-strict", `--format=${GIT_LOG_FORMAT}`];
+    const args = ["log", "--all", "--topo-order", "--date=iso-strict", `--format=${GIT_LOG_FORMAT}`];
     if (Number.isFinite(maxCount) && maxCount > 0) {
       args.push(`--max-count=${Math.floor(maxCount)}`);
     }
@@ -225,10 +225,10 @@ function resolveProjectForRepo(repoPath, projectRoots, worktreeIndex) {
 
 function buildRepoActivity(repoPath, projectRoots, worktreeIndex) {
   const commits = readCommits(repoPath);
-  const commitCount = readRevisionCount(repoPath);
-  const mergeCommitCount = readRevisionCount(repoPath, ["--merges"]);
-  const commitsToday = readRevisionCount(repoPath, ["--since=midnight"]);
-  const mergeCommitsToday = readRevisionCount(repoPath, ["--since=midnight", "--merges"]);
+  const commitCount = readRevisionCount(repoPath, [], "--all");
+  const mergeCommitCount = readRevisionCount(repoPath, ["--merges"], "--all");
+  const commitsToday = readRevisionCount(repoPath, ["--since=midnight"], "--all");
+  const mergeCommitsToday = readRevisionCount(repoPath, ["--since=midnight", "--merges"], "--all");
   const project = resolveProjectForRepo(repoPath, projectRoots, worktreeIndex);
   const worktree = project?.worktree ?? resolveWorktreeForRepo(repoPath, worktreeIndex);
 

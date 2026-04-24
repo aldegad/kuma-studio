@@ -632,7 +632,7 @@ export function StudioPage() {
 
   const dashboardPanels: DashboardPanelItem[] = [
     { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} /> },
-    { id: "git-log", title: "커밋 로그", className: "w-80", content: <GitLogPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} activeWorktreePath={activeWorktreePath} activeWorktreeName={activeWorktreeName} /> },
+    { id: "git-log", title: "커밋 로그", className: "w-[min(36rem,calc(100vw-2rem))]", content: <GitLogPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} activeWorktreePath={activeWorktreePath} activeWorktreeName={activeWorktreeName} /> },
     { id: "memo", title: "메모", className: "w-[min(46rem,calc(100vw-2rem))]", content: <MemoPanel /> },
     { id: "content", title: "스레드 콘텐츠", className: "w-[min(46rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
