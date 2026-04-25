@@ -41,6 +41,7 @@ function toShellMember(member) {
     id: member?.id ?? "",
     emoji: member?.emoji ?? "",
     role: member?.role?.ko ?? "",
+    roleLabelKo: member?.role?.ko ?? "",
     roleLabelEn: member?.role?.en ?? "",
     team: member?.team ?? "",
     nodeType: member?.nodeType ?? "",
@@ -215,7 +216,7 @@ switch (command) {
         shellMember.options,
         shellMember.emoji,
         shellMember.skills[0] ?? "",
-        shellMember.roleLabelEn,
+        shellMember.roleLabelKo,
         shellMember.nodeType,
       ]);
       break;

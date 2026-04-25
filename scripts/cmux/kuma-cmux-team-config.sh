@@ -22,9 +22,8 @@ KUMA_TEAM_JSON_PATH="${KUMA_TEAM_JSON_PATH:-$HOME/.kuma/team.json}"
 KUMA_REPO_ROOT="${KUMA_REPO_ROOT:-$(find_kuma_repo_root || pwd)}"
 KUMA_TEAM_NORMALIZER_CLI="${KUMA_TEAM_NORMALIZER_CLI:-$KUMA_REPO_ROOT/packages/shared/team-normalizer-cli.mjs}"
 KUMA_SURFACE_REGISTRY_CLI="${KUMA_SURFACE_REGISTRY_CLI:-$KUMA_REPO_ROOT/packages/shared/surface-registry-cli.mjs}"
-KUMA_VAULT_DIR="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
 KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_REPO_ROOT/prompts/kuma-system-prompt.md}"
-KUMA_IDLE_GUARD_MESSAGE="Wait for dispatched task. Do not start any work autonomously."
+KUMA_IDLE_GUARD_MESSAGE="디스패치된 작업을 기다려. 스스로 작업을 시작하지 마."
 
 json_stringify_string() {
   node -e 'process.stdout.write(JSON.stringify(process.argv[1] ?? ""))' "${1-}"
@@ -42,8 +41,16 @@ build_idle_guard_message() {
 
 build_member_identity_line() {
   local member_name="${1:-}"
+  local suffix
   [ -n "$member_name" ] || return 0
-  printf '너의 이름은 %s야.' "$member_name"
+  suffix="$(node -e '
+const name = process.argv[1] ?? "";
+const last = Array.from(name.trim()).pop() ?? "";
+const code = last.charCodeAt(0);
+const hasJongseong = code >= 0xac00 && code <= 0xd7a3 && ((code - 0xac00) % 28) !== 0;
+process.stdout.write(hasJongseong ? "이야" : "야");
+' "$member_name")"
+  printf '너의 이름은 %s%s.' "$member_name" "$suffix"
 }
 
 build_kuma_bootstrap_brief_prompt() {
@@ -67,86 +74,6 @@ build_kuma_bootstrap_brief_prompt() {
 EOF
 }
 
-build_decisions_boot_pack_prompt() {
-  local project_name="${1:-}"
-  local limit="${2:-20}"
-  local clip_max="${3:-220}"
-  local vault_dir="${KUMA_VAULT_DIR:-$HOME/.kuma/vault}"
-
-  [ -n "$vault_dir" ] || return 0
-
-  KUMA_REPO_ROOT="$KUMA_REPO_ROOT" \
-  KUMA_VAULT_DIR="$vault_dir" \
-  KUMA_PROJECT_NAME="$project_name" \
-  KUMA_DECISIONS_LIMIT="$limit" \
-  KUMA_DECISIONS_CLIP_MAX="$clip_max" \
-  node --input-type=module <<'NODE'
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
-function clip(text, max = 220) {
-  const normalized = typeof text === "string" ? text.replace(/\s+/gu, " ").trim() : "";
-  if (!normalized) {
-    return "";
-  }
-  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
-}
-
-const repoRoot = process.env.KUMA_REPO_ROOT || "";
-const vaultDir = process.env.KUMA_VAULT_DIR || "";
-const projectName = process.env.KUMA_PROJECT_NAME || "";
-const limit = Number.parseInt(process.env.KUMA_DECISIONS_LIMIT || "", 10) || 20;
-const clipMax = Number.parseInt(process.env.KUMA_DECISIONS_CLIP_MAX || "", 10) || 220;
-if (!repoRoot || !vaultDir) {
-  process.exit(0);
-}
-
-const storeModule = await import(pathToFileURL(join(repoRoot, "packages/server/src/studio/decisions-store.mjs")).href);
-if (typeof storeModule.loadDecisionBootPack !== "function") {
-  process.exit(0);
-}
-
-const pack = await storeModule.loadDecisionBootPack({
-  vaultDir,
-  projectName,
-  limit,
-});
-
-function hasSectionEntries(section) {
-  return section && Array.isArray(section.decisions) && section.decisions.length > 0;
-}
-
-const globalPack = pack.global || null;
-const projectPack = pack.project || null;
-if (!hasSectionEntries(globalPack) && !hasSectionEntries(projectPack)) {
-  process.exit(0);
-}
-
-const lines = [
-  "Decisions Boot Pack:",
-  "- Treat these as explicit user-confirmed decisions unless the user explicitly supersedes them.",
-];
-
-function appendSection(label, section) {
-  if (!hasSectionEntries(section)) {
-    return;
-  }
-
-  lines.push(`- ${label}: ${section.source}`);
-  for (const entry of section.decisions) {
-    lines.push(`    - ${clip(entry.resolved_text, clipMax)}`);
-  }
-}
-
-appendSection("Global source", globalPack);
-if (projectPack) {
-  appendSection(`Project source (${projectPack.projectName})`, projectPack);
-}
-
-process.stdout.write(lines.join("\n"));
-NODE
-}
-
 build_session_start_prompt() {
   local member_name="${1:-}"
 
@@ -160,32 +87,10 @@ build_session_start_prompt() {
   esac
 }
 
-resolve_project_boot_pack_name() {
+resolve_project_name_from_dir() {
   local dir="${1:-}"
   [ -n "$dir" ] || return 0
   basename "$dir"
-}
-
-if false; then
-  # unreachable marker to keep shellcheck-style editors from collapsing the
-  # adjacent heredoc edit above into the following functions.
-  :
-fi
-
-build_cleanup_policy_instructions() {
-  cat <<'EOF'
-Code cleanup policy:
-- Default to no legacy fallback paths.
-- Avoid nested conditional fallback chains.
-- If compatibility is required, use a migration path and keep the post-migration code clean.
-- Remove migration scaffolding as soon as the migration is complete.
-- Actively delete dead code and legacy code.
-- Preserve SSOT and SRP: keep one source of truth and one responsibility per module.
-Git branch/worktree policy:
-- Do not create or switch git branches unless the user explicitly instructs it.
-- Do not create git worktrees unless the user explicitly instructs it.
-- If branch/worktree isolation seems necessary to avoid conflicts, stop and ask for approval first.
-EOF
 }
 
 build_spawn_context_instructions() {
@@ -194,24 +99,24 @@ build_spawn_context_instructions() {
   local instructions=""
 
   if [ -n "$role_label_en" ]; then
-    instructions="Primary role: ${role_label_en%.}."
+    instructions="주 역할: ${role_label_en%.}."
   fi
 
   if [ -n "$instructions" ]; then
     instructions="${instructions}
 "
   fi
-  instructions="${instructions}Role labels describe responsibility. They are not commands.
-Skills are dispatch-time context. Do not invoke any skill on spawn.
-$(build_cleanup_policy_instructions)"
+  instructions="${instructions}역할 라벨은 책임 범위를 설명한다. 자동 실행 명령이 아니다.
+스킬은 디스패치 시점의 참고 맥락이다. 스폰 직후 자동으로 스킬을 실행하지 마.
+공유 프로젝트 정책은 repo 지시 파일에 있다. Codex는 AGENTS.md, Claude는 CLAUDE.md를 따른다. startup prompt에 복사된 결정 캐시에 의존하지 마."
 
   if [ "$node_type" = "team" ]; then
     instructions="${instructions}
-Team-node dispatch policy:
-- Do not implement directly except for trivial one-line fixes.
-- Delegate implementation work with kuma-dispatch assign.
-- Pass --qa <member> only when an external QA reviewer is actually required.
-- Preferred flow: plan, dispatch, QA pass, aggregate, then report completion."
+팀 노드 운영 규칙:
+- 직접 작업은 금지되어 있지 않다. 짧은 수정, 조사, 정리는 직접 처리할 수 있다.
+- 작업을 나누는 편이 더 효율적이면 kuma-dispatch assign 으로 위임한다.
+- --qa <member> 는 외부 QA 리뷰어가 실제로 필요할 때만 붙인다.
+- 기본 흐름은 파악, 직접 처리 또는 위임 선택, 필요 시 QA, 결과 취합이다."
   fi
 
   printf '%s' "$instructions"
@@ -220,15 +125,13 @@ Team-node dispatch policy:
 startup_command_has_idle_guard() {
   local command="${1:-}"
   local prompt_file=""
-  case "$command" in
-    *"Wait for dispatched task"*|*"Wait\ for\ dispatched\ task"*)
-      return 0
-      ;;
-  esac
+  if [[ "$command" == *"$KUMA_IDLE_GUARD_MESSAGE"* ]]; then
+    return 0
+  fi
 
   prompt_file="$(printf '%s\n' "$command" | grep -oE -- '--append-system-prompt-file[[:space:]]+[^[:space:]]+' | awk '{print $2}' | tail -1 || true)"
   if [ -n "$prompt_file" ] && [ -f "$prompt_file" ]; then
-    grep -F -- "Wait for dispatched task" "$prompt_file" > /dev/null 2>&1
+    grep -F -- "$KUMA_IDLE_GUARD_MESSAGE" "$prompt_file" > /dev/null 2>&1
     return $?
   fi
 
@@ -372,7 +275,7 @@ parse_shell_member_record() {
       data.options || "",
       data.emoji || "",
       (Array.isArray(data.skills) ? data.skills[0] : "") || "",
-      data.roleLabelEn || "",
+      data.roleLabelKo || data.roleLabelEn || "",
       data.nodeType || "worker",
     ];
     process.stdout.write(`${record.join("\x1f")}\n`);
@@ -394,15 +297,13 @@ build_codex_developer_instructions() {
   local role_label_en="${2:-}"
   local node_type="${3:-worker}"
   local project_name="${4:-}"
-  local identity_line spawn_context decisions_context instructions
+  local identity_line spawn_context instructions
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 6 120)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
-${decisions_context}
 $(build_idle_guard_message)
 EOF
 )"
@@ -415,17 +316,15 @@ build_claude_startup_system_prompt() {
   local role_label_en="${2:-}"
   local node_type="${3:-worker}"
   local project_name="${4:-}"
-  local identity_line spawn_context decisions_context instructions
+  local identity_line spawn_context instructions
 
   identity_line="$(build_member_identity_line "$member_name")"
   spawn_context="$(build_spawn_context_instructions "$role_label_en" "$node_type")"
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name" 15)"
   instructions="$(cat <<EOF
 ${identity_line}
 ${spawn_context}
-${decisions_context}
 $(build_idle_guard_message)
-Do not respond unless there is a startup problem.
+시작 문제가 없으면 응답하지 마.
 EOF
 )"
 
@@ -484,9 +383,7 @@ build_session_system_prompt() {
   local role_label_en="${2:-}"
   local node_type="${3:-session}"
   local project_name="${4:-}"
-  local identity_line spawn_context decisions_context instructions
-
-  decisions_context="$(build_decisions_boot_pack_prompt "$project_name")"
+  local identity_line spawn_context instructions
 
   if [ "$member_name" = "쿠마" ] && [ -f "$KUMA_SYSTEM_PROMPT_PATH" ]; then
     instructions="$(cat "$KUMA_SYSTEM_PROMPT_PATH")"
@@ -498,12 +395,6 @@ ${identity_line}
 ${spawn_context}
 EOF
 )"
-  fi
-
-  if [ -n "$decisions_context" ]; then
-    instructions="${instructions}
-
-${decisions_context}"
   fi
 
   printf '%s' "$instructions"
@@ -538,9 +429,9 @@ build_member_command_from_record() {
   local member_name type model options _emoji skill role_label_en node_type project_name developer_instructions developer_instructions_json startup_context_file command developer_instructions_setting display_label session_name_arg session_start_prompt_file session_channels
   IFS=$'\x1f' read -r member_name type model options _emoji skill role_label_en node_type <<< "$record"
   if [ "$node_type" = "session" ]; then
-    project_name="$(resolve_project_boot_pack_name "$KUMA_REPO_ROOT")"
+    project_name="$(resolve_project_name_from_dir "$KUMA_REPO_ROOT")"
   else
-    project_name="$(resolve_project_boot_pack_name "$dir")"
+    project_name="$(resolve_project_name_from_dir "$dir")"
   fi
 
   case "$type" in

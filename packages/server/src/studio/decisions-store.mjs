@@ -324,41 +324,6 @@ export async function listDecisions({ vaultDir }) {
   );
 }
 
-function buildBootPackSection(target, document, { limit }) {
-  const entries = document ? document.entries.map(toPublicEntry) : [];
-  return {
-    source: target.sourceLabel,
-    scope: target.scope,
-    projectName: target.projectName,
-    decisions: entries.slice(-limit).reverse(),
-  };
-}
-
-export async function loadDecisionBootPack({
-  vaultDir,
-  projectName = "",
-  limit = 20,
-} = {}) {
-  const activeVaultDir = resolve(vaultDir ?? join(process.env.HOME ?? ".", ".kuma", "vault"));
-  const limits = { limit };
-  const globalTarget = resolveDecisionStoreTarget(activeVaultDir, GLOBAL_DECISION_SCOPE);
-  const globalDocument = existsSync(globalTarget.filePath) ? await readDecisionsDocument(globalTarget) : null;
-  const globalPack = buildBootPackSection(globalTarget, globalDocument, limits);
-
-  const projectScope = formatProjectDecisionScope(projectName);
-  const projectTarget = projectScope ? resolveDecisionStoreTarget(activeVaultDir, projectScope) : null;
-  const projectDocument = projectTarget && existsSync(projectTarget.filePath)
-    ? await readDecisionsDocument(projectTarget)
-    : null;
-  const projectPack = projectTarget && projectDocument ? buildBootPackSection(projectTarget, projectDocument, limits) : null;
-
-  return {
-    decisions: globalPack.decisions,
-    global: globalPack,
-    project: projectPack,
-  };
-}
-
 export async function repartitionDecisionStores() {
   // Decision scope is now owned by the file path, so there is no mixed-entry
   // repartition step left to perform.

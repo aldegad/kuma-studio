@@ -5,9 +5,11 @@ export interface StudioProjectTab<Member = unknown> {
 }
 
 export const CORE_PROJECT_TAB_ID = "kuma-studio";
+export const SYSTEM_PROJECT_TAB_ID = "system";
 
-const RESERVED_PROJECT_IDS = new Set(["system", "workspace"]);
+const RESERVED_PROJECT_IDS = new Set(["workspace"]);
 const PROJECT_TAB_PRIORITY = [
+  SYSTEM_PROJECT_TAB_ID,
   CORE_PROJECT_TAB_ID,
 ];
 
@@ -32,9 +34,8 @@ export function buildStudioProjectTabs<Member>(
     ...liveProjects.map((project) => project.projectId),
   ].filter((projectId, index, allIds) => isSelectableProjectId(projectId) && allIds.indexOf(projectId) === index);
   const orderedIds = [
-    CORE_PROJECT_TAB_ID,
     ...PROJECT_TAB_PRIORITY.filter(
-      (projectId) => projectId !== CORE_PROJECT_TAB_ID && discoveredProjectIds.includes(projectId),
+      (projectId) => projectId === CORE_PROJECT_TAB_ID || discoveredProjectIds.includes(projectId),
     ),
     ...discoveredProjectIds.filter((projectId) => !PROJECT_TAB_PRIORITY.includes(projectId)),
   ].filter((projectId, index, allIds) => allIds.indexOf(projectId) === index);
@@ -55,6 +56,7 @@ export function resolvePinnedHudProjectIds<Member>(
     if (
       !isSelectableProjectId(projectId) ||
       projectId === CORE_PROJECT_TAB_ID ||
+      projectId === SYSTEM_PROJECT_TAB_ID ||
       !projectIds.has(projectId) ||
       resolved.includes(projectId)
     ) {
@@ -72,8 +74,10 @@ export function splitHudProjectTabs<Member>(
 ) {
   const resolvedPinnedProjectIds = resolvePinnedHudProjectIds(projectTabs, pinnedProjectIds);
   const coreProject = projectTabs.find((project) => project.projectId === CORE_PROJECT_TAB_ID) ?? null;
+  const systemProject = projectTabs.find((project) => project.projectId === SYSTEM_PROJECT_TAB_ID) ?? null;
 
   const visibleProjectIds = new Set([
+    ...(systemProject ? [systemProject.projectId] : []),
     ...(coreProject ? [coreProject.projectId] : []),
     ...resolvedPinnedProjectIds,
   ]);

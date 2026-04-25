@@ -5,6 +5,7 @@ import {
   CORE_PROJECT_TAB_ID,
   resolvePinnedHudProjectIds,
   splitHudProjectTabs,
+  SYSTEM_PROJECT_TAB_ID,
   type StudioProjectTab,
 } from "./project-tabs";
 
@@ -17,7 +18,7 @@ function makeProject(projectId: string): StudioProjectTab<string> {
 }
 
 describe("buildStudioProjectTabs", () => {
-  it("keeps kuma-studio first, includes configured projects, and filters reserved ids", () => {
+  it("keeps system and kuma-studio first, includes configured projects, and filters reserved ids", () => {
     const projectTabs = buildStudioProjectTabs(
       [
         makeProject("workspace"),
@@ -28,6 +29,7 @@ describe("buildStudioProjectTabs", () => {
     );
 
     expect(projectTabs.map((project) => project.projectId)).toEqual([
+      SYSTEM_PROJECT_TAB_ID,
       CORE_PROJECT_TAB_ID,
       "beta-project",
       "gamma-project",
@@ -59,6 +61,7 @@ describe("resolvePinnedHudProjectIds", () => {
     expect(resolvePinnedHudProjectIds(projectTabs, [
       CORE_PROJECT_TAB_ID,
       "unknown-project",
+      SYSTEM_PROJECT_TAB_ID,
       "alpha-project",
       "alpha-project",
     ])).toEqual(["alpha-project"]);
@@ -67,12 +70,13 @@ describe("resolvePinnedHudProjectIds", () => {
 
 describe("splitHudProjectTabs", () => {
   const projectTabs = buildStudioProjectTabs([], [
+    SYSTEM_PROJECT_TAB_ID,
     "delta-project",
     "alpha-project",
     "beta-project",
   ]);
 
-  it("shows kuma-studio plus every pinned project in the HUD", () => {
+  it("shows system, kuma-studio, and every pinned project in the HUD", () => {
     const { visibleProjects, overflowProjects, pinnedProjectIds } = splitHudProjectTabs(projectTabs, [
       "alpha-project",
       "beta-project",
@@ -80,6 +84,7 @@ describe("splitHudProjectTabs", () => {
 
     expect(pinnedProjectIds).toEqual(["alpha-project", "beta-project"]);
     expect(visibleProjects.map((project) => project.projectId)).toEqual([
+      SYSTEM_PROJECT_TAB_ID,
       CORE_PROJECT_TAB_ID,
       "alpha-project",
       "beta-project",
@@ -89,11 +94,12 @@ describe("splitHudProjectTabs", () => {
     ]);
   });
 
-  it("shows only kuma-studio on the HUD when nothing is pinned", () => {
+  it("shows system and kuma-studio on the HUD when nothing is pinned", () => {
     const { visibleProjects, overflowProjects, pinnedProjectIds } = splitHudProjectTabs(projectTabs, []);
 
     expect(pinnedProjectIds).toEqual([]);
     expect(visibleProjects.map((project) => project.projectId)).toEqual([
+      SYSTEM_PROJECT_TAB_ID,
       CORE_PROJECT_TAB_ID,
     ]);
     expect(overflowProjects.map((project) => project.projectId)).toEqual([

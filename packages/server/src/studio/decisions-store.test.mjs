@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   appendDecision,
   listDecisions,
-  loadDecisionBootPack,
   repartitionDecisionStores,
 } from "./decisions-store.mjs";
 
@@ -164,23 +163,6 @@ describe("decisions-store", () => {
     expect(duplicate.skipped).toBe("duplicate");
     const decisions = await listDecisions({ vaultDir });
     expect(decisions).toHaveLength(1);
-  });
-
-  it("loads boot packs as separate global and project sections", async () => {
-    const vaultDir = await createVaultRoot();
-    await seedGlobalFixture(vaultDir);
-    await seedProjectFixture(vaultDir);
-
-    const pack = await loadDecisionBootPack({
-      vaultDir,
-      projectName: "kuma-studio",
-      limit: 10,
-    });
-
-    expect(pack.global?.source).toContain("decisions.md");
-    expect(pack.project?.source).toContain("kuma-studio.project-decisions.md");
-    expect(pack.global?.decisions[0]?.resolved_text).toBe("SSoT 원칙은 유지한다.");
-    expect(pack.project?.decisions[0]?.resolved_text).toBe("decisions-capture 구현 분업: Claude=spec, 부리=코드.");
   });
 
   it("treats repartition as a no-op once scope is owned by the file path", async () => {

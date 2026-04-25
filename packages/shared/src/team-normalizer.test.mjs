@@ -11,39 +11,6 @@ import { normalizeAllTeams } from "../team-normalizer.mjs";
 const execFile = promisify(execFileCallback);
 const TEAM_NORMALIZER_CLI_PATH = resolve(process.cwd(), "packages/shared/team-normalizer-cli.mjs");
 const TEAM_CONFIG_SCRIPT_PATH = resolve(process.cwd(), "scripts/cmux/kuma-cmux-team-config.sh");
-const DECISIONS_FIXTURE = `---
-title: Decisions
-type: special/decisions
-updated: 2026-04-13T01:00:00+09:00
-boot_priority: 3
----
-
-## About
-
-fixture
-
-## Decisions
-
-- 앞으로 branch/worktree 는 사용자 승인 후에만 만든다.
-`;
-
-const PROJECT_DECISIONS_FIXTURE = `---
-title: kuma-studio Project Decisions
-type: special/project-decisions
-project: kuma-studio
-updated: 2026-04-13T01:10:00+09:00
-boot_priority: 3
----
-
-## About
-
-fixture
-
-## Decisions
-
-- 이 결정사항을 시스템프롬프트에도 넣어.
-- 프로젝트 결정은 project-decisions에서 읽는다.
-`;
 
 async function writeTeamConfig(root, value) {
   const teamPath = join(root, "team.json");
@@ -55,94 +22,6 @@ async function writeRegistry(root, value) {
   const registryPath = join(root, "surfaces.json");
   await writeFile(registryPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   return registryPath;
-}
-
-async function writeDecisionsFixture(root) {
-  const vaultDir = join(root, "vault");
-  await mkdir(join(vaultDir, "projects"), { recursive: true });
-  await writeFile(join(vaultDir, "decisions.md"), DECISIONS_FIXTURE, "utf8");
-  await writeFile(join(vaultDir, "projects", "kuma-studio.project-decisions.md"), PROJECT_DECISIONS_FIXTURE, "utf8");
-  return vaultDir;
-}
-
-async function writeDecisionsFixtureWithSingleQuotes(root) {
-  const vaultDir = join(root, "vault");
-  await mkdir(vaultDir, { recursive: true });
-  await writeFile(
-    join(vaultDir, "decisions.md"),
-    `---
-title: Decisions
-type: special/decisions
-updated: 2026-04-13T02:40:00+09:00
-boot_priority: 3
----
-
-## About
-
-fixture
-
-## Decisions
-
-- 서브에이전트 대상 execution gate 훅 완화. '직접 작업 막는 훅들' 만 해제.
-`,
-    "utf8",
-  );
-  return vaultDir;
-}
-
-async function writeLargeDecisionsFixture(root) {
-  const vaultDir = join(root, "vault");
-  const projectDir = join(vaultDir, "projects");
-  await mkdir(projectDir, { recursive: true });
-
-  const buildDecisionsEntries = (prefix, scope, total) =>
-    Array.from(
-      { length: total },
-      (_, index) => `- ${prefix}-RESOLVED-${index + 1} ${"very long resolved text ".repeat(8).trim()}`,
-    ).join("\n");
-
-  await writeFile(
-    join(vaultDir, "decisions.md"),
-    `---
-title: Decisions
-type: special/decisions
-updated: 2026-04-13T03:59:00+09:00
-boot_priority: 3
----
-
-## About
-
-fixture
-
-## Decisions
-
-${buildDecisionsEntries("GLOBAL", "global", 8)}
-`,
-    "utf8",
-  );
-
-  await writeFile(
-    join(projectDir, "kuma-studio.project-decisions.md"),
-    `---
-title: kuma-studio Project Decisions
-type: special/project-decisions
-project: kuma-studio
-updated: 2026-04-13T04:10:00+09:00
-boot_priority: 3
----
-
-## About
-
-fixture
-
-## Decisions
-
-${buildDecisionsEntries("PROJECT", "project:kuma-studio", 8)}
-`,
-    "utf8",
-  );
-
-  return vaultDir;
 }
 
 async function writeExecutable(path, content) {
@@ -504,7 +383,6 @@ describe("shared team normalizer", () => {
   it("builds a Claude startup command that includes the member identity and waits idle", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
-    const vaultDir = await writeDecisionsFixture(root);
 
     const teamPath = await writeTeamConfig(root, {
       teams: {
@@ -517,7 +395,7 @@ describe("shared team normalizer", () => {
               spawnType: "claude",
               spawnModel: "claude-opus-4-6",
               spawnOptions: "--dangerously-skip-permissions",
-              roleLabel: { en: "Publisher / Designer. HTML/CSS/Graphics" },
+              roleLabel: { ko: "퍼블리셔/디자이너", en: "Publisher / Designer. HTML/CSS/Graphics" },
               skills: ["frontend-design"],
             },
           ],
@@ -528,30 +406,30 @@ describe("shared team normalizer", () => {
     const startupPrompt = await runTeamConfigHelperRaw(
       "build_claude_startup_system_prompt",
       teamPath,
-      ["노을이", "Publisher / Designer. HTML/CSS/Graphics", "worker", "kuma-studio"],
-      { KUMA_VAULT_DIR: vaultDir },
+      ["노을이", "퍼블리셔/디자이너", "worker", "kuma-studio"],
     );
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["노을이", "", "/tmp/work"]);
     const promptFile = command.match(/--append-system-prompt-file\s+(\S+)/u)?.[1] ?? "";
     const promptFileContents = await readFile(promptFile, "utf8");
     expect(command).toContain('claude --model claude-opus-4-6');
     expect(command).toContain("--append-system-prompt-file");
     expect(promptFile).toBeTruthy();
     expect(promptFileContents).toContain("너의 이름은 노을이야.");
-    expect(promptFileContents).toContain("Publisher / Designer. HTML/CSS/Graphics");
-    expect(promptFileContents).toContain("Decisions Boot Pack:");
-    expect(promptFileContents).toContain("Wait for dispatched task");
-    expect(promptFileContents).toContain("Do not respond unless there is a startup problem.");
+    expect(promptFileContents).toContain("주 역할: 퍼블리셔/디자이너.");
+    expect(promptFileContents).toContain("공유 프로젝트 정책은 repo 지시 파일에 있다");
+    expect(promptFileContents).not.toContain("Decisions Boot Pack:");
+    expect(promptFileContents).not.toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(promptFileContents).toContain("디스패치된 작업을 기다려");
+    expect(promptFileContents).toContain("시작 문제가 없으면 응답하지 마.");
     expect(command).not.toContain("Decisions Boot Pack:");
     expect(startupPrompt).toContain("너의 이름은 노을이야.");
-    expect(startupPrompt).toContain("Publisher / Designer. HTML/CSS/Graphics");
-    expect(startupPrompt).toContain("Decisions Boot Pack:");
-    expect(startupPrompt).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
-    expect(startupPrompt).toContain("이 결정사항을 시스템프롬프트에도 넣어.");
-    expect(startupPrompt).toContain("Wait for dispatched task");
-    expect(startupPrompt).toContain("Default to no legacy fallback paths.");
-    expect(startupPrompt).toContain("Avoid nested conditional fallback chains.");
-    expect(startupPrompt).toContain("Preserve SSOT and SRP:");
+    expect(startupPrompt).toContain("주 역할: 퍼블리셔/디자이너.");
+    expect(startupPrompt).toContain("공유 프로젝트 정책은 repo 지시 파일에 있다");
+    expect(startupPrompt).not.toContain("Decisions Boot Pack:");
+    expect(startupPrompt).not.toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(startupPrompt).not.toContain("이 결정사항을 시스템프롬프트에도 넣어.");
+    expect(startupPrompt).toContain("디스패치된 작업을 기다려");
+    expect(startupPrompt).not.toContain("Default to no legacy fallback paths.");
     expect(command).not.toContain('"/frontend-design"');
     expect(command).not.toContain('-- "/frontend-design"');
   });
@@ -559,7 +437,6 @@ describe("shared team normalizer", () => {
   it("builds Kuma session commands from the shared session launch source", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
-    const vaultDir = await writeDecisionsFixture(root);
     const sessionPromptPath = await writeSessionPromptFixture(root);
     const projectRoot = join(root, "kuma-studio");
     await mkdir(projectRoot, { recursive: true });
@@ -585,11 +462,9 @@ describe("shared team normalizer", () => {
     });
 
     const startupBrief = await runTeamConfigHelperRaw("build_session_start_prompt", teamPath, ["쿠마"], {
-      KUMA_VAULT_DIR: vaultDir,
       KUMA_SYSTEM_PROMPT_PATH: sessionPromptPath,
     });
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["쿠마", "", projectRoot], {
-      KUMA_VAULT_DIR: vaultDir,
       KUMA_SYSTEM_PROMPT_PATH: sessionPromptPath,
     });
     const promptFile = command.match(/--append-system-prompt-file\s+(\S+)/u)?.[1] ?? "";
@@ -608,17 +483,16 @@ describe("shared team normalizer", () => {
 
     const startupPrompt = await readFile(promptFile, "utf8");
     expect(startupPrompt).toContain("You are Kuma session prompt fixture.");
-    expect(startupPrompt).toContain("Decisions Boot Pack:");
-    expect(startupPrompt).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
-    expect(startupPrompt).toContain("프로젝트 결정은 project-decisions에서 읽는다.");
-    expect(startupPrompt).not.toContain("Wait for dispatched task.");
-    expect(startupPrompt).not.toContain("Do not respond unless there is a startup problem.");
+    expect(startupPrompt).not.toContain("Decisions Boot Pack:");
+    expect(startupPrompt).not.toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(startupPrompt).not.toContain("프로젝트 결정은 project-decisions에서 읽는다.");
+    expect(startupPrompt).not.toContain("디스패치된 작업을 기다려");
+    expect(startupPrompt).not.toContain("시작 문제가 없으면 응답하지 마.");
   });
 
   it("builds a Codex startup command with the member identity, idle guard, and without preferred skill injection", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
-    const vaultDir = await writeDecisionsFixture(root);
 
     const teamPath = await writeTeamConfig(root, {
       teams: {
@@ -631,7 +505,7 @@ describe("shared team normalizer", () => {
               spawnType: "codex",
               spawnModel: "gpt-5.4-mini",
               spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
-              roleLabel: { en: "QA. Build, deploy, screen verification. No code edits" },
+              roleLabel: { ko: "QA. 빌드, 배포, 화면 검증", en: "QA. Build, deploy, screen verification. No code edits" },
               skills: ["kuma-picker"],
             },
           ],
@@ -642,21 +516,19 @@ describe("shared team normalizer", () => {
     const developerInstructions = await runTeamConfigHelperRaw(
       "build_codex_developer_instructions",
       teamPath,
-      ["밤토리", "QA. Build, deploy, screen verification. No code edits", "worker", "kuma-studio"],
-      { KUMA_VAULT_DIR: vaultDir },
+      ["밤토리", "QA. 빌드, 배포, 화면 검증", "worker", "kuma-studio"],
     );
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"], { KUMA_VAULT_DIR: vaultDir });
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["밤토리", "", "/tmp/work"]);
     expect(command).toContain('codex -m gpt-5.4-mini');
     expect(command).toContain("developer_instructions=");
     expect(developerInstructions).toContain("너의 이름은 밤토리야.");
-    expect(developerInstructions).toContain("QA. Build, deploy, screen verification. No code edits");
-    expect(developerInstructions).toContain("Decisions Boot Pack:");
-    expect(developerInstructions).toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
-    expect(developerInstructions).toContain("이 결정사항을 시스템프롬프트에도 넣어.");
-    expect(developerInstructions).toContain("Wait for dispatched task");
-    expect(developerInstructions).toContain("Default to no legacy fallback paths.");
-    expect(developerInstructions).toContain("Remove migration scaffolding as soon as the migration is complete.");
-    expect(developerInstructions).toContain("Actively delete dead code and legacy code.");
+    expect(developerInstructions).toContain("주 역할: QA. 빌드, 배포, 화면 검증.");
+    expect(developerInstructions).toContain("공유 프로젝트 정책은 repo 지시 파일에 있다");
+    expect(developerInstructions).not.toContain("Decisions Boot Pack:");
+    expect(developerInstructions).not.toContain("앞으로 branch/worktree 는 사용자 승인 후에만 만든다.");
+    expect(developerInstructions).not.toContain("이 결정사항을 시스템프롬프트에도 넣어.");
+    expect(developerInstructions).toContain("디스패치된 작업을 기다려");
+    expect(developerInstructions).not.toContain("Default to no legacy fallback paths.");
     expect(command).not.toContain("kuma-picker");
   });
 
@@ -676,7 +548,7 @@ describe("shared team normalizer", () => {
               spawnType: "codex",
               spawnModel: "gpt-5.4",
               spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
-              roleLabel: { en: "Operator. Task decomposition, dispatch, aggregation" },
+              roleLabel: { ko: "PM. 작업 분해, 디스패치, 결과 취합", en: "Operator. Task decomposition, dispatch, aggregation" },
             },
           ],
         },
@@ -686,20 +558,22 @@ describe("shared team normalizer", () => {
     const developerInstructions = await runTeamConfigHelperRaw(
       "build_codex_developer_instructions",
       teamPath,
-      ["하울", "Operator. Task decomposition, dispatch, aggregation", "team"],
+      ["하울", "PM. 작업 분해, 디스패치, 결과 취합", "team"],
     );
     const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"]);
     expect(command).toContain("developer_instructions=");
-    expect(developerInstructions).toContain("너의 이름은 하울야.");
-    expect(developerInstructions).toContain("Do not implement directly except for trivial one-line fixes.");
-    expect(developerInstructions).toContain("Delegate implementation work with kuma-dispatch assign.");
-    expect(developerInstructions).toContain("Pass --qa <member> only when an external QA reviewer is actually required.");
+    expect(developerInstructions).toContain("너의 이름은 하울이야.");
+    expect(developerInstructions).toContain("주 역할: PM. 작업 분해, 디스패치, 결과 취합.");
+    expect(developerInstructions).toContain("공유 프로젝트 정책은 repo 지시 파일에 있다");
+    expect(developerInstructions).toContain("직접 작업은 금지되어 있지 않다.");
+    expect(developerInstructions).toContain("kuma-dispatch assign 으로 위임한다.");
+    expect(developerInstructions).toContain("--qa <member> 는 외부 QA 리뷰어가 실제로 필요할 때만 붙인다.");
+    expect(developerInstructions).not.toContain("Do not implement directly");
   });
 
-  it("builds a Codex startup command that stays shell-parseable when decisions contain single quotes", async () => {
+  it("builds a Codex startup command that stays shell-parseable without decision boot caches", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
     tempRoots.push(root);
-    const vaultDir = await writeDecisionsFixtureWithSingleQuotes(root);
 
     const teamPath = await writeTeamConfig(root, {
       teams: {
@@ -713,18 +587,17 @@ describe("shared team normalizer", () => {
               spawnType: "codex",
               spawnModel: "gpt-5.4",
               spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
-              roleLabel: { en: "Operator. Task decomposition, dispatch, aggregation" },
+              roleLabel: { ko: "PM. 작업 분해, 디스패치, 결과 취합", en: "Operator. Task decomposition, dispatch, aggregation" },
             },
           ],
         },
       },
     });
 
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"], {
-      KUMA_VAULT_DIR: vaultDir,
-    });
+    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"]);
 
-    expect(command).toContain("직접 작업 막는 훅들");
+    expect(command).not.toContain("직접 작업 막는 훅들");
+    expect(command).not.toContain("Decisions Boot Pack:");
 
     const bashParse = spawnSync("bash", ["-n"], {
       encoding: "utf8",
@@ -739,53 +612,6 @@ describe("shared team normalizer", () => {
     });
     expect(zshParse.status).toBe(0);
     expect(zshParse.stderr).toBe("");
-  });
-
-  it("keeps Codex startup commands compact when decision ledgers are large", async () => {
-    const root = await mkdtemp(join(tmpdir(), "kuma-team-normalizer-"));
-    tempRoots.push(root);
-    const vaultDir = await writeLargeDecisionsFixture(root);
-
-    const teamPath = await writeTeamConfig(root, {
-      teams: {
-        dev: {
-          members: [
-            {
-              id: "howl",
-              name: "하울",
-              team: "dev",
-              nodeType: "team",
-              spawnType: "codex",
-              spawnModel: "gpt-5.4",
-              spawnOptions: '--dangerously-bypass-approvals-and-sandbox -c service_tier=fast -c model_reasoning_effort="xhigh"',
-              roleLabel: { en: "Operator. Task decomposition, dispatch, aggregation" },
-            },
-          ],
-        },
-      },
-    });
-
-    const developerInstructions = await runTeamConfigHelperRaw(
-      "build_codex_developer_instructions",
-      teamPath,
-      ["하울", "Operator. Task decomposition, dispatch, aggregation", "team", "kuma-studio"],
-      { KUMA_VAULT_DIR: vaultDir },
-    );
-    const [command] = await runTeamConfigHelper("build_member_command", teamPath, ["하울", "", "/tmp/work"], {
-      KUMA_VAULT_DIR: vaultDir,
-    });
-
-    expect(command).toContain("developer_instructions=");
-    expect(Buffer.byteLength(command, "utf8")).toBeLessThan(9000);
-    expect(developerInstructions).toContain("Decisions Boot Pack:");
-    expect(developerInstructions).toContain("GLOBAL-RESOLVED-8");
-    expect(developerInstructions).toContain("GLOBAL-RESOLVED-3");
-    expect(developerInstructions).not.toContain("GLOBAL-RESOLVED-2");
-    expect(developerInstructions).not.toContain("GLOBAL-RESOLVED-1");
-    expect(developerInstructions).toContain("PROJECT-RESOLVED-8");
-    expect(developerInstructions).toContain("PROJECT-RESOLVED-3");
-    expect(developerInstructions).not.toContain("PROJECT-RESOLVED-2");
-    expect(developerInstructions).not.toContain("PROJECT-RESOLVED-1");
   });
 
   it("resolves the current pane for a surface using pane surface listings", async () => {

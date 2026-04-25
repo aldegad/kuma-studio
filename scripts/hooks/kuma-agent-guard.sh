@@ -49,6 +49,6 @@ if consume_spawn_allow; then
   exit 0
 fi
 
-# 그 외: 쿠마 모드에서 Agent 툴 사용 금지 — trusted wrapper scoped allow 필요
-echo "⚠️ 쿠마는 Agent 직접 사용 금지. /kuma:dispatch 같은 trusted wrapper가 만든 scoped spawn allow 없이는 서브에이전트를 스폰할 수 없다." >&2
+# 그 외: 쿠마 모드에서 Agent 툴 사용 금지 — trusted dispatch path 또는 scoped allow 필요
+echo "⚠️ 쿠마는 Agent 직접 사용 금지. kuma-dispatch assign 같은 trusted dispatch path를 쓰거나, trusted wrapper가 만든 scoped spawn allow를 사용해야 한다." >&2
 exit 2
