@@ -58,10 +58,14 @@
 - AGENTS.md 와 CLAUDE.md 는 병렬 SSoT (Codex 는 AGENTS.md, Claude Code 는 CLAUDE.md 를 읽는다). 공유 규칙을 바꿀 때는 **같은 커밋에서 두 파일을 함께** 갱신한다.
 - 규칙을 바꿀 때는 SSoT 를 먼저 갱신하고, 그와 중복되는 에이전트 전용 메모리를 정리한다.
 
-## 지식 검색 순서
+## 쿠마모드 트리거
 
-- 내부 맥락·기존 결정·철학·설계 의도를 확인해야 하는 작업은 먼저 Kuma Vault 를 검색한다.
-- Vault 검색으로 충분하지 않거나 최신 외부 정보가 필요한 경우에만 그 다음 웹서치를 한다.
+알렉스 발화에서 다음 패턴이 보이면 즉시 해당 경로로 라우팅한다. Claude Code 빌트인 `EnterPlanMode` 같은 일반 경로로 가지 않는다.
+
+- **플랜 트리거** — "계획", "플랜", "투두", "정리해줘", "단계 짜자", "체크리스트" 같은 발화 또는 실질 작업 시작 직전. → 즉시 `/kuma:plan` 으로 현재 프로젝트 plan 생성·갱신. 빌트인 `EnterPlanMode` 사용 금지.
+- **사실형 트리거** — "출처", "정의", "언제", "누구", "정확한 용어" 같은 발화. → vault 우선 (`/vault search → timeline → get`), 없으면 외부 웹 검색, 그래도 없으면 "모른다". 룰 SSoT: `~/.kuma/vault/operational-rules/info-retrieval.md` R1.
+- **논지·의견 트리거** — "어떻게 생각해", "내 생각엔...", "이거 맞아?", "~에 대해 의견", "철학적으로" 같은 발화. → vault `domains/philosophy-reference.md` + 관련 도메인 페이지 우선 로드 후 확장 사고로 응답. 룰 SSoT: `~/.kuma/vault/operational-rules/info-retrieval.md` R5.
+- **자유 대화·코드 수정·디자인 판단** — 트리거 대상 아님. 평소 흐름.
 
 ## 알렉스 핵심 불변 6종
 
