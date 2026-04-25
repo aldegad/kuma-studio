@@ -31,11 +31,33 @@ interface Snapshot {
   okFetchedAt: string | null;
 }
 
-interface ClaudeUsageEvent {
+interface CodexUsageData {
+  fiveHour: (Bucket & { windowMinutes: number | null }) | null;
+  sevenDay: (Bucket & { windowMinutes: number | null }) | null;
+  credits: unknown | null;
+  planType: string | null;
+  limitId: string | null;
+  limitName: string | null;
+  rateLimitReachedType: unknown | null;
+  source: {
+    path: string;
+    line: number;
+    timestamp: string | null;
+  } | null;
+}
+
+interface CodexSnapshot {
+  status: "idle" | "ok" | "error";
+  fetchedAt: string | null;
+  error: string | null;
+  data: CodexUsageData | null;
+}
+
+interface UsageEvent {
   type: "kuma-studio:event";
   event: {
-    kind: "claude-usage";
-    snapshot: Snapshot;
+    kind: "claude-usage" | "codex-usage";
+    snapshot: Snapshot | CodexSnapshot;
   };
 }
 
@@ -146,9 +168,30 @@ async function refreshSnapshot(): Promise<Snapshot | null> {
   }
 }
 
+async function fetchCodexSnapshot(): Promise<CodexSnapshot | null> {
+  try {
+    const response = await fetch("/studio/codex-usage");
+    if (!response.ok) return null;
+    return (await response.json()) as CodexSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+async function refreshCodexSnapshot(): Promise<CodexSnapshot | null> {
+  try {
+    const response = await fetch("/studio/codex-usage/refresh", { method: "POST" });
+    if (!response.ok) return null;
+    return (await response.json()) as CodexSnapshot;
+  } catch {
+    return null;
+  }
+}
+
 export function UsageLimitPanel() {
   const ws = useWsStore((state) => state.ws);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [codexSnapshot, setCodexSnapshot] = useState<CodexSnapshot | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
@@ -156,17 +199,25 @@ export function UsageLimitPanel() {
     void fetchSnapshot().then((next) => {
       if (next) setSnapshot(next);
     });
+    void fetchCodexSnapshot().then((next) => {
+      if (next) setCodexSnapshot(next);
+    });
   }, []);
 
   useEffect(() => {
     if (!ws) return;
     const handleMessage = (event: MessageEvent) => {
       try {
-        const payload = JSON.parse(event.data as string) as ClaudeUsageEvent;
-        if (payload.type !== "kuma-studio:event" || payload.event.kind !== "claude-usage") {
+        const payload = JSON.parse(event.data as string) as UsageEvent;
+        if (payload.type !== "kuma-studio:event") {
           return;
         }
-        setSnapshot(payload.event.snapshot);
+        if (payload.event.kind === "claude-usage") {
+          setSnapshot(payload.event.snapshot as Snapshot);
+        }
+        if (payload.event.kind === "codex-usage") {
+          setCodexSnapshot(payload.event.snapshot as CodexSnapshot);
+        }
       } catch {
         // ignore malformed websocket payloads
       }
@@ -181,11 +232,17 @@ export function UsageLimitPanel() {
   }, []);
 
   const data = snapshot?.data ?? null;
+  const codexData = codexSnapshot?.data ?? null;
   const lastUpdated = useMemo(
     () => formatRelative(snapshot?.okFetchedAt ?? null),
     [snapshot?.okFetchedAt, now],
   );
+  const codexLastUpdated = useMemo(
+    () => formatRelative(codexSnapshot?.fetchedAt ?? null),
+    [codexSnapshot?.fetchedAt, now],
+  );
   const isError = snapshot?.status === "error";
+  const codexIsError = codexSnapshot?.status === "error";
   const errorReason = useMemo(() => {
     if (!snapshot?.error) return null;
     const trimmed = snapshot.error.trim();
@@ -193,12 +250,17 @@ export function UsageLimitPanel() {
     if (trimmed.startsWith("HTTP 401")) return "토큰 만료 — Claude Code 로그인 필요";
     return trimmed.slice(0, 80);
   }, [snapshot?.error]);
+  const codexErrorReason = useMemo(() => {
+    if (!codexSnapshot?.error) return null;
+    return codexSnapshot.error.trim().slice(0, 80);
+  }, [codexSnapshot?.error]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      const next = await refreshSnapshot();
-      if (next) setSnapshot(next);
+      const [nextClaude, nextCodex] = await Promise.all([refreshSnapshot(), refreshCodexSnapshot()]);
+      if (nextClaude) setSnapshot(nextClaude);
+      if (nextCodex) setCodexSnapshot(nextCodex);
     } finally {
       setRefreshing(false);
     }
@@ -220,15 +282,25 @@ export function UsageLimitPanel() {
             한도 조회 실패 — {errorReason ?? "알 수 없는 오류"}
           </p>
         ) : null}
+        {codexIsError && !codexData ? (
+          <p
+            className="text-[10px]"
+            style={{ color: "var(--toast-error-text, #b91c1c)" }}
+            role="status"
+            aria-live="polite"
+          >
+            Codex 한도 조회 실패 — {codexErrorReason ?? "알 수 없는 오류"}
+          </p>
+        ) : null}
 
-        <SectionHeader>현재 세션</SectionHeader>
+        <SectionHeader>Claude 현재 세션</SectionHeader>
         <ProgressRow
           label="5시간 윈도우"
           sublabel={data?.fiveHour?.resetsAt ? formatResetsAt(data.fiveHour.resetsAt) : null}
           utilization={data?.fiveHour?.utilization ?? null}
         />
 
-        <SectionHeader>주간 한도</SectionHeader>
+        <SectionHeader>Claude 주간 한도</SectionHeader>
         <ProgressRow
           label="모든 모델"
           sublabel={data?.sevenDay?.resetsAt ? formatResetsAt(data.sevenDay.resetsAt) : null}
@@ -267,15 +339,32 @@ export function UsageLimitPanel() {
           </>
         ) : null}
 
+        <SectionHeader>Codex 한도</SectionHeader>
+        <ProgressRow
+          label="5시간 윈도우"
+          sublabel={codexData?.fiveHour?.resetsAt ? formatResetsAt(codexData.fiveHour.resetsAt) : null}
+          utilization={codexData?.fiveHour?.utilization ?? null}
+        />
+        <ProgressRow
+          label="주간 한도"
+          sublabel={codexData?.sevenDay?.resetsAt ? formatResetsAt(codexData.sevenDay.resetsAt) : null}
+          utilization={codexData?.sevenDay?.utilization ?? null}
+        />
+
         <div
           className="flex items-center justify-between gap-2 border-t pt-1.5 text-[9px]"
           style={{ borderColor: "var(--border-subtle)", color: "var(--t-faint)" }}
         >
           <span className="min-w-0 truncate">
-            마지막 업데이트: {lastUpdated}
+            마지막 업데이트: Claude {lastUpdated} · Codex {codexLastUpdated}
             {isError && data ? (
               <span className="ml-1.5" style={{ color: "var(--toast-error-text, #b91c1c)" }}>
                 · 갱신 실패 ({errorReason})
+              </span>
+            ) : null}
+            {codexIsError && codexData ? (
+              <span className="ml-1.5" style={{ color: "var(--toast-error-text, #b91c1c)" }}>
+                · Codex 갱신 실패 ({codexErrorReason})
               </span>
             ) : null}
           </span>

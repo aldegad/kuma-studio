@@ -59,6 +59,10 @@ import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
  *   getSnapshot: () => object,
  *   refresh: () => Promise<object>,
  * }} [options.claudeUsagePoller]
+ * @param {{
+ *   getSnapshot: () => object,
+ *   refresh: () => Promise<object>,
+ * }} [options.codexUsagePoller]
  * @param {string} [options.workspaceRoot]
  * @param {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>} [options.studioDevDelegate]
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
@@ -81,6 +85,7 @@ export function createStudioRouteHandler({
   studioUiStateStore,
   teamConfigRuntime,
   claudeUsagePoller,
+  codexUsagePoller,
   workspaceRoot,
   explorerGlobalRoots,
   studioDevDelegate = null,
@@ -219,6 +224,24 @@ export function createStudioRouteHandler({
         return true;
       }
       sendJson(res, 200, await claudeUsagePoller.refresh());
+      return true;
+    }
+
+    if (url.pathname === "/studio/codex-usage" && req.method === "GET") {
+      if (!codexUsagePoller) {
+        sendJson(res, 503, { error: "Codex usage poller is not available." });
+        return true;
+      }
+      sendJson(res, 200, codexUsagePoller.getSnapshot());
+      return true;
+    }
+
+    if (url.pathname === "/studio/codex-usage/refresh" && req.method === "POST") {
+      if (!codexUsagePoller) {
+        sendJson(res, 503, { error: "Codex usage poller is not available." });
+        return true;
+      }
+      sendJson(res, 200, await codexUsagePoller.refresh());
       return true;
     }
 

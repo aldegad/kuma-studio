@@ -154,6 +154,17 @@ export class StudioWsEvents {
   }
 
   /**
+   * Broadcast a Codex local rate-limit snapshot.
+   * @param {object} snapshot
+   */
+  broadcastCodexUsage(snapshot) {
+    this.#broadcast({
+      type: "kuma-studio:event",
+      event: { kind: "codex-usage", snapshot },
+    });
+  }
+
+  /**
    * Broadcast a filesystem change event for the Studio explorer.
    * @param {{ changes: Array<{ rootId: string, rootPath: string, eventType: string, path: string, relativePath: string, origin?: string, changedAt?: string }> }} payload
    */

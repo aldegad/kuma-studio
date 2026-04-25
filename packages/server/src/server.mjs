@@ -43,6 +43,7 @@ import { StudioUiStateStore } from "./studio/studio-ui-state-store.mjs";
 import { runVaultLifecycleHook } from "./studio/vault-lifecycle-hook.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
 import { createClaudeUsagePoller } from "./studio/claude-usage-poll.mjs";
+import { createCodexUsagePoller } from "./studio/codex-usage-poll.mjs";
 import { watchStudioExplorerRoots } from "./studio/studio-explorer-routes.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 import {
@@ -249,6 +250,12 @@ export async function createServer({ host, port, root }) {
     },
   });
   claudeUsagePoller.start();
+  const codexUsagePoller = createCodexUsagePoller({
+    onUpdate(snapshot) {
+      studioWsEvents.broadcastCodexUsage(snapshot);
+    },
+  });
+  codexUsagePoller.start();
   const stopWatchingExplorer = watchStudioExplorerRoots({
     workspaceRoot,
     studioWsEvents,
@@ -819,6 +826,7 @@ export async function createServer({ host, port, root }) {
     workspaceRoot,
     teamConfigRuntime,
     claudeUsagePoller,
+    codexUsagePoller,
     studioDevDelegate,
   });
 
@@ -870,6 +878,10 @@ export async function createServer({ host, port, root }) {
           type: "kuma-studio:event",
           event: { kind: "claude-usage", snapshot: claudeUsagePoller.getSnapshot() },
         });
+        sendSocketJson(websocket, {
+          type: "kuma-studio:event",
+          event: { kind: "codex-usage", snapshot: codexUsagePoller.getSnapshot() },
+        });
         void readPlans()
           .then((snapshot) => {
             sendSocketJson(websocket, {
@@ -898,6 +910,7 @@ export async function createServer({ host, port, root }) {
     stopWatching();
     stopWatchingPlans();
     claudeUsagePoller.stop();
+    codexUsagePoller.stop();
     stopWatchingExplorer();
     teamConfigWatcher.close();
     if (extensionWatcher) {
