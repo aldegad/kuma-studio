@@ -116,12 +116,11 @@ function saveStringSet(storageKey: string, values: ReadonlySet<string>) {
   }
 }
 
-type PlanSourceStatus = "ready" | "missing_dir" | "misconfigured";
+type PlanSourceStatus = "ready" | "missing_dir";
 type PlanSourceInfo = {
   status?: PlanSourceStatus;
   configured?: boolean;
   exists?: boolean;
-  workspaceRoot?: string | null;
   plansDir?: string | null;
 };
 
@@ -155,17 +154,10 @@ export function getPlanPanelEmptyState(source?: PlanSourceInfo | null): {
   title: string;
   detail: string | null;
 } {
-  if (source?.status === "misconfigured") {
-    return {
-      title: "계획 문서 경로 미설정",
-      detail: "워크스페이스 바인딩 없이 서버가 시작되어 계획 문서를 찾을 수 없습니다.",
-    };
-  }
-
   if (source?.status === "missing_dir") {
     return {
       title: "계획 폴더를 찾지 못했습니다",
-      detail: source.plansDir ?? source.workspaceRoot ?? null,
+      detail: source.plansDir ?? null,
     };
   }
 

@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
+import { resolveVaultDir } from "./memo-store.mjs";
+
 export const DEFAULT_SPECIAL_VAULT_FILES = Object.freeze([
   "dispatch-log.md",
   "decisions.md",
@@ -1147,7 +1149,7 @@ export function lintVaultFiles({
   files,
   schemaPath,
 } = {}) {
-  const resolvedVaultDir = resolve(vaultDir ?? join(process.env.HOME ?? ".", ".kuma", "vault"));
+  const resolvedVaultDir = resolve(vaultDir ?? resolveVaultDir());
   const lintMode = mode === "fast" ? "fast" : "full";
   const targetFiles = normalizeRequestedFiles(files);
   const startedAt = performance.now();

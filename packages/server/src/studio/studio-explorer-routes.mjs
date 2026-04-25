@@ -6,6 +6,7 @@ import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { readJsonBody, sendJson } from "../server-support.mjs";
 import { execGitSync } from "./git-command.mjs";
 import { buildProjectWorktreeIndex } from "./git-worktrees.mjs";
+import { resolveVaultDir } from "./memo-store.mjs";
 import { readProjectsRegistry } from "./project-defaults.mjs";
 
 const SKIP_DIRS = new Set([
@@ -21,7 +22,7 @@ const SKIP_DIRS = new Set([
   ".cache",
 ]);
 const EXPLORER_GLOBAL_ROOTS = {
-  vault: resolve(join(homedir(), ".kuma", "vault")),
+  vault: resolveVaultDir(),
   claude: resolve(join(homedir(), ".claude")),
   codex: resolve(join(homedir(), ".codex")),
 };

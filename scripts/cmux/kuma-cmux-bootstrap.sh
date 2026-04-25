@@ -12,9 +12,34 @@ INFRA_ONLY="${KUMA_BOOTSTRAP_INFRA_ONLY:-0}"
 SCRIPT_PATH="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 KUMA_STUDIO_DIR="${KUMA_STUDIO_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-BOOTSTRAP_CALLER_DIR="${INIT_CWD:-$(pwd -P)}"
-WORKSPACE_DIR="${KUMA_STUDIO_WORKSPACE:-$BOOTSTRAP_CALLER_DIR}"
-WORKSPACE_DIR="$(node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "$WORKSPACE_DIR")"
+
+# Workspace binding — canonical resolver order:
+#   1. KUMA_STUDIO_WORKSPACE explicit env
+#   2. INIT_CWD if it isn't the kuma-studio repo itself
+#   3. resolve-default-workspace.mjs (~/.kuma/projects.json common ancestor)
+# Never fall back to bare $(pwd) — caller cwd is fragile and lands the daemon
+# on whichever repo invoked it (the repeated kuma-studio repo trap).
+realpath_of() {
+  node -e 'const fs = require("node:fs"); const input = process.argv[1]; try { process.stdout.write(fs.realpathSync(input)); } catch { process.stdout.write(input); }' "$1"
+}
+KUMA_STUDIO_DIR_REAL="$(realpath_of "$KUMA_STUDIO_DIR")"
+WORKSPACE_DIR=""
+if [ -n "${KUMA_STUDIO_WORKSPACE:-}" ]; then
+  WORKSPACE_DIR="$(realpath_of "$KUMA_STUDIO_WORKSPACE")"
+elif [ -n "${INIT_CWD:-}" ]; then
+  CALLER_REAL="$(realpath_of "$INIT_CWD")"
+  if [ "$CALLER_REAL" != "$KUMA_STUDIO_DIR_REAL" ]; then
+    WORKSPACE_DIR="$CALLER_REAL"
+  fi
+fi
+if [ -z "$WORKSPACE_DIR" ]; then
+  WORKSPACE_DIR="$(node "$KUMA_STUDIO_DIR/scripts/resolve-default-workspace.mjs" 2>/dev/null || true)"
+fi
+if [ -z "$WORKSPACE_DIR" ]; then
+  echo "✗ workspace 결정 실패. KUMA_STUDIO_WORKSPACE 또는 ~/.kuma/projects.json 등록 필요." >&2
+  exit 1
+fi
+WORKSPACE_DIR="$(realpath_of "$WORKSPACE_DIR")"
 KUMA_SYSTEM_PROMPT_PATH="${KUMA_SYSTEM_PROMPT_PATH:-$KUMA_STUDIO_DIR/prompts/kuma-system-prompt.md}"
 DEFAULT_EXPLORER_GLOBAL_ROOTS="vault,claude,codex"
 if [ "${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS+x}" = x ]; then
@@ -313,11 +338,7 @@ else
 
     INFRA_P="$(get_pane "$SERVER_SURFACE")"
     echo "→ 쿠마 서버 시작 중..."
-    if [ -n "${KUMA_STUDIO_WORKSPACE:-}" ] || [ "$WORKSPACE_DIR" != "$KUMA_STUDIO_DIR" ]; then
-      printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$WORKSPACE_DIR" "$EXPLORER_GLOBAL_ROOTS_BINDING"
-    else
-      printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$EXPLORER_GLOBAL_ROOTS_BINDING"
-    fi
+    printf -v SERVER_START_COMMAND 'cd "%s" && KUMA_STUDIO_WORKSPACE=%q KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS=%q npm run server:reload' "$KUMA_STUDIO_DIR" "$WORKSPACE_DIR" "$EXPLORER_GLOBAL_ROOTS_BINDING"
     "$SCRIPT_DIR/kuma-cmux-send.sh" "$SERVER_SURFACE" "$SERVER_START_COMMAND" > /dev/null
     register_surface_label "kuma-studio" "server" "$SERVER_SURFACE" "kuma-server"
 

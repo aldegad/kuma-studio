@@ -10,9 +10,16 @@ import { invalidatePlansCache, readPlans, watchPlans } from "./plan-store.mjs";
 const tempDirs = [];
 const originalCwd = process.cwd();
 
+const originalHome = process.env.HOME;
+
 afterEach(async () => {
   delete process.env.KUMA_PLANS_DIR;
   delete process.env.KUMA_STUDIO_WORKSPACE;
+  if (originalHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = originalHome;
+  }
   invalidatePlansCache();
   process.chdir(originalCwd);
   while (tempDirs.length > 0) {
@@ -37,13 +44,10 @@ async function waitFor(assertion, timeoutMs = 4_000) {
 }
 
 describe("plan-store", () => {
-  it("normalizes plan statuses and reads plans from the bound workspace root", async () => {
-    const workspaceRoot = await mkdtemp(join(tmpdir(), "kuma-plan-store-"));
-    tempDirs.push(workspaceRoot);
-    process.env.KUMA_STUDIO_WORKSPACE = workspaceRoot;
-
-    const plansDir = join(workspaceRoot, ".kuma", "plans");
-    await mkdir(plansDir, { recursive: true });
+  it("normalizes plan statuses and reads plans from the configured plans directory", async () => {
+    const plansDir = await mkdtemp(join(tmpdir(), "kuma-plan-store-"));
+    tempDirs.push(plansDir);
+    process.env.KUMA_PLANS_DIR = plansDir;
 
     await writeFile(join(plansDir, "index.md"), "# Root Index\n", "utf8");
     await mkdir(join(plansDir, "kuma-studio", "blocked-plan"), { recursive: true });
@@ -101,10 +105,9 @@ status: cancelled
 
     assert.strictEqual(snapshot.plans.some((plan) => plan.id === "index"), false);
     assert.deepStrictEqual(snapshot.source, {
-      mode: "workspace-root",
+      mode: "explicit-plans-dir",
       status: "ready",
       configured: true,
-      workspaceRoot,
       plansDir,
       exists: true,
       message: null,
@@ -228,43 +231,51 @@ status: active
     }
   });
 
-  it("does not fall back to the current working directory when no workspace is bound", async () => {
-    const fakeCwd = await mkdtemp(join(tmpdir(), "kuma-plan-cwd-"));
-    tempDirs.push(fakeCwd);
-    process.chdir(fakeCwd);
+  it("uses the canonical ~/.kuma/plans directory when no override is set", async () => {
+    const fakeHome = await mkdtemp(join(tmpdir(), "kuma-plan-home-"));
+    tempDirs.push(fakeHome);
+    process.env.HOME = fakeHome;
 
-    const plansDir = join(fakeCwd, ".kuma", "plans", "kuma-studio");
-    await mkdir(plansDir, { recursive: true });
+    const canonicalPlansDir = join(fakeHome, ".kuma", "plans");
+    await mkdir(join(canonicalPlansDir, "kuma-studio"), { recursive: true });
     await writeFile(
-      join(plansDir, "repo-cwd-plan.md"),
+      join(canonicalPlansDir, "kuma-studio", "canonical-plan.md"),
       `---
-title: Repo Cwd Plan
+title: Canonical Plan
 status: active
 ---
 
-## Hidden
-- [ ] should not load from cwd
+## Section
+- [ ] item
 `,
       "utf8",
     );
 
     const snapshot = await readPlans();
 
-    assert.deepStrictEqual(snapshot, {
-      plans: [],
-      totalItems: 0,
-      checkedItems: 0,
-      overallCompletionRate: 0,
-      source: {
-        mode: "unconfigured",
-        status: "misconfigured",
-        configured: false,
-        workspaceRoot: null,
-        plansDir: null,
-        exists: false,
-        message: "KUMA_STUDIO_WORKSPACE or KUMA_PLANS_DIR is required to resolve plans.",
-      },
+    assert.deepStrictEqual(snapshot.source, {
+      mode: "canonical",
+      status: "ready",
+      configured: true,
+      plansDir: canonicalPlansDir,
+      exists: true,
+      message: null,
     });
+    assert.strictEqual(snapshot.plans.length, 1);
+    assert.strictEqual(snapshot.plans[0]?.id, "kuma-studio/canonical-plan");
+  });
+
+  it("reports missing_dir against the canonical path when ~/.kuma/plans does not exist", async () => {
+    const fakeHome = await mkdtemp(join(tmpdir(), "kuma-plan-empty-home-"));
+    tempDirs.push(fakeHome);
+    process.env.HOME = fakeHome;
+
+    const snapshot = await readPlans();
+
+    assert.strictEqual(snapshot.source.mode, "canonical");
+    assert.strictEqual(snapshot.source.status, "missing_dir");
+    assert.strictEqual(snapshot.source.plansDir, join(fakeHome, ".kuma", "plans"));
+    assert.strictEqual(snapshot.plans.length, 0);
   });
 
   it("preserves frontmatter warning semantics while using the shared parser", async () => {

@@ -7,6 +7,7 @@
 
 import fs, { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { parseFrontmatterDocument } from "./vault-ingest.mjs";
@@ -26,7 +27,9 @@ let cachedPlansPromise = null;
 
 /**
  * Resolve the plans directory.
- * Priority: KUMA_PLANS_DIR > KUMA_STUDIO_WORKSPACE/.kuma/plans
+ * Priority:
+ *   1. KUMA_PLANS_DIR — explicit override (tests, alternate vault)
+ *   2. ~/.kuma/plans — canonical SSoT (vault root)
  */
 function resolveConfiguredPath(envKey) {
   const raw = process.env[envKey];
@@ -41,7 +44,6 @@ function toPublicPlansSource(source) {
     mode: source.mode,
     status: source.status,
     configured: source.configured,
-    workspaceRoot: source.workspaceRoot,
     plansDir: source.plansDir,
     exists: source.exists,
     message: source.message,
@@ -57,38 +59,22 @@ export function resolvePlansSource() {
       mode: "explicit-plans-dir",
       status: exists ? "ready" : "missing_dir",
       configured: true,
-      workspaceRoot: null,
       plansDir: explicitPlansDir,
       exists,
       message: exists ? null : `Plan directory does not exist: ${explicitPlansDir}`,
     };
   }
 
-  const workspaceRoot = resolveConfiguredPath("KUMA_STUDIO_WORKSPACE");
-  if (workspaceRoot) {
-    const plansDir = join(workspaceRoot, ".kuma", "plans");
-    const exists = existsSync(plansDir);
-    return {
-      cacheKey: `workspace:${workspaceRoot}`,
-      mode: "workspace-root",
-      status: exists ? "ready" : "missing_dir",
-      configured: true,
-      workspaceRoot,
-      plansDir,
-      exists,
-      message: exists ? null : `Workspace plans directory does not exist: ${plansDir}`,
-    };
-  }
-
+  const canonicalPlansDir = resolve(join(homedir(), ".kuma", "plans"));
+  const exists = existsSync(canonicalPlansDir);
   return {
-    cacheKey: "unconfigured",
-    mode: "unconfigured",
-    status: "misconfigured",
-    configured: false,
-    workspaceRoot: null,
-    plansDir: null,
-    exists: false,
-    message: "KUMA_STUDIO_WORKSPACE or KUMA_PLANS_DIR is required to resolve plans.",
+    cacheKey: `canonical:${canonicalPlansDir}`,
+    mode: "canonical",
+    status: exists ? "ready" : "missing_dir",
+    configured: true,
+    plansDir: canonicalPlansDir,
+    exists,
+    message: exists ? null : `Canonical plans directory does not exist: ${canonicalPlansDir}`,
   };
 }
 

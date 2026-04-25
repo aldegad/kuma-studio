@@ -41,17 +41,7 @@ describe("getPlanPanelEmptyState", () => {
     });
   });
 
-  it("describes an unbound workspace as a misconfiguration", async () => {
-    const { getPlanPanelEmptyState } = await import("./PlanPanel");
-    expect(getPlanPanelEmptyState({
-      status: "misconfigured",
-    })).toEqual({
-      title: "계획 문서 경로 미설정",
-      detail: "워크스페이스 바인딩 없이 서버가 시작되어 계획 문서를 찾을 수 없습니다.",
-    });
-  });
-
-  it("shows the missing plans directory when the workspace is bound but empty on disk", async () => {
+  it("shows the missing plans directory when the canonical path is empty on disk", async () => {
     const { getPlanPanelEmptyState } = await import("./PlanPanel");
     expect(getPlanPanelEmptyState({
       status: "missing_dir",

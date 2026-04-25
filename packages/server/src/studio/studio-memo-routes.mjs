@@ -11,7 +11,7 @@ import { parseFrontmatterDocument, stringifyFrontmatter } from "./vault-ingest.m
 const THREAD_STATUSES = new Set(["draft", "approved", "posted"]);
 
 function resolveThreadsContentRoot(rootOverride) {
-  return resolve(rootOverride ?? join(homedir(), ".kuma", "vault", "domains", "threads-content"));
+  return resolve(rootOverride ?? join(resolveVaultDir(), "domains", "threads-content"));
 }
 
 function isWithinRoot(root, candidatePath) {

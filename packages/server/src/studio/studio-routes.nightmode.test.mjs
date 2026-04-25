@@ -144,7 +144,6 @@ status: blocked
       mode: "explicit-plans-dir",
       status: "ready",
       configured: true,
-      workspaceRoot: null,
       plansDir: tempRoot,
       exists: true,
       message: null,
