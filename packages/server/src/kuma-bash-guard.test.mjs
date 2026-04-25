@@ -77,6 +77,23 @@ describe.sequential("kuma-bash-guard", () => {
     expect(result.stderr).toContain("kuma-cmux-send.sh");
   });
 
+  it("blocks unmanaged raw Kuma Studio server reload commands", async () => {
+    const result = await runGuard("npm run server:reload");
+
+    expect(result.code).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("unmanaged Kuma Studio server reload 금지");
+    expect(result.stderr).toContain("npm run kuma-server:reload");
+  });
+
+  it("allows explicitly marked raw Kuma Studio server reload recovery", async () => {
+    const result = await runGuard("KUMA_ALLOW_RAW_SERVER_RELOAD=1 npm run server:reload");
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('"continue": true');
+    expect(result.stderr).toBe("");
+  });
+
   it("allows the kuma-cmux-send.sh wrapper command", async () => {
     const result = await runGuard("~/.kuma/cmux/kuma-cmux-send.sh surface:7 \"hello\"");
 

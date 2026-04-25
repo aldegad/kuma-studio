@@ -21,6 +21,20 @@ describe("server-reload.sh", () => {
     await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
+  it("blocks unmanaged raw reloads unless explicitly allowed", async () => {
+    await expect(execFile("bash", [SERVER_RELOAD_SCRIPT_PATH], {
+      env: {
+        ...process.env,
+        INIT_CWD: process.cwd(),
+        KUMA_STUDIO_PORT: "44311",
+        KUMA_ALLOW_RAW_SERVER_RELOAD: "",
+      },
+    })).rejects.toMatchObject({
+      code: 2,
+      stderr: expect.stringContaining("refusing unmanaged Kuma Studio server reload"),
+    });
+  });
+
   it("binds INIT_CWD as the workspace when relaunched from a workspace root", async () => {
     const root = await mkdtemp(join(tmpdir(), "kuma-server-reload-"));
     tempRoots.push(root);
@@ -53,6 +67,7 @@ printf '\\n' >> "${nodeLog}"
         PATH: `${binDir}:${process.env.PATH}`,
         INIT_CWD: workspaceRoot,
         KUMA_STUDIO_PORT: "44312",
+        KUMA_ALLOW_RAW_SERVER_RELOAD: "1",
       },
     });
 
@@ -95,6 +110,7 @@ printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> 
         PATH: `${binDir}:${process.env.PATH}`,
         INIT_CWD: process.cwd(),
         KUMA_STUDIO_PORT: "44313",
+        KUMA_ALLOW_RAW_SERVER_RELOAD: "1",
       },
     });
 
@@ -144,6 +160,7 @@ printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" >> 
         PATH: `${binDir}:${process.env.PATH}`,
         INIT_CWD: process.cwd(),
         KUMA_STUDIO_PORT: "44314",
+        KUMA_ALLOW_RAW_SERVER_RELOAD: "1",
       },
     });
 
@@ -179,6 +196,7 @@ printf 'explorerRoots=%s\\n' "\${KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS-<unset>}" > "
         INIT_CWD: process.cwd(),
         KUMA_STUDIO_PORT: "44315",
         KUMA_STUDIO_EXPLORER_GLOBAL_ROOTS: "",
+        KUMA_ALLOW_RAW_SERVER_RELOAD: "1",
       },
     });
 

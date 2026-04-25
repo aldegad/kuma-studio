@@ -15,6 +15,15 @@ input=$(cat)
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""')
 agent_id=$(echo "$input" | jq -r '.agent_id // ""')
 
+if echo "$cmd" | grep -qE 'npm[[:space:]]+run[[:space:]]+(server:reload|dev)|bash[[:space:]]+(\./)?scripts/server-reload\.sh'; then
+  if echo "$cmd" | grep -qE 'KUMA_ALLOW_RAW_SERVER_RELOAD=1'; then
+    echo '{"continue": true}'
+    exit 0
+  fi
+  echo "⚠️ unmanaged Kuma Studio server reload 금지. managed surface 가 있으면 npm run kuma-server:reload 를 사용하고, raw local-only 복구는 KUMA_ALLOW_RAW_SERVER_RELOAD=1 로 명시할 것." >&2
+  exit 2
+fi
+
 # cmux browser는 누구든 차단 — 쿠마피커 사용할 것
 if echo "$cmd" | grep -qE '^\s*cmux\s+browser'; then
   echo "⚠️ cmux browser 사용 금지. 쿠마피커(kuma-picker)로 스크린샷/QA 수행할 것. Playwright는 쿠마피커 기능 개선 테스트 전용 — 직접 QA 용도 금지." >&2

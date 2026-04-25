@@ -7,6 +7,54 @@ PORT="${KUMA_STUDIO_PORT:-4312}"
 HOST="${KUMA_STUDIO_HOST:-127.0.0.1}"
 DEFAULT_EXPLORER_GLOBAL_ROOTS="vault,claude,codex"
 
+current_tty_name() {
+  local current_tty=""
+  current_tty="$(tty 2>/dev/null || true)"
+  [[ -n "${current_tty}" && "${current_tty}" != "not a tty" ]] || return 1
+  basename "${current_tty}"
+}
+
+running_in_managed_kuma_server_surface() {
+  local tty_name=""
+  local tree_output=""
+
+  tty_name="$(current_tty_name 2>/dev/null || true)"
+  [[ -n "${tty_name}" ]] || return 1
+
+  tree_output="$(cmux tree 2>/dev/null || true)"
+  [[ -n "${tree_output}" ]] || return 1
+
+  printf '%s\n' "${tree_output}" | awk -v tty="tty=${tty_name}" '
+    index($0, "\"kuma-server\"") > 0 && index($0, tty) > 0 {
+      found = 1
+    }
+    END {
+      exit found ? 0 : 1
+    }
+  '
+}
+
+guard_raw_server_reload() {
+  if [[ "${KUMA_ALLOW_RAW_SERVER_RELOAD:-}" == "1" ]]; then
+    return 0
+  fi
+
+  if running_in_managed_kuma_server_surface; then
+    return 0
+  fi
+
+  cat >&2 <<'EOF'
+ERROR: refusing unmanaged Kuma Studio server reload.
+
+`npm run server:reload` / `scripts/server-reload.sh` is the raw in-surface entrypoint.
+Run `npm run kuma-server:reload` when the managed `kuma-server` surface exists.
+
+For an explicit local-only emergency recovery, rerun with:
+  KUMA_ALLOW_RAW_SERVER_RELOAD=1 npm run server:reload
+EOF
+  exit 2
+}
+
 resolve_path() {
   local input="${1:-}"
   if [[ -z "${input}" ]]; then
@@ -64,6 +112,8 @@ resolve_default_workspace_binding() {
   printf 'ERROR: unable to resolve workspace binding; set KUMA_STUDIO_WORKSPACE or register project roots in ~/.kuma/projects.json\n' >&2
   return 2
 }
+
+guard_raw_server_reload
 
 WORKSPACE_BINDING=""
 if [[ -n "${KUMA_STUDIO_WORKSPACE:-}" ]]; then
