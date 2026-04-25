@@ -21,6 +21,7 @@ import { AmbientParticles } from "../components/office/AmbientParticles";
 import { GitLogPanel } from "../components/dashboard/GitLogPanel";
 import { PlanPanel } from "../components/dashboard/PlanPanel";
 import { MemoPanel } from "../components/dashboard/MemoPanel";
+import { UsageLimitPanel } from "../components/dashboard/UsageLimitPanel";
 import { ContentPanel } from "../components/dashboard/ContentPanel";
 import { ExperimentPanel } from "../components/dashboard/ExperimentPanel";
 import { CmuxPanel } from "../components/dashboard/CmuxPanel";
@@ -32,7 +33,6 @@ import { FileExplorer } from "../components/ide/FileExplorer";
 import { useCanvasInteraction, CANVAS_WIDTH, CANVAS_HEIGHT, ZOOM_DEFAULT, ZOOM_MIN, ZOOM_MAX, clamp } from "../hooks/use-canvas-interaction";
 import {
   buildStudioProjectTabs,
-  CORE_PROJECT_TAB_ID,
   splitHudProjectTabs,
 } from "../lib/project-tabs";
 import type { GitActivityWorktree } from "../types/stats";
@@ -344,10 +344,7 @@ export function StudioPage() {
     () => splitHudProjectTabs(projectTabs, hudPinnedProjectIds),
     [hudPinnedProjectIds, projectTabs],
   );
-  const projectMenuProjects = useMemo(
-    () => projectTabs.filter((project) => project.projectId !== CORE_PROJECT_TAB_ID),
-    [projectTabs],
-  );
+  const projectMenuProjects = overflowProjects;
 
   // "system" project members (e.g. kuma, jjooni) are always visible
   const systemApiMemberIds = projects.find((p) => p.projectId === "system")?.members.map((m) => m.id) ?? [];
@@ -634,6 +631,7 @@ export function StudioPage() {
     { id: "plan-panel", title: "계획 진행률", className: "w-72", content: <PlanPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} /> },
     { id: "git-log", title: "커밋 로그", className: "w-[min(36rem,calc(100vw-2rem))]", content: <GitLogPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} activeWorktreePath={activeWorktreePath} activeWorktreeName={activeWorktreeName} /> },
     { id: "memo", title: "메모", className: "w-[min(46rem,calc(100vw-2rem))]", content: <MemoPanel /> },
+    { id: "usage-limit", title: "플랜 사용량 한도", className: "w-72", content: <UsageLimitPanel /> },
     { id: "content", title: "스레드 콘텐츠", className: "w-[min(46rem,calc(100vw-2rem))]", content: <ContentPanel activeProjectId={activeProjectId} /> },
     { id: "experiment", title: "실험 파이프라인", className: "w-[min(42rem,calc(100vw-2rem))]", content: <ExperimentPanel /> },
     { id: "cmux", title: "TEAM", className: "w-64", content: <CmuxPanel activeProjectId={activeProjectId} activeProjectName={activeProjectName} /> },

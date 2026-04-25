@@ -42,6 +42,7 @@ import { DispatchBroker } from "./studio/dispatch-broker.mjs";
 import { StudioUiStateStore } from "./studio/studio-ui-state-store.mjs";
 import { runVaultLifecycleHook } from "./studio/vault-lifecycle-hook.mjs";
 import { readPlans, watchPlans } from "./studio/plan-store.mjs";
+import { createClaudeUsagePoller } from "./studio/claude-usage-poll.mjs";
 import { watchStudioExplorerRoots } from "./studio/studio-explorer-routes.mjs";
 import { loadTeamMetadata, getAgentHierarchy } from "./team-metadata.mjs";
 import {
@@ -241,6 +242,13 @@ export async function createServer({ host, port, root }) {
     },
   });
   void readPlans();
+
+  const claudeUsagePoller = createClaudeUsagePoller({
+    onUpdate(snapshot) {
+      studioWsEvents.broadcastClaudeUsage(snapshot);
+    },
+  });
+  claudeUsagePoller.start();
   const stopWatchingExplorer = watchStudioExplorerRoots({
     workspaceRoot,
     studioWsEvents,
@@ -810,6 +818,7 @@ export async function createServer({ host, port, root }) {
     studioUiStateStore,
     workspaceRoot,
     teamConfigRuntime,
+    claudeUsagePoller,
     studioDevDelegate,
   });
 
@@ -857,6 +866,10 @@ export async function createServer({ host, port, root }) {
           type: "kuma-studio:nightmode",
           enabled: isNightModeEnabled(),
         });
+        sendSocketJson(websocket, {
+          type: "kuma-studio:event",
+          event: { kind: "claude-usage", snapshot: claudeUsagePoller.getSnapshot() },
+        });
         void readPlans()
           .then((snapshot) => {
             sendSocketJson(websocket, {
@@ -884,6 +897,7 @@ export async function createServer({ host, port, root }) {
   server.on("close", () => {
     stopWatching();
     stopWatchingPlans();
+    claudeUsagePoller.stop();
     stopWatchingExplorer();
     teamConfigWatcher.close();
     if (extensionWatcher) {

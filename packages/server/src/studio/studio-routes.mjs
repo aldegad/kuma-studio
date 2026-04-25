@@ -55,6 +55,10 @@ import { renderTeamMemberPrompt } from "./team-prompt-renderer.mjs";
  *     { project: string, surface: string | null, queued?: boolean, cleanupFailed?: boolean, cleanupError?: string | null } |
  *     Promise<{ project: string, surface: string | null, queued?: boolean, cleanupFailed?: boolean, cleanupError?: string | null }>
  * }} [options.teamConfigRuntime]
+ * @param {{
+ *   getSnapshot: () => object,
+ *   refresh: () => Promise<object>,
+ * }} [options.claudeUsagePoller]
  * @param {string} [options.workspaceRoot]
  * @param {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>} [options.studioDevDelegate]
  * @returns {(req: import("http").IncomingMessage, res: import("http").ServerResponse) => Promise<boolean>}
@@ -76,6 +80,7 @@ export function createStudioRouteHandler({
   dispatchBroker,
   studioUiStateStore,
   teamConfigRuntime,
+  claudeUsagePoller,
   workspaceRoot,
   explorerGlobalRoots,
   studioDevDelegate = null,
@@ -196,6 +201,24 @@ export function createStudioRouteHandler({
 
     if (url.pathname === "/studio/stats" && req.method === "GET") {
       sendJson(res, 200, statsStore.getStats());
+      return true;
+    }
+
+    if (url.pathname === "/studio/usage" && req.method === "GET") {
+      if (!claudeUsagePoller) {
+        sendJson(res, 503, { error: "Claude usage poller is not available." });
+        return true;
+      }
+      sendJson(res, 200, claudeUsagePoller.getSnapshot());
+      return true;
+    }
+
+    if (url.pathname === "/studio/usage/refresh" && req.method === "POST") {
+      if (!claudeUsagePoller) {
+        sendJson(res, 503, { error: "Claude usage poller is not available." });
+        return true;
+      }
+      sendJson(res, 200, await claudeUsagePoller.refresh());
       return true;
     }
 

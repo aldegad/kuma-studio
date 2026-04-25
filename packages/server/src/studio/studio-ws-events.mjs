@@ -143,6 +143,17 @@ export class StudioWsEvents {
   }
 
   /**
+   * Broadcast a Claude OAuth usage snapshot.
+   * @param {object} snapshot
+   */
+  broadcastClaudeUsage(snapshot) {
+    this.#broadcast({
+      type: "kuma-studio:event",
+      event: { kind: "claude-usage", snapshot },
+    });
+  }
+
+  /**
    * Broadcast a filesystem change event for the Studio explorer.
    * @param {{ changes: Array<{ rootId: string, rootPath: string, eventType: string, path: string, relativePath: string, origin?: string, changedAt?: string }> }} payload
    */

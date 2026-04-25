@@ -99,6 +99,13 @@ export function PanelIcon({ panelId, className = "h-4 w-4" }: PanelIconProps) {
           <path d="M8 12h5" />
         </svg>
       );
+    case "usage-limit":
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      );
     default:
       return (
         <svg {...common}>
