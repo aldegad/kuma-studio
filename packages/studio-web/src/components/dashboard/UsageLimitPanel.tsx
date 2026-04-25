@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { usageProviderAccents, type UsageProviderAccent } from "../../lib/panel-design-tokens";
 import { useWsStore } from "../../stores/use-ws-store";
 
 interface Bucket {
@@ -34,15 +35,24 @@ interface Snapshot {
 interface CodexUsageData {
   fiveHour: (Bucket & { windowMinutes: number | null }) | null;
   sevenDay: (Bucket & { windowMinutes: number | null }) | null;
-  credits: unknown | null;
+  credits: {
+    hasCredits: boolean;
+    unlimited: boolean;
+    overageLimitReached: boolean;
+    balance: string | null;
+    approxLocalMessages: number[] | null;
+    approxCloudMessages: number[] | null;
+  } | null;
   planType: string | null;
   limitId: string | null;
   limitName: string | null;
   rateLimitReachedType: unknown | null;
   source: {
-    path: string;
-    line: number;
-    timestamp: string | null;
+    type?: string;
+    endpoint?: string;
+    path?: string;
+    line?: number;
+    timestamp?: string | null;
   } | null;
 }
 
@@ -93,6 +103,11 @@ function formatCurrency(cents: number | null, currency: string | null): string {
   return `${symbol}${dollars.toFixed(2)}`;
 }
 
+function formatMessageRange(values: number[] | null): string | null {
+  if (!values || values.length < 2) return null;
+  return `${values[0].toLocaleString()}~${values[1].toLocaleString()}회`;
+}
+
 function clamp(value: number, min = 0, max = 100): number {
   if (Number.isNaN(value)) return min;
   return Math.min(max, Math.max(min, value));
@@ -102,12 +117,14 @@ interface ProgressRowProps {
   label: string;
   sublabel?: string | null;
   utilization: number | null;
+  accent: UsageProviderAccent;
 }
 
-function ProgressRow({ label, sublabel, utilization }: ProgressRowProps) {
+function ProgressRow({ label, sublabel, utilization, accent }: ProgressRowProps) {
   const display = utilization == null ? "—" : `${Math.round(utilization)}% 사용됨`;
   const width = utilization == null ? 0 : clamp(utilization);
   const filled = utilization != null && utilization > 0;
+  const colors = usageProviderAccents[accent];
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
@@ -121,7 +138,7 @@ function ProgressRow({ label, sublabel, utilization }: ProgressRowProps) {
       </div>
       <div
         className="h-1.5 overflow-hidden rounded-full"
-        style={{ background: "var(--track-bg)" }}
+        style={{ background: colors.track }}
         role="progressbar"
         aria-label={label}
         aria-valuemin={0}
@@ -129,22 +146,34 @@ function ProgressRow({ label, sublabel, utilization }: ProgressRowProps) {
         aria-valuenow={utilization == null ? 0 : Math.round(utilization)}
       >
         <div
-          className="h-full rounded-full bg-blue-600 transition-all duration-500"
-          style={{ width: filled ? `${Math.max(width, 2)}%` : "0%" }}
+          className="h-full rounded-full transition-all duration-500"
+          style={{ width: filled ? `${Math.max(width, 2)}%` : "0%", background: colors.color }}
         />
       </div>
     </div>
   );
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function SectionHeader({ accent, children }: { accent: UsageProviderAccent; children: React.ReactNode }) {
+  const colors = usageProviderAccents[accent];
   return (
     <div
-      className="text-[10px] font-bold uppercase tracking-wider pt-2"
-      style={{ color: "var(--t-muted)" }}
+      className="flex items-center gap-1.5 pt-2 text-[10px] font-bold"
+      style={{ color: colors.color }}
     >
-      {children}
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ background: colors.color, boxShadow: `0 0 0 3px ${colors.soft}` }}
+      />
+      <span>{children}</span>
     </div>
+  );
+}
+
+function ProviderDivider({ accent }: { accent: UsageProviderAccent }) {
+  const colors = usageProviderAccents[accent];
+  return (
+    <div className="my-2 h-px" style={{ background: `linear-gradient(to right, ${colors.border}, transparent)` }} />
   );
 }
 
@@ -293,24 +322,27 @@ export function UsageLimitPanel() {
           </p>
         ) : null}
 
-        <SectionHeader>Claude 현재 세션</SectionHeader>
+        <SectionHeader accent="claude">Claude 현재 세션</SectionHeader>
         <ProgressRow
           label="5시간 윈도우"
           sublabel={data?.fiveHour?.resetsAt ? formatResetsAt(data.fiveHour.resetsAt) : null}
           utilization={data?.fiveHour?.utilization ?? null}
+          accent="claude"
         />
 
-        <SectionHeader>Claude 주간 한도</SectionHeader>
+        <SectionHeader accent="claude">Claude 주간 한도</SectionHeader>
         <ProgressRow
           label="모든 모델"
           sublabel={data?.sevenDay?.resetsAt ? formatResetsAt(data.sevenDay.resetsAt) : null}
           utilization={data?.sevenDay?.utilization ?? null}
+          accent="claude"
         />
         {data?.sevenDayOpus ? (
           <ProgressRow
             label="Opus 만"
             sublabel={data.sevenDayOpus.resetsAt ? formatResetsAt(data.sevenDayOpus.resetsAt) : null}
             utilization={data.sevenDayOpus.utilization}
+            accent="claude"
           />
         ) : null}
         {data?.sevenDaySonnet ? (
@@ -318,6 +350,7 @@ export function UsageLimitPanel() {
             label="Sonnet 만"
             sublabel={data.sevenDaySonnet.resetsAt ? formatResetsAt(data.sevenDaySonnet.resetsAt) : null}
             utilization={data.sevenDaySonnet.utilization}
+            accent="claude"
           />
         ) : null}
         {data?.sevenDayOmelette ? (
@@ -325,31 +358,53 @@ export function UsageLimitPanel() {
             label="Claude Design"
             sublabel={data.sevenDayOmelette.resetsAt ? formatResetsAt(data.sevenDayOmelette.resetsAt) : null}
             utilization={data.sevenDayOmelette.utilization}
+            accent="claude"
           />
         ) : null}
 
         {data?.extraUsage?.isEnabled ? (
           <>
-            <SectionHeader>추가 사용량</SectionHeader>
+            <SectionHeader accent="claude">Claude 추가 사용량</SectionHeader>
             <ProgressRow
               label={`${formatCurrency(data.extraUsage.usedCredits, data.extraUsage.currency)} 사용`}
               sublabel={`월간 지출 한도 ${formatCurrency(data.extraUsage.monthlyLimit, data.extraUsage.currency)}`}
               utilization={data.extraUsage.utilization}
+              accent="claude"
             />
           </>
         ) : null}
 
-        <SectionHeader>Codex 한도</SectionHeader>
+        <ProviderDivider accent="codex" />
+        <SectionHeader accent="codex">Codex 한도</SectionHeader>
         <ProgressRow
           label="5시간 윈도우"
           sublabel={codexData?.fiveHour?.resetsAt ? formatResetsAt(codexData.fiveHour.resetsAt) : null}
           utilization={codexData?.fiveHour?.utilization ?? null}
+          accent="codex"
         />
         <ProgressRow
           label="주간 한도"
           sublabel={codexData?.sevenDay?.resetsAt ? formatResetsAt(codexData.sevenDay.resetsAt) : null}
           utilization={codexData?.sevenDay?.utilization ?? null}
+          accent="codex"
         />
+        {codexData?.credits ? (
+          <div className="space-y-1">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold" style={{ color: usageProviderAccents.codex.color }}>
+                  남은 크레딧
+                </div>
+                <div className="truncate text-[9px]" style={{ color: "var(--t-faint)" }}>
+                  로컬 {formatMessageRange(codexData.credits.approxLocalMessages) ?? "—"} · 클라우드 {formatMessageRange(codexData.credits.approxCloudMessages) ?? "—"}
+                </div>
+              </div>
+              <div className="shrink-0 text-[10px] font-semibold tabular-nums" style={{ color: usageProviderAccents.codex.color }}>
+                {codexData.credits.unlimited ? "무제한" : (codexData.credits.balance ?? "—")}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div
           className="flex items-center justify-between gap-2 border-t pt-1.5 text-[9px]"

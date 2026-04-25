@@ -1,9 +1,10 @@
 /**
- * Reads Codex rate-limit snapshots from Codex's local session event logs.
+ * Polls Codex usage through the same OAuth-backed route used by Codex clients.
  *
- * Codex emits token_count events that include rate_limits for the 5h primary
- * window and weekly secondary window. This poller treats those emitted events
- * as the local canonical source instead of calling private OAuth endpoints.
+ * Primary source: GET https://chatgpt.com/backend-api/wham/usage with the
+ * Codex OAuth access token from ~/.codex/auth.json. If that request fails, the
+ * poller keeps the panel observable by publishing the latest local rate_limits
+ * snapshot emitted into ~/.codex/sessions, marked with status "error".
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
@@ -12,32 +13,94 @@ import { join } from "node:path";
 
 const DEFAULT_INTERVAL_MS = 60_000;
 const DEFAULT_SCAN_LIMIT = 200;
+const USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
 
 function defaultSessionsDir() {
   return join(homedir(), ".codex", "sessions");
 }
 
-function normalizeWindow(raw) {
+function defaultAuthPath() {
+  return join(homedir(), ".codex", "auth.json");
+}
+
+function normalizeWindow(raw, source) {
   if (!raw || typeof raw !== "object") return null;
   if (typeof raw.used_percent !== "number") return null;
-  const resetsAtSeconds = typeof raw.resets_at === "number" ? raw.resets_at : null;
+  const windowMinutes = typeof raw.window_minutes === "number"
+    ? raw.window_minutes
+    : typeof raw.limit_window_seconds === "number"
+      ? raw.limit_window_seconds / 60
+      : null;
+  const resetsAtSeconds = typeof raw.resets_at === "number"
+    ? raw.resets_at
+    : typeof raw.reset_at === "number"
+      ? raw.reset_at
+      : null;
   return {
     utilization: raw.used_percent,
-    windowMinutes: typeof raw.window_minutes === "number" ? raw.window_minutes : null,
+    windowMinutes,
     resetsAt: resetsAtSeconds == null ? null : new Date(resetsAtSeconds * 1000).toISOString(),
+    allowed: typeof raw.allowed === "boolean" ? raw.allowed : null,
+    limitReached: typeof raw.limit_reached === "boolean" ? raw.limit_reached : null,
+    source,
   };
 }
 
-function normalizeResponse(raw, source) {
+function normalizeCredits(raw) {
+  if (!raw || typeof raw !== "object") return null;
   return {
-    fiveHour: normalizeWindow(raw?.primary),
-    sevenDay: normalizeWindow(raw?.secondary),
-    credits: raw?.credits ?? null,
+    hasCredits: Boolean(raw.has_credits),
+    unlimited: Boolean(raw.unlimited),
+    overageLimitReached: Boolean(raw.overage_limit_reached),
+    balance: raw.balance == null ? null : String(raw.balance),
+    approxLocalMessages: Array.isArray(raw.approx_local_messages) ? raw.approx_local_messages : null,
+    approxCloudMessages: Array.isArray(raw.approx_cloud_messages) ? raw.approx_cloud_messages : null,
+  };
+}
+
+function normalizeLogResponse(raw, source) {
+  return {
+    fiveHour: normalizeWindow(raw?.primary, "log"),
+    sevenDay: normalizeWindow(raw?.secondary, "log"),
+    credits: normalizeCredits(raw?.credits),
     planType: typeof raw?.plan_type === "string" ? raw.plan_type : null,
     limitId: typeof raw?.limit_id === "string" ? raw.limit_id : null,
     limitName: typeof raw?.limit_name === "string" ? raw.limit_name : null,
     rateLimitReachedType: raw?.rate_limit_reached_type ?? null,
+    allowed: null,
+    limitReached: null,
+    spendControlReached: null,
+    additionalRateLimits: [],
     source,
+  };
+}
+
+function normalizeApiResponse(raw) {
+  const additionalRateLimits = Array.isArray(raw?.additional_rate_limits)
+    ? raw.additional_rate_limits.map((entry) => ({
+        limitName: typeof entry?.limit_name === "string" ? entry.limit_name : null,
+        meteredFeature: typeof entry?.metered_feature === "string" ? entry.metered_feature : null,
+        fiveHour: normalizeWindow(entry?.rate_limit?.primary_window, "api"),
+        sevenDay: normalizeWindow(entry?.rate_limit?.secondary_window, "api"),
+      }))
+    : [];
+
+  return {
+    fiveHour: normalizeWindow(raw?.rate_limit?.primary_window, "api"),
+    sevenDay: normalizeWindow(raw?.rate_limit?.secondary_window, "api"),
+    credits: normalizeCredits(raw?.credits),
+    planType: typeof raw?.plan_type === "string" ? raw.plan_type : null,
+    limitId: "codex",
+    limitName: null,
+    rateLimitReachedType: raw?.rate_limit_reached_type ?? null,
+    allowed: typeof raw?.rate_limit?.allowed === "boolean" ? raw.rate_limit.allowed : null,
+    limitReached: typeof raw?.rate_limit?.limit_reached === "boolean" ? raw.rate_limit.limit_reached : null,
+    spendControlReached: typeof raw?.spend_control?.reached === "boolean" ? raw.spend_control.reached : null,
+    additionalRateLimits,
+    source: {
+      type: "api",
+      endpoint: USAGE_ENDPOINT,
+    },
   };
 }
 
@@ -98,7 +161,8 @@ async function readLatestRateLimitSnapshot({ sessionsDir, scanLimit = DEFAULT_SC
 
       return {
         fetchedAt: event.timestamp ?? new Date(file.mtimeMs).toISOString(),
-        data: normalizeResponse(rateLimits, {
+        data: normalizeLogResponse(rateLimits, {
+          type: "log",
           path: file.path,
           line: index + 1,
           timestamp: event.timestamp ?? null,
@@ -110,13 +174,46 @@ async function readLatestRateLimitSnapshot({ sessionsDir, scanLimit = DEFAULT_SC
   return null;
 }
 
+async function loadAccessToken(authPath = defaultAuthPath()) {
+  const raw = await readFile(authPath, "utf8");
+  const parsed = JSON.parse(raw);
+  const token = parsed?.tokens?.access_token;
+  if (!token) {
+    throw new Error(`${authPath} missing tokens.access_token`);
+  }
+  return token;
+}
+
+async function fetchUsage({ authPath, fetchImpl = fetch } = {}) {
+  const token = await loadAccessToken(authPath);
+  const response = await fetchImpl(USAGE_ENDPOINT, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`HTTP ${response.status}: ${body.slice(0, 200)}`);
+  }
+  return response.json();
+}
+
 /**
  * @param {object} [options]
  * @param {number} [options.intervalMs]
  * @param {string} [options.sessionsDir]
+ * @param {string} [options.authPath]
+ * @param {typeof fetch} [options.fetchImpl]
  * @param {(snapshot: object) => void} [options.onUpdate]
  */
-export function createCodexUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, sessionsDir, onUpdate } = {}) {
+export function createCodexUsagePoller({
+  intervalMs = DEFAULT_INTERVAL_MS,
+  sessionsDir,
+  authPath,
+  fetchImpl,
+  onUpdate,
+} = {}) {
   let timer = null;
   let snapshot = {
     status: "idle",
@@ -139,23 +236,20 @@ export function createCodexUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, sessi
 
   async function tick() {
     try {
-      const latest = await readLatestRateLimitSnapshot({ sessionsDir });
-      if (!latest) {
-        throw new Error("No Codex rate_limits snapshot found in ~/.codex/sessions");
-      }
+      const raw = await fetchUsage({ authPath, fetchImpl });
       publish({
         status: "ok",
-        fetchedAt: latest.fetchedAt,
+        fetchedAt: new Date().toISOString(),
         error: null,
-        data: latest.data,
+        data: normalizeApiResponse(raw),
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const latest = await readLatestRateLimitSnapshot({ sessionsDir }).catch(() => null);
       publish({
         status: "error",
-        fetchedAt: new Date().toISOString(),
-        error: message,
-        data: snapshot.data,
+        fetchedAt: latest?.fetchedAt ?? new Date().toISOString(),
+        error: error instanceof Error ? error.message : String(error),
+        data: latest?.data ?? snapshot.data,
       });
     }
   }

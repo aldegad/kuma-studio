@@ -1,23 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { defaultPlanStatusToken, planPanelTokens, planStatusTokens } from "../../lib/panel-design-tokens";
 import { useDashboardStore } from "../../stores/use-dashboard-store";
 import type { Plan, PlanStatus } from "../../types/plan";
 import { PlanDetailModal } from "./PlanDetailModal";
-
-/** Status → color mapping for plan status dots */
-const PLAN_STATUS_COLORS: Record<string, { dot: string; glow: string; label: string }> = {
-  completed: { dot: "#22c55e", glow: "rgba(34, 197, 94, 0.4)", label: "완료" },
-  cancelled: { dot: "#4ade80", glow: "rgba(134, 239, 172, 0.3)", label: "취소" },
-  active:    { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)", label: "진행 중" },
-  in_progress: { dot: "#3b82f6", glow: "rgba(59, 130, 246, 0.4)", label: "진행 중" },
-  hold:      { dot: "#eab308", glow: "rgba(234, 179, 8, 0.4)", label: "보류" },
-  blocked:   { dot: "#f97316", glow: "rgba(249, 115, 22, 0.4)", label: "컨펌 대기" },
-  failed:    { dot: "#ef4444", glow: "rgba(239, 68, 68, 0.4)", label: "실패" },
-  error:     { dot: "#ef4444", glow: "rgba(239, 68, 68, 0.4)", label: "에러" },
-  draft:     { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.3)", label: "초안" },
-  archived:  { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "보관됨" },
-};
-const DEFAULT_STATUS_COLOR = { dot: "#6b7280", glow: "rgba(107, 114, 128, 0.2)", label: "" };
 
 const STATUS_FILTER_STORAGE_KEY = "kuma-studio.plan-panel.hidden-statuses.v1";
 const PANEL_COLLAPSED_STORAGE_KEY = "kuma-studio.plan-panel.collapsed.v1";
@@ -125,7 +111,7 @@ type PlanSourceInfo = {
 };
 
 function getStatusColor(status: PlanStatus) {
-  return PLAN_STATUS_COLORS[status] ?? DEFAULT_STATUS_COLOR;
+  return planStatusTokens[status] ?? defaultPlanStatusToken;
 }
 
 /** Sort plans by created date descending, fallback to id reverse-alpha. */
@@ -310,7 +296,7 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
         </button>
 
         {!collapsed && (
-        <div className="px-3 pb-3 space-y-1.5">
+        <div className="px-3 pb-3 space-y-2">
         {plansError && (
           <p
             className="mb-2 text-[10px]"
@@ -350,9 +336,17 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
           </div>
         ) : (
           <div className="space-y-1">
-            {/* Overall progress */}
-            <div className="flex items-center justify-between">
-              <span className="text-[10px]" style={{ color: "var(--t-muted)" }}>전체</span>
+            <div
+              className="flex items-center justify-between border-t pt-2"
+              style={{ borderColor: planPanelTokens.divider }}
+            >
+              <span className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: planPanelTokens.accent }}>
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: planPanelTokens.accent, boxShadow: `0 0 0 3px ${planPanelTokens.accentSoft}` }}
+                />
+                전체 진행률
+              </span>
               <span className="text-xs font-bold" style={{ color: "var(--t-primary)" }}>
                 {checked}/{total}
                 <span className="ml-1 text-[10px] font-normal" style={{ color: "var(--t-faint)" }}>
@@ -363,7 +357,7 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
 
             <div
               className="h-1.5 overflow-hidden rounded-full"
-              style={{ background: "var(--track-bg)" }}
+              style={{ background: planPanelTokens.progressTrack }}
               role="progressbar"
               aria-label="전체 계획 완료율"
               aria-valuemin={0}
@@ -371,8 +365,8 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
               aria-valuenow={Math.round(rate)}
             >
               <div
-                className="h-full rounded-full bg-green-600 transition-all duration-500"
-                style={{ width: `${rate}%` }}
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${rate}%`, background: planPanelTokens.accent }}
               />
             </div>
 
@@ -400,7 +394,8 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
                         checked={checked}
                         onChange={() => toggleStatusFilter(status)}
                         aria-label={`${label} 상태 표시`}
-                        className="h-3 w-3 shrink-0 cursor-pointer accent-green-600"
+                        className="h-3 w-3 shrink-0 cursor-pointer"
+                        style={{ accentColor: planPanelTokens.accent }}
                       />
                       <span
                         className="shrink-0 rounded-full"
@@ -454,7 +449,7 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
                       </svg>
                       <span
                         className="flex-1 truncate text-[10px] font-bold"
-                        style={{ color: "var(--t-secondary)" }}
+                        style={{ color: isExpanded ? planPanelTokens.accent : "var(--t-secondary)" }}
                       >
                         {project}
                       </span>
@@ -481,9 +476,9 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
                               type="button"
                               onClick={() => openPlanDetail(plan)}
                               className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors"
-                              style={{ background: `linear-gradient(90deg, ${sc.dot}08 0%, transparent 40%)` }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}18 0%, var(--panel-hover) 40%)`; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}08 0%, transparent 40%)`; }}
+                              style={{ background: `linear-gradient(90deg, ${sc.dot}10 0%, transparent 48%)` }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}1f 0%, var(--panel-hover) 48%)`; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}10 0%, transparent 48%)`; }}
                             >
                               {/* Status dot with glow */}
                               <span
