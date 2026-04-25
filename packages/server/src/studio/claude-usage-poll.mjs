@@ -128,9 +128,11 @@ async function fetchUsage(token) {
  * @param {(snapshot: object) => void} [options.onUpdate]
  */
 export function createClaudeUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, onUpdate } = {}) {
-  let timer = null;
+  let autoPollTimer = null;
   let stopped = false;
   let lastFetchedAtMs = 0;
+  let rateLimitedUntilMs = 0;
+  let inFlight = null;
   let snapshot = {
     status: "idle",
     fetchedAt: null,
@@ -151,55 +153,58 @@ export function createClaudeUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, onUp
     }
   }
 
-  function scheduleNext(delayMs) {
-    if (stopped) return;
-    if (timer != null) clearTimeout(timer);
-    timer = setTimeout(() => {
-      void tick();
-    }, delayMs);
-  }
-
-  async function tick() {
-    lastFetchedAtMs = Date.now();
-    try {
-      const token = await loadOauthToken();
-      const raw = await fetchUsage(token);
-      publish({
-        status: "ok",
-        fetchedAt: new Date().toISOString(),
-        error: null,
-        data: normalizeResponse(raw),
-        okFetchedAt: new Date().toISOString(),
-      });
-      scheduleNext(intervalMs);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const isRateLimited = error instanceof UsageHttpError && error.status === 429;
-      publish({
-        status: "error",
-        fetchedAt: new Date().toISOString(),
-        error: message,
-        data: snapshot.data,
-        okFetchedAt: snapshot.okFetchedAt,
-      });
-      const retryAfterMs = error instanceof UsageHttpError ? error.retryAfterMs : null;
-      const backoff = isRateLimited
-        ? (retryAfterMs ?? RATE_LIMIT_BACKOFF_MS)
-        : intervalMs;
-      scheduleNext(backoff);
-    }
+  // Single fetch path. Both auto-poll and manual refresh route through here.
+  // Never touches the auto-poll timer — that runs on its own fixed cadence.
+  async function fetchOnce() {
+    if (inFlight) return inFlight;
+    if (Date.now() < rateLimitedUntilMs) return snapshot;
+    inFlight = (async () => {
+      lastFetchedAtMs = Date.now();
+      try {
+        const token = await loadOauthToken();
+        const raw = await fetchUsage(token);
+        publish({
+          status: "ok",
+          fetchedAt: new Date().toISOString(),
+          error: null,
+          data: normalizeResponse(raw),
+          okFetchedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const isRateLimited = error instanceof UsageHttpError && error.status === 429;
+        if (isRateLimited) {
+          const retryAfterMs = error.retryAfterMs ?? RATE_LIMIT_BACKOFF_MS;
+          rateLimitedUntilMs = Date.now() + retryAfterMs;
+        }
+        publish({
+          status: "error",
+          fetchedAt: new Date().toISOString(),
+          error: message,
+          data: snapshot.data,
+          okFetchedAt: snapshot.okFetchedAt,
+        });
+      } finally {
+        inFlight = null;
+      }
+      return snapshot;
+    })();
+    return inFlight;
   }
 
   return {
     start() {
-      if (timer != null || stopped) return;
-      void tick();
+      if (autoPollTimer != null || stopped) return;
+      void fetchOnce();
+      autoPollTimer = setInterval(() => {
+        void fetchOnce();
+      }, intervalMs);
     },
     stop() {
       stopped = true;
-      if (timer != null) {
-        clearTimeout(timer);
-        timer = null;
+      if (autoPollTimer != null) {
+        clearInterval(autoPollTimer);
+        autoPollTimer = null;
       }
     },
     getSnapshot() {
@@ -207,11 +212,9 @@ export function createClaudeUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, onUp
     },
     async refresh({ minIntervalMs = 30_000 } = {}) {
       const sinceLast = Date.now() - lastFetchedAtMs;
-      if (sinceLast < minIntervalMs) {
-        return snapshot;
-      }
-      await tick();
-      return snapshot;
+      if (sinceLast < minIntervalMs) return snapshot;
+      if (Date.now() < rateLimitedUntilMs) return snapshot;
+      return fetchOnce();
     },
   };
 }
