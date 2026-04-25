@@ -343,7 +343,7 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
               <span className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: planPanelTokens.accent }}>
                 <span
                   className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: planPanelTokens.accent, boxShadow: `0 0 0 3px ${planPanelTokens.accentSoft}` }}
+                  style={{ background: planPanelTokens.accent }}
                 />
                 전체 진행률
               </span>
@@ -463,7 +463,7 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
 
                     {/* Plan files */}
                     {isExpanded && (
-                      <div className="ml-3 space-y-px border-l pl-2" style={{ borderColor: "var(--border-subtle)" }}>
+                      <div className="ml-3 space-y-px pl-2">
                         {projectPlans.map((plan) => {
                           const planRate = plan.totalItems > 0
                             ? (plan.checkedItems / plan.totalItems) * 100
@@ -476,18 +476,15 @@ export function PlanPanel({ activeProjectId = null, activeProjectName = null }: 
                               type="button"
                               onClick={() => openPlanDetail(plan)}
                               className="flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left transition-colors"
-                              style={{ background: `linear-gradient(90deg, ${sc.dot}10 0%, transparent 48%)` }}
-                              onMouseEnter={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}1f 0%, var(--panel-hover) 48%)`; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.background = `linear-gradient(90deg, ${sc.dot}10 0%, transparent 48%)`; }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--panel-hover)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                             >
-                              {/* Status dot with glow */}
                               <span
                                 className="shrink-0 rounded-full"
                                 style={{
                                   width: 6,
                                   height: 6,
                                   backgroundColor: sc.dot,
-                                  boxShadow: `0 0 6px ${sc.glow}`,
                                 }}
                                 title={sc.label || plan.status}
                               />
