@@ -22,7 +22,8 @@ const execFileAsync = promisify(execFile);
 const ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
 const BETA_HEADER = "oauth-2025-04-20";
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
-const DEFAULT_INTERVAL_MS = 60_000;
+const DEFAULT_INTERVAL_MS = 5 * 60_000;
+const RATE_LIMIT_BACKOFF_MS = 15 * 60_000;
 
 async function readKeychainToken() {
   const { stdout } = await execFileAsync("security", [
@@ -88,6 +89,23 @@ function normalizeResponse(raw) {
   };
 }
 
+class UsageHttpError extends Error {
+  constructor(status, body, retryAfterMs) {
+    super(`HTTP ${status}: ${body.slice(0, 200)}`);
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+function parseRetryAfter(header) {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(header);
+  if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+  return null;
+}
+
 async function fetchUsage(token) {
   const response = await fetch(ENDPOINT, {
     headers: {
@@ -98,7 +116,8 @@ async function fetchUsage(token) {
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`HTTP ${response.status}: ${body.slice(0, 200)}`);
+    const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"));
+    throw new UsageHttpError(response.status, body, retryAfterMs);
   }
   return response.json();
 }
@@ -110,11 +129,14 @@ async function fetchUsage(token) {
  */
 export function createClaudeUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, onUpdate } = {}) {
   let timer = null;
+  let stopped = false;
+  let lastFetchedAtMs = 0;
   let snapshot = {
     status: "idle",
     fetchedAt: null,
     error: null,
     data: null,
+    okFetchedAt: null,
   };
 
   function publish(next) {
@@ -129,7 +151,16 @@ export function createClaudeUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, onUp
     }
   }
 
+  function scheduleNext(delayMs) {
+    if (stopped) return;
+    if (timer != null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      void tick();
+    }, delayMs);
+  }
+
   async function tick() {
+    lastFetchedAtMs = Date.now();
     try {
       const token = await loadOauthToken();
       const raw = await fetchUsage(token);
@@ -138,36 +169,47 @@ export function createClaudeUsagePoller({ intervalMs = DEFAULT_INTERVAL_MS, onUp
         fetchedAt: new Date().toISOString(),
         error: null,
         data: normalizeResponse(raw),
+        okFetchedAt: new Date().toISOString(),
       });
+      scheduleNext(intervalMs);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const isRateLimited = error instanceof UsageHttpError && error.status === 429;
       publish({
         status: "error",
         fetchedAt: new Date().toISOString(),
         error: message,
         data: snapshot.data,
+        okFetchedAt: snapshot.okFetchedAt,
       });
+      const retryAfterMs = error instanceof UsageHttpError ? error.retryAfterMs : null;
+      const backoff = isRateLimited
+        ? (retryAfterMs ?? RATE_LIMIT_BACKOFF_MS)
+        : intervalMs;
+      scheduleNext(backoff);
     }
   }
 
   return {
     start() {
-      if (timer != null) return;
+      if (timer != null || stopped) return;
       void tick();
-      timer = setInterval(() => {
-        void tick();
-      }, intervalMs);
     },
     stop() {
+      stopped = true;
       if (timer != null) {
-        clearInterval(timer);
+        clearTimeout(timer);
         timer = null;
       }
     },
     getSnapshot() {
       return snapshot;
     },
-    async refresh() {
+    async refresh({ minIntervalMs = 30_000 } = {}) {
+      const sinceLast = Date.now() - lastFetchedAtMs;
+      if (sinceLast < minIntervalMs) {
+        return snapshot;
+      }
       await tick();
       return snapshot;
     },

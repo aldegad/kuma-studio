@@ -28,6 +28,7 @@ interface Snapshot {
   fetchedAt: string | null;
   error: string | null;
   data: UsageData | null;
+  okFetchedAt: string | null;
 }
 
 interface ClaudeUsageEvent {
@@ -180,7 +181,18 @@ export function UsageLimitPanel() {
   }, []);
 
   const data = snapshot?.data ?? null;
-  const lastUpdated = useMemo(() => formatRelative(snapshot?.fetchedAt ?? null), [snapshot?.fetchedAt, now]);
+  const lastUpdated = useMemo(
+    () => formatRelative(snapshot?.okFetchedAt ?? null),
+    [snapshot?.okFetchedAt, now],
+  );
+  const isError = snapshot?.status === "error";
+  const errorReason = useMemo(() => {
+    if (!snapshot?.error) return null;
+    const trimmed = snapshot.error.trim();
+    if (trimmed.startsWith("HTTP 429")) return "레이트리밋 (재시도 대기 중)";
+    if (trimmed.startsWith("HTTP 401")) return "토큰 만료 — Claude Code 로그인 필요";
+    return trimmed.slice(0, 80);
+  }, [snapshot?.error]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -198,14 +210,14 @@ export function UsageLimitPanel() {
       style={{ borderColor: "var(--panel-border)", background: "var(--panel-bg)" }}
     >
       <div className="space-y-2 px-3 py-2.5">
-        {snapshot?.status === "error" ? (
+        {isError && !data ? (
           <p
             className="text-[10px]"
             style={{ color: "var(--toast-error-text, #b91c1c)" }}
             role="status"
             aria-live="polite"
           >
-            한도 조회 실패 — {snapshot.error?.slice(0, 200) ?? "알 수 없는 오류"}
+            한도 조회 실패 — {errorReason ?? "알 수 없는 오류"}
           </p>
         ) : null}
 
@@ -256,10 +268,17 @@ export function UsageLimitPanel() {
         ) : null}
 
         <div
-          className="flex items-center justify-between border-t pt-1.5 text-[9px]"
+          className="flex items-center justify-between gap-2 border-t pt-1.5 text-[9px]"
           style={{ borderColor: "var(--border-subtle)", color: "var(--t-faint)" }}
         >
-          <span>마지막 업데이트: {lastUpdated}</span>
+          <span className="min-w-0 truncate">
+            마지막 업데이트: {lastUpdated}
+            {isError && data ? (
+              <span className="ml-1.5" style={{ color: "var(--toast-error-text, #b91c1c)" }}>
+                · 갱신 실패 ({errorReason})
+              </span>
+            ) : null}
+          </span>
           <button
             type="button"
             data-panel-no-drag="true"
