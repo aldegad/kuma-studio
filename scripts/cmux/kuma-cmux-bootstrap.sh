@@ -232,20 +232,20 @@ ensure_registry_file
 # 1. System 상주 탭 (CTO와 같은 pane)
 CURRENT_WS="$(
   cmux tree 2>&1 | awk '
-    match($0, /workspace:[0-9]+/) {
-      workspace = substr($0, RSTART, RLENGTH)
-      if (first == "") {
-        first = workspace
-      }
-      if (index($0, "[selected]") > 0) {
-        print workspace
-        found = 1
+    /workspace workspace:[0-9]+/ {
+      if (match($0, /workspace:[0-9]+/)) {
+        ws = substr($0, RSTART, RLENGTH)
+        if (first == "") first = ws
+        if (index($0, "[selected]") > 0) selected = ws
       }
     }
+    /◀ here/ {
+      if (ws != "") here_ws = ws
+    }
     END {
-      if (!found && first != "") {
-        print first
-      }
+      if (here_ws != "") print here_ws
+      else if (selected != "") print selected
+      else if (first != "") print first
     }
   ' || true
 )"
